@@ -20,6 +20,7 @@ import {StaffLine} from "./StaffLine";
 import {SystemLine} from "./SystemLine";
 import {MusicSymbol} from "./MusicSymbol";
 import {GraphicalMusicPage} from "./GraphicalMusicPage";
+import { CooperativeYielder } from "../../Util/CooperativeYielder";
 import {Instrument} from "../Instrument";
 import {MusicSymbolDrawingStyle, PhonicScoreModes} from "./DrawingMode";
 import {GraphicalObject} from "./GraphicalObject";
@@ -120,6 +121,103 @@ export abstract class MusicSheetDrawer {
             const page: GraphicalMusicPage = this.graphicalMusicSheet.MusicPages[i];
             this.drawPage(page);
         }
+    }
+
+    /** Per-page hook shared by {@link drawSheetAsync}: subclasses (VexFlowMusicSheetDrawer) select the
+     *  page's render backend here so a system drawn outside {@link drawPage} still targets the right backend
+     *  (avoids the "late backend" crash). Base implementation is a no-op. */
+    public beginDrawPage(page: GraphicalMusicPage): void {
+        // override
+    }
+
+    /** Counterpart of {@link beginDrawPage}. Base implementation is a no-op. */
+    public endDrawPage(page: GraphicalMusicPage): void {
+        // override
+    }
+
+    /**
+     * Loading-path async mirror of {@link drawSheet}: identical draw-command output, but yields to the
+     * event loop between music systems so frames keep rendering during the first full draw of a large score.
+     * Per-page backend selection is routed through {@link beginDrawPage}/{@link endDrawPage} hooks instead of
+     * the inline {@link drawPage}, so a system drawn here targets the correct backend. {@link onSystemDrawn}
+     * reports (done, total) systems for progress UIs.
+     */
+    public async drawSheetAsync(graphicalMusicSheet: GraphicalMusicSheet, yielder: CooperativeYielder,
+                                onSystemDrawn?: (done: number, total: number) => void): Promise<void> {
+        this.graphicalMusicSheet = graphicalMusicSheet;
+        this.rules = graphicalMusicSheet.ParentMusicSheet.Rules;
+        this.drawSplitScreenLine();
+        if (this.drawingParameters.drawCursors) {
+            for (const line of graphicalMusicSheet.Cursors) {
+                if (!line) {
+                    continue;
+                }
+                const psi: BoundingBox = new BoundingBox(line);
+                psi.AbsolutePosition = line.Start;
+                psi.BorderBottom = line.End.y - line.Start.y;
+                psi.BorderRight = line.Width / 2.0;
+                psi.BorderLeft = -line.Width / 2.0;
+                if (this.isVisible(psi)) {
+                    this.drawLineAsVerticalRectangle(line, <number>GraphicalLayers.Cursor);
+                }
+            }
+        }
+        if (this.drawingParameters.drawScrollIndicator) {
+            this.drawScrollIndicator();
+        }
+
+        const pagesToDraw: number = Math.min(this.graphicalMusicSheet.MusicPages.length, this.rules.MaxPageToDrawNumber);
+        let totalSystems: number = 0;
+        for (let i: number = 0; i < pagesToDraw; i++) {
+            totalSystems += this.graphicalMusicSheet.MusicPages[i].MusicSystems.length;
+        }
+        let drawnSystems: number = 0;
+        for (let i: number = 0; i < pagesToDraw; i++) {
+            const page: GraphicalMusicPage = this.graphicalMusicSheet.MusicPages[i];
+            this.beginDrawPage(page);
+            if (!this.isVisible(page.PositionAndShape)) {
+                drawnSystems += page.MusicSystems.length;
+                onSystemDrawn?.(drawnSystems, totalSystems);
+                this.endDrawPage(page);
+                continue;
+            }
+            const lazySelective: boolean = this.LazyDrawSystemsFromIndex >= 0;
+            for (let sysIdx: number = 0; sysIdx < page.MusicSystems.length; sysIdx++) {
+                if (lazySelective && (sysIdx < this.LazyDrawSystemsFromIndex || sysIdx >= this.LazyDrawSystemsToIndexExcl)) {
+                    drawnSystems += 1;
+                    onSystemDrawn?.(drawnSystems, totalSystems);
+                    continue;
+                }
+                const system: MusicSystem = page.MusicSystems[sysIdx];
+                if (this.isVisible(system.PositionAndShape)) {
+                    await this.drawMusicSystemAsync(system, yielder);
+                }
+                drawnSystems += 1;
+                onSystemDrawn?.(drawnSystems, totalSystems);
+                await yielder.tick();
+            }
+            // Page labels + debug bounding boxes: mirror the tail of drawPage(), which we bypassed above.
+            if (page === page.Parent.MusicPages[0] && !(lazySelective && this.LazyDrawSystemsFromIndex > 0) && !this.LazySkipPageLabels) {
+                const savedForcePageLabels: boolean = this.LazyForcePageLabels;
+                this.LazyForcePageLabels = true;
+                for (const label of page.Labels) {
+                    label.SVGNode = this.drawLabel(label, <number>GraphicalLayers.Notes);
+                }
+                this.LazyForcePageLabels = savedForcePageLabels;
+            }
+            if (this.drawableBoundingBoxElement) {
+                this.drawBoundingBoxes(page.PositionAndShape, 0, this.drawableBoundingBoxElement);
+            }
+            this.endDrawPage(page);
+        }
+    }
+
+    /** Async mirror of {@link drawMusicSystem}. The heavy VexFlow draw runs synchronously (identical output);
+     *  the event-loop yield happens per-system in {@link drawSheetAsync}. */
+    protected async drawMusicSystemAsync(system: MusicSystem, yielder: CooperativeYielder): Promise<void> {
+        const absBoundingRectWithMargin: RectangleF2D = this.getSystemAbsBoundingRect(system);
+        const systemBoundingBoxInPixels: RectangleF2D = this.getSytemBoundingBoxInPixels(absBoundingRectWithMargin);
+        this.drawMusicSystemComponents(system, systemBoundingBoxInPixels, absBoundingRectWithMargin);
     }
 
     public drawLineAsHorizontalRectangle(line: GraphicalLine, layer: number): void {

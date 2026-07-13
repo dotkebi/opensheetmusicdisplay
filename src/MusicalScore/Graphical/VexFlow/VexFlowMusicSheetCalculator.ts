@@ -64,6 +64,7 @@ import { VexFlowPedal } from "./VexFlowPedal";
 import { MusicSymbol } from "../MusicSymbol";
 import { VexFlowVoiceEntry } from "./VexFlowVoiceEntry";
 import { CollectionUtil } from "../../../Util/CollectionUtil";
+import { CooperativeYielder } from "../../../Util/CooperativeYielder";
 import { GraphicalGlissando } from "../GraphicalGlissando";
 import { Glissando } from "../../VoiceData/Glissando";
 import { VexFlowGlissando } from "./VexFlowGlissando";
@@ -2082,6 +2083,95 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     } else {
       for (const staffLine of staffLines) {
         staffLine.SkyBottomLineCalculator.calculateLines();
+      }
+    }
+  }
+
+  /** Loading-path async mirror of {@link calculateSkyBottomLines}: identical lazy-cache reuse and output,
+   *  but the (dominant) compute pass is chunked with event-loop yields. {@link onCellProcessed} reports
+   *  (done, total) staff lines processed. */
+  protected async calculateSkyBottomLinesAsync(yielder: CooperativeYielder,
+                                               onCellProcessed?: (done: number, total: number) => void): Promise<void> {
+    const allStaffLines: StaffLine[] = CollectionUtil.flat(this.musicSystems.map(musicSystem => musicSystem.StaffLines));
+
+    // Same lazy reuse as calculateSkyBottomLines: reuse stable interior systems' cached lines, compute the rest.
+    const lazyCache: boolean = this.rules.LazyConsistentGraphic && this.rules.UseGeometricSkyBottomLineCalculation;
+    const staffLinesToCompute: StaffLine[] = lazyCache ? [] : allStaffLines;
+    const toCache: { key: string, staffLine: StaffLine }[] = [];
+    if (lazyCache) {
+      const lastSystemIndex: number = this.musicSystems.length - 1;
+      for (let si: number = 0; si < this.musicSystems.length; si++) {
+        const cacheable: boolean = si !== 0 && si !== lastSystemIndex;
+        const systemStaffLines: StaffLine[] = this.musicSystems[si].StaffLines;
+        for (let li: number = 0; li < systemStaffLines.length; li++) {
+          const staffLine: StaffLine = systemStaffLines[li];
+          const key: string = this.skyBottomLineCacheKey(staffLine, li);
+          const cached: { sky: number[], bottom: number[] } = key ? this.skyBottomLineCache.get(key) : undefined;
+          if (cached) {
+            staffLine.SkyBottomLineCalculator.applyGeometricSkylineSideEffectsOnly();
+            staffLine.SkyBottomLineCalculator.setLinesDirectly(cached.sky.slice(), cached.bottom.slice());
+          } else {
+            staffLinesToCompute.push(staffLine);
+            if (cacheable && key) {
+              toCache.push({ key, staffLine });
+            }
+          }
+        }
+      }
+    }
+
+    await this.computeSkyBottomLinesForAsync(staffLinesToCompute, yielder, onCellProcessed);
+
+    for (const entry of toCache) {
+      this.skyBottomLineCache.set(entry.key, { sky: entry.staffLine.SkyLine.slice(), bottom: entry.staffLine.BottomLine.slice() });
+    }
+  }
+
+  /** Async mirror of {@link computeSkyBottomLinesFor}: same computation, chunked with event-loop yields.
+   *  The geometric and per-staff-line paths yield after each staff line; the batch path is a single native
+   *  call, so we yield around it. */
+  private async computeSkyBottomLinesForAsync(staffLines: StaffLine[], yielder: CooperativeYielder,
+                                              onCellProcessed?: (done: number, total: number) => void): Promise<void> {
+    const total: number = staffLines.length;
+    if (total === 0) {
+      onCellProcessed?.(0, 0);
+      return;
+    }
+    if (this.rules.UseGeometricSkyBottomLineCalculation) {
+      let done: number = 0;
+      for (const staffLine of staffLines) {
+        staffLine.SkyBottomLineCalculator.calculateLines();
+        done++;
+        onCellProcessed?.(done, total);
+        if (yielder.needsYield) { await yielder.yieldNow(); }
+      }
+      return;
+    }
+    let numMeasures: number = 0; // number of graphical measures that are rendered
+    for (const staffline of staffLines) {
+      for (const measure of staffline.Measures) {
+        if (measure) {
+          numMeasures++;
+        }
+      }
+    }
+    if (this.rules.AlwaysSetPreferredSkyBottomLineBackendAutomatically) {
+      this.rules.setPreferredSkyBottomLineBackendAutomatically(numMeasures);
+    }
+    if (numMeasures >= this.rules.SkyBottomLineBatchMinMeasures) {
+      if (yielder.needsYield) { await yielder.yieldNow(); }
+      const calculator: SkyBottomLineBatchCalculator = new SkyBottomLineBatchCalculator(
+        staffLines, this.rules.PreferredSkyBottomLineBatchCalculatorBackend);
+      calculator.calculateLines();
+      onCellProcessed?.(total, total);
+      if (yielder.needsYield) { await yielder.yieldNow(); }
+    } else {
+      let done: number = 0;
+      for (const staffLine of staffLines) {
+        staffLine.SkyBottomLineCalculator.calculateLines();
+        done++;
+        onCellProcessed?.(done, total);
+        if (yielder.needsYield) { await yielder.yieldNow(); }
       }
     }
   }

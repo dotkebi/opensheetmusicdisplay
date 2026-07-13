@@ -28,6 +28,7 @@ import { MusicPartManagerIterator } from "../MusicalScore/MusicParts/MusicPartMa
 import { ITransposeCalculator } from "../MusicalScore/Interfaces/ITransposeCalculator";
 import { NoteEnum } from "../Common/DataObjects/Pitch";
 import { TemposCalculator } from "../MusicalScore/ScoreIO/MusicSymbolModules/TemposCalculator";
+import { CooperativeYielder } from "../Util/CooperativeYielder";
 
 /**
  * The main class and control point of OpenSheetMusicDisplay.<br>
@@ -263,6 +264,8 @@ export class OpenSheetMusicDisplay {
     /** Incremental rendering: the scroll listener + its target, while enableIncrementalRenderingOnScroll() is on. */
     private lazyScrollHandler: (() => void) | undefined;
     private lazyScrollTarget: HTMLElement | Window | undefined;
+    /** Whether a {@link renderAsync} call is currently running (re-entrancy guard). */
+    private renderAsyncInFlightFlag: boolean = false;
 
     /** Render the loaded music sheet to the container. */
     public render(): void {
@@ -348,6 +351,104 @@ export class OpenSheetMusicDisplay {
         this.zoomUpdated = false;
         this.rules.RenderCount++;
         //console.log("[OSMD] render finished");
+    }
+
+    /** Whether a {@link renderAsync} call is currently running. */
+    public get renderAsyncInFlight(): boolean {
+        return this.renderAsyncInFlightFlag;
+    }
+
+    /**
+     * Loading-path async mirror of {@link render}: same output, but yields to the event loop during layout
+     * and drawing so the main thread stays responsive (e.g. a loading spinner keeps animating) on large
+     * orchestral scores. Progress is reported monotonically 0.0..1.0 (layout 0..0.65, draw 0.65..1.0).
+     * Re-entrant calls throw. Never call concurrently with {@link render}.
+     * @param options.onProgress optional monotonic 0.0..1.0 progress callback.
+     * @param options.yieldBudgetMs work budget between event-loop yields, in ms (default 12).
+     */
+    public async renderAsync(options?: { onProgress?: (progress: number) => void, yieldBudgetMs?: number }): Promise<void> {
+        if (!this.graphic) {
+            throw new Error("OSMD: load() needs to be called before render()");
+        }
+        if (this.renderAsyncInFlightFlag) {
+            throw new Error("OSMD: renderAsync is already in flight");
+        }
+        this.renderAsyncInFlightFlag = true;
+        const onProgress: ((progress: number) => void) | undefined = options?.onProgress;
+        const yieldBudgetMs: number = options?.yieldBudgetMs ?? 12;
+        try {
+            const yielder: CooperativeYielder = new CooperativeYielder(yieldBudgetMs);
+            const layoutProgressEnd: number = 0.65;
+
+            // A full render supersedes any incremental render in progress: abandon it and restore the
+            // draw-measure range it mutated (mirror of render()).
+            this.resetIncrementalRendering();
+            this.rules.LazyConsistentGraphic = false;
+            this.drawer?.clear();
+
+            if (this.Sheet.SourceMeasures[0].ImplicitMeasure) {
+                if (this.rules.MinMeasureToDrawNumber > 1) {
+                    this.rules.MinMeasureToDrawIndex = this.rules.MinMeasureToDrawNumber;
+                }
+                if (this.rules.MaxMeasureToDrawNumber > 0) {
+                    this.rules.MaxMeasureToDrawIndex = this.rules.MaxMeasureToDrawNumber;
+                }
+            }
+
+            // Set page width
+            let width: number = this.container.offsetWidth;
+            if (this.rules.RenderSingleHorizontalStaffline) {
+                width = this.rules.SheetMaximumWidth;
+            }
+            this.sheet.pageWidth = width / this.zoom / 10.0;
+            if (this.rules.PageFormat && !this.rules.PageFormat.IsUndefined) {
+                this.rules.PageHeight = this.sheet.pageWidth / this.rules.PageFormat.aspectRatio;
+                log.debug("[OSMD] PageHeight: " + this.rules.PageHeight);
+            } else {
+                log.debug("[OSMD] endless/undefined pageformat, id: " + this.rules.PageFormat.idString);
+                this.rules.PageHeight = 100001;
+            }
+
+            // Calculate again (async)
+            await this.graphic.reCalculateAsync(yielder, (p: number): void => onProgress?.(p * layoutProgressEnd));
+
+            if (this.drawingParameters.drawCursors) {
+                this.graphic.Cursors.length = 0;
+            }
+
+            if (true || this.needBackendUpdate) {
+                this.createOrRefreshRenderBackend();
+                this.needBackendUpdate = false;
+            }
+
+            this.drawer.setZoom(this.zoom);
+
+            for (const measure of this.sheet.SourceMeasures) {
+                measure.WasRendered = false;
+            }
+            onProgress?.(layoutProgressEnd);
+
+            // Finally, draw (async)
+            await this.drawer.drawSheetAsync(this.graphic, yielder,
+                (done: number, total: number): void => {
+                    if (total > 0) {
+                        onProgress?.(layoutProgressEnd + (1.0 - layoutProgressEnd) * done / total);
+                    }
+                });
+
+            this.enableOrDisableCursors(this.drawingParameters.drawCursors);
+
+            if (this.drawingParameters.drawCursors) {
+                this.cursors.forEach(cursor => {
+                    cursor.update();
+                });
+            }
+            this.zoomUpdated = false;
+            this.rules.RenderCount++;
+            onProgress?.(1.0);
+        } finally {
+            this.renderAsyncInFlightFlag = false;
+        }
     }
 
     /** Internal range-based engine behind {@link renderNext} (the public incremental API). Lays out the

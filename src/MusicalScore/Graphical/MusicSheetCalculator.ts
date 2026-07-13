@@ -74,6 +74,7 @@ import { GraphicalChordSymbolContainer } from "./GraphicalChordSymbolContainer";
 import { LyricsEntry } from "../VoiceData/Lyrics/LyricsEntry";
 import { Voice } from "../VoiceData/Voice";
 import { TabNote } from "../VoiceData/TabNote";
+import { CooperativeYielder } from "../../Util/CooperativeYielder";
 
 /**
  * Class used to do all the calculations in a MusicSheet, which in the end populates a GraphicalMusicSheet.
@@ -308,6 +309,55 @@ export abstract class MusicSheetCalculator {
         GraphicalMusicSheet.transformRelativeToAbsolutePosition(this.graphicalMusicSheet);
     }
 
+    /**
+     * Loading-path async mirror of {@link calculate}: identical layout output, but yields to the event
+     * loop between hot steps (xLayout measure columns, skyline cells) so a large orchestral score doesn't
+     * block the main thread on the first render. Progress bands mirror the measured cost split of
+     * calculate(): pre-steps ~0.02, xLayout ~0.02..0.20, musicSystems ~0.20..0.99, absolute ~0.01.
+     * @param yielder cooperative yielder (setTimeout(0) based) shared across the whole render.
+     * @param onProgress optional monotonic 0.0..1.0 progress callback.
+     */
+    public async calculateAsync(yielder: CooperativeYielder, onProgress?: (progress: number) => void): Promise<void> {
+        const xLayoutStart: number = 0.02;
+        const xLayoutEnd: number = 0.20;
+        const musicSystemsEnd: number = 0.99;
+
+        this.musicSystems = [];
+
+        this.clearSystemsAndMeasures();
+        if (yielder.needsYield) { await yielder.yieldNow(); }
+
+        this.clearRecreatedObjects();
+        if (yielder.needsYield) { await yielder.yieldNow(); }
+
+        this.createGraphicalTies();
+        if (yielder.needsYield) { await yielder.yieldNow(); }
+
+        this.calculateSheetLabelBoundingBoxes();
+        const maxInstrNameLabelLength: number = this.maxInstrNameLabelLength();
+        onProgress?.(xLayoutStart);
+        if (yielder.needsYield) { await yielder.yieldNow(); }
+
+        await this.calculateXLayoutAsync(this.graphicalMusicSheet, maxInstrNameLabelLength, yielder,
+            (done: number, total: number): void => {
+                if (total > 0) {
+                    onProgress?.(xLayoutStart + (xLayoutEnd - xLayoutStart) * done / total);
+                }
+            });
+
+        // create List<MusicPage>
+        this.graphicalMusicSheet.MusicPages.length = 0;
+
+        await this.calculateMusicSystemsAsync(yielder,
+            (p: number): void => {
+                onProgress?.(xLayoutEnd + (musicSystemsEnd - xLayoutEnd) * p);
+            });
+
+        // transform Relative to Absolute Positions
+        GraphicalMusicSheet.transformRelativeToAbsolutePosition(this.graphicalMusicSheet);
+        onProgress?.(1.0);
+    }
+
     /** Drop the lazy sky/bottom-line reuse cache (call when starting a fresh lazy session). */
     public clearSkyBottomLineCache(): void {
         this.skyBottomLineCache.clear();
@@ -382,6 +432,57 @@ export abstract class MusicSheetCalculator {
             }
         }
         // this.graphicalMusicSheet.MinAllowedSystemWidth = minLength; // currently unused
+    }
+
+    /**
+     * Loading-path async mirror of {@link calculateXLayout} with a yield between measure columns.
+     * Produces byte-identical layout: {@link measureWidthFactor} is declared OUTSIDE the column loop so it
+     * carries across columns (OSMD parity), exactly as in the sync body. {@link onMeasureProcessed} reports
+     * (done, total) measure columns for progress UIs.
+     */
+    public async calculateXLayoutAsync(graphicalMusicSheet: GraphicalMusicSheet, maxInstrNameLabelLength: number,
+                                       yielder: CooperativeYielder,
+                                       onMeasureProcessed?: (done: number, total: number) => void): Promise<void> {
+        if (this.graphicalMusicSheet.MeasureList.length > 0) {
+            const total: number = this.graphicalMusicSheet.MeasureList.length;
+            let maxWidth: number = 0;
+            let measures: GraphicalMeasure[];
+            // NOTE: declared outside the loop so the last-seen factor carries into a column that has no
+            // WidthFactor of its own (e.g. multi-rest), matching the sync calculateXLayout. Do not reset.
+            let measureWidthFactor: number = 1;
+            for (let i: number = 0; i < total; i++) {
+                measures = this.graphicalMusicSheet.MeasureList[i];
+                let minimumStaffEntriesWidth: number = this.calculateMeasureXLayout(measures);
+                minimumStaffEntriesWidth = this.calculateMeasureWidthFromStaffEntries(measures, minimumStaffEntriesWidth);
+                if (minimumStaffEntriesWidth > maxWidth) {
+                    maxWidth = minimumStaffEntriesWidth;
+                }
+                const globalWidthFactor: number = this.graphicalMusicSheet.ParentMusicSheet.MeasureWidthFactor;
+                for (const verticalMeasure of measures) {
+                    if (verticalMeasure?.parentSourceMeasure.WidthFactor) { // some of these GraphicalMeasures might be undefined (multi-rest)
+                        measureWidthFactor = verticalMeasure.parentSourceMeasure.WidthFactor;
+                        break;
+                    }
+                }
+                minimumStaffEntriesWidth *= globalWidthFactor * measureWidthFactor;
+                MusicSheetCalculator.setMeasuresMinStaffEntriesWidth(measures, minimumStaffEntriesWidth);
+                onMeasureProcessed?.(i + 1, total);
+                if (yielder.needsYield) { await yielder.yieldNow(); }
+            }
+            if (this.rules.FixedMeasureWidth) {
+                let targetWidth: number = maxWidth;
+                if (this.rules.FixedMeasureWidthFixedValue) {
+                    targetWidth = this.rules.FixedMeasureWidthFixedValue;
+                }
+                for (let i: number = 0; i < this.graphicalMusicSheet.MeasureList.length; i++) {
+                    measures = this.graphicalMusicSheet.MeasureList[i];
+                    if (!this.rules.FixedMeasureWidthUseForPickupMeasures && measures[0]?.parentSourceMeasure.ImplicitMeasure) {
+                        continue;
+                    }
+                    MusicSheetCalculator.setMeasuresMinStaffEntriesWidth(measures, targetWidth);
+                }
+            }
+        }
     }
 
     public calculateMeasureWidthFromStaffEntries(measuresVertical: GraphicalMeasure[], oldMinimumStaffEntriesWidth: number): number {
@@ -1120,6 +1221,225 @@ export abstract class MusicSheetCalculator {
             // calculate TopBottom Borders for all elements recursively
             graphicalMusicPage.PositionAndShape.calculateTopBottomBorders(); // this is where top bottom borders were originally calculated (only once)
         }
+    }
+
+    /** Async-only helper: build the visible 2D measure list (mirror of the head of {@link calculateMusicSystems},
+     *  lines building visibleMeasureList). Extracted so calculateMusicSystemsAsync can reuse it without
+     *  touching the sync body. */
+    protected collectVisibleMeasureList(): GraphicalMeasure[][] {
+        const allMeasures: GraphicalMeasure[][] = this.graphicalMusicSheet.MeasureList;
+        if (this.rules.MinMeasureToDrawIndex > allMeasures.length - 1) {
+            log.debug("minimum measure to draw index out of range. resetting min measure index to limit.");
+            this.rules.MinMeasureToDrawIndex = allMeasures.length - 1;
+        }
+        const visibleMeasureList: GraphicalMeasure[][] = [];
+        for (let idx: number = this.rules.MinMeasureToDrawIndex, len: number = allMeasures.length;
+            idx < len && idx <= this.rules.MaxMeasureToDrawIndex; ++idx) {
+            const graphicalMeasures: GraphicalMeasure[] = allMeasures[idx];
+            const visiblegraphicalMeasures: GraphicalMeasure[] = [];
+            for (let idx2: number = 0, len2: number = graphicalMeasures.length; idx2 < len2; ++idx2) {
+                const graphicalMeasure: GraphicalMeasure = allMeasures[idx][idx2];
+                if (graphicalMeasure?.isVisible()) {
+                    visiblegraphicalMeasures.push(graphicalMeasure);
+                    if (this.rules.ColoringEnabled) {
+                        for (const staffEntry of graphicalMeasure.staffEntries) {
+                            for (const gve of staffEntry.graphicalVoiceEntries) {
+                                gve.applyCustomNoteheads();
+                                gve.color();
+                            }
+                        }
+                    }
+                }
+            }
+            visibleMeasureList.push(visiblegraphicalMeasures);
+        }
+        return visibleMeasureList;
+    }
+
+    /** Async-only helper: number of staff lines from the visible measure list (mirror of the sync
+     *  "find out how many StaffLine Instances we need" loop, which breaks after the first entry). */
+    protected countVisibleStaffLines(visibleMeasureList: GraphicalMeasure[][]): number {
+        let numberOfStaffLines: number = 0;
+        for (let idx: number = 0, len: number = visibleMeasureList.length; idx < len; ++idx) {
+            const gmlist: GraphicalMeasure[] = visibleMeasureList[idx];
+            numberOfStaffLines = Math.max(gmlist.length, numberOfStaffLines);
+            break;
+        }
+        return numberOfStaffLines;
+    }
+
+    /** Async-only helper: update all StaffLine borders (mirror of the sync "update all StaffLine's Borders"
+     *  double loop). */
+    protected updateAllStaffLineBorders(): void {
+        for (let idx2: number = 0, len2: number = this.musicSystems.length; idx2 < len2; ++idx2) {
+            const musicSystem: MusicSystem = this.musicSystems[idx2];
+            for (let idx3: number = 0, len3: number = musicSystem.StaffLines.length; idx3 < len3; ++idx3) {
+                const staffLine: StaffLine = musicSystem.StaffLines[idx3];
+                this.updateStaffLineBorders(staffLine);
+            }
+        }
+    }
+
+    /** Async-only helper: finalize systems on all pages (mirror of the sync tail of {@link calculateMusicSystems}:
+     *  system lines/brackets, y-shift by BorderTop, page labels, top/bottom borders). */
+    protected finalizePageSystems(): void {
+        for (let idx: number = 0, len: number = this.graphicalMusicSheet.MusicPages.length; idx < len; ++idx) {
+            const graphicalMusicPage: GraphicalMusicPage = this.graphicalMusicSheet.MusicPages[idx];
+            for (let idx2: number = 0, len2: number = graphicalMusicPage.MusicSystems.length; idx2 < len2; ++idx2) {
+                const isFirstSystem: boolean = idx === 0 && idx2 === 0;
+                const musicSystem: MusicSystem = graphicalMusicPage.MusicSystems[idx2];
+                musicSystem.setMusicSystemLabelsYPosition();
+                if (!this.leadSheet) {
+                    musicSystem.setYPositionsToVerticalLineObjectsAndCreateLines(this.rules);
+                    musicSystem.createSystemLeftLine(this.rules.SystemThinLineWidth, this.rules.SystemLabelsRightMargin, isFirstSystem);
+                    musicSystem.createInstrumentBrackets(this.graphicalMusicSheet.ParentMusicSheet.Instruments, this.rules.StaffHeight);
+                    musicSystem.createGroupBrackets(this.graphicalMusicSheet.ParentMusicSheet.InstrumentalGroups, this.rules.StaffHeight, 0);
+                    musicSystem.alignBeginInstructions();
+                } else if (musicSystem === musicSystem.Parent.MusicSystems[0]) {
+                    musicSystem.createSystemLeftLine(this.rules.SystemThinLineWidth, this.rules.SystemLabelsRightMargin, isFirstSystem);
+                }
+                musicSystem.calculateBorders(this.rules);
+            }
+            let distance: number = graphicalMusicPage.MusicSystems[0].PositionAndShape.BorderTop;
+            if (this.rules.SnapStafflinesToCrispPixels) {
+                distance = Math.round(distance * 10) / 10;
+            } else {
+                distance = Math.round(distance * 20) / 20;
+            }
+            for (let idx2: number = 0, len2: number = graphicalMusicPage.MusicSystems.length; idx2 < len2; ++idx2) {
+                const musicSystem: MusicSystem = graphicalMusicPage.MusicSystems[idx2];
+                musicSystem.PositionAndShape.RelativePosition =
+                    new PointF2D(musicSystem.PositionAndShape.RelativePosition.x, musicSystem.PositionAndShape.RelativePosition.y - distance);
+            }
+            graphicalMusicPage.PositionAndShape.calculateTopBottomBorders();
+            if (graphicalMusicPage === this.graphicalMusicSheet.MusicPages[0]) {
+                this.calculatePageLabels(graphicalMusicPage);
+            }
+            graphicalMusicPage.PositionAndShape.calculateTopBottomBorders();
+        }
+    }
+
+    /**
+     * Loading-path async mirror of {@link calculateMusicSystems}: same step order and output, but yields
+     * to the event loop after each step and, most importantly, chunks the dominant skyline pass. Progress
+     * bands from the measured cost split: pre-skyline ~0.06, skyline ~0.06..0.86, post-skyline ~0.86..1.0.
+     */
+    protected async calculateMusicSystemsAsync(yielder: CooperativeYielder,
+                                               onProgress?: (progress: number) => void): Promise<void> {
+        if (!this.graphicalMusicSheet.MeasureList) {
+            onProgress?.(1.0);
+            return;
+        }
+        const allMeasures: GraphicalMeasure[][] = this.graphicalMusicSheet.MeasureList;
+        if (!allMeasures) {
+            onProgress?.(1.0);
+            return;
+        }
+        const visibleMeasureList: GraphicalMeasure[][] = this.collectVisibleMeasureList();
+        const numberOfStaffLines: number = this.countVisibleStaffLines(visibleMeasureList);
+        if (numberOfStaffLines === 0) {
+            onProgress?.(1.0);
+            return;
+        }
+
+        const preSkylineEnd: number = 0.06;
+        const skylineEnd: number = 0.86;
+        const step: (run: () => void, progress?: number) => Promise<void> =
+            async (run: () => void, progress?: number): Promise<void> => {
+                run();
+                if (progress !== undefined) {
+                    onProgress?.(progress);
+                }
+                if (yielder.needsYield) { await yielder.yieldNow(); }
+            };
+
+        const musicSystemBuilder: MusicSystemBuilder = new MusicSystemBuilder();
+        await step(() => musicSystemBuilder.initialize(this.graphicalMusicSheet, visibleMeasureList, numberOfStaffLines));
+        await step(() => { this.musicSystems = musicSystemBuilder.buildMusicSystems(); }, 0.02);
+
+        await step(() => this.formatMeasures(), 0.04);
+
+        if (!this.leadSheet) {
+            await step(() => this.optimizeRestPlacement());
+            await step(() => this.calculateStaffEntryArticulationMarks());
+            if (this.rules.RenderSlurs) {
+                await step(() => this.calculateTieCurves());
+            }
+        }
+        onProgress?.(preSkylineEnd);
+
+        await this.calculateSkyBottomLinesAsync(yielder,
+            (done: number, total: number): void => {
+                if (total > 0) {
+                    onProgress?.(preSkylineEnd + (skylineEnd - preSkylineEnd) * done / total);
+                }
+            });
+
+        await step(() => this.calculateTupletNumbers(), 0.87);
+
+        if (this.rules.RenderMeasureNumbers) {
+            await step(() => {
+                for (let idx: number = 0, len: number = this.musicSystems.length; idx < len; ++idx) {
+                    this.calculateMeasureNumberPlacement(this.musicSystems[idx]);
+                }
+            });
+        }
+        if (this.rules.RenderFingerings) {
+            await step(() => this.calculateFingerings());
+        }
+        if (!this.leadSheet && this.rules.RenderSlurs) {
+            await step(() => this.calculateSlurs(), 0.89);
+        }
+        await step(() => this.calculateGlissandi());
+        if (this.rules.RenderMeasureNumbers) {
+            await step(() => {
+                for (let idx: number = 0, len: number = this.musicSystems.length; idx < len; ++idx) {
+                    this.calculateMeasureNumberSkyline(this.musicSystems[idx]);
+                }
+            });
+        }
+        if (!this.leadSheet) {
+            await step(() => this.calculateOrnaments());
+        }
+        await step(() => this.calculateChordSymbols(), 0.91);
+        if (!this.leadSheet) {
+            await step(() => this.calculateDynamicExpressions());
+            await step(() => this.calculateMoodAndUnknownExpressions());
+            await step(() => this.calculateExpressionAlignements());
+            await step(() => this.calculateOctaveShifts());
+            if (this.rules.RenderPedals) {
+                await step(() => this.calculatePedals());
+            }
+            if (this.rules.RenderWavyLines) {
+                await step(() => this.calculateWavyLines());
+            }
+            await step(() => this.calculateWordRepetitionInstructions());
+        }
+        await step(() => this.calculateRepetitionEndings());
+        if (!this.leadSheet) {
+            await step(() => this.calculateTempoExpressions());
+        }
+        await step(() => this.calculateRehearsalMarks(), 0.94);
+
+        await step(() => this.calculateLyricsPosition());
+
+        await step(() => this.updateAllStaffLineBorders(), 0.96);
+
+        await step(() => musicSystemBuilder.calculateSystemYLayout());
+        await step(() => this.calculateComments());
+        await step(() => this.calculateMarkedAreas(), 0.98);
+
+        await step(() => this.finalizePageSystems(), 1.0);
+    }
+
+    /**
+     * Loading-path async mirror of {@link calculateSkyBottomLines}. Base implementation is an empty
+     * override (like the sync base); VexFlowMusicSheetCalculator provides the real chunked computation.
+     * {@link onCellProcessed} reports (done, total) skyline cells for progress UIs.
+     */
+    protected async calculateSkyBottomLinesAsync(yielder: CooperativeYielder,
+                                                 onCellProcessed?: (done: number, total: number) => void): Promise<void> {
+        // override in VexFlowMusicSheetCalculator
     }
 
     protected calculateMarkedAreas(): void {

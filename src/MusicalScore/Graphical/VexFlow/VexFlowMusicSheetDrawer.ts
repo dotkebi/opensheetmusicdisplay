@@ -30,6 +30,7 @@ import { VexFlowContinuousDynamicExpression } from "./VexFlowContinuousDynamicEx
 import { DrawingParameters } from "../DrawingParameters";
 import { GraphicalMusicPage } from "../GraphicalMusicPage";
 import { GraphicalMusicSheet } from "../GraphicalMusicSheet";
+import { CooperativeYielder } from "../../../Util/CooperativeYielder";
 import { GraphicalUnknownExpression } from "../GraphicalUnknownExpression";
 import { VexFlowPedal } from "./VexFlowPedal";
 import { GraphicalGlissando } from "../GraphicalGlissando";
@@ -98,6 +99,50 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         }
         this.backend = this.backends[page.PageNumber - 1]; // TODO we may need to set this in a couple of other places. this.pageIdx is a bad solution
         super.drawPage(page);
+        this.pageIdx += 1;
+    }
+
+    /** Loading-path async mirror of {@link drawSheet}: performs the same per-page backend prep as the sync
+     *  override, then delegates to the base async page/system loop, which selects the page backend through
+     *  {@link beginDrawPage}. */
+    public async drawSheetAsync(graphicalMusicSheet: GraphicalMusicSheet, yielder: CooperativeYielder,
+                                onSystemDrawn?: (done: number, total: number) => void): Promise<void> {
+        // vexflow 3.x: change default font
+        if (this.rules.DefaultVexFlowNoteFont === "gonville") {
+            (Vex.Flow as any).DEFAULT_FONT_STACK = [(Vex.Flow as any).Fonts?.Gonville, (Vex.Flow as any).Fonts?.Bravura, (Vex.Flow as any).Fonts?.Custom];
+        }
+        (Vex.Flow as any).STAVE_LINE_THICKNESS = this.rules.StaffLineWidth * unitInPixels;
+        (Vex.Flow as any).STEM_WIDTH = this.rules.StemWidth * unitInPixels;
+        (Vex.Flow as any).DEFAULT_NOTATION_FONT_SCALE = this.rules.VexFlowDefaultNotationFontScale;
+        (Vex.Flow as any).DEFAULT_TAB_FONT_SCALE = this.rules.VexFlowDefaultTabFontScale;
+
+        this.pageIdx = 0;
+        for (const graphicalMusicPage of graphicalMusicSheet.MusicPages) {
+            if (graphicalMusicPage.PageNumber > this.rules.MaxPageToDrawNumber) {
+                break;
+            }
+            const backend: VexFlowBackend = this.backends[this.pageIdx];
+            backend.graphicalMusicPage = graphicalMusicPage;
+            backend.scale(this.zoom);
+            this.pageIdx += 1;
+        }
+
+        this.pageIdx = 0;
+        this.backend = this.backends[0];
+        await super.drawSheetAsync(graphicalMusicSheet, yielder, onSystemDrawn);
+    }
+
+    /** Select the page's render backend before its systems are drawn (async path bypasses {@link drawPage}).
+     *  This is the fix for the "late backend" crash: without it, drawMusicSystemAsync would draw into the
+     *  wrong (or a cleared) backend. */
+    public beginDrawPage(page: GraphicalMusicPage): void {
+        if (!page) {
+            return;
+        }
+        this.backend = this.backends[page.PageNumber - 1];
+    }
+
+    public endDrawPage(page: GraphicalMusicPage): void {
         this.pageIdx += 1;
     }
 

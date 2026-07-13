@@ -26,6 +26,7 @@ import {OutlineAndFillStyleEnum} from "./DrawingEnums";
 import { MusicSheetDrawer } from "./MusicSheetDrawer";
 import { GraphicalVoiceEntry } from "./GraphicalVoiceEntry";
 import { GraphicalObject } from "./GraphicalObject";
+import { CooperativeYielder } from "../../Util/CooperativeYielder";
 // import { VexFlowMusicSheetDrawer } from "./VexFlow/VexFlowMusicSheetDrawer";
 // import { SvgVexFlowBackend } from "./VexFlow/SvgVexFlowBackend"; // causes build problem with npm start
 
@@ -193,6 +194,11 @@ export class GraphicalMusicSheet {
 
     public reCalculate(): void {
         this.calculator.calculate();
+    }
+
+    /** Loading-path async mirror of {@link reCalculate}: same layout, yielding to the event loop. */
+    public async reCalculateAsync(yielder: CooperativeYielder, onProgress?: (progress: number) => void): Promise<void> {
+        await this.calculator.calculateAsync(yielder, onProgress);
     }
 
     // unused method
@@ -646,16 +652,31 @@ export class GraphicalMusicSheet {
 
     // TODO move to VexFlowMusicSheetDrawer? better fit for imports
     private domToSvgTransform(point: PointF2D, inverse: boolean): PointF2D {
-        const svgBackend: any = (this.drawer as any).Backends[0]; // as SvgVexFlowBackend;
+        // The SVG backend only exists after the first render populates the drawer.
+        // Coordinate projections (cursor/overlay sync) can fire before that, in which
+        // case drawer/Backends is undefined; return undefined instead of throwing.
+        const backends: any = (this.drawer as any)?.Backends;
+        const svgBackend: any = backends?.[0]; // as SvgVexFlowBackend;
         // TODO importing SvgVexFlowBackend here causes build problems. Importing VexFlowMusicSheetDrawer seems to be fine, but unnecessary.
         // if (!(svgBackend instanceof SvgVexFlowBackend)) {
         //     return undefined;
         // }
+        if (!svgBackend || typeof svgBackend.getSvgElement !== "function") {
+            return undefined;
+        }
         const svg: SVGSVGElement = svgBackend.getSvgElement() as SVGSVGElement;
+        if (!svg || typeof svg.createSVGPoint !== "function") {
+            return undefined;
+        }
         const pt: SVGPoint = svg.createSVGPoint();
         pt.x = point.x;
         pt.y = point.y;
+        // getScreenCTM() is null when the SVG is not in the layout tree yet
+        // (detached or display:none); bail rather than call .inverse() on null.
         let transformMatrix: DOMMatrix = svg.getScreenCTM();
+        if (!transformMatrix) {
+            return undefined;
+        }
         if (inverse) {
             transformMatrix = transformMatrix.inverse();
         }
