@@ -54,8 +54,12 @@ renderAsync 작업을 web OSMD로 1:1 포팅.
 - [x] 빌드 성공 (npm run build)
 - [x] lint 통과 (npm run eslint)
 - [x] OSMD 파리티 테스트 (test/Common/OSMD/OSMD_renderAsync_Test.ts, 4/4 통과: 출력동일/진행률단조/이벤트루프회전/재진입가드)
-- [ ] 전체 OSMD 스위트 회귀 확인 (진행 중)
-- [ ] fork 푸시 (사용자 승인 필요 — 외부 저장소)
-- [ ] 02front git dependency 전환 (1.9.7→2.0.0 API diff 점검 포함)
-- [ ] 02front 앱 코드 전환 (loadScoreChunked/renderScoreChunked 런타임 복제 제거 → 네이티브 renderAsync)
-- [ ] 브라우저 검증 (Beach Op.32 실측)
+- [x] 전체 OSMD 스위트 회귀 확인 (slur flatten 1건 실패=사전존재 flaky, 격리검증)
+- [x] fork 푸시 (SHA cee15d8b renderAsync + 4524b41b wavy-fix)
+- [x] wavy line 크래시 fix (VexFlowVibratoBracket undefined staffEntry 가드 — 2.0.0 자체 버그, D'un matin 46-staff)
+- [x] 02front git dependency 전환 (#4524b41b, API diff 조사=하드브레이크 0)
+- [x] 02front 앱 코드 전환 (renderScoreChunked→네이티브 renderAsync, 파싱 loadScoreChunked 유지)
+- [x] 02front score-viewport 테스트 97/97 통과
+- [x] 브라우저 실측 (renderAsync 중 eval 즉시응답=메인스레드 생존)
+- [ ] 커밋 (02front + osmd 둘 다 미커밋)
+- [ ] 정상기기 체감 QA (측정머신 병적으로 느림) + 오버레이/playhead 시각 QA (geometric skyline) + 반복악보 재생 스모크
