@@ -34,5 +34,5 @@ export declare class VexFlowMusicSystem extends MusicSystem {
      * @param lastStaffLine the lower staff line of the bracket to create
      * @param recursionDepth
      */
-    protected createGroupBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine, recursionDepth: number): void;
+    protected createGroupBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine, recursionDepth: number, groupSymbol: string): void;
 }

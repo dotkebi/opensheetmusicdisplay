@@ -938,6 +938,10 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                                     subInstrument.name = subElement.value;
                                     subInstrument.setMidiInstrument(subElement.value);
                                 }
+                                const soundElement: IXmlElement = partElement.element("instrument-sound");
+                                if (soundElement) {
+                                    subInstrument.setInstrumentSound(soundElement.value);
+                                }
                             } else if (partElement.name === "midi-instrument") {
                                 let subInstrument: SubInstrument = instrument.getSubInstrument(partElement.firstAttribute.value);
                                 for (let idx3: number = 0, len3: number = instrument.SubInstruments.length; idx3 < len3; ++idx3) {
@@ -954,10 +958,11 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                                         if (instrumentElement.name === "midi-channel") {
                                             if (parseInt(instrumentElement.value, 10) === 10) {
                                                 instrument.MidiInstrumentId = MidiInstrument.Percussion;
+                                                subInstrument.setPercussion();
                                             }
                                         } else if (instrumentElement.name === "midi-program") {
                                             if (instrument.SubInstruments.length > 0 && instrument.MidiInstrumentId !== MidiInstrument.Percussion) {
-                                                subInstrument.midiInstrumentID = <MidiInstrument>Math.max(0, parseInt(instrumentElement.value, 10) - 1);
+                                                subInstrument.setMidiProgram(parseInt(instrumentElement.value, 10));
                                             }
                                         } else if (instrumentElement.name === "midi-unpitched") {
                                             subInstrument.fixedKey = Math.max(0, parseInt(instrumentElement.value, 10));
@@ -1003,7 +1008,17 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                     }
                 } else {
                     if ((node.name === "part-group") && (node.attribute("type").value === "start")) {
-                        const iG: InstrumentalGroup = new InstrumentalGroup("group", this.musicSheet, currentGroup);
+                        const groupName: IXmlElement = node.element("group-name");
+                        const groupAbbreviation: IXmlElement = node.element("group-abbreviation");
+                        const groupSymbol: IXmlElement = node.element("group-symbol");
+                        const iG: InstrumentalGroup = new InstrumentalGroup(
+                            groupName ? this.trimString(groupName.value) : "",
+                            this.musicSheet,
+                            currentGroup
+                        );
+                        iG.Number = node.attribute("number") ? node.attribute("number").value : "";
+                        iG.Abbreviation = groupAbbreviation ? this.trimString(groupAbbreviation.value) : "";
+                        iG.GroupSymbol = groupSymbol ? this.trimString(groupSymbol.value) : "";
                         if (currentGroup) {
                             currentGroup.InstrumentalGroups.push(iG);
                         } else {

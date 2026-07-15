@@ -281,7 +281,9 @@ export abstract class MusicSystem extends GraphicalObject {
                 }
             }
             if (firstStaffLine && lastStaffLine) {
-                this.createGroupBracket(firstStaffLine, lastStaffLine, recursionDepth);
+                if (instrumentGroup.GroupSymbol !== "none") {
+                    this.createGroupBracket(firstStaffLine, lastStaffLine, recursionDepth, instrumentGroup.GroupSymbol);
+                }
             }
             if (instrumentGroup.InstrumentalGroups.length < 1) {
                 continue;
@@ -472,7 +474,8 @@ export abstract class MusicSystem extends GraphicalObject {
         // no impl here
     }
 
-    protected createGroupBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine, recursionDepth: number): void {
+    protected createGroupBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine,
+                                 recursionDepth: number, groupSymbol: string): void {
         // no impl here
     }
 

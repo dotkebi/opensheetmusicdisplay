@@ -2,6 +2,18 @@ import {Instrument} from "./Instrument";
 import {MidiInstrument} from "./VoiceData/Instructions/ClefInstruction";
 import log from "loglevel";
 
+/** Broad family suitable for grouping MusicXML score parts in a UI. */
+export enum InstrumentFamily {
+    Unknown = "unknown",
+    Strings = "strings",
+    Woodwind = "woodwind",
+    Brass = "brass",
+    Percussion = "percussion",
+    Keyboard = "keyboard",
+    Voice = "voice",
+    Other = "other"
+}
+
 export class SubInstrument {
 
     constructor(parentInstrument: Instrument) {
@@ -9,6 +21,9 @@ export class SubInstrument {
         this.fixedKey = -1;
         this.name = this.parseMidiInstrument(this.parentInstrument.Name);
         this.midiInstrumentID = SubInstrument.midiInstrument[this.name];
+        if (this.name !== "unnamed") {
+            this.family = SubInstrument.familyFromMidiInstrument(this.midiInstrumentID);
+        }
         this.volume = 1.0;
     }
 
@@ -73,11 +88,20 @@ export class SubInstrument {
     public pan: number;
     public fixedKey: number;
     public name: string;
+    private instrumentSound: string = "";
+    private family: InstrumentFamily = InstrumentFamily.Unknown;
 
     private parentInstrument: Instrument;
 
     public get ParentInstrument(): Instrument {
         return this.parentInstrument;
+    }
+    /** Raw MusicXML score-instrument/instrument-sound value. */
+    public get InstrumentSound(): string {
+        return this.instrumentSound;
+    }
+    public get Family(): InstrumentFamily {
+        return this.family;
     }
     public static isPianoInstrument(instrument: MidiInstrument): boolean {
         return (instrument === MidiInstrument.Acoustic_Grand_Piano
@@ -87,7 +111,83 @@ export class SubInstrument {
           || instrument === MidiInstrument.Electric_Piano_2);
     }
     public setMidiInstrument(instrumentType: string): void {
-        this.midiInstrumentID = SubInstrument.midiInstrument[this.parseMidiInstrument(instrumentType)];
+        const parsedName: string = this.parseMidiInstrument(instrumentType);
+        this.midiInstrumentID = SubInstrument.midiInstrument[parsedName];
+        if (!this.instrumentSound && parsedName !== "unnamed") {
+            this.family = SubInstrument.familyFromMidiInstrument(this.midiInstrumentID);
+        }
+    }
+
+    public setInstrumentSound(instrumentSound: string): void {
+        this.instrumentSound = instrumentSound ? instrumentSound.trim() : "";
+        this.family = SubInstrument.familyFromInstrumentSound(this.instrumentSound);
+    }
+
+    public setMidiProgram(program: number): void {
+        this.midiInstrumentID = <MidiInstrument>Math.max(0, program - 1);
+        if (!this.instrumentSound) {
+            this.family = SubInstrument.familyFromMidiInstrument(this.midiInstrumentID);
+        }
+    }
+
+    public setPercussion(): void {
+        this.midiInstrumentID = MidiInstrument.Percussion;
+        this.family = InstrumentFamily.Percussion;
+    }
+
+    private static familyFromInstrumentSound(instrumentSound: string): InstrumentFamily {
+        if (!instrumentSound) {
+            return InstrumentFamily.Unknown;
+        }
+        const root: string = instrumentSound.toLowerCase().split(".")[0];
+        switch (root) {
+            case "strings":
+            case "pluck":
+                return InstrumentFamily.Strings;
+            case "wind":
+                return InstrumentFamily.Woodwind;
+            case "brass":
+                return InstrumentFamily.Brass;
+            case "drum":
+            case "metal":
+            case "percussion":
+                return InstrumentFamily.Percussion;
+            case "keyboard":
+                return InstrumentFamily.Keyboard;
+            case "voice":
+                return InstrumentFamily.Voice;
+            default:
+                return InstrumentFamily.Other;
+        }
+    }
+
+    private static familyFromMidiInstrument(instrument: MidiInstrument): InstrumentFamily {
+        const program: number = instrument as number;
+        if (program < 0) {
+            return InstrumentFamily.Unknown;
+        }
+        if (program === MidiInstrument.Percussion || (program >= 8 && program <= 15)
+            || program === 47 || program === 108 || (program >= 112 && program <= 119)) {
+            return InstrumentFamily.Percussion;
+        }
+        if ((program >= 0 && program <= 7) || (program >= 16 && program <= 20)) {
+            return InstrumentFamily.Keyboard;
+        }
+        if ((program >= 21 && program <= 23) || (program >= 64 && program <= 79)
+            || program === 109 || program === 111) {
+            return InstrumentFamily.Woodwind;
+        }
+        if ((program >= 24 && program <= 46) || (program >= 48 && program <= 51)
+            || (program >= 104 && program <= 107) || program === 110) {
+            return InstrumentFamily.Strings;
+        }
+        if (program >= 52 && program <= 54) {
+            return InstrumentFamily.Voice;
+        }
+        if (program >= 56 && program <= 63) {
+            return InstrumentFamily.Brass;
+        }
+        return InstrumentFamily.Other;
     }
 
     private parseMidiInstrument(instrumentType: string): string {

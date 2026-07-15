@@ -6,6 +6,9 @@ import {IXmlElement} from "../../../src/Common/FileIO/Xml";
 import {NoteHeadShape} from "../../../src/MusicalScore/VoiceData/Notehead";
 import {Note, TremoloInfo} from "../../../src/MusicalScore/VoiceData/Note";
 import {VoiceEntry} from "../../../src/MusicalScore/VoiceData/VoiceEntry";
+import {Instrument} from "../../../src/MusicalScore/Instrument";
+import {InstrumentalGroup} from "../../../src/MusicalScore/InstrumentalGroup";
+import {InstrumentFamily} from "../../../src/MusicalScore/SubInstrument";
 
 describe("Music Sheet Reader", () => {
     const path: string = "test/data/MuzioClementi_SonatinaOpus36No1_Part1.xml";
@@ -47,6 +50,67 @@ describe("Music Sheet Reader", () => {
         expect(sheet.InstrumentalGroups.length).to.equal(2);
         expect(sheet.Instruments[0].Name).to.equal("Piano (right)");
         expect(sheet.Instruments[1].Name).to.equal("Piano (left)");
+        done();
+    });
+
+    it("preserves part-group and instrument family metadata", (done: Mocha.Done) => {
+        const metadataXml: string = `
+          <score-partwise version="4.0">
+            <part-list>
+              <part-group number="1" type="start">
+                <group-name>Winds</group-name>
+                <group-abbreviation>Ww.</group-abbreviation>
+                <group-symbol>bracket</group-symbol>
+              </part-group>
+              <score-part id="P1">
+                <part-name>Flute</part-name>
+                <score-instrument id="P1-I1">
+                  <instrument-name>Flute</instrument-name>
+                  <instrument-sound>wind.flutes.flute</instrument-sound>
+                </score-instrument>
+                <midi-instrument id="P1-I1"><midi-program>74</midi-program></midi-instrument>
+              </score-part>
+              <score-part id="P2">
+                <part-name>Second Wind</part-name>
+                <score-instrument id="P2-I1"><instrument-name>Unknown</instrument-name></score-instrument>
+                <midi-instrument id="P2-I1"><midi-program>69</midi-program></midi-instrument>
+              </score-part>
+              <part-group number="1" type="stop"/>
+              <score-part id="P3">
+                <part-name>Violin</part-name>
+                <score-instrument id="P3-I1">
+                  <instrument-name>Violin</instrument-name>
+                  <instrument-sound>strings.violin</instrument-sound>
+                </score-instrument>
+                <midi-instrument id="P3-I1"><midi-program>41</midi-program></midi-instrument>
+              </score-part>
+            </part-list>
+            <part id="P1"><measure number="1"><note><rest/><duration>1</duration><voice>1</voice></note></measure></part>
+            <part id="P2"><measure number="1"><note><rest/><duration>1</duration><voice>1</voice></note></measure></part>
+            <part id="P3"><measure number="1"><note><rest/><duration>1</duration><voice>1</voice></note></measure></part>
+          </score-partwise>`;
+        const doc: Document = new DOMParser().parseFromString(metadataXml, "text/xml");
+        const metadataReader: MusicSheetReader = new MusicSheetReader();
+        const metadataSheet: MusicSheet = metadataReader.createMusicSheet(
+            new IXmlElement(doc.documentElement),
+            "metadata.musicxml"
+        );
+
+        expect(metadataSheet).to.not.be.undefined;
+        const group: InstrumentalGroup = metadataSheet.InstrumentalGroups[0];
+        expect(group.Name).to.equal("Winds");
+        expect(group.Number).to.equal("1");
+        expect(group.Abbreviation).to.equal("Ww.");
+        expect(group.GroupSymbol).to.equal("bracket");
+        expect(group.InstrumentalGroups.map((entry: InstrumentalGroup) => (entry as Instrument).IdString))
+            .to.deep.equal(["P1", "P2"]);
+
+        const flute: Instrument = metadataSheet.Instruments[0];
+        expect(flute.Parent).to.equal(group);
+        expect(flute.SubInstruments[0].InstrumentSound).to.equal("wind.flutes.flute");
+        expect(flute.SubInstruments[0].Family).to.equal(InstrumentFamily.Woodwind);
+        expect(metadataSheet.Instruments[1].SubInstruments[0].Family).to.equal(InstrumentFamily.Woodwind);
+        expect(metadataSheet.Instruments[2].SubInstruments[0].Family).to.equal(InstrumentFamily.Strings);
         done();
     });
 

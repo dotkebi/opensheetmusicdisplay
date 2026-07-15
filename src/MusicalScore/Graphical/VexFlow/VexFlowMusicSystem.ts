@@ -120,15 +120,16 @@ export class VexFlowMusicSystem extends MusicSystem {
      * @param lastStaffLine the lower staff line of the bracket to create
      * @param recursionDepth
      */
-    protected createGroupBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine, recursionDepth: number): void {
+    protected createGroupBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine,
+                                 recursionDepth: number, groupSymbol: string): void {
         const firstVexStaff: VexFlowStaffLine = (firstStaffLine as VexFlowStaffLine);
         const lastVexStaff: VexFlowStaffLine = (lastStaffLine as VexFlowStaffLine);
-        if (recursionDepth === 0) {
-            const vexFlowBracket: VexFlowInstrumentBracket = new VexFlowInstrumentBracket(firstVexStaff, lastVexStaff, recursionDepth);
-            this.GroupBrackets.push(vexFlowBracket);
-        } else {
+        if (groupSymbol === "brace" || (!groupSymbol && recursionDepth > 0)) {
             const vexFlowBrace: VexFlowInstrumentBrace = new VexFlowInstrumentBrace(firstVexStaff, lastVexStaff, recursionDepth);
             this.GroupBrackets.push(vexFlowBrace);
+        } else {
+            const vexFlowBracket: VexFlowInstrumentBracket = new VexFlowInstrumentBracket(firstVexStaff, lastVexStaff, recursionDepth);
+            this.GroupBrackets.push(vexFlowBracket);
         }
         return;
     }

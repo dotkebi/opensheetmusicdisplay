@@ -136,7 +136,7 @@ export declare abstract class MusicSystem extends GraphicalObject {
      */
     protected calcBracketsWidth(): number;
     protected createInstrumentBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine): void;
-    protected createGroupBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine, recursionDepth: number): void;
+    protected createGroupBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine, recursionDepth: number, groupSymbol: string): void;
     private findFirstVisibleInstrumentInInstrumentalGroup;
     private findLastVisibleInstrumentInInstrumentalGroup;
     /**
