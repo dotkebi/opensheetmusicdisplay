@@ -23,7 +23,7 @@ export class GraphicalLyricEntry {
         // for small notes with long text, use center alignment
         // TODO use this, fix center+left alignment combination spacing
         if (lyricsEntry.Text.length >= 4
-            && lyricsEntry.Parent.Notes[0].Length.Denominator > 4
+            && lyricsEntry.Parent?.Notes[0]?.Length?.Denominator > 4
             && lyricsTextAlignment === TextAlignmentEnum.LeftBottom) {
             // lyricsTextAlignment = TextAlignmentAndPlacement.CenterBottom;
         }

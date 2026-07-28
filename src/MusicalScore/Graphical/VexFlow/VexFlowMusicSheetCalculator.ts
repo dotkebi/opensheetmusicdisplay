@@ -560,7 +560,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         labelWidth: labelWidth,
         measureNumber: measureNumber,
         needsDashSpaceAtEnd: needsDashSpaceAtEnd,
-        sourceNoteDuration: container instanceof GraphicalLyricEntry ? (container.LyricsEntry && container.LyricsEntry.Parent.Notes[0].Length) : false,
+        sourceNoteDuration: container instanceof GraphicalLyricEntry ? (container.LyricsEntry && container.LyricsEntry.Parent?.Notes[0]?.Length) : false,
         text: container instanceof GraphicalLyricEntry ? container.LyricsEntry.Text : container.GraphicalLabel.Label.text,
         xPosition: xPosition,
       };
