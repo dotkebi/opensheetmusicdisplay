@@ -17,6 +17,9 @@ import { LyricWord } from "../../VoiceData/Lyrics/LyricsWord";
 import { OrnamentContainer } from "../../VoiceData/OrnamentContainer";
 import { Articulation } from "../../VoiceData/Articulation";
 import { Tuplet } from "../../VoiceData/Tuplet";
+import { VexFlowMeasure } from "./VexFlowMeasure";
+import Vex from "vexflow";
+import VF = Vex.Flow;
 import { TechnicalInstruction } from "../../VoiceData/Instructions/TechnicalInstruction";
 import { Slur } from "../../VoiceData/Expressions/ContinuousExpressions/Slur";
 import { GraphicalSlur } from "../GraphicalSlur";
@@ -140,6 +143,20 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      * @param measureIndex
      */
     protected calculateWordRepetitionInstruction(repetitionInstruction: RepetitionInstruction, measureIndex: number): void;
+    /** The repetition instruction boxes already placed per staff line, for their mutual collision checks.
+     *  (a WeakMap, so that the entries of a previous render's staff lines don't linger) */
+    private placedWordRepetitionBoxes;
+    /**
+     * Shifts a repetition instruction (VF.Repetition, e.g. Coda sign or "D.S. al Fine" text) above
+     * other objects in its range, e.g. chord symbols, which are calculated before the repetition
+     * instructions, or previously placed repetition instructions (see #1689).
+     * Shifted instructions reserve their space in the skyline, so that the staffline borders account for them.
+     * The horizontal and default vertical position replicate the drawing code
+     * in VexFlowPatch/src/staverepetition.js (drawSymbolText() etc).
+     * @param measure the (uppermost) measure the repetition instruction was added to
+     * @param repetition the VexFlow repetition (stave modifier) to place, created by addWordRepetition()
+     */
+    protected placeWordRepetitionInSkyline(measure: VexFlowMeasure, repetition: VF.Repetition): void;
     protected calculateSkyBottomLines(): void;
     /** Compute (not reuse) the sky/bottom lines for the given staff lines: geometric, or the batched /
      *  per-staff-line path. This is the original calculateSkyBottomLines body, extracted so the lazy reuse

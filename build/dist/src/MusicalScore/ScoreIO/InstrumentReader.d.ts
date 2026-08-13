@@ -111,11 +111,29 @@ export declare class InstrumentReader {
      */
     private saveClefInstructionAtEndOfMeasure;
     /**
-     * In case of a [[Tuplet]], read NoteDuration from type.
+     * Compute a tuplet note's real (sounding) duration.
+     *
+     * Per the MusicXML spec a note's <duration> already reflects the tuplet ratio, so we normally take it
+     * verbatim. Doing so also preserves an exporter's rounding when the divisions value can't encode the
+     * exact tuplet fraction (e.g. a triplet eighth when divisions isn't divisible by 3).
+     *
+     * Some exporters (observed: musx2mxl 0.2.9) instead write the *un-reduced* type duration for tuplet
+     * notes — a triplet eighth carries the <duration> of a full eighth — which overflows the measure and
+     * makes OSMD play and space the notes as if they weren't a tuplet. We detect that (the written
+     * duration equals the note's dotted type duration instead of the smaller reduced value) and apply the
+     * time-modification ratio (normal-notes / actual-notes) ourselves. When this heuristic would misfire
+     * on an already-correct note the ratio is necessarily ~1, so the correction is then a no-op.
      * @param xmlNode
      * @returns {Fraction}
      */
     private getNoteDurationForTuplet;
+    /**
+     * The note's duration derived from its <type>, including augmentation <dot>s (e.g. a dotted eighth
+     * yields 3/16). Returns a zero Fraction when no <type> is given.
+     * @param xmlNode
+     * @returns {Fraction}
+     */
+    private getDottedNoteDurationFromTypeNode;
     private readExpressionStaffNumber;
     /**
      * Calculate the divisions value from the type and duration of the first MeasureNote that makes sense

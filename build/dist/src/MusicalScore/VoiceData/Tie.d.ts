@@ -4,7 +4,7 @@ import { Pitch } from "../../Common/DataObjects/Pitch";
 import { TieTypes } from "../../Common/Enums/";
 import { PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
 /**
- * A [[Tie]] connects two notes of the same pitch and name, indicating that they have to be played as a single note.
+ * A [[Tie]] connects two notes of the same sounding pitch, indicating that they have to be played as a single note.
  */
 export declare class Tie {
     constructor(note: Note, type: TieTypes);

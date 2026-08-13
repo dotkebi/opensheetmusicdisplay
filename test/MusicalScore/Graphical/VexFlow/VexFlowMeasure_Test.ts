@@ -22,7 +22,10 @@ import { GraphicalLabel } from "../../../../src/MusicalScore/Graphical/Graphical
 import { OctaveEnum } from "../../../../src/MusicalScore/VoiceData/Expressions/ContinuousExpressions/OctaveShift";
 import { Tuplet } from "../../../../src/MusicalScore/VoiceData/Tuplet";
 import { Note } from "../../../../src/MusicalScore/VoiceData/Note";
+import { TabNote } from "../../../../src/MusicalScore/VoiceData/TabNote";
 import { PointF2D } from "../../../../src/Common/DataObjects/PointF2D";
+import { GraphicalTie } from "../../../../src/MusicalScore/Graphical/GraphicalTie";
+import { AccidentalEnum } from "../../../../src/Common/DataObjects/Pitch";
 
 describe("VexFlow Measure", () => {
 
@@ -54,6 +57,55 @@ describe("VexFlow Measure", () => {
       expect(gms.MeasureList[0].length).to.equal(1);
       expect(gms.MeasureList[0][0].staffEntries.length).to.equal(0);
       done();
+   });
+
+   it("Renders a tie between enharmonic spellings", (done: Mocha.Done) => {
+      const score: Document = TestUtils.getScore("test_tie_enharmonic_spelling_1694.musicxml");
+      const div: HTMLElement = TestUtils.getDivElement(document);
+      const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
+
+      osmd.load(score).then(() => {
+         osmd.render();
+         const graphicalTies: GraphicalTie[] = osmd.GraphicSheet.MeasureList
+            .flatMap((measureList: GraphicalMeasure[]): GraphicalMeasure[] => measureList)
+            .flatMap((measure: GraphicalMeasure): GraphicalStaffEntry[] => measure.staffEntries)
+            .flatMap((staffEntry: GraphicalStaffEntry): GraphicalTie[] => staffEntry.GraphicalTies);
+
+         expect(graphicalTies.length).to.equal(1);
+         const tieStartNote: VexFlowGraphicalNote = graphicalTies[0].StartNote as VexFlowGraphicalNote;
+         expect(tieStartNote.getTieSVGs().length, "tie curve is present in the rendered SVG").to.be.greaterThan(0);
+         // The tie is enharmonic (F#–Gb), so unlike a same-spelling tie the continued note keeps its
+         // own accidental: the second note must still draw its flat, not read as a plain G (#1694).
+         const tieEndNote: VexFlowGraphicalNote = graphicalTies[0].EndNote as VexFlowGraphicalNote;
+         expect(tieEndNote.DrawnAccidental, "continued enharmonic tie note keeps its accidental")
+            .to.equal(AccidentalEnum.FLAT);
+         done();
+      }).catch(done);
+   });
+
+   // Regression guard for #1695: the enharmonic-accidental fix must not make a same-letter tie
+   // re-draw its accidental. In this sample (Bb key) a B-natural at the end of m.9 is tied to a
+   // B in m.10; the continued note is the same written note held on, so no natural should be
+   // drawn on it (it was not drawn before the fix). More generally, no continued tie note here
+   // should introduce a natural.
+   it("Does not draw a natural on the continued note of a same-letter tie", (done: Mocha.Done) => {
+      const score: Document = TestUtils.getScore("TelemannWV40.102_Sonate-Nr.1.2-Allegro-F-Dur.xml");
+      const div: HTMLElement = TestUtils.getDivElement(document);
+      const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
+
+      osmd.load(score).then(() => {
+         osmd.render();
+         const graphicalTies: GraphicalTie[] = osmd.GraphicSheet.MeasureList
+            .flatMap((measureList: GraphicalMeasure[]): GraphicalMeasure[] => measureList)
+            .flatMap((measure: GraphicalMeasure): GraphicalStaffEntry[] => measure.staffEntries)
+            .flatMap((staffEntry: GraphicalStaffEntry): GraphicalTie[] => staffEntry.GraphicalTies);
+
+         expect(graphicalTies.length, "sample contains tied notes").to.be.greaterThan(0);
+         const continuedNaturals: GraphicalTie[] = graphicalTies.filter(
+            (t: GraphicalTie) => t.EndNote && (t.EndNote as VexFlowGraphicalNote).DrawnAccidental === AccidentalEnum.NATURAL);
+         expect(continuedNaturals.length, "no continued tie note re-draws a natural").to.equal(0);
+         done();
+      }).catch(done);
    });
 
    // Non-regression test for grace note fingering positioning
@@ -452,6 +504,113 @@ describe("VexFlow Measure", () => {
                .to.be.lessThan(arcWithout * 0.65);
             done();
          });
+      }).catch(done);
+   });
+
+   // Regression test for NaN slur curves: measure 23 of the Moonlight sonata sample has a note carrying both a
+   // slur start and an orphan slur stop with the same number (Sibelius export quirk). The stop used to close the
+   // start on its very own note, creating a zero-length slur whose curve calculation divided 0 by 0, ending up
+   // as an invalid SVG path (<path d="... CNaN NaN ...">). Now the stop is ignored and no self-slur is created.
+   it("Creates no zero-length (NaN-curve) slur for a note with both a slur start and an orphan stop", (done: Mocha.Done) => {
+      const score: Document = TestUtils.getScore("test_slurs_long_steep_arc_moonlight_sonata_issue1466.musicxml");
+      if (!score) {
+         done(new Error("Score file not found"));
+         return;
+      }
+      const xml: string = new XMLSerializer().serializeToString(score);
+      const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(TestUtils.getDivElement(document));
+      osmd.load(xml).then(() => {
+         osmd.render();
+         let slursChecked: number = 0;
+         for (const page of osmd.GraphicSheet.MusicPages) {
+            for (const system of page.MusicSystems) {
+               for (const staffLine of system.StaffLines) {
+                  for (const gSlur of staffLine.GraphicalSlurs) {
+                     const measureNumber: number = gSlur.staffEntries[0]?.parentMeasure?.MeasureNumber;
+                     expect(gSlur.slur.StartNote, `slur in measure ${measureNumber} should not start and end on the same note`)
+                        .to.not.equal(gSlur.slur.EndNote);
+                     for (const p of [gSlur.bezierStartPt, gSlur.bezierStartControlPt, gSlur.bezierEndControlPt, gSlur.bezierEndPt]) {
+                        if (!p) { // cross-staff slurs can remain uncalculated (skipped at draw time)
+                           continue;
+                        }
+                        expect(Number.isFinite(p.x) && Number.isFinite(p.y),
+                           `slur bezier points in measure ${measureNumber} should be finite (got ${p.x}, ${p.y})`).to.equal(true);
+                     }
+                     slursChecked++;
+                  }
+               }
+            }
+         }
+         expect(slursChecked, "sanity check: the sample's slurs were iterated").to.be.greaterThan(50);
+         done();
+      }).catch(done);
+   });
+
+   // Non-regression test for correctNotePositions() on a part carrying BOTH a standard staff and a
+   // tablature staff (<staves>2</staves>), covering both branches of the measure-scoped rewrite
+   // (PR #1703 for the standard branch, plus the tab-branch follow-up). The tab staff's voice entries
+   // must be positioned by their string number, and the standard staff's notes must still receive their
+   // vertical bounding-box correction. The score has 3 measures, so correct output here also confirms the
+   // positioning is measure-local: it does not depend on the voice's entries in other measures.
+   it("Positions notes on a combined standard + tablature staff (correctNotePositions, both branches)", (done: Mocha.Done) => {
+      const score: Document = TestUtils.getScore("test_tab_plus_treble_staff_correctNotePositions_pr1703.musicxml");
+      if (!score) {
+         done(new Error("Score file not found"));
+         return;
+      }
+      const div: HTMLElement = TestUtils.getDivElement(document);
+      const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
+
+      osmd.load(score).then(() => {
+         osmd.render(); // correctNotePositions() runs at the end of draw(); this must not throw
+         const interlineHeight: number = osmd.EngravingRules.TabStaffInterlineHeightForBboxes;
+
+         const measureCount: number = osmd.GraphicSheet.MeasureList.length;
+         expect(measureCount, "sample has 3 measures").to.equal(3);
+
+         let tabEntriesChecked: number = 0;
+         let standardNotesCorrected: number = 0;
+         for (let m: number = 0; m < measureCount; m++) {
+            const standardMeasure: GraphicalMeasure = osmd.GraphicSheet.findGraphicalMeasure(m, 0);
+            const tabMeasure: GraphicalMeasure = osmd.GraphicSheet.findGraphicalMeasure(m, 1);
+            expect(standardMeasure.isTabMeasure, `measure ${m}, staff 0 is a standard staff`).to.equal(false);
+            expect(tabMeasure.isTabMeasure, `measure ${m}, staff 1 is a tablature staff`).to.equal(true);
+
+            // Tab branch: each voice entry sits at (string - 1) * interline height of its (last) string note.
+            for (const se of tabMeasure.staffEntries) {
+               for (const gve of se.graphicalVoiceEntries) {
+                  let stringNumber: number = -1;
+                  for (const note of gve.notes) {
+                     const noteString: number = (note.sourceNote as TabNote).StringNumberTab;
+                     if (noteString >= 0) {
+                        stringNumber = noteString; // last string note wins, mirroring correctNotePositions()
+                     }
+                  }
+                  if (stringNumber < 0) {
+                     continue; // rest-only entry
+                  }
+                  expect(gve.PositionAndShape.RelativePosition.y,
+                     `tab entry on string ${stringNumber} is offset by (string - 1) * interline height`)
+                     .to.be.closeTo((stringNumber - 1) * interlineHeight, 1e-9);
+                  tabEntriesChecked++;
+               }
+            }
+
+            // Standard (non-tab) branch: notes receive a vertical correction, they are not left at y = 0.
+            for (const se of standardMeasure.staffEntries) {
+               for (const gve of se.graphicalVoiceEntries) {
+                  for (const note of gve.notes) {
+                     if (!note.sourceNote.isRest() && note.PositionAndShape.RelativePosition.y !== 0) {
+                        standardNotesCorrected++;
+                     }
+                  }
+               }
+            }
+         }
+
+         expect(tabEntriesChecked, "tab voice entries were positioned by string number").to.be.greaterThan(0);
+         expect(standardNotesCorrected, "standard-staff notes received a vertical correction").to.be.greaterThan(0);
+         done();
       }).catch(done);
    });
 

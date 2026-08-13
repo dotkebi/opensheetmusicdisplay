@@ -140,7 +140,8 @@ export declare class VoiceGenerator {
      */
     private getNextAvailableNumberForTie;
     /**
-     * Search the tieDictionary for the corresponding candidateNote to the currentNote (same FundamentalNote && Octave).
+     * Search the tieDictionary for the corresponding candidateNote to the currentNote.
+     * Prefer the existing spelling/string match, then fall back to sounding pitch for enharmonic ties.
      * @param candidateNote
      * @returns {number}
      */

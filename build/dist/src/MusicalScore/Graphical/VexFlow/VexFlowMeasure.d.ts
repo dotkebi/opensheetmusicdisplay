@@ -20,6 +20,9 @@ import { Voice } from "../../VoiceData/Voice";
 import { EngravingRules } from "../EngravingRules";
 import { GraphicalTie } from "../GraphicalTie";
 export declare class VexFlowMeasure extends GraphicalMeasure {
+    /** Capability markers used by consumers to avoid reinstalling obsolete runtime patches. */
+    static readonly HasMeasureLocalCorrectNotePositions: boolean;
+    static readonly HasIntrinsicTickCorrection: boolean;
     constructor(staff: Staff, sourceMeasure?: SourceMeasure, staffLine?: StaffLine);
     /** octaveOffset according to active clef */
     octaveOffset: number;
@@ -104,7 +107,13 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      * method in the MusicSheetCalculator.ts
      */
     addMeasureNumber(): void;
-    addWordRepetition(repetitionInstruction: RepetitionInstruction): void;
+    /**
+     * Adds a repetition instruction (e.g. Segno, D.S. al Fine) as a VexFlow StaveRepetition to the measure's stave
+     * (or as a Volta for endings).
+     * @param repetitionInstruction the instruction to add
+     * @returns the created VF.Repetition, or undefined if a volta (ending) was added instead
+     */
+    addWordRepetition(repetitionInstruction: RepetitionInstruction): VF.Repetition;
     protected addVolta(repetitionInstruction: RepetitionInstruction): void;
     /**
      * Sets the overall x-width of the measure.
