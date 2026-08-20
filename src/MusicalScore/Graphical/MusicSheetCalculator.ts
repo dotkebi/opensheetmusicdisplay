@@ -80,6 +80,22 @@ import { CooperativeYielder } from "../../Util/CooperativeYielder";
  * Class used to do all the calculations in a MusicSheet, which in the end populates a GraphicalMusicSheet.
  */
 export abstract class MusicSheetCalculator {
+    /** Wall-clock breakdown from the latest successful async layout. The
+     *  values include cooperative yields and are intended for opt-in profile
+     *  diagnostics, not analytics payloads. */
+    public lastAsyncCalculateTimings?: {
+        totalMs: number;
+        preXLayoutMs: number;
+        xLayoutMs: number;
+        musicSystemsMs: number;
+        absolutePositionsMs: number;
+    };
+    public lastAsyncMusicSystemsTimings?: {
+        totalMs: number;
+        preSkylineMs: number;
+        skylineMs: number;
+        postSkylineMs: number;
+    };
     public static symbolFactory: IGraphicalSymbolFactory;
     public static transposeCalculator: ITransposeCalculator;
     public static stafflineNoteCalculator: IStafflineNoteCalculator;
@@ -318,6 +334,8 @@ export abstract class MusicSheetCalculator {
      * @param onProgress optional monotonic 0.0..1.0 progress callback.
      */
     public async calculateAsync(yielder: CooperativeYielder, onProgress?: (progress: number) => void): Promise<void> {
+        this.lastAsyncCalculateTimings = undefined;
+        const calculateStartedAt: number = performance.now();
         const xLayoutStart: number = 0.02;
         const xLayoutEnd: number = 0.20;
         const musicSystemsEnd: number = 0.99;
@@ -338,6 +356,7 @@ export abstract class MusicSheetCalculator {
         onProgress?.(xLayoutStart);
         if (yielder.needsYield) { await yielder.yieldNow(); }
 
+        const xLayoutStartedAt: number = performance.now();
         await this.calculateXLayoutAsync(this.graphicalMusicSheet, maxInstrNameLabelLength, yielder,
             (done: number, total: number): void => {
                 if (total > 0) {
@@ -345,16 +364,29 @@ export abstract class MusicSheetCalculator {
                 }
             });
 
+        const xLayoutCompletedAt: number = performance.now();
+
         // create List<MusicPage>
         this.graphicalMusicSheet.MusicPages.length = 0;
 
+        const musicSystemsStartedAt: number = performance.now();
         await this.calculateMusicSystemsAsync(yielder,
             (p: number): void => {
                 onProgress?.(xLayoutEnd + (musicSystemsEnd - xLayoutEnd) * p);
             });
 
+        const musicSystemsCompletedAt: number = performance.now();
+
         // transform Relative to Absolute Positions
         GraphicalMusicSheet.transformRelativeToAbsolutePosition(this.graphicalMusicSheet);
+        const calculateCompletedAt: number = performance.now();
+        this.lastAsyncCalculateTimings = {
+            totalMs: calculateCompletedAt - calculateStartedAt,
+            preXLayoutMs: xLayoutStartedAt - calculateStartedAt,
+            xLayoutMs: xLayoutCompletedAt - xLayoutStartedAt,
+            musicSystemsMs: musicSystemsCompletedAt - musicSystemsStartedAt,
+            absolutePositionsMs: calculateCompletedAt - musicSystemsCompletedAt,
+        };
         onProgress?.(1.0);
     }
 
@@ -1326,6 +1358,8 @@ export abstract class MusicSheetCalculator {
      */
     protected async calculateMusicSystemsAsync(yielder: CooperativeYielder,
                                                onProgress?: (progress: number) => void): Promise<void> {
+        this.lastAsyncMusicSystemsTimings = undefined;
+        const musicSystemsStartedAt: number = performance.now();
         if (!this.graphicalMusicSheet.MeasureList) {
             onProgress?.(1.0);
             return;
@@ -1368,12 +1402,14 @@ export abstract class MusicSheetCalculator {
         }
         onProgress?.(preSkylineEnd);
 
+        const skylineStartedAt: number = performance.now();
         await this.calculateSkyBottomLinesAsync(yielder,
             (done: number, total: number): void => {
                 if (total > 0) {
                     onProgress?.(preSkylineEnd + (skylineEnd - preSkylineEnd) * done / total);
                 }
             });
+        const skylineCompletedAt: number = performance.now();
 
         await step(() => this.calculateTupletNumbers(), 0.87);
 
@@ -1430,6 +1466,13 @@ export abstract class MusicSheetCalculator {
         await step(() => this.calculateMarkedAreas(), 0.98);
 
         await step(() => this.finalizePageSystems(), 1.0);
+        const musicSystemsCompletedAt: number = performance.now();
+        this.lastAsyncMusicSystemsTimings = {
+            totalMs: musicSystemsCompletedAt - musicSystemsStartedAt,
+            preSkylineMs: skylineStartedAt - musicSystemsStartedAt,
+            skylineMs: skylineCompletedAt - skylineStartedAt,
+            postSkylineMs: musicSystemsCompletedAt - skylineCompletedAt,
+        };
     }
 
     /**

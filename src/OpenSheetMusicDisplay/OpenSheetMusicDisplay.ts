@@ -30,6 +30,25 @@ import { NoteEnum } from "../Common/DataObjects/Pitch";
 import { TemposCalculator } from "../MusicalScore/ScoreIO/MusicSymbolModules/TemposCalculator";
 import { CooperativeYielder } from "../Util/CooperativeYielder";
 
+export interface RenderAsyncDiagnostics {
+    totalMs: number;
+    layoutMs: number;
+    backendMs: number;
+    drawMs: number;
+    cursorMs: number;
+    yieldCount: number;
+    pageCount: number;
+    systemCount: number;
+    layout: MusicSheetCalculator["lastAsyncCalculateTimings"];
+    musicSystems: MusicSheetCalculator["lastAsyncMusicSystemsTimings"];
+}
+
+export interface RenderPageAsyncDiagnostics {
+    pageNumber: number;
+    elapsedMs: number;
+    yieldCount: number;
+}
+
 /**
  * The main class and control point of OpenSheetMusicDisplay.<br>
  * It can display MusicXML sheet music files in an HTML element container.<br>
@@ -82,6 +101,12 @@ export class OpenSheetMusicDisplay {
     protected zoomUpdated: boolean = false;
     /** Timeout in milliseconds used in osmd.load(string) when string is a URL. */
     public loadUrlTimeout: number = 5000;
+    /** Latest successful async-render phase breakdown. Cleared at the start
+     *  of every attempt so a failure cannot expose stale measurements. */
+    public lastRenderAsyncDiagnostics?: RenderAsyncDiagnostics;
+    public lastRenderPageAsyncDiagnostics?: RenderPageAsyncDiagnostics;
+    private renderedPageNumbers: Set<number> = new Set<number>();
+    private pageRenderAsyncInFlight: boolean = false;
 
     protected container: HTMLElement;
     protected backendType: BackendType;
@@ -272,6 +297,7 @@ export class OpenSheetMusicDisplay {
         if (!this.graphic) {
             throw new Error("OSMD: load() needs to be called before render()");
         }
+        this.renderedPageNumbers.clear();
         // A full render() supersedes any incremental render in progress: abandon it and restore the
         // draw-measure range it mutated, so this render isn't limited to the last batch.
         this.resetIncrementalRendering();
@@ -350,12 +376,16 @@ export class OpenSheetMusicDisplay {
         }
         this.zoomUpdated = false;
         this.rules.RenderCount++;
+        const renderedPageCount: number = Math.min(this.graphic.MusicPages.length, this.rules.MaxPageToDrawNumber);
+        for (let index: number = 0; index < renderedPageCount; index++) {
+            this.renderedPageNumbers.add(index + 1);
+        }
         //console.log("[OSMD] render finished");
     }
 
     /** Whether a {@link renderAsync} call is currently running. */
     public get renderAsyncInFlight(): boolean {
-        return this.renderAsyncInFlightFlag;
+        return this.renderAsyncInFlightFlag || this.pageRenderAsyncInFlight;
     }
 
     /**
@@ -366,17 +396,24 @@ export class OpenSheetMusicDisplay {
      * @param options.onProgress optional monotonic 0.0..1.0 progress callback.
      * @param options.yieldBudgetMs work budget between event-loop yields, in ms (default 12).
      */
-    public async renderAsync(options?: { onProgress?: (progress: number) => void, yieldBudgetMs?: number }): Promise<void> {
+    public async renderAsync(options?: {
+        onProgress?: (progress: number) => void;
+        yieldBudgetMs?: number;
+        maxPageCount?: number;
+    }): Promise<void> {
         if (!this.graphic) {
             throw new Error("OSMD: load() needs to be called before render()");
         }
-        if (this.renderAsyncInFlightFlag) {
+        if (this.renderAsyncInFlight) {
             throw new Error("OSMD: renderAsync is already in flight");
         }
         this.renderAsyncInFlightFlag = true;
+        this.lastRenderAsyncDiagnostics = undefined;
+        this.renderedPageNumbers.clear();
         const onProgress: ((progress: number) => void) | undefined = options?.onProgress;
         const yieldBudgetMs: number = options?.yieldBudgetMs ?? 12;
         try {
+            const renderStartedAt: number = performance.now();
             const yielder: CooperativeYielder = new CooperativeYielder(yieldBudgetMs);
             const layoutProgressEnd: number = 0.65;
 
@@ -411,6 +448,7 @@ export class OpenSheetMusicDisplay {
 
             // Calculate again (async)
             await this.graphic.reCalculateAsync(yielder, (p: number): void => onProgress?.(p * layoutProgressEnd));
+            const layoutCompletedAt: number = performance.now();
 
             if (this.drawingParameters.drawCursors) {
                 this.graphic.Cursors.length = 0;
@@ -420,6 +458,7 @@ export class OpenSheetMusicDisplay {
                 this.createOrRefreshRenderBackend();
                 this.needBackendUpdate = false;
             }
+            const backendCompletedAt: number = performance.now();
 
             this.drawer.setZoom(this.zoom);
 
@@ -434,7 +473,8 @@ export class OpenSheetMusicDisplay {
                     if (total > 0) {
                         onProgress?.(layoutProgressEnd + (1.0 - layoutProgressEnd) * done / total);
                     }
-                });
+                }, options?.maxPageCount);
+            const drawCompletedAt: number = performance.now();
 
             this.enableOrDisableCursors(this.drawingParameters.drawCursors);
 
@@ -443,12 +483,72 @@ export class OpenSheetMusicDisplay {
                     cursor.update();
                 });
             }
+            const renderCompletedAt: number = performance.now();
             this.zoomUpdated = false;
             this.rules.RenderCount++;
+            const calculator: MusicSheetCalculator = this.graphic.GetCalculator;
+            const pages: GraphicalMusicPage[] = this.graphic.MusicPages;
+            this.lastRenderAsyncDiagnostics = {
+                totalMs: renderCompletedAt - renderStartedAt,
+                layoutMs: layoutCompletedAt - renderStartedAt,
+                backendMs: backendCompletedAt - layoutCompletedAt,
+                drawMs: drawCompletedAt - backendCompletedAt,
+                cursorMs: renderCompletedAt - drawCompletedAt,
+                yieldCount: yielder.yieldCount,
+                pageCount: pages.length,
+                systemCount: pages.reduce((count: number, page: GraphicalMusicPage): number =>
+                    count + page.MusicSystems.length, 0),
+                layout: calculator.lastAsyncCalculateTimings,
+                musicSystems: calculator.lastAsyncMusicSystemsTimings,
+            };
+            const renderedPageCount: number = Math.min(
+                pages.length,
+                this.rules.MaxPageToDrawNumber,
+                options?.maxPageCount ?? Number.POSITIVE_INFINITY,
+            );
+            for (let index: number = 0; index < renderedPageCount; index++) {
+                this.renderedPageNumbers.add(index + 1);
+            }
             onProgress?.(1.0);
         } finally {
             this.renderAsyncInFlightFlag = false;
         }
+    }
+
+    /** Draw a single page from the existing full-document layout. Calls are
+     *  idempotent and serialized against full/page renders. */
+    public async renderPageAsync(pageNumber: number, yieldBudgetMs: number = 12): Promise<void> {
+        if (!this.graphic) {
+            throw new Error("OSMD: load() needs to be called before renderPageAsync()");
+        }
+        if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > this.graphic.MusicPages.length) {
+            throw new RangeError(`OSMD: page ${pageNumber} is out of range`);
+        }
+        if (this.renderedPageNumbers.has(pageNumber)) {
+            return;
+        }
+        if (this.renderAsyncInFlightFlag || this.pageRenderAsyncInFlight) {
+            throw new Error("OSMD: another render is already in flight");
+        }
+        this.pageRenderAsyncInFlight = true;
+        this.lastRenderPageAsyncDiagnostics = undefined;
+        const startedAt: number = performance.now();
+        const yielder: CooperativeYielder = new CooperativeYielder(yieldBudgetMs);
+        try {
+            await this.drawer.drawPageAsync(this.graphic, this.graphic.MusicPages[pageNumber - 1], yielder);
+            this.renderedPageNumbers.add(pageNumber);
+            this.lastRenderPageAsyncDiagnostics = {
+                pageNumber,
+                elapsedMs: performance.now() - startedAt,
+                yieldCount: yielder.yieldCount,
+            };
+        } finally {
+            this.pageRenderAsyncInFlight = false;
+        }
+    }
+
+    public isPageRendered(pageNumber: number): boolean {
+        return this.renderedPageNumbers.has(pageNumber);
     }
 
     /** Internal range-based engine behind {@link renderNext} (the public incremental API). Lays out the
@@ -883,6 +983,10 @@ export class OpenSheetMusicDisplay {
         this.drawer.LazyDrawSystemsFromIndex = drawFromIdx;
         this.drawer.LazyDrawSystemsToIndexExcl = drawToIdxExcl;
         this.drawer.drawSheet(this.graphic);
+        const renderedPageCount: number = Math.min(this.graphic.MusicPages.length, this.rules.MaxPageToDrawNumber);
+        for (let index: number = 0; index < renderedPageCount; index++) {
+            this.renderedPageNumbers.add(index + 1);
+        }
         this.drawer.LazyDrawSystemsFromIndex = -1;
         this.drawer.LazyDrawSystemsToIndexExcl = Number.POSITIVE_INFINITY;
 

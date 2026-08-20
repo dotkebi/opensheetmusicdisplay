@@ -74,6 +74,54 @@ describe("OpenSheetMusicDisplay renderAsync (loading-path parity)", () => {
         expect(progresses[progresses.length - 1], "final progress is 1.0").to.equal(1.0);
     });
 
+    it("draws only the requested initial pages and appends later pages once", async () => {
+        const fullContainer: HTMLElement = TestUtils.getDivElement(document);
+        const lazyContainer: HTMLElement = TestUtils.getDivElement(document);
+        fullContainer.style.width = "240px";
+        lazyContainer.style.width = "240px";
+        const fullOsmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(fullContainer, { autoResize: false });
+        const lazyOsmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(lazyContainer, { autoResize: false });
+        fullOsmd.setPageFormat("A4_P");
+        lazyOsmd.setPageFormat("A4_P");
+        const xml: string = getScoreXML();
+
+        await fullOsmd.load(xml);
+        await fullOsmd.renderAsync();
+        await lazyOsmd.load(xml);
+        await lazyOsmd.renderAsync({ maxPageCount: 1 });
+
+        const pageCount: number = lazyOsmd.GraphicSheet.MusicPages.length;
+        expect(pageCount, "fixture spans more than one page").to.be.greaterThan(1);
+        expect(lazyOsmd.isPageRendered(1)).to.equal(true);
+        expect(lazyOsmd.isPageRendered(2)).to.equal(false);
+        expect(countDrawnElements(lazyContainer).paths).to.be.lessThan(countDrawnElements(fullContainer).paths);
+
+        for (let pageNumber: number = 2; pageNumber <= pageCount; pageNumber++) {
+            await lazyOsmd.renderPageAsync(pageNumber);
+        }
+        const completedCounts: { notes: number, paths: number, svgs: number, all: number } =
+            countDrawnElements(lazyContainer);
+        expect(completedCounts).to.deep.equal(countDrawnElements(fullContainer));
+
+        await lazyOsmd.renderPageAsync(2);
+        expect(countDrawnElements(lazyContainer), "an already-rendered page is not duplicated")
+            .to.deep.equal(completedCounts);
+
+        const syncContainer: HTMLElement = TestUtils.getDivElement(document);
+        syncContainer.style.width = "240px";
+        const syncOsmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(syncContainer, { autoResize: false });
+        syncOsmd.setPageFormat("A4_P");
+        await syncOsmd.load(xml);
+        await syncOsmd.renderAsync({ maxPageCount: 1 });
+        syncOsmd.render();
+        expect(syncOsmd.isPageRendered(2), "a sync height-fit rerender draws every page").to.equal(true);
+        const syncCounts: { notes: number, paths: number, svgs: number, all: number } =
+            countDrawnElements(syncContainer);
+        await syncOsmd.renderPageAsync(2);
+        expect(countDrawnElements(syncContainer), "page append stays idempotent after a sync rerender")
+            .to.deep.equal(syncCounts);
+    });
+
     it("yields to the event loop during rendering (setInterval counter increments)", async () => {
         const container: HTMLElement = TestUtils.getDivElement(document);
         const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(container, { autoResize: false });

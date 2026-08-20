@@ -143,7 +143,8 @@ export abstract class MusicSheetDrawer {
      * reports (done, total) systems for progress UIs.
      */
     public async drawSheetAsync(graphicalMusicSheet: GraphicalMusicSheet, yielder: CooperativeYielder,
-                                onSystemDrawn?: (done: number, total: number) => void): Promise<void> {
+                                onSystemDrawn?: (done: number, total: number) => void,
+                                maxPageCount?: number): Promise<void> {
         this.graphicalMusicSheet = graphicalMusicSheet;
         this.rules = graphicalMusicSheet.ParentMusicSheet.Rules;
         this.drawSplitScreenLine();
@@ -166,7 +167,11 @@ export abstract class MusicSheetDrawer {
             this.drawScrollIndicator();
         }
 
-        const pagesToDraw: number = Math.min(this.graphicalMusicSheet.MusicPages.length, this.rules.MaxPageToDrawNumber);
+        const pagesToDraw: number = Math.min(
+            this.graphicalMusicSheet.MusicPages.length,
+            this.rules.MaxPageToDrawNumber,
+            maxPageCount ?? Number.POSITIVE_INFINITY,
+        );
         let totalSystems: number = 0;
         for (let i: number = 0; i < pagesToDraw; i++) {
             totalSystems += this.graphicalMusicSheet.MusicPages[i].MusicSystems.length;
@@ -208,6 +213,31 @@ export abstract class MusicSheetDrawer {
             if (this.drawableBoundingBoxElement) {
                 this.drawBoundingBoxes(page.PositionAndShape, 0, this.drawableBoundingBoxElement);
             }
+            this.endDrawPage(page);
+        }
+    }
+
+    /** Draw one already-laid-out page into its existing backend. This appends
+     *  page pixels only and deliberately does not recalculate layout. */
+    public async drawPageAsync(graphicalMusicSheet: GraphicalMusicSheet, page: GraphicalMusicPage,
+                               yielder: CooperativeYielder): Promise<void> {
+        this.graphicalMusicSheet = graphicalMusicSheet;
+        this.rules = graphicalMusicSheet.ParentMusicSheet.Rules;
+        this.beginDrawPage(page);
+        try {
+            for (const system of page.MusicSystems) {
+                await this.drawMusicSystemAsync(system, yielder);
+                await yielder.tick();
+            }
+            if (page === page.Parent.MusicPages[0]) {
+                for (const label of page.Labels) {
+                    label.SVGNode = this.drawLabel(label, <number>GraphicalLayers.Notes);
+                }
+            }
+            if (this.drawableBoundingBoxElement) {
+                this.drawBoundingBoxes(page.PositionAndShape, 0, this.drawableBoundingBoxElement);
+            }
+        } finally {
             this.endDrawPage(page);
         }
     }

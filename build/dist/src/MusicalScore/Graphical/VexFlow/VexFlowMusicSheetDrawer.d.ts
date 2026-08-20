@@ -32,7 +32,7 @@ export declare class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
     /** Loading-path async mirror of {@link drawSheet}: performs the same per-page backend prep as the sync
      *  override, then delegates to the base async page/system loop, which selects the page backend through
      *  {@link beginDrawPage}. */
-    drawSheetAsync(graphicalMusicSheet: GraphicalMusicSheet, yielder: CooperativeYielder, onSystemDrawn?: (done: number, total: number) => void): Promise<void>;
+    drawSheetAsync(graphicalMusicSheet: GraphicalMusicSheet, yielder: CooperativeYielder, onSystemDrawn?: (done: number, total: number) => void, maxPageCount?: number): Promise<void>;
     /** Select the page's render backend before its systems are drawn (async path bypasses {@link drawPage}).
      *  This is the fix for the "late backend" crash: without it, drawMusicSystemAsync would draw into the
      *  wrong (or a cleared) backend. */

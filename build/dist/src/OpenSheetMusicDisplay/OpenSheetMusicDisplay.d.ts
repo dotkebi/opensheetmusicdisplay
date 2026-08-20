@@ -1,5 +1,6 @@
 import { VexFlowBackend } from "./../MusicalScore/Graphical/VexFlow/VexFlowBackend";
 import { GraphicalMusicSheet } from "./../MusicalScore/Graphical/GraphicalMusicSheet";
+import { MusicSheetCalculator } from "./../MusicalScore/Graphical/MusicSheetCalculator";
 import { VexFlowMusicSheetDrawer } from "./../MusicalScore/Graphical/VexFlow/VexFlowMusicSheetDrawer";
 import { MusicSheet } from "./../MusicalScore/MusicSheet";
 import { Cursor } from "./Cursor";
@@ -9,6 +10,23 @@ import { EngravingRules, PageFormat } from "../MusicalScore/Graphical/EngravingR
 import { GraphicalMusicPage } from "../MusicalScore/Graphical/GraphicalMusicPage";
 import { GraphicalMeasure } from "../MusicalScore/Graphical/GraphicalMeasure";
 import { ITransposeCalculator } from "../MusicalScore/Interfaces/ITransposeCalculator";
+export interface RenderAsyncDiagnostics {
+    totalMs: number;
+    layoutMs: number;
+    backendMs: number;
+    drawMs: number;
+    cursorMs: number;
+    yieldCount: number;
+    pageCount: number;
+    systemCount: number;
+    layout: MusicSheetCalculator["lastAsyncCalculateTimings"];
+    musicSystems: MusicSheetCalculator["lastAsyncMusicSystemsTimings"];
+}
+export interface RenderPageAsyncDiagnostics {
+    pageNumber: number;
+    elapsedMs: number;
+    yieldCount: number;
+}
 /**
  * The main class and control point of OpenSheetMusicDisplay.<br>
  * It can display MusicXML sheet music files in an HTML element container.<br>
@@ -35,6 +53,12 @@ export declare class OpenSheetMusicDisplay {
     protected zoomUpdated: boolean;
     /** Timeout in milliseconds used in osmd.load(string) when string is a URL. */
     loadUrlTimeout: number;
+    /** Latest successful async-render phase breakdown. Cleared at the start
+     *  of every attempt so a failure cannot expose stale measurements. */
+    lastRenderAsyncDiagnostics?: RenderAsyncDiagnostics;
+    lastRenderPageAsyncDiagnostics?: RenderPageAsyncDiagnostics;
+    private renderedPageNumbers;
+    private pageRenderAsyncInFlight;
     protected container: HTMLElement;
     protected backendType: BackendType;
     protected needBackendUpdate: boolean;
@@ -115,7 +139,12 @@ export declare class OpenSheetMusicDisplay {
     renderAsync(options?: {
         onProgress?: (progress: number) => void;
         yieldBudgetMs?: number;
+        maxPageCount?: number;
     }): Promise<void>;
+    /** Draw a single page from the existing full-document layout. Calls are
+     *  idempotent and serialized against full/page renders. */
+    renderPageAsync(pageNumber: number, yieldBudgetMs?: number): Promise<void>;
+    isPageRendered(pageNumber: number): boolean;
     /** Internal range-based engine behind {@link renderNext} (the public incremental API). Lays out the
      *  whole prefix [0..toMeasureIndex] and APPENDS the newly-stable source measures below previously
      *  rendered batches, without clearing the container, so a large score renders "system by system".

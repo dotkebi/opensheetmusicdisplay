@@ -47,6 +47,22 @@ import { CooperativeYielder } from "../../Util/CooperativeYielder";
  * Class used to do all the calculations in a MusicSheet, which in the end populates a GraphicalMusicSheet.
  */
 export declare abstract class MusicSheetCalculator {
+    /** Wall-clock breakdown from the latest successful async layout. The
+     *  values include cooperative yields and are intended for opt-in profile
+     *  diagnostics, not analytics payloads. */
+    lastAsyncCalculateTimings?: {
+        totalMs: number;
+        preXLayoutMs: number;
+        xLayoutMs: number;
+        musicSystemsMs: number;
+        absolutePositionsMs: number;
+    };
+    lastAsyncMusicSystemsTimings?: {
+        totalMs: number;
+        preSkylineMs: number;
+        skylineMs: number;
+        postSkylineMs: number;
+    };
     static symbolFactory: IGraphicalSymbolFactory;
     static transposeCalculator: ITransposeCalculator;
     static stafflineNoteCalculator: IStafflineNoteCalculator;

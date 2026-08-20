@@ -106,7 +106,8 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
      *  override, then delegates to the base async page/system loop, which selects the page backend through
      *  {@link beginDrawPage}. */
     public async drawSheetAsync(graphicalMusicSheet: GraphicalMusicSheet, yielder: CooperativeYielder,
-                                onSystemDrawn?: (done: number, total: number) => void): Promise<void> {
+                                onSystemDrawn?: (done: number, total: number) => void,
+                                maxPageCount?: number): Promise<void> {
         // vexflow 3.x: change default font
         if (this.rules.DefaultVexFlowNoteFont === "gonville") {
             (Vex.Flow as any).DEFAULT_FONT_STACK = [(Vex.Flow as any).Fonts?.Gonville, (Vex.Flow as any).Fonts?.Bravura, (Vex.Flow as any).Fonts?.Custom];
@@ -129,7 +130,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
 
         this.pageIdx = 0;
         this.backend = this.backends[0];
-        await super.drawSheetAsync(graphicalMusicSheet, yielder, onSystemDrawn);
+        await super.drawSheetAsync(graphicalMusicSheet, yielder, onSystemDrawn, maxPageCount);
     }
 
     /** Select the page's render backend before its systems are drawn (async path bypasses {@link drawPage}).

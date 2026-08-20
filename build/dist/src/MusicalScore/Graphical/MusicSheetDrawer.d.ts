@@ -80,7 +80,10 @@ export declare abstract class MusicSheetDrawer {
      * the inline {@link drawPage}, so a system drawn here targets the correct backend. {@link onSystemDrawn}
      * reports (done, total) systems for progress UIs.
      */
-    drawSheetAsync(graphicalMusicSheet: GraphicalMusicSheet, yielder: CooperativeYielder, onSystemDrawn?: (done: number, total: number) => void): Promise<void>;
+    drawSheetAsync(graphicalMusicSheet: GraphicalMusicSheet, yielder: CooperativeYielder, onSystemDrawn?: (done: number, total: number) => void, maxPageCount?: number): Promise<void>;
+    /** Draw one already-laid-out page into its existing backend. This appends
+     *  page pixels only and deliberately does not recalculate layout. */
+    drawPageAsync(graphicalMusicSheet: GraphicalMusicSheet, page: GraphicalMusicPage, yielder: CooperativeYielder): Promise<void>;
     /** Async mirror of {@link drawMusicSystem}. The heavy VexFlow draw runs synchronously (identical output);
      *  the event-loop yield happens per-system in {@link drawSheetAsync}. */
     protected drawMusicSystemAsync(system: MusicSystem, yielder: CooperativeYielder): Promise<void>;
