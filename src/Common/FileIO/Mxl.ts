@@ -36,6 +36,30 @@ export class MXLFile {
  * Some helper methods to handle MXL files.
  */
 export class MXLHelper {
+    /** Decode XML bytes without mistaking an UTF-8 BOM for UTF-16 content. */
+    private static decodeXml(bytes: Uint8Array): string {
+        const hasUtf8Bom: boolean = bytes.length >= 3
+            && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+        if (hasUtf8Bom) {
+            return new TextDecoder("utf-8").decode(bytes).replace(/^\uFEFF/, "");
+        }
+
+        const hasUtf16Bom: boolean = bytes.length >= 2
+            && ((bytes[0] === 0xff && bytes[1] === 0xfe)
+                || (bytes[0] === 0xfe && bytes[1] === 0xff));
+        if (hasUtf16Bom) {
+            return new TextDecoder("utf-16").decode(bytes);
+        }
+
+        const utf8Text: string = new TextDecoder("utf-8").decode(bytes);
+        if (utf8Text.trimStart().startsWith("<")) {
+            return utf8Text;
+        }
+
+        // Legacy MXL files can contain UTF-16 XML without a byte-order mark.
+        return new TextDecoder("utf-16").decode(bytes);
+    }
+
     /** Returns the documentElement of MXL data. */
     public static MXLtoIXmlElement(data: string): Promise<IXmlElement> {
         return this.MXLtoXMLstring(data)
@@ -54,27 +78,13 @@ export class MXLHelper {
 
     public static async jszipToXMLstring(zip: JSZip): Promise<string> {
         // asynchronously load zip file and process it - with Promises
-        let container: string = await zip.file("META-INF/container.xml").async("text");
-        if (!container.startsWith("<")) {
-            const uint8Array: Uint8Array = await zip.file("META-INF/container.xml").async("uint8array");
-            container = new TextDecoder("utf-8").decode(uint8Array);
-        }
-        if (!container.startsWith("<")) {
-            // assume UTF-16
-            const uint8Array: Uint8Array = await zip.file("META-INF/container.xml").async("uint8array");
-            container = new TextDecoder("utf-16").decode(uint8Array);
-        }
+        const containerBytes: Uint8Array = await zip.file("META-INF/container.xml").async("uint8array");
+        const container: string = this.decodeXml(containerBytes);
         const parser: DOMParser = new DOMParser();
         const doc: Document = parser.parseFromString(container, "text/xml");
         const rootFile: string = doc.getElementsByTagName("rootfile")[0].getAttribute("full-path");
-        const xmlText: string = await zip.file(rootFile).async("text");
-
-        if (!xmlText.substring(0, 1).startsWith("<")) {
-            // assume UTF-16
-            const uint8Array: Uint8Array = await zip.file(rootFile).async("uint8array");
-            return new TextDecoder("utf-16").decode(uint8Array);
-        }
-        return xmlText;
+        const xmlBytes: Uint8Array = await zip.file(rootFile).async("uint8array");
+        return this.decodeXml(xmlBytes);
     }
 
     public static MXLtoXMLstring(data: string | Blob): Promise<string> {

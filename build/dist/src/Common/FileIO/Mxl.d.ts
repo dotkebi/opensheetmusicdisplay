@@ -17,6 +17,8 @@ export declare class MXLFile {
  * Some helper methods to handle MXL files.
  */
 export declare class MXLHelper {
+    /** Decode XML bytes without mistaking an UTF-8 BOM for UTF-16 content. */
+    private static decodeXml;
     /** Returns the documentElement of MXL data. */
     static MXLtoIXmlElement(data: string): Promise<IXmlElement>;
     static jszipToXMLstring(zip: JSZip): Promise<string>;

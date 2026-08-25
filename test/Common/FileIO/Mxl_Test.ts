@@ -3,6 +3,7 @@ import { expect } from "chai";
 import { IXmlElement } from "../../../src/Common/FileIO/Xml";
 import { TestUtils } from "../../Util/TestUtils";
 import { MXLHelper } from "../../../src/Common/FileIO/Mxl";
+import JSZip from "jszip";
 
 describe("MXL Tests", () => {
   // Generates a test for a mxl file name
@@ -35,6 +36,22 @@ describe("MXL Tests", () => {
   for (const score of scores) {
     testFile(score);
   }
+
+  it("reads UTF-8 BOM XML from an MXL archive", (done: Mocha.Done) => {
+    const zip: JSZip = new JSZip();
+    zip.file("META-INF/container.xml",
+      '<?xml version="1.0" encoding="UTF-8"?><container><rootfiles><rootfile full-path="score.xml"/></rootfiles></container>');
+    zip.file("score.xml",
+      '\uFEFF<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><part-list/></score-partwise>');
+
+    zip.generateAsync({ type: "binarystring" })
+      .then((mxl: string) => MXLHelper.MXLtoIXmlElement(mxl))
+      .then((score: IXmlElement) => {
+        expect(score.name).to.equal("score-partwise");
+        done();
+      })
+      .catch(done);
+  });
 
   // Test failure
   it("Corrupted file", (done: Mocha.Done) => {
