@@ -645,11 +645,15 @@ export class GraphicalSlur extends GraphicalCurve {
             // check for articulation -> shift end y (slur further outward)
             //   this should not be necessary for the start note, and for accents (>) it's even counter productive there
             //   TODO alternatively, we could fix the bounding box of the note to include the ornament, but that seems tricky
-            let articulationPlacement: PlacementEnum; // whether there's an articulation and where
+            let articulationPlacement: PlacementEnum = PlacementEnum.NotYetDefined; // whether there's an articulation and where
             for (const articulation of slurEndVE.parentVoiceEntry.Articulations) {
                 articulationPlacement = articulation.placement;
                 if (articulation.placement === PlacementEnum.NotYetDefined) {
-                    for (const modifier of ((slurEndNote as VexFlowGraphicalNote).vfnote[0] as any).modifiers) {
+                    const vfNotes: any[] = (slurEndNote as VexFlowGraphicalNote).vfnote;
+                    const modifiers: any[] = vfNotes && vfNotes.length > 0 && vfNotes[0]
+                        ? (vfNotes[0] as any).modifiers
+                        : undefined;
+                    for (const modifier of modifiers || []) {
                         if (modifier.getCategory() === VF.Articulation.CATEGORY) {
                             if (modifier.position === VF.Modifier.Position.ABOVE) {
                                 articulation.placement = PlacementEnum.Above;
