@@ -851,7 +851,14 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                 const ctx: Vex.IRenderContext = this.backend.getContext();
                 const vfVibratoBracket: Vex.Flow.VibratoBracket = vexFlowVibratoBracket.getVibratoBracket();
                 (vfVibratoBracket as any).setContext(ctx);
-                vfVibratoBracket.draw();
+                try {
+                    vfVibratoBracket.draw();
+                } catch (error) {
+                    if (String(error).includes("NoTickContext")) {
+                        continue;
+                    }
+                    throw error;
+                }
             }
         }
     }
