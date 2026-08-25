@@ -21,6 +21,9 @@ export class GraphicalGlissando {
     }
 
     public calculateLine(rules: EngravingRules): void {
+        if (this.staffEntries.length === 0) {
+            return;
+        }
         const startStaffEntry: GraphicalStaffEntry = this.staffEntries[0];
         const endStaffEntry: GraphicalStaffEntry = this.staffEntries[this.staffEntries.length - 1];
 

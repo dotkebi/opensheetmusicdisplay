@@ -29,6 +29,8 @@ import { AccidentalEnum } from "../../../../src/Common/DataObjects/Pitch";
 import { MusicSystem } from "../../../../src/MusicalScore/Graphical/MusicSystem";
 import { GraphicalPedal } from "../../../../src/MusicalScore/Graphical/GraphicalPedal";
 import { VexFlowVibratoBracket } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowVibratoBracket";
+import { GraphicalGlissando } from "../../../../src/MusicalScore/Graphical/GraphicalGlissando";
+import { Glissando } from "../../../../src/MusicalScore/VoiceData/Glissando";
 
 describe("VexFlow Measure", () => {
 
@@ -60,6 +62,13 @@ describe("VexFlow Measure", () => {
       expect(gms.MeasureList[0].length).to.equal(1);
       expect(gms.MeasureList[0][0].staffEntries.length).to.equal(0);
       done();
+   });
+
+   it("Skips a glissando segment with no graphical staff entries", () => {
+      const sourceGlissando: Glissando = Object.create(Glissando.prototype) as Glissando;
+      const graphicalGlissando: GraphicalGlissando = new GraphicalGlissando(sourceGlissando);
+
+      expect(() => graphicalGlissando.calculateLine(new EngravingRules())).to.not.throw();
    });
 
    it("Renders pedal brackets anchored to rests on a tablature staff", (done: Mocha.Done) => {
