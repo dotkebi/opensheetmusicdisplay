@@ -31,6 +31,9 @@ import { GraphicalPedal } from "../../../../src/MusicalScore/Graphical/Graphical
 import { VexFlowVibratoBracket } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowVibratoBracket";
 import { GraphicalGlissando } from "../../../../src/MusicalScore/Graphical/GraphicalGlissando";
 import { Glissando } from "../../../../src/MusicalScore/VoiceData/Glissando";
+import { Fraction } from "../../../../src/Common/DataObjects/Fraction";
+import { VexFlowConverter } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowConverter";
+import Vex from "vexflow";
 
 describe("VexFlow Measure", () => {
 
@@ -69,6 +72,19 @@ describe("VexFlow Measure", () => {
       const graphicalGlissando: GraphicalGlissando = new GraphicalGlissando(sourceGlissando);
 
       expect(() => graphicalGlissando.calculateLine(new EngravingRules())).to.not.throw();
+   });
+
+   it("Creates an exact ghost note for a gap shorter than the display duration floor", () => {
+      const ghosts: Vex.Flow.GhostNote[] = VexFlowConverter.GhostNotes(new Fraction(1, 12480));
+
+      expect(ghosts).to.have.length(1);
+      expect(ghosts[0].getTicks().value()).to.be.closeTo(Vex.Flow.RESOLUTION / 12480, 1e-12);
+   });
+
+   it("Skips floating-point ghost gaps below timestamp precision", () => {
+      const ghosts: Vex.Flow.GhostNote[] = VexFlowConverter.GhostNotes(new Fraction(1, 1e13, 0, false));
+
+      expect(ghosts).to.have.length(0);
    });
 
    it("Renders pedal brackets anchored to rests on a tablature staff", (done: Mocha.Done) => {

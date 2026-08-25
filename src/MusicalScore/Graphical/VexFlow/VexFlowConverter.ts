@@ -229,6 +229,10 @@ export class VexFlowConverter {
     }
 
     public static GhostNotes(frac: Fraction): VF.GhostNote[] {
+        if (!Number.isFinite(frac.RealValue) || frac.RealValue <= 1e-12) {
+            return [];
+        }
+        const duration: string = VexFlowConverter.durations(frac, true)[0] ?? "128";
         // Fill the gap with a single ghost note whose ticks exactly match it. A gap can be a
         // tuplet member (e.g. a triplet eighth = 1/12), which is not a dyadic fraction and so
         // can't be represented exactly by standard note-value rests: decomposing it overshoots
@@ -236,7 +240,7 @@ export class VexFlowConverter {
         // vertical alignment with simultaneous notes in other voices (e.g. cross-staff tuplets).
         // Setting the ticks directly as an exact rational keeps the voice's resolution multiplier correct.
         const ghostNote: VF.GhostNote = new VF.GhostNote({
-            duration: VexFlowConverter.durations(frac, true)[0],
+            duration,
         });
         // ticks = frac * VF.RESOLUTION, kept as an exact rational via VF.Fraction
         // (e.g. 1/12 -> 16384/12 -> 4096/3) so the voice's resolution multiplier stays correct.
