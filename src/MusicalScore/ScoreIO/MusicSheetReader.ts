@@ -281,6 +281,20 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                 index = rhythmInstructions.indexOf(rhythmInstruction);
             }
         }
+        // If every available signature uses a different symbolic form (e.g.
+        // common and cut time), the preference for a numeric signature above
+        // can skip every candidate. Fall back to the largest real duration so
+        // missing staves still receive a valid instruction to clone.
+        if (index < 0 && rhythmInstructions.length > 0) {
+            index = 0;
+            maxRhythmValue = rhythmInstructions[0].Rhythm.RealValue;
+            for (let idx: number = 1; idx < rhythmInstructions.length; ++idx) {
+                if (rhythmInstructions[idx].Rhythm.RealValue > maxRhythmValue) {
+                    index = idx;
+                    maxRhythmValue = rhythmInstructions[idx].Rhythm.RealValue;
+                }
+            }
+        }
         if (rhythmInstructions.length > 0 && rhythmInstructions.length < this.completeNumberOfStaves) {
             const rhythmInstruction: RhythmInstruction = rhythmInstructions[index].clone();
             for (let i: number = 0; i < this.completeNumberOfStaves; i++) {

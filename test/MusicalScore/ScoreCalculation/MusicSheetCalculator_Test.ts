@@ -32,8 +32,9 @@ describe("Music Sheet Calculator", () => {
         done();
     });
 
-    it("skips lyric connectors whose next staff line has not been laid out", () => {
+    it("skips lyric connectors whose staff lines have not been laid out", () => {
         const startStaffLine: any = { Measures: [] };
+        const nextStaffLine: any = { Measures: [] };
         const graphicalLyricWord: any = { GraphicalLyricsEntries: [] };
         const lyricEntry: any = {
             ParentLyricWord: graphicalLyricWord,
@@ -43,11 +44,48 @@ describe("Music Sheet Calculator", () => {
         };
         const nextLyricEntry: any = {
             StaffEntryParent: {
-                parentMeasure: { ParentStaffLine: undefined }
+                parentMeasure: { ParentStaffLine: nextStaffLine }
             }
         };
         graphicalLyricWord.GraphicalLyricsEntries.push(lyricEntry, nextLyricEntry);
 
         expect(() => (calculator as any).calculateSingleLyricWord(lyricEntry)).to.not.throw();
+    });
+
+    it("skips a cross-line lyric connector before the next line has a staff entry", () => {
+        const positionAndShape: any = {
+            RelativePosition: { x: 0, y: 0 },
+            Size: { width: 10 }
+        };
+        const startMeasure: any = { PositionAndShape: positionAndShape, staffEntries: [] };
+        const nextMeasure: any = { PositionAndShape: positionAndShape, staffEntries: [] };
+        const startStaffLine: any = { Measures: [startMeasure] };
+        const nextStaffLine: any = { Measures: [nextMeasure] };
+        startMeasure.ParentStaffLine = startStaffLine;
+        nextMeasure.ParentStaffLine = nextStaffLine;
+
+        const graphicalLyricWord: any = { GraphicalLyricsEntries: [] };
+        const graphicalLabel: any = {
+            CenteringXShift: 0,
+            PositionAndShape: { RelativePosition: { x: 0, y: 0 }, BorderMarginRight: 0, BorderMarginLeft: 0 }
+        };
+        const lyricEntry: any = {
+            ParentLyricWord: graphicalLyricWord,
+            GraphicalLabel: graphicalLabel,
+            StaffEntryParent: { parentMeasure: startMeasure, PositionAndShape: positionAndShape }
+        };
+        const nextLyricEntry: any = {
+            GraphicalLabel: graphicalLabel,
+            StaffEntryParent: { parentMeasure: nextMeasure, PositionAndShape: positionAndShape }
+        };
+        graphicalLyricWord.GraphicalLyricsEntries.push(lyricEntry, nextLyricEntry);
+
+        const calculateDashes: any = (calculator as any).calculateDashes;
+        (calculator as any).calculateDashes = (): void => undefined;
+        try {
+            expect(() => (calculator as any).calculateSingleLyricWord(lyricEntry)).to.not.throw();
+        } finally {
+            (calculator as any).calculateDashes = calculateDashes;
+        }
     });
 });

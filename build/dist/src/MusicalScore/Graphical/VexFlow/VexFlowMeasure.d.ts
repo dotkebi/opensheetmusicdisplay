@@ -163,6 +163,8 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      * Complete the creation of VexFlow Beams in this measure
      */
     finalizeBeams(): void;
+    /** VexFlow rejects a beam when even one formatted endpoint is quarter-note length or longer. */
+    private canCreateVexFlowBeam;
     /** Automatically creates beams for notes except beamedNotes, using Vexflow's Beam.generateBeams().
      *  Takes options from this.rules.AutoBeamOptions.
      * @param beamedNotes notes that will not be autobeamed (usually because they are already beamed)

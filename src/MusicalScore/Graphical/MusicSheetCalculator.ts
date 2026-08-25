@@ -3916,7 +3916,8 @@ export abstract class MusicSheetCalculator {
         // A hidden or not-yet-laid-out measure has no staff line. Its lyric
         // connector cannot be positioned in this pass, so omit it instead of
         // dereferencing an unfinished graphical measure below.
-        if (!startStaffLine || !nextStaffLine) {
+        if (!startStaffLine || !nextStaffLine ||
+            startStaffLine.Measures.length === 0 || nextStaffLine.Measures.length === 0) {
             return;
         }
         const startStaffEntry: GraphicalStaffEntry = lyricEntry.StaffEntryParent;
@@ -3967,6 +3968,7 @@ export abstract class MusicSheetCalculator {
             // calculate Dashes for the second StaffLine (only if endStaffEntry isn't the first StaffEntry of the StaffLine)
             if (nextStaffLine && // check for undefined objects e.g. when drawingRange given
                 nextStaffLine.Measures[0] &&
+                nextStaffLine.Measures[0].staffEntries[0]?.PositionAndShape &&
                 endStaffentry.parentMeasure.ParentStaffLine &&
                 !(endStaffentry === endStaffentry.parentMeasure.staffEntries[0] &&
                 endStaffentry.parentMeasure === endStaffentry.parentMeasure.ParentStaffLine.Measures[0])) {

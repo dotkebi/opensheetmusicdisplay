@@ -57,6 +57,36 @@ describe("Music Sheet Reader", () => {
         done();
     });
 
+    it("fills a missing staff rhythm when all available signatures are symbolic", () => {
+        const xml: string = `
+          <score-partwise version="4.0">
+            <part-list>
+              <score-part id="P1"><part-name>Common</part-name></score-part>
+              <score-part id="P2"><part-name>Cut</part-name></score-part>
+              <score-part id="P3"><part-name>Missing</part-name></score-part>
+            </part-list>
+            <part id="P1"><measure number="1">
+              <attributes><divisions>1</divisions><time symbol="common"><beats>4</beats><beat-type>4</beat-type></time></attributes>
+              <note><rest measure="yes"/><duration>4</duration><voice>1</voice></note>
+            </measure></part>
+            <part id="P2"><measure number="1">
+              <attributes><divisions>1</divisions><time symbol="cut"><beats>2</beats><beat-type>2</beat-type></time></attributes>
+              <note><rest measure="yes"/><duration>4</duration><voice>1</voice></note>
+            </measure></part>
+            <part id="P3"><measure number="1">
+              <attributes><divisions>1</divisions></attributes>
+              <note><rest measure="yes"/><duration>4</duration><voice>1</voice></note>
+            </measure></part>
+          </score-partwise>`;
+        const doc: Document = new DOMParser().parseFromString(xml, "text/xml");
+        const localReader: MusicSheetReader = new MusicSheetReader();
+        const parsed: MusicSheet = localReader.createMusicSheet(
+            new IXmlElement(doc.getElementsByTagName("score-partwise")[0]), "mixed-symbolic-time.musicxml");
+
+        expect(parsed).to.not.be.undefined;
+        expect(parsed.SourceMeasures).to.have.length(1);
+    });
+
     it("preserves part-group and instrument family metadata", (done: Mocha.Done) => {
         const metadataXml: string = `
           <score-partwise version="4.0">
