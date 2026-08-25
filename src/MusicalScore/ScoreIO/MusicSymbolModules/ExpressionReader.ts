@@ -738,7 +738,9 @@ export class ExpressionReader {
                 return;
             }
             this.fillMultiOrTempoExpression(text, currentMeasure, inSourceMeasureCurrentFraction, fontStyle, fontColor, defaultYXml);
-            this.initialize();
+            // readExpressionParameters() initializes once per outer <direction>.
+            // Resetting here loses placement/staff context needed by later
+            // <direction-type> siblings (for example whitespace words + wedge).
         }
     }
     private readNumber(node: IXmlElement): number {
@@ -780,7 +782,7 @@ export class ExpressionReader {
             this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml);
         }
         this.addWedge(wedgeNode, currentMeasure, inSourceMeasureCurrentFraction);
-        this.initialize();
+        // Keep the outer <direction> context for later <direction-type> siblings.
     }
     private interpretRehearsalMark(
         rehearsalNode: IXmlElement, currentMeasure: SourceMeasure,

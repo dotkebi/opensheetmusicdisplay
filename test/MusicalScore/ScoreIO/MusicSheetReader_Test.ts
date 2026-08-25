@@ -10,6 +10,9 @@ import {SourceMeasure} from "../../../src/MusicalScore/VoiceData/SourceMeasure";
 import {Instrument} from "../../../src/MusicalScore/Instrument";
 import {InstrumentalGroup} from "../../../src/MusicalScore/InstrumentalGroup";
 import {InstrumentFamily} from "../../../src/MusicalScore/SubInstrument";
+import {PlacementEnum} from "../../../src/MusicalScore/VoiceData/Expressions/AbstractExpression";
+import {ContinuousDynamicExpression} from
+    "../../../src/MusicalScore/VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
 
 describe("Music Sheet Reader", () => {
     const path: string = "test/data/MuzioClementi_SonatinaOpus36No1_Part1.xml";
@@ -119,6 +122,53 @@ describe("Music Sheet Reader", () => {
         // TODO implement test
         // Staff Entries on first measure
         // expect(sheet.SourceMeasures[0].VerticalSourceStaffEntryContainers[0].StaffEntries.length).to.equal(4);
+        done();
+    });
+
+    it("keeps direction placement for a wedge after a whitespace words node", (done: Mocha.Done) => {
+        const xml: string = `
+          <score-partwise version="4.0">
+            <part-list>
+              <score-part id="P1"><part-name>Piano</part-name></score-part>
+            </part-list>
+            <part id="P1">
+              <measure number="1">
+                <attributes>
+                  <divisions>1</divisions>
+                  <time><beats>2</beats><beat-type>4</beat-type></time>
+                  <clef><sign>G</sign><line>2</line></clef>
+                </attributes>
+                <direction placement="below">
+                  <direction-type><words>   </words></direction-type>
+                  <direction-type><wedge type="crescendo" number="1"/></direction-type>
+                  <staff>1</staff>
+                </direction>
+                <note>
+                  <pitch><step>C</step><octave>4</octave></pitch>
+                  <duration>1</duration><voice>1</voice><type>quarter</type>
+                </note>
+                <direction placement="below">
+                  <direction-type><wedge type="stop" number="1"/></direction-type>
+                  <staff>1</staff>
+                </direction>
+                <note>
+                  <pitch><step>D</step><octave>4</octave></pitch>
+                  <duration>1</duration><voice>1</voice><type>quarter</type>
+                </note>
+              </measure>
+            </part>
+          </score-partwise>`;
+        const doc: Document = new DOMParser().parseFromString(xml, "text/xml");
+        const regressionReader: MusicSheetReader = new MusicSheetReader();
+        const regressionSheet: MusicSheet = regressionReader.createMusicSheet(
+            new IXmlElement(doc.documentElement),
+            "whitespace-words-before-wedge.musicxml"
+        );
+        const wedge: ContinuousDynamicExpression = regressionSheet.SourceMeasures[0].StaffLinkedExpressions[0]
+            .find((expression) => expression.StartingContinuousDynamic)?.StartingContinuousDynamic;
+
+        expect(wedge).to.not.be.undefined;
+        expect(wedge.Placement).to.equal(PlacementEnum.Below);
         done();
     });
 
