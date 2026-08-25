@@ -1430,8 +1430,14 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       //return; // also possible: don't handle faulty pedal without end
       endMeasure = this.graphicalMusicSheet.getLastGraphicalMeasureFromIndex(staffIndex, true); // get last rendered measure
     }
+    if (!endMeasure || endMeasure.staffEntries.length === 0) {
+      return;
+    }
     if (endMeasure.MeasureNumber > maxMeasureToDrawIndex + 1) { //  ends in measure not rendered
       endMeasure = this.graphicalMusicSheet.getLastGraphicalMeasureFromIndex(staffIndex, true);
+      if (!endMeasure || endMeasure.staffEntries.length === 0) {
+        return;
+      }
     }
     let startMeasure: GraphicalMeasure = undefined;
     if (pedal.ParentEndMultiExpression) {
@@ -1446,8 +1452,14 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       }
       //console.log("no end multi expression for start measure " + startMeasure.MeasureNumber);
     }
+    if (!startMeasure || startMeasure.staffEntries.length === 0) {
+      return;
+    }
     if (startMeasure.MeasureNumber < minMeasureToDrawIndex + 1) { //  starts before range of measures selected to render
       startMeasure = this.graphicalMusicSheet.MeasureList[minMeasureToDrawIndex][staffIndex]; // first rendered measure
+      if (!startMeasure || startMeasure.staffEntries.length === 0) {
+        return;
+      }
     }
 
     if (startMeasure.parentSourceMeasure.measureListIndex < minMeasureToDrawIndex ||
@@ -1524,8 +1536,17 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
             let currentCount: number = 1;
             for (let i: number = startStaffLine.ParentMusicSystem.Id; i < endStaffLine.ParentMusicSystem.Id; i++) {
               const nextPedalMusicSystem: MusicSystem = this.musicSystems[i + 1];
-              const nextPedalStaffline: StaffLine = nextPedalMusicSystem.StaffLines[staffIndex];
-              const nextPedalFirstMeasure: GraphicalMeasure = nextPedalStaffline.Measures[0];
+              const nextPedalStaffline: StaffLine = nextPedalMusicSystem.StaffLines.find(
+                (staffLine: StaffLine): boolean => staffLine.ParentStaff.idInMusicSheet === staffIndex);
+              if (!nextPedalStaffline) {
+                continue;
+              }
+              const measuresWithEntries: GraphicalMeasure[] = nextPedalStaffline.Measures.filter(
+                (measure: GraphicalMeasure): boolean => measure.staffEntries.length > 0);
+              if (measuresWithEntries.length === 0) {
+                continue;
+              }
+              const nextPedalFirstMeasure: GraphicalMeasure = measuresWithEntries[0];
               let nextOpenEnd: boolean = false;
               let nextChangeEndFromParent: boolean = false;
               if (currentCount < systemsInBetweenCount) {
@@ -1543,7 +1564,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
               } else {
                 nextPedal.ChangeEnd = false;
               }
-              let nextPedalLastMeasure: GraphicalMeasure = this.findLastStafflineMeasure(nextPedalStaffline);
+              let nextPedalLastMeasure: GraphicalMeasure = measuresWithEntries.last();
               const firstNote: GraphicalStaffEntry = nextPedalFirstMeasure.staffEntries[0];
               let lastNote: GraphicalStaffEntry = nextPedalLastMeasure.staffEntries[nextPedalLastMeasure.staffEntries.length - 1];
 
@@ -1553,7 +1574,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
                 nextPedal.setEndMeasure(endMeasure);
                 lastNote = endStaffEntry;
               } else {
-                nextPedal.setEndMeasure(nextPedalStaffline.Measures.last());
+                nextPedal.setEndMeasure(nextPedalLastMeasure);
               }
               if(!nextPedal.setStartNote(firstNote)){
                 break;
