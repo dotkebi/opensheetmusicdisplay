@@ -3913,6 +3913,12 @@ export abstract class MusicSheetCalculator {
         }
         const startStaffLine: StaffLine = <StaffLine>lyricEntry.StaffEntryParent.parentMeasure.ParentStaffLine;
         const nextStaffLine: StaffLine = <StaffLine>nextLyricEntry.StaffEntryParent.parentMeasure.ParentStaffLine;
+        // A hidden or not-yet-laid-out measure has no staff line. Its lyric
+        // connector cannot be positioned in this pass, so omit it instead of
+        // dereferencing an unfinished graphical measure below.
+        if (!startStaffLine || !nextStaffLine) {
+            return;
+        }
         const startStaffEntry: GraphicalStaffEntry = lyricEntry.StaffEntryParent;
         const endStaffentry: GraphicalStaffEntry = nextLyricEntry.StaffEntryParent;
 

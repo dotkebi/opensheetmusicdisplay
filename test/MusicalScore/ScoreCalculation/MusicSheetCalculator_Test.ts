@@ -31,4 +31,23 @@ describe("Music Sheet Calculator", () => {
         graphicalSheet.reCalculate();
         done();
     });
+
+    it("skips lyric connectors whose next staff line has not been laid out", () => {
+        const startStaffLine: any = { Measures: [] };
+        const graphicalLyricWord: any = { GraphicalLyricsEntries: [] };
+        const lyricEntry: any = {
+            ParentLyricWord: graphicalLyricWord,
+            StaffEntryParent: {
+                parentMeasure: { ParentStaffLine: startStaffLine }
+            }
+        };
+        const nextLyricEntry: any = {
+            StaffEntryParent: {
+                parentMeasure: { ParentStaffLine: undefined }
+            }
+        };
+        graphicalLyricWord.GraphicalLyricsEntries.push(lyricEntry, nextLyricEntry);
+
+        expect(() => (calculator as any).calculateSingleLyricWord(lyricEntry)).to.not.throw();
+    });
 });
