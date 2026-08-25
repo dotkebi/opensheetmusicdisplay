@@ -34,6 +34,7 @@ import { Glissando } from "../../../../src/MusicalScore/VoiceData/Glissando";
 import { Fraction } from "../../../../src/Common/DataObjects/Fraction";
 import { VexFlowConverter } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowConverter";
 import Vex from "vexflow";
+import { VexFlowOctaveShift } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowOctaveShift";
 
 describe("VexFlow Measure", () => {
 
@@ -72,6 +73,13 @@ describe("VexFlow Measure", () => {
       const graphicalGlissando: GraphicalGlissando = new GraphicalGlissando(sourceGlissando);
 
       expect(() => graphicalGlissando.calculateLine(new EngravingRules())).to.not.throw();
+   });
+
+   it("Rejects a missing graphical staff entry as an octave-shift anchor", () => {
+      const graphicalOctaveShift: VexFlowOctaveShift = Object.create(VexFlowOctaveShift.prototype) as VexFlowOctaveShift;
+
+      expect(graphicalOctaveShift.setStartNote(undefined)).to.equal(false);
+      expect(graphicalOctaveShift.setEndNote(undefined)).to.equal(false);
    });
 
    it("Creates an exact ghost note for a gap shorter than the display duration floor", () => {
@@ -116,6 +124,45 @@ describe("VexFlow Measure", () => {
       const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
       osmd.load(score).then(() => {
          expect(() => osmd.render()).to.not.throw();
+         done();
+      }).catch(done);
+   });
+
+   it("Skips a metronome mark when its graphical measure is unavailable", (done: Mocha.Done) => {
+      const xml: string = `
+         <score-partwise version="4.0">
+            <part-list><score-part id="P1"><part-name>Music</part-name></score-part></part-list>
+            <part id="P1">
+               <measure number="1">
+                  <attributes>
+                     <divisions>1</divisions>
+                     <time><beats>4</beats><beat-type>4</beat-type></time>
+                     <clef><sign>G</sign><line>2</line></clef>
+                  </attributes>
+                  <direction placement="above">
+                     <direction-type>
+                        <metronome><beat-unit>quarter</beat-unit><per-minute>120</per-minute></metronome>
+                     </direction-type>
+                     <sound tempo="120"/>
+                  </direction>
+                  <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+               </measure>
+            </part>
+         </score-partwise>`;
+      const score: Document = new DOMParser().parseFromString(xml, "text/xml");
+      const div: HTMLElement = TestUtils.getDivElement(document);
+      const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
+
+      osmd.load(score).then(() => {
+         const originalFind: typeof GraphicalMusicSheet.prototype.findGraphicalMeasureByMeasureNumber =
+            GraphicalMusicSheet.prototype.findGraphicalMeasureByMeasureNumber;
+         GraphicalMusicSheet.prototype.findGraphicalMeasureByMeasureNumber =
+            (() => undefined) as typeof originalFind;
+         try {
+            expect(() => osmd.render()).to.not.throw();
+         } finally {
+            GraphicalMusicSheet.prototype.findGraphicalMeasureByMeasureNumber = originalFind;
+         }
          done();
       }).catch(done);
    });

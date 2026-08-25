@@ -1010,6 +1010,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const staffNumber: number = Math.max(metronomeExpression.StaffNumber - 1, 0);
     const vfMeasure: VexFlowMeasure =
       this.graphicalMusicSheet.findGraphicalMeasureByMeasureNumber(measureNumber, staffNumber) as VexFlowMeasure;
+    if (!vfMeasure) {
+      return;
+    }
     const firstMetronomeMark: boolean = vfMeasure === this.graphicalMusicSheet.MeasureList[0][0];
     // const vfMeasure: VexFlowMeasure = (this.graphicalMusicSheet.MeasureList[measureNumber][staffNumber] as VexFlowMeasure);
     if (vfMeasure.hasMetronomeMark) {
@@ -1310,7 +1313,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (!endStaffEntry) { // fix for rendering range set
         endStaffEntry = endMeasure.staffEntries[endMeasure.staffEntries.length - 1];
       }
-      graphicalOctaveShift.setStartNote(startStaffEntry);
+      if (startStaffEntry) {
+        graphicalOctaveShift.setStartNote(startStaffEntry);
+      }
 
       if (endStaffLine !== startStaffLine) {
         graphicalOctaveShift.endsOnDifferentStaffLine = true;
@@ -1360,6 +1365,12 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
               lastNote = endStaffEntry;
             }
 
+            const logPrefix: string = "VexFlowMusicSheetCalculator.calculateSingleOctaveShift: ";
+            if (!firstNote || !lastNote) {
+              log.warn(logPrefix + (!firstNote ? "no firstNote found" : "no lastNote found"));
+              continue;
+            }
+
             if (lastNote.graphicalVoiceEntries.length === 1 &&
               lastNote.graphicalVoiceEntries[0].notes.length === 1 &&
               lastNote.graphicalVoiceEntries[0].notes[0].sourceNote.isWholeMeasureNote()
@@ -1369,17 +1380,16 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
               nextOctaveShift.endMeasure = nextShiftLastMeasure;
             }
 
-            const logPrefix: string = "VexFlowMusicSheetCalculator.calculateSingleOctaveShift: ";
-            if (!firstNote) {
-              log.warn(logPrefix + "no firstNote found");
+            if (!nextOctaveShift.setStartNote(firstNote)) {
+              log.warn(logPrefix + "no start note found");
+              continue;
             }
-            if (!lastNote) {
-              log.warn(logPrefix + "no lastNote found");
-            }
-            nextOctaveShift.setStartNote(firstNote);
             const endIdx: number = endMeasure.ParentStaffLine === nextShiftStaffline && octaveShift.endVoiceEntryIndex > 0
               ? octaveShift.endVoiceEntryIndex : -1;
-            nextOctaveShift.setEndNote(lastNote, endIdx);
+            if (!nextOctaveShift.setEndNote(lastNote, endIdx)) {
+              log.warn(logPrefix + "no end note found");
+              continue;
+            }
             nextShiftStaffline.OctaveShifts.push(nextOctaveShift);
             this.calculateOctaveShiftSkyBottomLine(firstNote, lastNote, nextOctaveShift, nextShiftStaffline);
           }

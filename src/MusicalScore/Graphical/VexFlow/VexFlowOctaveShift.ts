@@ -63,6 +63,9 @@ export class VexFlowOctaveShift extends GraphicalOctaveShift {
      * @param graphicalStaffEntry the staff entry that holds the start note
      */
     public setStartNote(graphicalStaffEntry: GraphicalStaffEntry): boolean {
+        if (!graphicalStaffEntry) {
+            return false;
+        }
         for (const gve of graphicalStaffEntry.graphicalVoiceEntries) {
             const vve: VexFlowVoiceEntry = (gve as VexFlowVoiceEntry);
             if (vve?.vfStaveNote) {
@@ -80,6 +83,9 @@ export class VexFlowOctaveShift extends GraphicalOctaveShift {
      *        (used when an octave shift stop falls between grace notes sharing the same staff entry)
      */
     public setEndNote(graphicalStaffEntry: GraphicalStaffEntry, maxVoiceEntryIndex: number = -1): boolean {
+        if (!graphicalStaffEntry) {
+            return false;
+        }
         const entries: GraphicalVoiceEntry[] = graphicalStaffEntry.graphicalVoiceEntries;
         const limit: number = maxVoiceEntryIndex >= 0 ? Math.min(maxVoiceEntryIndex, entries.length) : entries.length;
         // Search backwards to find the last covered VoiceEntry
