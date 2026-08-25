@@ -35,6 +35,7 @@ import { Fraction } from "../../../../src/Common/DataObjects/Fraction";
 import { VexFlowConverter } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowConverter";
 import Vex from "vexflow";
 import { VexFlowOctaveShift } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowOctaveShift";
+import { VexFlowTabMeasure } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowTabMeasure";
 
 describe("VexFlow Measure", () => {
 
@@ -80,6 +81,34 @@ describe("VexFlow Measure", () => {
 
       expect(graphicalOctaveShift.setStartNote(undefined)).to.equal(false);
       expect(graphicalOctaveShift.setEndNote(undefined)).to.equal(false);
+   });
+
+   it("Normalizes zero-denominator tablature ticks before adding them to a voice", () => {
+      const ticks: { denominator: number } = { denominator: 0 };
+      const voiceEntry: any = {
+         notes: [{ sourceNote: { isRest: () => false, PrintObject: false } }],
+         parentVoiceEntry: undefined,
+      };
+      const tabMeasure: any = Object.create(VexFlowTabMeasure.prototype);
+      tabMeasure.staffEntries = [{ graphicalVoiceEntries: [voiceEntry] }];
+      tabMeasure.finalizeTuplets = (): void => undefined;
+      tabMeasure.getVoicesWithinMeasure = (): Array<{ VoiceId: number }> => [{ VoiceId: 1 }];
+      tabMeasure.getRestFilledVexFlowStaveNotesPerVoice = (): any[] => [voiceEntry];
+      tabMeasure.parentSourceMeasure = { Duration: { Denominator: 4, Numerator: 4 } };
+      tabMeasure.vfVoices = [];
+
+      const originalCreateTabNote: typeof VexFlowConverter.CreateTabNote = VexFlowConverter.CreateTabNote;
+      const originalAddTickable: typeof Vex.Flow.Voice.prototype.addTickable = Vex.Flow.Voice.prototype.addTickable;
+      VexFlowConverter.CreateTabNote = ((): { getTicks: () => typeof ticks } =>
+         ({ getTicks: (): typeof ticks => ticks })) as unknown as typeof originalCreateTabNote;
+      Vex.Flow.Voice.prototype.addTickable = function(): Vex.Flow.Voice { return this; };
+      try {
+         tabMeasure.graphicalMeasureCreatedCalculations();
+         expect(ticks.denominator).to.equal(1);
+      } finally {
+         VexFlowConverter.CreateTabNote = originalCreateTabNote;
+         Vex.Flow.Voice.prototype.addTickable = originalAddTickable;
+      }
    });
 
    it("Creates an exact ghost note for a gap shorter than the display duration floor", () => {

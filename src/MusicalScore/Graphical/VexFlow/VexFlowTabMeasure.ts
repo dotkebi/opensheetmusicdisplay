@@ -82,6 +82,9 @@ export class VexFlowTabMeasure extends VexFlowMeasure {
                 }
 
                 const vexFlowVoiceEntry: VexFlowVoiceEntry = voiceEntry as VexFlowVoiceEntry;
+                if (vexFlowVoiceEntry.vfStaveNote.getTicks().denominator === 0) {
+                    vexFlowVoiceEntry.vfStaveNote.getTicks().denominator = 1;
+                }
                 if (voiceEntry.notes.length === 0 || !voiceEntry.notes[0] || !voiceEntry.notes[0].sourceNote.PrintObject) {
                     // GhostNote, don't add modifiers like in-measure clefs
                     if (vexFlowVoiceEntry.vfGhostNotes) {
