@@ -1659,7 +1659,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (!endStaffEntry) { // fix for rendering range set
         endStaffEntry = endMeasure.staffEntries[endMeasure.staffEntries.length - 1];
       }
-      graphicalWavyLine.setStartNote(startStaffEntry);
+      if (!graphicalWavyLine.setStartNote(startStaffEntry)) {
+        return;
+      }
 
       if (endStaffLine !== startStaffLine) {
           let lastMeasureOfFirstShift: GraphicalMeasure = startStaffLine.Measures[startStaffLine.Measures.length - 1];
@@ -1668,7 +1670,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           }
           const lastNoteOfFirstShift: GraphicalStaffEntry = lastMeasureOfFirstShift.staffEntries[lastMeasureOfFirstShift.staffEntries.length - 1];
           if (lastNoteOfFirstShift) {
-            graphicalWavyLine.setEndNote(lastNoteOfFirstShift); // TODO maybe not best way to handle this. sample/situation where value is undefined unclear.
+            if (!graphicalWavyLine.setEndNote(lastNoteOfFirstShift)) {
+              graphicalWavyLine.endNote = graphicalWavyLine.startNote;
+              graphicalWavyLine.endVfVoiceEntry = graphicalWavyLine.startVfVoiceEntry;
+            }
           }
 
           const systemsInBetweenCount: number = endStaffLine.ParentMusicSystem.Id - startStaffLine.ParentMusicSystem.Id;
@@ -1689,8 +1694,13 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
                 lastNote = endStaffEntry;
               }
 
-              nextWavyLine.setStartNote(firstNote);
-              nextWavyLine.setEndNote(lastNote);
+              if (!nextWavyLine.setStartNote(firstNote)) {
+                continue;
+              }
+              if (!nextWavyLine.setEndNote(lastNote)) {
+                nextWavyLine.endNote = nextWavyLine.startNote;
+                nextWavyLine.endVfVoiceEntry = nextWavyLine.startVfVoiceEntry;
+              }
               nextWavyLineStaffline.WavyLines.push(nextWavyLine);
               nextWavyLine.CalculateBoundingBox();
               this.calculateWavyLineSkyBottomLine(nextWavyLine.startVfVoiceEntry, nextWavyLine.endVfVoiceEntry, nextWavyLine, nextWavyLineStaffline);
@@ -1699,7 +1709,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           graphicalWavyLine.CalculateBoundingBox();
           this.calculateWavyLineSkyBottomLine(graphicalWavyLine.startVfVoiceEntry, graphicalWavyLine.endVfVoiceEntry, graphicalWavyLine, startStaffLine);
       } else {
-        graphicalWavyLine.setEndNote(endStaffEntry);
+        if (!graphicalWavyLine.setEndNote(endStaffEntry)) {
+          graphicalWavyLine.endNote = graphicalWavyLine.startNote;
+          graphicalWavyLine.endVfVoiceEntry = graphicalWavyLine.startVfVoiceEntry;
+        }
         graphicalWavyLine.CalculateBoundingBox();
         this.calculateWavyLineSkyBottomLine(graphicalWavyLine.startVfVoiceEntry, graphicalWavyLine.endVfVoiceEntry, graphicalWavyLine, startStaffLine);
       }

@@ -28,6 +28,7 @@ import { GraphicalTie } from "../../../../src/MusicalScore/Graphical/GraphicalTi
 import { AccidentalEnum } from "../../../../src/Common/DataObjects/Pitch";
 import { MusicSystem } from "../../../../src/MusicalScore/Graphical/MusicSystem";
 import { GraphicalPedal } from "../../../../src/MusicalScore/Graphical/GraphicalPedal";
+import { VexFlowVibratoBracket } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowVibratoBracket";
 
 describe("VexFlow Measure", () => {
 
@@ -90,6 +91,47 @@ describe("VexFlow Measure", () => {
       const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
       osmd.load(score).then(() => {
          expect(() => osmd.render()).to.not.throw();
+         done();
+      }).catch(done);
+   });
+
+   it("Skips a wavy line when its start staff entry has no VexFlow note", (done: Mocha.Done) => {
+      const xml: string = `
+         <score-partwise version="4.0">
+            <part-list><score-part id="P1"><part-name>Music</part-name></score-part></part-list>
+            <part id="P1">
+               <measure number="1">
+                  <attributes>
+                     <divisions>1</divisions>
+                     <time><beats>4</beats><beat-type>4</beat-type></time>
+                     <clef><sign>G</sign><line>2</line></clef>
+                  </attributes>
+                  <note>
+                     <pitch><step>C</step><octave>5</octave></pitch>
+                     <duration>2</duration><voice>1</voice><type>half</type>
+                     <notations><ornaments><trill-mark/><wavy-line type="start" number="1"/></ornaments></notations>
+                  </note>
+                  <note>
+                     <pitch><step>D</step><octave>5</octave></pitch>
+                     <duration>2</duration><voice>1</voice><type>half</type>
+                     <notations><ornaments><wavy-line type="stop" number="1"/></ornaments></notations>
+                  </note>
+               </measure>
+            </part>
+         </score-partwise>`;
+      const score: Document = new DOMParser().parseFromString(xml, "text/xml");
+      const div: HTMLElement = TestUtils.getDivElement(document);
+      const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
+
+      osmd.load(score).then(() => {
+         const originalSetStartNote: typeof VexFlowVibratoBracket.prototype.setStartNote =
+            VexFlowVibratoBracket.prototype.setStartNote;
+         VexFlowVibratoBracket.prototype.setStartNote = (): boolean => false;
+         try {
+            expect(() => osmd.render()).to.not.throw();
+         } finally {
+            VexFlowVibratoBracket.prototype.setStartNote = originalSetStartNote;
+         }
          done();
       }).catch(done);
    });
