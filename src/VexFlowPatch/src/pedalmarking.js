@@ -169,8 +169,9 @@ export class PedalMarking extends Element {
       // Get the initial coordinates for the note
       let x = 0; // VexFlowPatch (further smaller diffs below)
       if (note) {
-        //default to note head begin
-        x = note.getNoteHeadBeginX();
+        // Tab rests are GhostNotes and don't expose notehead coordinates.
+        // Keep their formatted timeline anchor instead of crashing.
+        x = note.getNoteHeadBeginX ? note.getNoteHeadBeginX() : note.getAbsoluteX();
         if (this.BeginsStave) {
           x = note.getStave().getNoteStartX();
         }
@@ -187,14 +188,15 @@ export class PedalMarking extends Element {
               case PedalMarking.Styles.BRACKET_OPEN_END:
               case PedalMarking.Styles.BRACKET_OPEN_BOTH:
               case PedalMarking.Styles.MIXED_OPEN_END:
-                x = note.getNoteHeadEndX();
+                x = note.getNoteHeadEndX ? note.getNoteHeadEndX() : note.getAbsoluteX();
               break;
               default:
                 if(this.ChangeEnd){
                   //Start in the middle of the note
                   x = note.getAbsoluteX();
                 } else {
-                  x = note.getNoteHeadBeginX() - pedal.render_options.text_margin_right;
+                  const noteHeadBeginX = note.getNoteHeadBeginX ? note.getNoteHeadBeginX() : note.getAbsoluteX();
+                  x = noteHeadBeginX - pedal.render_options.text_margin_right;
                   this.startMargin = -pedal.render_options.text_margin_right;
                 }
               break;
