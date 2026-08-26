@@ -751,9 +751,9 @@ describe("VexFlow Measure", () => {
    });
 
    // Non-regression test for the WIDTH-DRIVEN case of SlurFlattenToObstacle (issue #1466): a wide slur over a
-   // (near-)flat passage must not balloon. The minimum-arc floor grows with sqrt(width) rather than linearly, so
-   // wide slurs stay proportionally flat. Chopin Étude Op. 10 No. 4 has several system-spanning slurs that would
-   // otherwise arc very high; this checks the widest slur on the sheet is flattened substantially.
+   // flat passage must follow the sqrt(width) minimum-arc floor rather than ballooning linearly with width.
+   // Use an explicit width so browser viewport defaults cannot change the system break or turn this visual
+   // invariant into a threshold flake.
    it("Keeps a wide slur over a flat passage from ballooning (SlurFlattenToObstacle, width-driven)", (done: Mocha.Done) => {
       const score: Document = TestUtils.getScore("test_dynamics_attribute_Chopin_Etudes_op_10_4_Duepree02.musicxml");
       if (!score) {
@@ -762,11 +762,11 @@ describe("VexFlow Measure", () => {
       }
       const xml: string = new XMLSerializer().serializeToString(score);
 
-      // arc height (max distance from the straight start-end chord) of the WIDEST slur on the sheet
-      function widestSlurArcHeight(osmd: OpenSheetMusicDisplay): number {
+      // Width and arc height (max distance from the straight start-end chord) of the widest slur on the sheet.
+      function widestSlurGeometry(renderedOsmd: OpenSheetMusicDisplay): { width: number, arc: number } {
          let widestWidth: number = 0;
          let arcOfWidest: number = 0;
-         for (const page of osmd.GraphicSheet.MusicPages) {
+         for (const page of renderedOsmd.GraphicSheet.MusicPages) {
             for (const system of page.MusicSystems) {
                for (const staffLine of system.StaffLines) {
                   for (const gSlur of staffLine.GraphicalSlurs) {
@@ -775,7 +775,11 @@ describe("VexFlow Measure", () => {
                      if (!s || !e || !c1 || !c2 || e.x === s.x) {
                         continue;
                      }
-                     const width: number = Math.abs(e.x - s.x);
+                     // calculateControlPoints works in coordinates rotated onto the start-end chord, where endX is
+                     // the chord length rather than only its horizontal projection.
+                     const chordX: number = e.x - s.x;
+                     const chordY: number = e.y - s.y;
+                     const width: number = Math.hypot(chordX, chordY);
                      if (width <= widestWidth) {
                         continue;
                      }
@@ -784,8 +788,8 @@ describe("VexFlow Measure", () => {
                         const mt: number = 1 - t;
                         const x: number = mt*mt*mt*s.x + 3*mt*mt*t*c1.x + 3*mt*t*t*c2.x + t*t*t*e.x;
                         const y: number = mt*mt*mt*s.y + 3*mt*mt*t*c1.y + 3*mt*t*t*c2.y + t*t*t*e.y;
-                        const chordY: number = s.y + (x - s.x) / (e.x - s.x) * (e.y - s.y);
-                        arc = Math.max(arc, Math.abs(y - chordY));
+                        const distanceFromChord: number = Math.abs(chordY * (x - s.x) - chordX * (y - s.y)) / width;
+                        arc = Math.max(arc, distanceFromChord);
                      }
                      widestWidth = width;
                      arcOfWidest = arc;
@@ -793,25 +797,26 @@ describe("VexFlow Measure", () => {
                }
             }
          }
-         return arcOfWidest;
+         return { width: widestWidth, arc: arcOfWidest };
       }
 
-      const osmdOff: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(TestUtils.getDivElement(document));
-      const osmdOn: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(TestUtils.getDivElement(document));
+      const container: HTMLElement = TestUtils.getDivElement(document);
+      container.style.width = "740px";
+      const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(container);
 
-      osmdOff.load(xml).then(() => {
-         osmdOff.EngravingRules.SlurFlattenToObstacle = false;
-         osmdOff.render();
-         const arcWithout: number = widestSlurArcHeight(osmdOff);
+      osmd.load(xml).then(() => {
+         osmd.render(); // SlurFlattenToObstacle is true by default
+         const geometry: { width: number, arc: number } = widestSlurGeometry(osmd);
+         const rules: EngravingRules = osmd.EngravingRules;
+         const expectedMinimumArc: number = Math.min(
+            rules.SlurFlattenMaxMinArcHeight,
+            rules.SlurFlattenMinArcWidthFactor * Math.sqrt(geometry.width),
+         );
 
-         return osmdOn.load(xml).then(() => {
-            osmdOn.render(); // SlurFlattenToObstacle is true by default
-            const arcWith: number = widestSlurArcHeight(osmdOn);
-            // the widest slur spans a (near-)flat passage, so flattening should cut its arc well below half
-            expect(arcWith, `widest slur's flattened arc (${arcWith.toFixed(1)}) should be far below unflattened (${arcWithout.toFixed(1)})`)
-               .to.be.lessThan(arcWithout * 0.65);
-            done();
-         });
+         expect(geometry.width).to.be.greaterThan(rules.SlurHeightFlattenLongSlursCutoffWidth);
+         expect(geometry.arc, `wide slur arc (${geometry.arc}) should follow the sqrt(width) floor (${expectedMinimumArc})`)
+            .to.be.closeTo(expectedMinimumArc, 0.01);
+         done();
       }).catch(done);
    });
 
