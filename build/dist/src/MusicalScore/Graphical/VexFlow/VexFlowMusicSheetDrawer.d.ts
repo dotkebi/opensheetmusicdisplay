@@ -29,6 +29,8 @@ export declare class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
     get Backends(): VexFlowBackend[];
     drawSheet(graphicalMusicSheet: GraphicalMusicSheet): void;
     protected drawPage(page: GraphicalMusicPage): void;
+    /** A page is drawable only when a backend was created for its page number (see MusicSheetDrawer.canDrawPage). */
+    protected canDrawPage(page: GraphicalMusicPage): boolean;
     /** Loading-path async mirror of {@link drawSheet}: performs the same per-page backend prep as the sync
      *  override, then delegates to the base async page/system loop, which selects the page backend through
      *  {@link beginDrawPage}. */

@@ -29,6 +29,7 @@ import { GraphicalContinuousDynamicExpression } from "./GraphicalContinuousDynam
 // eslint-disable-next-line
 import { VexFlowContinuousDynamicExpression, VexFlowGraphicalNote, VexFlowInstrumentBracket, VexFlowMeasure, VexFlowStaffEntry, VexFlowStaffLine, VexFlowVoiceEntry } from "./VexFlow";
 import { StaffLineActivitySymbol } from "./StaffLineActivitySymbol";
+import log from "loglevel";
 // import { FontStyles } from "../../Common/Enums/FontStyles";
 
 /**
@@ -135,6 +136,14 @@ export abstract class MusicSheetDrawer {
         // override
     }
 
+    /** Whether {@link beginDrawPage} could select a render target for this page. Subclasses return false
+     *  when the page has no backend (e.g. the backends were cleared by a concurrent synchronous render,
+     *  or a re-layout produced fewer pages than backends were created for); the page is then skipped with
+     *  a warning instead of dereferencing a missing backend. Base implementation: always drawable. */
+    protected canDrawPage(page: GraphicalMusicPage): boolean {
+        return true;
+    }
+
     /**
      * Loading-path async mirror of {@link drawSheet}: identical draw-command output, but yields to the
      * event loop between music systems so frames keep rendering during the first full draw of a large score.
@@ -180,6 +189,13 @@ export abstract class MusicSheetDrawer {
         for (let i: number = 0; i < pagesToDraw; i++) {
             const page: GraphicalMusicPage = this.graphicalMusicSheet.MusicPages[i];
             this.beginDrawPage(page);
+            if (!this.canDrawPage(page)) {
+                log.warn(`MusicSheetDrawer.drawSheetAsync: no render backend for page ${page.PageNumber}, skipping it`);
+                drawnSystems += page.MusicSystems.length;
+                onSystemDrawn?.(drawnSystems, totalSystems);
+                this.endDrawPage(page);
+                continue;
+            }
             if (!this.isVisible(page.PositionAndShape)) {
                 drawnSystems += page.MusicSystems.length;
                 onSystemDrawn?.(drawnSystems, totalSystems);
@@ -225,6 +241,10 @@ export abstract class MusicSheetDrawer {
         this.rules = graphicalMusicSheet.ParentMusicSheet.Rules;
         this.beginDrawPage(page);
         try {
+            if (!this.canDrawPage(page)) {
+                log.warn(`MusicSheetDrawer.drawPageAsync: no render backend for page ${page.PageNumber}, skipping it`);
+                return;
+            }
             for (const system of page.MusicSystems) {
                 await this.drawMusicSystemAsync(system, yielder);
                 await yielder.tick();

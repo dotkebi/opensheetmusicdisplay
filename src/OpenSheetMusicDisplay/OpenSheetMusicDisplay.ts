@@ -28,7 +28,7 @@ import { MusicPartManagerIterator } from "../MusicalScore/MusicParts/MusicPartMa
 import { ITransposeCalculator } from "../MusicalScore/Interfaces/ITransposeCalculator";
 import { NoteEnum } from "../Common/DataObjects/Pitch";
 import { TemposCalculator } from "../MusicalScore/ScoreIO/MusicSymbolModules/TemposCalculator";
-import { CooperativeYielder } from "../Util/CooperativeYielder";
+import { CooperativeYielder, RenderSupersededError } from "../Util/CooperativeYielder";
 
 export interface RenderAsyncDiagnostics {
     totalMs: number;
@@ -136,6 +136,7 @@ export class OpenSheetMusicDisplay {
      */
     public load(content: string | Document | Blob, tempTitle: string = "Untitled Score"): Promise<{}> {
         // Warning! This function is asynchronous! No error handling is done here.
+        this.renderGeneration++;
         this.reset();
         const self: OpenSheetMusicDisplay = this;
         if (content instanceof Blob) {
@@ -242,6 +243,7 @@ export class OpenSheetMusicDisplay {
      * (Re-)creates the graphic sheet from the music sheet
      */
     public updateGraphic(): void {
+        this.renderGeneration++;
         const calc: MusicSheetCalculator = new VexFlowMusicSheetCalculator(this.rules);
         this.graphic = new GraphicalMusicSheet(this.sheet, calc);
         if (this.drawingParameters.drawCursors) {
@@ -291,12 +293,17 @@ export class OpenSheetMusicDisplay {
     private lazyScrollTarget: HTMLElement | Window | undefined;
     /** Whether a {@link renderAsync} call is currently running (re-entrancy guard). */
     private renderAsyncInFlightFlag: boolean = false;
+    /** Bumped by every render()/renderAsync()/clear()/updateGraphic()/load(). An in-flight async render
+     *  compares it to the value it started with and, if a synchronous render slipped in while it was
+     *  parked at a yield, exits quietly instead of drawing into backends that no longer exist. */
+    private renderGeneration: number = 0;
 
     /** Render the loaded music sheet to the container. */
     public render(): void {
         if (!this.graphic) {
             throw new Error("OSMD: load() needs to be called before render()");
         }
+        this.renderGeneration++;
         this.renderedPageNumbers.clear();
         // A full render() supersedes any incremental render in progress: abandon it and restore the
         // draw-measure range it mutated, so this render isn't limited to the last batch.
@@ -412,9 +419,11 @@ export class OpenSheetMusicDisplay {
         this.renderedPageNumbers.clear();
         const onProgress: ((progress: number) => void) | undefined = options?.onProgress;
         const yieldBudgetMs: number = options?.yieldBudgetMs ?? 12;
+        const generation: number = ++this.renderGeneration;
+        const superseded: () => boolean = (): boolean => this.renderGeneration !== generation;
         try {
             const renderStartedAt: number = performance.now();
-            const yielder: CooperativeYielder = new CooperativeYielder(yieldBudgetMs);
+            const yielder: CooperativeYielder = new CooperativeYielder(yieldBudgetMs, superseded);
             const layoutProgressEnd: number = 0.65;
 
             // A full render supersedes any incremental render in progress: abandon it and restore the
@@ -448,6 +457,9 @@ export class OpenSheetMusicDisplay {
 
             // Calculate again (async)
             await this.graphic.reCalculateAsync(yielder, (p: number): void => onProgress?.(p * layoutProgressEnd));
+            if (superseded()) {
+                throw new RenderSupersededError();
+            }
             const layoutCompletedAt: number = performance.now();
 
             if (this.drawingParameters.drawCursors) {
@@ -474,6 +486,9 @@ export class OpenSheetMusicDisplay {
                         onProgress?.(layoutProgressEnd + (1.0 - layoutProgressEnd) * done / total);
                     }
                 }, options?.maxPageCount);
+            if (superseded()) {
+                throw new RenderSupersededError();
+            }
             const drawCompletedAt: number = performance.now();
 
             this.enableOrDisableCursors(this.drawingParameters.drawCursors);
@@ -510,6 +525,15 @@ export class OpenSheetMusicDisplay {
                 this.renderedPageNumbers.add(index + 1);
             }
             onProgress?.(1.0);
+        } catch (error) {
+            if (error instanceof RenderSupersededError) {
+                // A synchronous render()/clear()/updateGraphic() ran while this render was parked at a
+                // yield; its result stands and this one is stale. Resolve quietly -- the caller sees the
+                // synchronous render's output, never a half-drawn page plus an exception.
+                log.debug("[OSMD] renderAsync superseded by a synchronous render; skipping stale draw");
+                return;
+            }
+            throw error;
         } finally {
             this.renderAsyncInFlightFlag = false;
         }
@@ -533,7 +557,8 @@ export class OpenSheetMusicDisplay {
         this.pageRenderAsyncInFlight = true;
         this.lastRenderPageAsyncDiagnostics = undefined;
         const startedAt: number = performance.now();
-        const yielder: CooperativeYielder = new CooperativeYielder(yieldBudgetMs);
+        const generation: number = this.renderGeneration;
+        const yielder: CooperativeYielder = new CooperativeYielder(yieldBudgetMs, (): boolean => this.renderGeneration !== generation);
         try {
             await this.drawer.drawPageAsync(this.graphic, this.graphic.MusicPages[pageNumber - 1], yielder);
             this.renderedPageNumbers.add(pageNumber);
@@ -542,6 +567,12 @@ export class OpenSheetMusicDisplay {
                 elapsedMs: performance.now() - startedAt,
                 yieldCount: yielder.yieldCount,
             };
+        } catch (error) {
+            if (error instanceof RenderSupersededError) {
+                log.debug("[OSMD] renderPageAsync superseded by a synchronous render; skipping stale draw");
+                return;
+            }
+            throw error;
         } finally {
             this.pageRenderAsyncInFlight = false;
         }
@@ -1260,6 +1291,7 @@ export class OpenSheetMusicDisplay {
 
     /** Clears what OSMD has drawn on its canvas. */
     public clear(): void {
+        this.renderGeneration++;
         this.drawer?.clear();
         this.reset(); // without this, resize will draw loaded sheet again
     }
@@ -1747,7 +1779,10 @@ export class OpenSheetMusicDisplay {
                 let backendToDrawOn: VexFlowBackend = this.drawer?.Backends[0];
                 if (backendToDrawOn && this.rules.RestoreCursorAfterRerender && this.cursors[i]) {
                     const newPageNumber: number = this.cursors[i].updateCurrentPage();
-                    backendToDrawOn = this.drawer.Backends[newPageNumber - 1];
+                    // The cursor's page can outnumber the backends after a re-layout that produced fewer
+                    // pages (narrower page fit) -- fall back to the first page instead of creating no cursor
+                    // and then dereferencing it below.
+                    backendToDrawOn = this.drawer.Backends[newPageNumber - 1] ?? backendToDrawOn;
                 }
                 // create new cursor
                 if (backendToDrawOn && backendToDrawOn.getRenderElement()) {
@@ -1758,7 +1793,7 @@ export class OpenSheetMusicDisplay {
                 }
 
                 // restore old cursor state
-                if (this.rules.RestoreCursorAfterRerender) {
+                if (this.rules.RestoreCursorAfterRerender && this.cursors[i]) {
                     this.cursors[i].hidden = hidden;
                     if (previousIterator) {
                         this.cursors[i].iterator = previousIterator;

@@ -124,6 +124,10 @@ export declare class OpenSheetMusicDisplay {
     private lazyScrollTarget;
     /** Whether a {@link renderAsync} call is currently running (re-entrancy guard). */
     private renderAsyncInFlightFlag;
+    /** Bumped by every render()/renderAsync()/clear()/updateGraphic()/load(). An in-flight async render
+     *  compares it to the value it started with and, if a synchronous render slipped in while it was
+     *  parked at a yield, exits quietly instead of drawing into backends that no longer exist. */
+    private renderGeneration;
     /** Render the loaded music sheet to the container. */
     render(): void;
     /** Whether a {@link renderAsync} call is currently running. */

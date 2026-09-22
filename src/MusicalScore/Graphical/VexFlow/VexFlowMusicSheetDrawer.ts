@@ -98,8 +98,18 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             return;
         }
         this.backend = this.backends[page.PageNumber - 1]; // TODO we may need to set this in a couple of other places. this.pageIdx is a bad solution
+        if (!this.backend) {
+            log.warn(`VexFlowMusicSheetDrawer.drawPage: no render backend for page ${page.PageNumber}, skipping it`);
+            this.pageIdx += 1;
+            return;
+        }
         super.drawPage(page);
         this.pageIdx += 1;
+    }
+
+    /** A page is drawable only when a backend was created for its page number (see MusicSheetDrawer.canDrawPage). */
+    protected canDrawPage(page: GraphicalMusicPage): boolean {
+        return this.backends[page.PageNumber - 1] !== undefined;
     }
 
     /** Loading-path async mirror of {@link drawSheet}: performs the same per-page backend prep as the sync

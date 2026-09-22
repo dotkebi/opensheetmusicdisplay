@@ -139,6 +139,78 @@ describe("OpenSheetMusicDisplay renderAsync (loading-path parity)", () => {
         expect(ticks, "event loop rotated during renderAsync").to.be.greaterThan(0);
     });
 
+    // A synchronous render()/updateGraphic() can interleave with renderAsync while it is parked at a
+    // yield (e.g. a host's resize re-flow or density toggle during the initial async render). Before the
+    // supersession guard, the async draw resumed on a drawer whose backends had been cleared and died with
+    // "Cannot read properties of undefined (reading 'getContext')". Now the synchronous render wins and the
+    // async render resolves quietly with identical output.
+    it("resolves quietly when a synchronous render() supersedes it mid-flight, keeping the sync output", async () => {
+        const referenceContainer: HTMLElement = TestUtils.getDivElement(document);
+        const container: HTMLElement = TestUtils.getDivElement(document);
+        const xml: string = getScoreXML();
+
+        const reference: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(referenceContainer, { autoResize: false });
+        await reference.load(xml);
+        reference.render();
+
+        const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(container, { autoResize: false });
+        await osmd.load(xml);
+        const pending: Promise<void> = osmd.renderAsync({ yieldBudgetMs: 0 });
+        // park the async render at its first yield, then slip a synchronous render in
+        await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 0); });
+        expect(osmd.renderAsyncInFlight, "async render parked at a yield").to.equal(true);
+        osmd.render();
+        let error: Error | undefined;
+        try {
+            await pending;
+        } catch (e) {
+            error = e as Error;
+        }
+        expect(error, "superseded renderAsync must not reject").to.equal(undefined);
+        expect(osmd.renderAsyncInFlight).to.equal(false);
+
+        const counts: { notes: number, paths: number, svgs: number, all: number } = countDrawnElements(container);
+        const referenceCounts: { notes: number, paths: number, svgs: number, all: number } = countDrawnElements(referenceContainer);
+        expect(counts.svgs, "svg (page) count").to.equal(referenceCounts.svgs);
+        expect(counts.notes, "drawn stavenote count (no double draw, no missing systems)").to.equal(referenceCounts.notes);
+        expect(counts.all, "total drawn element count").to.equal(referenceCounts.all);
+        // the synchronous render marks its pages drawn; a later page request must not redraw them
+        expect(osmd.isPageRendered(1)).to.equal(true);
+    });
+
+    it("resolves quietly when updateGraphic()+render() (host resize re-flow) supersedes it mid-flight", async () => {
+        const container: HTMLElement = TestUtils.getDivElement(document);
+        const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(container, { autoResize: false });
+        await osmd.load(getScoreXML());
+        const pending: Promise<void> = osmd.renderAsync({ yieldBudgetMs: 0 });
+        await new Promise<void>((resolve: () => void): void => { setTimeout(resolve, 0); });
+        osmd.updateGraphic();
+        osmd.render();
+        const referenceCounts: { notes: number, paths: number, svgs: number, all: number } = countDrawnElements(container);
+        await pending; // must not reject
+        expect(countDrawnElements(container).all, "stale async draw must not add to the sync output").to.equal(referenceCounts.all);
+    });
+
+    it("skips a page whose render backend is missing instead of throwing", async () => {
+        const container: HTMLElement = TestUtils.getDivElement(document);
+        // narrow A4 page so the score spans several pages, drawn lazily one page at a time
+        Object.defineProperty(container, "offsetWidth", { value: 400 });
+        const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(container, { autoResize: false, pageFormat: "A4_P" });
+        await osmd.load(getScoreXML());
+        await osmd.renderAsync({ maxPageCount: 1 });
+        expect(osmd.GraphicSheet.MusicPages.length, "needs a second page for this test").to.be.greaterThan(1);
+        expect(osmd.isPageRendered(2)).to.equal(false);
+        // simulate the backends vanishing underneath the drawer (what a concurrent sync render used to do)
+        (osmd.Drawer as any).Backends.length = 0;
+        let error: Error | undefined;
+        try {
+            await osmd.renderPageAsync(2);
+        } catch (e) {
+            error = e as Error;
+        }
+        expect(error, "missing backend must be skipped, not dereferenced").to.equal(undefined);
+    });
+
     it("guards against re-entrant renderAsync", async () => {
         const container: HTMLElement = TestUtils.getDivElement(document);
         const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(container, { autoResize: false });

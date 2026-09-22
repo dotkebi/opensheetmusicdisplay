@@ -11,6 +11,14 @@
  * frame (rAF/paint) through. This mirrors the Dart port's use of a zero-duration
  * timer over `scheduleMicrotask`.
  */
+/**
+ * Thrown from {@link CooperativeYielder.yieldNow} when the render it drives was superseded while
+ * parked at a yield (a synchronous render()/clear()/updateGraphic()/load() ran in between).
+ * renderAsync/renderPageAsync catch it and return without drawing into backends that no longer exist.
+ */
+export declare class RenderSupersededError extends Error {
+    constructor(message?: string);
+}
 export declare class CooperativeYielder {
     /**
      * Work budget between yields, in milliseconds. ~12ms keeps a chunk inside a
@@ -21,7 +29,9 @@ export declare class CooperativeYielder {
     /** Number of event-loop turns taken so far (diagnostics). */
     yieldCount: number;
     private sinceYieldStart;
-    constructor(budgetMs?: number);
+    /** Optional supersession probe, checked every time control returns from the event loop. */
+    private readonly isSuperseded?;
+    constructor(budgetMs?: number, isSuperseded?: () => boolean);
     private static now;
     get needsYield(): boolean;
     yieldNow(): Promise<void>;

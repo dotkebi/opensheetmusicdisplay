@@ -73,6 +73,11 @@ export declare abstract class MusicSheetDrawer {
     beginDrawPage(page: GraphicalMusicPage): void;
     /** Counterpart of {@link beginDrawPage}. Base implementation is a no-op. */
     endDrawPage(page: GraphicalMusicPage): void;
+    /** Whether {@link beginDrawPage} could select a render target for this page. Subclasses return false
+     *  when the page has no backend (e.g. the backends were cleared by a concurrent synchronous render,
+     *  or a re-layout produced fewer pages than backends were created for); the page is then skipped with
+     *  a warning instead of dereferencing a missing backend. Base implementation: always drawable. */
+    protected canDrawPage(page: GraphicalMusicPage): boolean;
     /**
      * Loading-path async mirror of {@link drawSheet}: identical draw-command output, but yields to the
      * event loop between music systems so frames keep rendering during the first full draw of a large score.

@@ -11,6 +11,19 @@
  * frame (rAF/paint) through. This mirrors the Dart port's use of a zero-duration
  * timer over `scheduleMicrotask`.
  */
+/**
+ * Thrown from {@link CooperativeYielder.yieldNow} when the render it drives was superseded while
+ * parked at a yield (a synchronous render()/clear()/updateGraphic()/load() ran in between).
+ * renderAsync/renderPageAsync catch it and return without drawing into backends that no longer exist.
+ */
+export class RenderSupersededError extends Error {
+    constructor(message: string = "OSMD: async render superseded by a synchronous render") {
+        super(message);
+        this.name = "RenderSupersededError";
+        Object.setPrototypeOf(this, RenderSupersededError.prototype);
+    }
+}
+
 export class CooperativeYielder {
     /**
      * Work budget between yields, in milliseconds. ~12ms keeps a chunk inside a
@@ -24,8 +37,12 @@ export class CooperativeYielder {
 
     private sinceYieldStart: number = CooperativeYielder.now();
 
-    constructor(budgetMs: number = 12) {
+    /** Optional supersession probe, checked every time control returns from the event loop. */
+    private readonly isSuperseded?: () => boolean;
+
+    constructor(budgetMs: number = 12, isSuperseded?: () => boolean) {
         this.budgetMs = budgetMs;
+        this.isSuperseded = isSuperseded;
     }
 
     private static now(): number {
@@ -44,6 +61,12 @@ export class CooperativeYielder {
         await new Promise<void>((resolve: () => void): void => {
             setTimeout(resolve, 0);
         });
+        // A synchronous render can only interleave while we are parked in the timeout above. Abort on
+        // resume, before the caller mutates a graphic that the sync render has already re-laid-out or
+        // draws into a drawer whose backends were cleared (the "reading 'getContext' of undefined" crash).
+        if (this.isSuperseded?.()) {
+            throw new RenderSupersededError();
+        }
         this.sinceYieldStart = CooperativeYielder.now();
     }
 
