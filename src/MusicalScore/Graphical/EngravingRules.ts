@@ -360,6 +360,19 @@ export class EngravingRules {
     public GlissandoStafflineStartYDistanceToNote: number;
     public GlissandoStafflineEndOffset: number;
     public GlissandoDefaultWidth: number;
+    /** Diameter of the dots of a dotted voice leading guide, and line width of a dashed or solid one. */
+    public VoiceLeadingGuideLineWidth: number;
+    /** Distance between the centers of two dots of a dotted voice leading guide. */
+    public VoiceLeadingGuideDotSpacing: number;
+    public VoiceLeadingGuideDashLength: number;
+    public VoiceLeadingGuideDashGap: number;
+    /** Free space between a voice leading guide and the notehead (or its accidental/dots) it points at. */
+    public VoiceLeadingGuideNoteGap: number;
+    /** Distance a voice leading guide keeps from the staffline edge where it is interrupted by a system break. */
+    public VoiceLeadingGuideSystemBreakInset: number;
+    /** A part of a voice leading guide before or after a system break that is shorter than this isn't drawn
+     *  (e.g. when the end note is the first note of its system, there is no room for a line in front of it). */
+    public VoiceLeadingGuideSystemBreakMinimumLength: number;
     public TempoYSpacing: number;
     public InstantaneousTempoTextHeight: number;
     public ContinuousDynamicTextHeight: number;
@@ -479,6 +492,8 @@ export class EngravingRules {
      * the ones across staves. */
     public RenderSlursAcrossStaves: boolean;
     public RenderGlissandi: boolean;
+    /** Whether to render voice leading guides (dotted lines connecting notes of one voice, e.g. across staves). */
+    public RenderVoiceLeadingGuides: boolean;
     public ColoringMode: ColoringMode;
     public ColoringEnabled: boolean;
     public ColorStemsLikeNoteheads: boolean;
@@ -881,6 +896,15 @@ export class EngravingRules {
         this.GlissandoStafflineEndOffset = 1;
         this.GlissandoDefaultWidth = 0.1;
 
+        // Voice leading guides
+        this.VoiceLeadingGuideLineWidth = 0.2;
+        this.VoiceLeadingGuideDotSpacing = 0.42;
+        this.VoiceLeadingGuideDashLength = 0.6;
+        this.VoiceLeadingGuideDashGap = 0.4;
+        this.VoiceLeadingGuideNoteGap = 0.35;
+        this.VoiceLeadingGuideSystemBreakInset = 0.3;
+        this.VoiceLeadingGuideSystemBreakMinimumLength = 1;
+
         // Repetitions
         this.RepetitionAllowFirstMeasureBeginningRepeatBarline = true;
         this.RepetitionEndingLabelHeight = 2.0;
@@ -1007,6 +1031,7 @@ export class EngravingRules {
         this.RenderSlurs = true;
         this.RenderSlursAcrossStaves = true;
         this.RenderGlissandi = true;
+        this.RenderVoiceLeadingGuides = true;
         this.ColoringMode = ColoringMode.XML;
         this.ColoringEnabled = true;
         this.ColorStemsLikeNoteheads = false;

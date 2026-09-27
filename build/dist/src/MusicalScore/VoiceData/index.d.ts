@@ -16,6 +16,7 @@ export * from "./Tuplet";
 export * from "./VerticalSourceStaffEntryContainer";
 export * from "./Voice";
 export * from "./VoiceEntry";
+export * from "./VoiceLeadingGuide";
 export * from "./Instructions";
 export * from "./Note";
 export * from "./NoteType";

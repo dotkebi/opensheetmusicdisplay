@@ -16,6 +16,7 @@ export declare class InstrumentReader {
     private xmlMeasureList;
     private musicSheet;
     private slurReader;
+    private voiceLeadingGuideReader;
     pluginManager: ReaderPluginManager;
     private instrument;
     private voiceGeneratorsDict;

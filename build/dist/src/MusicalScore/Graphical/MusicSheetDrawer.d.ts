@@ -143,6 +143,7 @@ export declare abstract class MusicSheetDrawer {
      */
     protected drawDashes(lyricsDashes: GraphicalLabel[]): void;
     protected drawOctaveShifts(staffLine: StaffLine): void;
+    protected drawVoiceLeadingGuides(musicSystem: MusicSystem): void;
     protected abstract drawPedals(staffLine: StaffLine): void;
     protected abstract drawWavyLines(staffLine: StaffLine): void;
     protected drawStaffLines(staffLine: StaffLine): void;

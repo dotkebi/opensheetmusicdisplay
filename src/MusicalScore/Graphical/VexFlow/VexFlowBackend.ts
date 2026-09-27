@@ -109,6 +109,34 @@ public abstract getContext(): Vex.IRenderContext;
 
   public abstract renderCurve(points: PointF2D[], isSlur?: boolean, startNote?: VexFlowGraphicalNote): Node;
 
+  /**
+   * Renders a dotted or dashed line, given as its single strokes in screen coordinates:
+   * a stroke with identical start and end point is a dot (filled circle with the line width as diameter).
+   * Doesn't depend on dash support of the render context, so SVG and Canvas output are identical.
+   */
+  public renderStrokes(strokes: [PointF2D, PointF2D][], color: string, lineWidth: number, cssClass?: string, id?: string): Node {
+    const ctx: any = this.getContext();
+    ctx.save();
+    const node: Node = ctx.openGroup?.(cssClass, id);
+    ctx.setFillStyle(color);
+    ctx.setStrokeStyle(color);
+    ctx.setLineWidth(lineWidth);
+    for (const [start, stop] of strokes) {
+      ctx.beginPath();
+      if (start.x === stop.x && start.y === stop.y) {
+        ctx.arc(start.x, start.y, lineWidth / 2, 0, Math.PI * 2, false);
+        ctx.fill();
+      } else {
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(stop.x, stop.y);
+        ctx.stroke();
+      }
+    }
+    ctx.closeGroup?.();
+    ctx.restore();
+    return node;
+  }
+
   public abstract renderPath(points: PointF2D[], fill: boolean, id?: string, color?: string): Node;
 
   public abstract getVexflowBackendType(): VF.Renderer.Backends;

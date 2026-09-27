@@ -34,6 +34,8 @@ import { CooperativeYielder } from "../../../Util/CooperativeYielder";
 import { GraphicalUnknownExpression } from "../GraphicalUnknownExpression";
 import { VexFlowPedal } from "./VexFlowPedal";
 import { GraphicalGlissando } from "../GraphicalGlissando";
+import { GraphicalVoiceLeadingGuide } from "../GraphicalVoiceLeadingGuide";
+import { vexFlowVoiceLeadingGuideAnchor } from "./VexFlowVoiceLeadingGuideAnchor";
 import { VexFlowGlissando } from "./VexFlowGlissando";
 import { VexFlowGraphicalNote } from "./VexFlowGraphicalNote";
 import { SvgVexFlowBackend } from "./SvgVexFlowBackend";
@@ -270,6 +272,24 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                 vfTie.setContext(context);
                 vfTie.draw();
             }
+        }
+    }
+
+    /** Draws the voice leading guides of a system (visual lines from notehead to notehead, see VoiceLeadingGuide).
+     *  Their lines are calculated here, at draw time, when both stafflines of a guide have their final positions. */
+    protected drawVoiceLeadingGuides(musicSystem: MusicSystem): void {
+        musicSystem.VoiceLeadingGuides = GraphicalVoiceLeadingGuide.calculateForSystem(
+            musicSystem, this.rules, vexFlowVoiceLeadingGuideAnchor);
+        for (const line of musicSystem.VoiceLeadingGuides) {
+            // lazy horizontal: a line belongs to the batch that draws its right end
+            if (!this.lazyDrawsAtX(Math.max(line.Start.x, line.End.x))) {
+                continue;
+            }
+            const strokes: [PointF2D, PointF2D][] = line.calculateStrokes(this.rules).map(
+                ([start, stop]: [PointF2D, PointF2D]): [PointF2D, PointF2D] =>
+                    [this.applyScreenTransformation(start), this.applyScreenTransformation(stop)]);
+            line.SVGElement = this.backend.renderStrokes(
+                strokes, line.Color ?? this.rules.DefaultColorMusic ?? "#000000", line.Width * unitInPixels, "voice-leading-guide");
         }
     }
 

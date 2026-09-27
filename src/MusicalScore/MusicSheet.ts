@@ -88,6 +88,8 @@ export class MusicSheet /*implements ISettableMusicSheet, IComparable<MusicSheet
     public MeasureWidthFactor: number = 1.0;
     /** Ignore tempo instructions like metronome numbers, e.g. because a bpm was set in the UI */
     public IgnoreTempoInstructions: boolean = false;
+    /** Whether any note has a [[VoiceLeadingGuide]]. Lets the drawer skip the search in all other sheets. */
+    public HasVoiceLeadingGuides: boolean = false;
 
     /**
      * Get the global index within the music sheet for this staff.

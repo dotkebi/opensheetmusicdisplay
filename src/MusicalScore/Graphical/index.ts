@@ -16,6 +16,7 @@ export * from "./GraphicalComment";
 export * from "./GraphicalContinuousDynamicExpression";
 export * from "./GraphicalCurve";
 export * from "./GraphicalGlissando";
+export * from "./GraphicalVoiceLeadingGuide";
 export * from "./GraphicalInstantaneousDynamicExpression";
 export * from "./GraphicalInstantaneousTempoExpression";
 export * from "./GraphicalLabel";

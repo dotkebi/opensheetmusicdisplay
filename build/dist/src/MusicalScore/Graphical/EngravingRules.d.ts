@@ -350,6 +350,19 @@ export declare class EngravingRules {
     GlissandoStafflineStartYDistanceToNote: number;
     GlissandoStafflineEndOffset: number;
     GlissandoDefaultWidth: number;
+    /** Diameter of the dots of a dotted voice leading guide, and line width of a dashed or solid one. */
+    VoiceLeadingGuideLineWidth: number;
+    /** Distance between the centers of two dots of a dotted voice leading guide. */
+    VoiceLeadingGuideDotSpacing: number;
+    VoiceLeadingGuideDashLength: number;
+    VoiceLeadingGuideDashGap: number;
+    /** Free space between a voice leading guide and the notehead (or its accidental/dots) it points at. */
+    VoiceLeadingGuideNoteGap: number;
+    /** Distance a voice leading guide keeps from the staffline edge where it is interrupted by a system break. */
+    VoiceLeadingGuideSystemBreakInset: number;
+    /** A part of a voice leading guide before or after a system break that is shorter than this isn't drawn
+     *  (e.g. when the end note is the first note of its system, there is no room for a line in front of it). */
+    VoiceLeadingGuideSystemBreakMinimumLength: number;
     TempoYSpacing: number;
     InstantaneousTempoTextHeight: number;
     ContinuousDynamicTextHeight: number;
@@ -470,6 +483,8 @@ export declare class EngravingRules {
      * the ones across staves. */
     RenderSlursAcrossStaves: boolean;
     RenderGlissandi: boolean;
+    /** Whether to render voice leading guides (dotted lines connecting notes of one voice, e.g. across staves). */
+    RenderVoiceLeadingGuides: boolean;
     ColoringMode: ColoringMode;
     ColoringEnabled: boolean;
     ColorStemsLikeNoteheads: boolean;

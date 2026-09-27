@@ -60,6 +60,8 @@ export declare class MusicSheet {
     MeasureWidthFactor: number;
     /** Ignore tempo instructions like metronome numbers, e.g. because a bpm was set in the UI */
     IgnoreTempoInstructions: boolean;
+    /** Whether any note has a [[VoiceLeadingGuide]]. Lets the drawer skip the search in all other sheets. */
+    HasVoiceLeadingGuides: boolean;
     /**
      * Get the global index within the music sheet for this staff.
      * @param staff

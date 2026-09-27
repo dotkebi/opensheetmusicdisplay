@@ -1,3 +1,4 @@
+import { GraphicalVoiceLeadingGuide } from "./GraphicalVoiceLeadingGuide";
 import {StaffLine} from "./StaffLine";
 import {Instrument} from "../Instrument";
 import {BoundingBox} from "./BoundingBox";
@@ -45,6 +46,9 @@ export abstract class MusicSystem extends GraphicalObject {
     protected graphicalComments: GraphicalComment[] = [];
     protected systemLines: SystemLine[] = [];
     public breaksPage: boolean = false;
+    /** The voice leading guide lines of this system, as of its last draw (they are calculated at draw time,
+     *  when all stafflines have their final positions). */
+    public VoiceLeadingGuides: GraphicalVoiceLeadingGuide[] = [];
 
     constructor(id: number) {
         super();

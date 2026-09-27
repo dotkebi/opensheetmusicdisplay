@@ -56,6 +56,9 @@ export declare class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
     private lazyDrawsSlur;
     private drawGlissandi;
     private drawGlissando;
+    /** Draws the voice leading guides of a system (visual lines from notehead to notehead, see VoiceLeadingGuide).
+     *  Their lines are calculated here, at draw time, when both stafflines of a guide have their final positions. */
+    protected drawVoiceLeadingGuides(musicSystem: MusicSystem): void;
     private drawSlur;
     protected drawMeasure(measure: VexFlowMeasure): void;
     protected drawBuzzRolls(staffEntry: GraphicalStaffEntry, newBuzzRollId: any): number;

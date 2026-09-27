@@ -8,3 +8,4 @@ export * from "./RepetitionCalculator";
 export * from "./RepetitionInstructionReader";
 export * from "./SlurReader";
 export * from "./TemposCalculator";
+export * from "./VoiceLeadingGuideReader";

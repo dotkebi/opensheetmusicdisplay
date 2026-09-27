@@ -1,3 +1,4 @@
+import { GraphicalVoiceLeadingGuide } from "./GraphicalVoiceLeadingGuide";
 import { StaffLine } from "./StaffLine";
 import { Instrument } from "../Instrument";
 import { Fraction } from "../../Common/DataObjects/Fraction";
@@ -37,6 +38,9 @@ export declare abstract class MusicSystem extends GraphicalObject {
     protected graphicalComments: GraphicalComment[];
     protected systemLines: SystemLine[];
     breaksPage: boolean;
+    /** The voice leading guide lines of this system, as of its last draw (they are calculated at draw time,
+     *  when all stafflines have their final positions). */
+    VoiceLeadingGuides: GraphicalVoiceLeadingGuide[];
     constructor(id: number);
     get Parent(): GraphicalMusicPage;
     set Parent(value: GraphicalMusicPage);

@@ -47,6 +47,12 @@ export declare abstract class VexFlowBackend {
     abstract renderRectangle(rectangle: RectangleF2D, styleId: number, colorHex: string, alpha: number): Node;
     abstract renderLine(start: PointF2D, stop: PointF2D, color: string, lineWidth: number, id?: string): Node;
     abstract renderCurve(points: PointF2D[], isSlur?: boolean, startNote?: VexFlowGraphicalNote): Node;
+    /**
+     * Renders a dotted or dashed line, given as its single strokes in screen coordinates:
+     * a stroke with identical start and end point is a dot (filled circle with the line width as diameter).
+     * Doesn't depend on dash support of the render context, so SVG and Canvas output are identical.
+     */
+    renderStrokes(strokes: [PointF2D, PointF2D][], color: string, lineWidth: number, cssClass?: string, id?: string): Node;
     abstract renderPath(points: PointF2D[], fill: boolean, id?: string, color?: string): Node;
     abstract getVexflowBackendType(): VF.Renderer.Backends;
     /** The general type of backend: Canvas or SVG.

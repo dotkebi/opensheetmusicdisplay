@@ -14,6 +14,7 @@ import { NoteType } from "./NoteType";
 import { SourceMeasure } from "./SourceMeasure";
 import { TechnicalInstruction } from "./Instructions";
 import { Glissando } from "../../MusicalScore/VoiceData/Glissando";
+import { VoiceLeadingGuide } from "./VoiceLeadingGuide";
 /**
  * Represents a single pitch with a duration (length)
  */
@@ -121,6 +122,8 @@ export declare class Note {
     /** All tuplets this note is part of, from outermost to innermost (for nested tuplets). Usually a single tuplet.
      *  NoteTuplet stays the innermost one for backwards compatibility; this list adds the enclosing tuplet(s). */
     NoteTuplets: Tuplet[];
+    /** Visual voice leading guides that start or end on this note. No effect on playback. */
+    VoiceLeadingGuides: VoiceLeadingGuide[];
     get NoteGlissando(): Glissando;
     set NoteGlissando(value: Glissando);
     get NoteTie(): Tie;

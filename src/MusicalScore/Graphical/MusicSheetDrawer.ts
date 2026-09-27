@@ -513,6 +513,10 @@ export abstract class MusicSheetDrawer {
                 }
             }
         }
+        if (this.rules.RenderVoiceLeadingGuides && this.graphicalMusicSheet.ParentMusicSheet.HasVoiceLeadingGuides) {
+            // after all stafflines of the system: a guide typically connects two of them
+            this.drawVoiceLeadingGuides(musicSystem);
+        }
         for (const systemLine of musicSystem.SystemLines) {
             this.drawSystemLineObject(systemLine);
         }
@@ -650,6 +654,10 @@ export abstract class MusicSheetDrawer {
 
     protected drawOctaveShifts(staffLine: StaffLine): void {
         return;
+    }
+
+    protected drawVoiceLeadingGuides(musicSystem: MusicSystem): void {
+        // implemented by subclass (VexFlowMusicSheetDrawer)
     }
 
     protected abstract drawPedals(staffLine: StaffLine): void;

@@ -22,6 +22,7 @@ import {ChordSymbolReader} from "./MusicSymbolModules/ChordSymbolReader";
 import {ExpressionReader} from "./MusicSymbolModules/ExpressionReader";
 import {RepetitionInstructionReader} from "./MusicSymbolModules/RepetitionInstructionReader";
 import {SlurReader} from "./MusicSymbolModules/SlurReader";
+import {VoiceLeadingGuideReader} from "./MusicSymbolModules/VoiceLeadingGuideReader";
 import {StemDirectionType} from "../VoiceData/VoiceEntry";
 import {NoteType, NoteTypeHandler} from "../VoiceData/NoteType";
 import { SystemLinesEnumHelper } from "../Graphical/SystemLinesEnum";
@@ -63,6 +64,7 @@ export class InstrumentReader {
       }
       this.createExpressionGenerators(instrument.Staves.length);
       this.slurReader = new SlurReader(this.musicSheet);
+      this.voiceLeadingGuideReader = new VoiceLeadingGuideReader(this.musicSheet);
       this.pluginManager = pluginManager;
   }
 
@@ -70,6 +72,7 @@ export class InstrumentReader {
   private xmlMeasureList: IXmlElement[];
   private musicSheet: MusicSheet;
   private slurReader: SlurReader;
+  private voiceLeadingGuideReader: VoiceLeadingGuideReader;
   public pluginManager: ReaderPluginManager;
   private instrument: Instrument;
   private voiceGeneratorsDict: { [n: number]: VoiceGenerator } = {};
@@ -673,6 +676,7 @@ export class InstrumentReader {
         this.voiceGeneratorsDict[voiceId] = voiceGenerator;
         this.staffMainVoiceGeneratorDict[staffId] = voiceGenerator;
       }
+      voiceGenerator.voiceLeadingGuideReader = this.voiceLeadingGuideReader;
     }
     return voiceGenerator;
   }

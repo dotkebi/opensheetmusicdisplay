@@ -7,12 +7,15 @@ import { Fraction } from "../../Common/DataObjects/Fraction";
 import { IXmlElement } from "../../Common/FileIO/Xml";
 import { Staff } from "../VoiceData/Staff";
 import { SlurReader } from "./MusicSymbolModules/SlurReader";
+import { VoiceLeadingGuideReader } from "./MusicSymbolModules/VoiceLeadingGuideReader";
 import { NoteType } from "../VoiceData/NoteType";
 import { ReaderPluginManager } from "./ReaderPluginManager";
 export declare class VoiceGenerator {
     constructor(pluginManager: ReaderPluginManager, staff: Staff, voiceId: number, slurReader: SlurReader, mainVoice?: Voice);
     pluginManager: ReaderPluginManager;
     private slurReader;
+    /** Shared by all voices of the instrument, set by InstrumentReader. */
+    voiceLeadingGuideReader: VoiceLeadingGuideReader;
     private lyricsReader;
     private articulationReader;
     private musicSheet;

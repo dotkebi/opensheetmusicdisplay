@@ -25,6 +25,7 @@ import { IXmlAttribute } from "../../Common/FileIO/Xml";
 import { CollectionUtil } from "../../Util/CollectionUtil";
 import { ArticulationReader } from "./MusicSymbolModules/ArticulationReader";
 import { SlurReader } from "./MusicSymbolModules/SlurReader";
+import { VoiceLeadingGuideReader } from "./MusicSymbolModules/VoiceLeadingGuideReader";
 import { Notehead } from "../VoiceData/Notehead";
 import { Arpeggio, ArpeggioType } from "../VoiceData/Arpeggio";
 import { NoteType, NoteTypeHandler } from "../VoiceData/NoteType";
@@ -53,6 +54,8 @@ export class VoiceGenerator {
 
   public pluginManager: ReaderPluginManager; // currently only used in audio player
   private slurReader: SlurReader;
+  /** Shared by all voices of the instrument, set by InstrumentReader. */
+  public voiceLeadingGuideReader: VoiceLeadingGuideReader;
   private lyricsReader: LyricsReader;
   private articulationReader: ArticulationReader;
   private musicSheet: MusicSheet;
@@ -158,6 +161,11 @@ export class VoiceGenerator {
           if (glissElements.length > 0) {
             this.slurReader.addSlur(glissElements, this.currentNote);
           }
+        }
+        // read voice leading guides (visual only, see VoiceLeadingGuide)
+        const otherNotationElements: IXmlElement[] = notationNode.elements("other-notation");
+        if (this.voiceLeadingGuideReader && otherNotationElements.length > 0) {
+          this.voiceLeadingGuideReader.addGuides(otherNotationElements, this.currentNote);
         }
         // read Tuplets
         const tupletElements: IXmlElement[] = notationNode.elements("tuplet");
