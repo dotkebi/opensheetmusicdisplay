@@ -806,6 +806,12 @@ export class VexFlowMeasure extends GraphicalMeasure {
                     let relPosY: number = 0;
                     if (gNote.parentVoiceEntry.parentVoiceEntry.StemDirection === StemDirectionType.Up && vfnote.getDuration() !== "w") {
                         relPosY += 3.5; // about 3.5 lines too high. this seems to be related to the default stem height, not actual stem height.
+                        if (gNote.parentVoiceEntry.parentVoiceEntry.IsGrace) {
+                            // A grace note is drawn at a smaller scale, so its stem is shorter than the default
+                            // 3.5 lines; its voice entry's box (whose top is the stem tip) would otherwise put the
+                            // note head about a line too low, e.g. a slur below the grace notes landing on the staff.
+                            relPosY = VexFlowMeasure.graceStemLength(vfnote, relPosY);
+                        }
                         // alternate calculation using actual stem height: somehow wildly varying.
                         // if (notes.length > 1) {
                         //     const stemHeight: number = vfnote.getStem().getHeight();
@@ -823,6 +829,19 @@ export class VexFlowMeasure extends GraphicalMeasure {
                 }
             }
         }
+    }
+
+    /** Length of a grace note's stem in staff lines, from Vexflow's stem extents; `fallback` if unavailable. */
+    private static graceStemLength(vfnote: VF.StemmableNote, fallback: number): number {
+        try {
+            const extents: {topY: number, baseY: number} = (vfnote as any).getStemExtents?.();
+            if (extents && Number.isFinite(extents.topY) && Number.isFinite(extents.baseY)) {
+                return Math.abs(extents.baseY - extents.topY) / unitInPixels;
+            }
+        } catch (e) {
+            // no stem (e.g. unformatted note): keep the default
+        }
+        return fallback;
     }
 
     /**

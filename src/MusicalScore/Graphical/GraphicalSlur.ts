@@ -755,15 +755,35 @@ export class GraphicalSlur extends GraphicalCurve {
             } else { endY += rules.SlursStartingAtSameStaffEntryYOffset; }
         }
 
+        // Keep the curve's end points out of the middle of the staff, but only when they
+        // actually fall inside it. A point that already lies entirely beyond the staff on the
+        // slur's side (e.g. a slur below grace notes that sit above the staff) must stay at the
+        // note; pulling it to the staff would draw the slur across the staff lines, far from the notes.
         if (this.placement === PlacementEnum.Above) {
-            startY = Math.min(startY, 1.5);
-            endY = Math.min(endY, 1.5);
+            startY = GraphicalSlur.clampEndPointAbove(startY, staffLine.StaffHeight);
+            endY = GraphicalSlur.clampEndPointAbove(endY, staffLine.StaffHeight);
         } else {
-            startY = Math.max(startY, staffLine.StaffHeight - 1.5);
-            endY = Math.max(endY, staffLine.StaffHeight - 1.5);
+            startY = GraphicalSlur.clampEndPointBelow(startY, staffLine.StaffHeight);
+            endY = GraphicalSlur.clampEndPointBelow(endY, staffLine.StaffHeight);
         }
 
         return {startX, startY, endX, endY};
+    }
+
+    /** Y of a slur-above end point: no lower than 1.5 while the point is within the staff. */
+    private static clampEndPointAbove(y: number, staffHeight: number): number {
+        if (y > staffHeight) {
+            return y; // completely below the staff: stay at the note
+        }
+        return Math.min(y, 1.5);
+    }
+
+    /** Y of a slur-below end point: no higher than StaffHeight - 1.5 while the point is within the staff. */
+    private static clampEndPointBelow(y: number, staffHeight: number): number {
+        if (y < 0) {
+            return y; // completely above the staff: stay at the note
+        }
+        return Math.max(y, staffHeight - 1.5);
     }
 
     /**

@@ -2454,6 +2454,7 @@ export abstract class MusicSheetCalculator {
             }
 
             // const addAtLastList: GraphicalObject[] = [];
+            const metronomeMarks: InstantaneousTempoExpression[] = [];
             for (const entry of multiTempoExpression.EntriesList) {
                 let textAlignment: TextAlignmentEnum = this.rules.TempoExpressionTextAlignment;
                 if (this.rules.CompactMode) {
@@ -2488,10 +2489,10 @@ export abstract class MusicSheetCalculator {
                         // all graphical expression creations should be in one place and have basic stuff like labels, lines, ...
                         // in their constructor
                     }
-                    // in case of metronome mark:
+                    // in case of metronome mark: created after the other entries' labels, see below
                     if (this.rules.MetronomeMarksDrawn) {
                         if ((entry.Expression as InstantaneousTempoExpression).TempoType === TempoType.metronomeMark) {
-                            this.createMetronomeMark((entry.Expression as InstantaneousTempoExpression));
+                            metronomeMarks.push(entry.Expression as InstantaneousTempoExpression);
                             continue;
                         }
                     }
@@ -2507,6 +2508,9 @@ export abstract class MusicSheetCalculator {
                     //   The behavior difference rather affects playback (e.g. ritardando, which gradually changes tempo)
                     staffLine.AbstractExpressions.push(new GraphicalInstantaneousTempoExpression(entry.Expression, graphLabel));
                 }
+            }
+            for (const metronomeExpression of metronomeMarks) {
+                this.createMetronomeMark(metronomeExpression);
             }
         }
     }
@@ -4402,13 +4406,35 @@ export abstract class MusicSheetCalculator {
         }
     }
 
+    private static hasMetronomeMarkEntry(multiTempoExpression: MultiTempoExpression): boolean {
+        for (const entry of multiTempoExpression.EntriesList) {
+            if (entry.Expression instanceof InstantaneousTempoExpression &&
+                entry.Expression.TempoType === TempoType.metronomeMark) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private calculateTempoExpressions(): void {
         const maxIndex: number = Math.min(this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures.length - 1, this.rules.MaxMeasureToDrawIndex);
         const minIndex: number = this.rules.MinMeasureToDrawIndex;
         for (let i: number = minIndex; i <= maxIndex; i++) {
             const sourceMeasure: SourceMeasure = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures[i];
-            for (let j: number = 0; j < sourceMeasure.TempoExpressions.length; j++) {
-                this.calculateTempoExpressionsForMultiTempoExpression(sourceMeasure, sourceMeasure.TempoExpressions[j], i);
+            // Place tempo words (e.g. "Andantino") before metronome marks: the mark is lifted above
+            // whatever the skyline holds under it (see createMetronomeMark), so the words must be in
+            // the skyline first, or the two end up on the same line.
+            const withoutMetronomeMark: MultiTempoExpression[] = [];
+            const withMetronomeMark: MultiTempoExpression[] = [];
+            for (const multiTempoExpression of sourceMeasure.TempoExpressions) {
+                if (MusicSheetCalculator.hasMetronomeMarkEntry(multiTempoExpression)) {
+                    withMetronomeMark.push(multiTempoExpression);
+                } else {
+                    withoutMetronomeMark.push(multiTempoExpression);
+                }
+            }
+            for (const multiTempoExpression of withoutMetronomeMark.concat(withMetronomeMark)) {
+                this.calculateTempoExpressionsForMultiTempoExpression(sourceMeasure, multiTempoExpression, i);
             }
         }
     }

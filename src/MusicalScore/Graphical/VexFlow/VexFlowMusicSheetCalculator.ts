@@ -1041,7 +1041,26 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       // }
       // console.log('max skyline: ' + maxSkylineBeginning);
     }
-    const skyline: number[] = this.graphicalMusicSheet.MeasureList[0][0].ParentStaffLine?.SkyLine;
+    const staffLine: StaffLine = vfMeasure.ParentStaffLine ?? this.graphicalMusicSheet.MeasureList[0][0].ParentStaffLine;
+    const skyline: number[] = staffLine?.SkyLine;
+    // Vexflow draws the mark at the stave's top text line, i.e. its baseline sits 2 lines above the
+    // staff plus yShift; the note head reaches about half a line below the baseline and the stem
+    // about 2.5 lines above it. Tempo words placed earlier (calculateTempoExpressions places them
+    // before any metronome mark) are already in the skyline, so lift the mark until it clears them.
+    const markBaselineOffset: number = -2;
+    const markBottomBelowBaseline: number = 0.5;
+    const markTopAboveBaseline: number = 2.5;
+    const markWidthEstimate: number = 8; // "♩. = 120", generous
+    const markStartX: number = Math.max(0, vfMeasure.PositionAndShape.RelativePosition.x +
+      (firstMetronomeMark ? this.rules.MetronomeMarkXShift : 0));
+    const markEndX: number = vfMeasure.PositionAndShape.RelativePosition.x + vfMeasure.beginInstructionsWidth + markWidthEstimate;
+    if (staffLine?.SkyBottomLineCalculator && markEndX > markStartX) {
+      const skylineMin: number = staffLine.SkyBottomLineCalculator.getSkyLineMinInRange(markStartX, markEndX);
+      if (Number.isFinite(skylineMin)) {
+        const maxYShift: number = skylineMin - this.rules.TempoYSpacing - markBaselineOffset - markBottomBelowBaseline;
+        yShift = Math.min(yShift, maxYShift);
+      }
+    }
 
     if (metronomeExpression.metronomeNoteGroupLeft && metronomeExpression.metronomeNoteGroupRight) {
       // Complex metronome mark (note equation, e.g. swing notation)
@@ -1072,10 +1091,18 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     );
     vfMeasure.hasMetronomeMark = true;
     if (skyline) {
-      // TODO calculate bounding box of metronome mark instead of hacking skyline to fix lyricist collision
-      skyline[0] = Math.min(skyline[0], -4.5 + yShift);
+      // Record the mark's top in the skyline over its horizontal extent so later labels
+      // (lyricist, other expressions) stay clear of it.
+      // somehow this is called repeatedly in Clementi, so Math.min instead of -=
+      const markTop: number = yShift + markBaselineOffset - markTopAboveBaseline;
+      const samplingUnit: number = staffLine.SkyBottomLineCalculator.SamplingUnit;
+      const startIndex: number = Math.max(0, Math.floor(markStartX * samplingUnit));
+      const endIndex: number = Math.min(skyline.length, Math.ceil(markEndX * samplingUnit));
+      for (let i: number = startIndex; i < endIndex; i++) {
+        skyline[i] = Math.min(skyline[i], markTop);
+      }
+      skyline[0] = Math.min(skyline[0], markTop);
     }
-    // somehow this is called repeatedly in Clementi, so skyline[0] = Math.min instead of -=
   }
 
   /** Convert MetronomeNoteGroup data into the format expected by VexFlow's StaveTempo.drawNoteEquation(). */
