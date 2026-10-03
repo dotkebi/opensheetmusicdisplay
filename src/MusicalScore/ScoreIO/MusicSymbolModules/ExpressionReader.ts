@@ -743,6 +743,10 @@ export class ExpressionReader {
             // <direction-type> siblings (for example whitespace words + wedge).
         }
     }
+    /** The first line of a (possibly multi-line) <words> text, trimmed. */
+    private static firstTextLine(text: string): string {
+        return text.split(/[\r\n]+/)[0].trim();
+    }
     private readNumber(node: IXmlElement): number {
         let numberXml: number = 1; // default value
         const numberStringXml: string = node.attribute("number")?.value;
@@ -903,8 +907,13 @@ export class ExpressionReader {
                                        fontStyle: FontStyles,
                                        fontColor: string,
                                        defaultYXml: number = undefined): boolean {
-        const isInstantaneousTempo: boolean = InstantaneousTempoExpression.isInputStringInstantaneousTempo(stringTrimmed);
-        const isContinuousTempo: boolean = ContinuousTempoExpression.isInputStringContinuousTempo(stringTrimmed);
+        // A multi-line <words> text is a tempo instruction only when its first line is one.
+        // "La seconda volta\nmolto ritenuto" is a performance note that merely contains a tempo word
+        // in its second line; classifying it as a tempo expression drew it on the first staff with
+        // the tempo font and ignored its <staff> and placement.
+        const tempoClassificationString: string = ExpressionReader.firstTextLine(stringTrimmed);
+        const isInstantaneousTempo: boolean = InstantaneousTempoExpression.isInputStringInstantaneousTempo(tempoClassificationString);
+        const isContinuousTempo: boolean = ContinuousTempoExpression.isInputStringContinuousTempo(tempoClassificationString);
         if (isInstantaneousTempo || isContinuousTempo) {
             // first check if there is already a tempo expression with the same function
             if (currentMeasure.TempoExpressions.length > 0) {
