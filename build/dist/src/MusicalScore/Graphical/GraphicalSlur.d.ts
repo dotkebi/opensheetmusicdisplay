@@ -53,6 +53,10 @@ export declare class GraphicalSlur extends GraphicalCurve {
      * @param skyBottomLineCalculator
      */
     private calculateStartAndEnd;
+    /** Y of a slur-above end point: no lower than 1.5 while the point is within the staff. */
+    private static clampEndPointAbove;
+    /** Y of a slur-below end point: no higher than StaffHeight - 1.5 while the point is within the staff. */
+    private static clampEndPointBelow;
     /**
      * This method calculates the placement of the Curve.
      * @param skyBottomLineCalculator

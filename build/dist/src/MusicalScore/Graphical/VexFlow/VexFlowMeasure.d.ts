@@ -133,6 +133,8 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
     draw(ctx: Vex.IRenderContext): void;
     format(): void;
     correctNotePositions(): void;
+    /** Length of a grace note's stem in staff lines, from Vexflow's stem extents; `fallback` if unavailable. */
+    private static graceStemLength;
     /**
      * Returns all the voices that are present in this measure
      */

@@ -412,6 +412,7 @@ export declare abstract class MusicSheetCalculator {
     private getFirstRightNotNullStaffEntryFromContainer;
     private calculateWordRepetitionInstructions;
     private calculateRepetitionEndings;
+    private static hasMetronomeMarkEntry;
     private calculateTempoExpressions;
     private calculateRehearsalMarks;
     protected calculateRehearsalMark(measure: SourceMeasure): void;
