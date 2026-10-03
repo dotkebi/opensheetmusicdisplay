@@ -4062,6 +4062,7 @@ export abstract class MusicSheetCalculator {
         // find endstaffEntry and staffLine
         let endStaffEntry: GraphicalStaffEntry = undefined;
         let endStaffLine: StaffLine = undefined;
+        let nextLyricStaffEntry: GraphicalStaffEntry = undefined; // the staff entry of the following syllable, if any
         const staffIndex: number = startStaffEntry.parentMeasure.ParentStaff.idInMusicSheet;
         if (!startStaffEntry.parentVerticalContainer) {
             // shouldn't happen since calculateVerticalContainersList covers all measure.staffEntries,
@@ -4079,6 +4080,7 @@ export abstract class MusicSheetCalculator {
                 break;
             }
             if (gse.LyricsEntries.length > 0) {
+                nextLyricStaffEntry = gse;
                 break;
             }
             endStaffEntry = gse;
@@ -4090,20 +4092,25 @@ export abstract class MusicSheetCalculator {
         if (!endStaffEntry || !endStaffLine) {
             return;
         }
+        // start after the label's visible text. The label is offset from its staff entry
+        // (e.g. by -1 for optically left-aligned lyrics), so its RelativePosition.x counts too.
+        const labelBox: BoundingBox = lyricEntry.GraphicalLabel.PositionAndShape;
+        const labelRightX: number = labelBox.RelativePosition.x + labelBox.BorderMarginRight;
         // if on the same StaffLine
         if (startStaffLine === endStaffLine && endStaffEntry.parentMeasure.ParentStaffLine) {
             // start- and End margins from the text Labels
             const startX: number = startStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
                 startStaffEntry.PositionAndShape.RelativePosition.x +
-                lyricEntry.GraphicalLabel.PositionAndShape.BorderMarginRight;
+                labelRightX;
             // + startStaffLine.PositionAndShape.AbsolutePosition.x; // doesn't work, done in drawer
-            const endX: number = endStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
+            let endX: number = endStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
                 endStaffEntry.PositionAndShape.RelativePosition.x +
                 endStaffEntry.PositionAndShape.BorderMarginRight;
             // + endStaffLine.PositionAndShape.AbsolutePosition.x; // doesn't work, done in drawer
-            // TODO maybe add half-width of following note.
-            // though we don't have the vexflow note's bbox yet and extend layouting is unconstrained,
-            // we have more room for spacing without it.
+            endX = this.extendLyricLineToMinimumLength(startX, endX, nextLyricStaffEntry, startStaffLine);
+            if (endX <= startX) {
+                return; // no room at all: a zero-length line would only draw a dot
+            }
             // needed in order to line up with the Label's text bottom line (is the y position of the underscore)
             startY -= lyricEntry.GraphicalLabel.PositionAndShape.Size.height / 4;
             // create a Line (as underscore after the LyricLabel's End)
@@ -4113,7 +4120,7 @@ export abstract class MusicSheetCalculator {
             const lastMeasureBb: BoundingBox = startStaffLine.Measures[startStaffLine.Measures.length - 1].PositionAndShape;
             const startX: number = startStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
                 startStaffEntry.PositionAndShape.RelativePosition.x +
-                lyricEntry.GraphicalLabel.PositionAndShape.BorderMarginRight;
+                labelRightX;
             const endX: number = lastMeasureBb.RelativePosition.x +
                 lastMeasureBb.Size.width;
             // needed in order to line up with the Label's text bottom line
@@ -4145,6 +4152,31 @@ export abstract class MusicSheetCalculator {
      * @param end
      * @param y
      */
+    /**
+     * Keeps a lyric extend line readable when the last note it spans sits under the syllable itself
+     * (e.g. a tied sixteenth right after the syllable's note). The line then reaches toward the next
+     * syllable instead, up to EngravingRules.LyricExtendMinimumLength, but never into its label.
+     * Lines that are already long enough are returned unchanged.
+     */
+    private extendLyricLineToMinimumLength(startX: number, endX: number, nextLyricStaffEntry: GraphicalStaffEntry, staffLine: StaffLine): number {
+        const minimumLength: number = this.rules.LyricExtendMinimumLength;
+        if (!(minimumLength > 0) || endX - startX >= minimumLength) {
+            return endX;
+        }
+        let limitX: number = staffLine.PositionAndShape.Size.width;
+        if (nextLyricStaffEntry?.parentMeasure.ParentStaffLine === staffLine) {
+            let nextLabelLeft: number = Number.MAX_VALUE;
+            for (const nextEntry of nextLyricStaffEntry.LyricsEntries) {
+                const nextBox: BoundingBox = nextEntry.GraphicalLabel.PositionAndShape;
+                nextLabelLeft = Math.min(nextLabelLeft, nextBox.RelativePosition.x + nextBox.BorderMarginLeft);
+            }
+            limitX = nextLyricStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
+                nextLyricStaffEntry.PositionAndShape.RelativePosition.x +
+                nextLabelLeft - this.rules.HorizontalBetweenLyricsDistance;
+        }
+        return Math.max(endX, Math.min(startX + minimumLength, limitX));
+    }
+
     private calculateSingleLyricWordWithUnderscore(staffLine: StaffLine, startX: number, endX: number, y: number): void {
         const lineStart: PointF2D = new PointF2D(startX, y);
         const lineEnd: PointF2D = new PointF2D(endX, y);

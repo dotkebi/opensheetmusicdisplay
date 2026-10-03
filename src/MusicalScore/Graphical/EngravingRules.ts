@@ -410,6 +410,8 @@ export class EngravingRules {
     public WedgeLineWidth: number;
     public TupletLineWidth: number;
     public LyricUnderscoreLineWidth: number;
+    /** Minimum length of a lyric extend line. When the last melisma note sits under the syllable, the line reaches toward the next syllable instead. */
+    public LyricExtendMinimumLength: number;
     public SystemThinLineWidth: number;
     public SystemBoldLineWidth: number;
     public SystemRepetitionEndingLineWidth: number;
@@ -978,6 +980,7 @@ export class EngravingRules {
         this.WedgeLineWidth = 0.12;
         this.TupletLineWidth = 0.12;
         this.LyricUnderscoreLineWidth = 0.12;
+        this.LyricExtendMinimumLength = 1.5;
         this.SystemThinLineWidth = 0.12;
         this.SystemBoldLineWidth = EngravingRules.unit / 2.0;
         this.SystemRepetitionEndingLineWidth = 0.12;
