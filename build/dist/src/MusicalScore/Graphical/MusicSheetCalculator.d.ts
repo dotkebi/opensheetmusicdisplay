@@ -386,6 +386,13 @@ export declare abstract class MusicSheetCalculator {
      * @param end
      * @param y
      */
+    /**
+     * Keeps a lyric extend line readable when the last note it spans sits under the syllable itself
+     * (e.g. a tied sixteenth right after the syllable's note). The line then reaches toward the next
+     * syllable instead, up to EngravingRules.LyricExtendMinimumLength, but never into its label.
+     * Lines that are already long enough are returned unchanged.
+     */
+    private extendLyricLineToMinimumLength;
     private calculateSingleLyricWordWithUnderscore;
     /**
      * This method calculates two Dashes for a LyricWord, positioned at the the two ends of the given distance.

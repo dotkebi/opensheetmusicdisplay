@@ -42,6 +42,8 @@ export declare class ExpressionReader {
     private parseComplexMetronomeMark;
     private interpretInstantaneousDynamics;
     private interpretWords;
+    /** The first line of a (possibly multi-line) <words> text, trimmed. */
+    private static firstTextLine;
     private readNumber;
     private interpretWedge;
     private interpretRehearsalMark;
