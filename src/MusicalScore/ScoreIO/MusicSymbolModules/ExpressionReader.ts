@@ -24,6 +24,8 @@ import { WavyLine } from "../../VoiceData/Expressions/ContinuousExpressions/Wavy
 export class ExpressionReader {
     private musicSheet: MusicSheet;
     private placement: PlacementEnum;
+    /** Whether the current direction gives its placement (placement attribute or default-y). */
+    private placementFromXml: boolean;
     private soundTempo: number;
     private soundDynamic: number;
     private divisions: number;
@@ -143,6 +145,7 @@ export class ExpressionReader {
             this.musicSheet.SheetErrors.pushMeasureError(errorMsg);
             this.placement = PlacementEnum.Below;
         }
+        this.placementFromXml = this.placement !== PlacementEnum.NotYetDefined;
         if (this.placement === PlacementEnum.NotYetDefined) {
             if (currentInstrument.Staves.length > 1) {
                 this.placement = PlacementEnum.Below;
@@ -261,6 +264,8 @@ export class ExpressionReader {
                     this.currentMultiTempoExpression.CombinedExpressionsText = dirContentNode.value;
                     const instantaneousTempoExpression: InstantaneousTempoExpression = new InstantaneousTempoExpression(
                         dirContentNode.value, this.placement, this.staffNumber, this.soundTempo, this.currentMultiTempoExpression);
+                    instantaneousTempoExpression.fontStyle = ExpressionReader.readWordsFontStyle(dirContentNode);
+                    instantaneousTempoExpression.placementStaffIndex = this.placementStaffIndex();
                     this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, "");
                 } else if (!isDynamicInstruction) {
                     this.interpretWords(dirContentNode, currentMeasure, timestampFraction);
@@ -723,6 +728,7 @@ export class ExpressionReader {
         if (colorAttr) {
             fontColor = colorAttr.value;
         }
+        const tempoFontStyle: FontStyles = ExpressionReader.readWordsFontStyle(wordsNode);
         let defaultYXml: number;
         if (currentMeasure.Rules.PlaceWordsInsideStafflineFromXml) {
             const defaultYString: string = wordsNode.attribute("default-y")?.value;
@@ -737,11 +743,28 @@ export class ExpressionReader {
             if (this.checkIfWordsNodeIsRepetitionInstruction(text)) {
                 return;
             }
-            this.fillMultiOrTempoExpression(text, currentMeasure, inSourceMeasureCurrentFraction, fontStyle, fontColor, defaultYXml);
+            this.fillMultiOrTempoExpression(text, currentMeasure, inSourceMeasureCurrentFraction, fontStyle, fontColor, defaultYXml, tempoFontStyle);
             // readExpressionParameters() initializes once per outer <direction>.
             // Resetting here loses placement/staff context needed by later
             // <direction-type> siblings (for example whitespace words + wedge).
         }
+    }
+    /** The staff a tempo expression is placed at: its own staff if the direction gives a placement, else undefined. */
+    private placementStaffIndex(): number {
+        return this.placementFromXml ? this.globalStaffIndex : undefined;
+    }
+    /** The font style a <words> node specifies with font-style and font-weight, or undefined if it specifies neither. */
+    private static readWordsFontStyle(wordsNode: IXmlElement): FontStyles {
+        const fontStyleText: string = wordsNode.attribute("font-style")?.value;
+        const fontWeightText: string = wordsNode.attribute("font-weight")?.value;
+        if (fontStyleText === undefined && fontWeightText === undefined) {
+            return undefined;
+        }
+        const italic: boolean = fontStyleText === "italic";
+        if (fontWeightText === "bold") {
+            return italic ? FontStyles.BoldItalic : FontStyles.Bold;
+        }
+        return italic ? FontStyles.Italic : FontStyles.Regular;
     }
     /** The first line of a (possibly multi-line) <words> text, trimmed. */
     private static firstTextLine(text: string): string {
@@ -862,7 +885,7 @@ export class ExpressionReader {
         }
     }
     private fillMultiOrTempoExpression(inputString: string, currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction,
-        fontStyle: FontStyles, fontColor: string, defaultYXml: number = undefined): void {
+        fontStyle: FontStyles, fontColor: string, defaultYXml: number = undefined, tempoFontStyle: FontStyles = undefined): void {
         if (!inputString) {
             return;
         }
@@ -871,7 +894,8 @@ export class ExpressionReader {
         //const splitStrings: string[] = tmpInputString.split(/([\s,\r\n]and[\s,\r\n]|[\s,\r\n]und[\s,\r\n]|[\s,\r\n]e[\s,\r\n]|[\s,\r\n])+/g);
 
         //for (const splitStr of splitStrings) {
-        this.createExpressionFromString("", tmpInputString, currentMeasure, inSourceMeasureCurrentFraction, inputString, fontStyle, fontColor, defaultYXml);
+        this.createExpressionFromString("", tmpInputString, currentMeasure, inSourceMeasureCurrentFraction, inputString, fontStyle, fontColor, defaultYXml,
+                                        tempoFontStyle);
         //}
     }
     /*
@@ -906,7 +930,8 @@ export class ExpressionReader {
                                        currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction, inputString: string,
                                        fontStyle: FontStyles,
                                        fontColor: string,
-                                       defaultYXml: number = undefined): boolean {
+                                       defaultYXml: number = undefined,
+                                       tempoFontStyle: FontStyles = undefined): boolean {
         // A multi-line <words> text is a tempo instruction only when its first line is one.
         // "La seconda volta\nmolto ritenuto" is a performance note that merely contains a tempo word
         // in its second line; classifying it as a tempo expression drew it on the first staff with
@@ -935,6 +960,8 @@ export class ExpressionReader {
                                                                                                                       this.soundTempo,
                                                                                                                       this.currentMultiTempoExpression);
                 instantaneousTempoExpression.ColorXML = fontColor;
+                instantaneousTempoExpression.fontStyle = tempoFontStyle;
+                instantaneousTempoExpression.placementStaffIndex = this.placementStaffIndex();
                 this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, prefix);
                 return true;
             }
@@ -945,6 +972,8 @@ export class ExpressionReader {
                     this.staffNumber,
                     this.currentMultiTempoExpression);
                 continuousTempoExpression.ColorXML = fontColor;
+                continuousTempoExpression.fontStyle = tempoFontStyle;
+                continuousTempoExpression.placementStaffIndex = this.placementStaffIndex();
                 this.currentMultiTempoExpression.addExpression(continuousTempoExpression, prefix);
                 return true;
             }

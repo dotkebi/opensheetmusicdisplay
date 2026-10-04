@@ -2423,6 +2423,17 @@ export abstract class MusicSheetCalculator {
                     break;
                 }
             }
+            // Tempo words written for a lower staff of an instrument (e.g. "rit." with <staff>2</staff> in the left hand
+            // of a piano part) are drawn at that staff like other words, not above the whole system.
+            const ownStaffIndex: number = MusicSheetCalculator.lowerStaffIndexOfTempoExpression(multiTempoExpression);
+            const ownStaffMeasure: GraphicalMeasure = ownStaffIndex !== undefined ? measures[ownStaffIndex] : undefined;
+            const onOwnStaff: boolean = ownStaffMeasure?.ParentStaffLine?.Measures.length > 0 &&
+                ownStaffMeasure.ParentStaff.isVisible();
+            if (onOwnStaff) {
+                staffLine = ownStaffMeasure.ParentStaffLine;
+                firstVisibleMeasureX = ownStaffMeasure.PositionAndShape.RelativePosition.x;
+                verticalIndex = ownStaffIndex;
+            }
             relative = this.getRelativePositionInStaffLineFromTimestamp(absoluteTimestamp,
                                                                         verticalIndex,
                                                                         staffLine,
@@ -2430,7 +2441,7 @@ export abstract class MusicSheetCalculator {
                                                                         firstVisibleMeasureX);
 
             // also placement Above
-            if (multiTempoExpression.EntriesList.length > 0 &&
+            if (!onOwnStaff && multiTempoExpression.EntriesList.length > 0 &&
                 multiTempoExpression.EntriesList[0].Expression instanceof InstantaneousTempoExpression) {
                 const instantaniousTempo: InstantaneousTempoExpression = (multiTempoExpression.EntriesList[0].Expression as InstantaneousTempoExpression);
                 instantaniousTempo.Placement = PlacementEnum.Above;
@@ -2463,7 +2474,7 @@ export abstract class MusicSheetCalculator {
                 const graphLabel: GraphicalLabel = this.calculateLabel(staffLine,
                                                                        relative,
                                                                        entry.label,
-                                                                       multiTempoExpression.getFontstyleOfFirstEntry(),
+                                                                       entry.Expression.fontStyle ?? multiTempoExpression.getFontstyleOfFirstEntry(),
                                                                        entry.Expression.Placement,
                                                                        this.rules.UnknownTextHeight,
                                                                        textAlignment,
@@ -2513,6 +2524,18 @@ export abstract class MusicSheetCalculator {
                 this.createMetronomeMark(metronomeExpression);
             }
         }
+    }
+
+    /** The MeasureList staff index of a tempo expression placed at a lower staff (<staff> 2 or higher) of its
+     *  instrument, or undefined if it belongs to the first staff or its direction gives no placement.
+     *  Without a placement, the default (below for multi-staff instruments) would often contradict the print,
+     *  so such tempo words stay above the system as before. */
+    private static lowerStaffIndexOfTempoExpression(multiTempoExpression: MultiTempoExpression): number {
+        const expression: AbstractTempoExpression = multiTempoExpression.EntriesList[0]?.Expression;
+        if (!expression || !(expression.StaffNumber > 1)) {
+            return undefined;
+        }
+        return expression.placementStaffIndex;
     }
 
     protected createMetronomeMark(metronomeExpression: InstantaneousTempoExpression): void {
