@@ -52,6 +52,8 @@ export class ExpressionReader {
     private globalStaffIndex: number;
     private directionTimestamp: Fraction;
     private currentMultiTempoExpression: MultiTempoExpression;
+    /** The last simple metronome mark read, to attach further marks at the same time to it. */
+    private lastMetronomeMark: {expression: InstantaneousTempoExpression, timestamp: Fraction};
     private openContinuousDynamicExpressions: ContinuousDynamicExpression[] = [];
     private openContinuousTempoExpression: ContinuousTempoExpression;
     private activeInstantaneousDynamic: InstantaneousDynamicExpression;
@@ -246,8 +248,32 @@ export class ExpressionReader {
                         }
                         // per-minute can contain text alongside the number (e.g. "c. 108" for circa)
                         // -> find first number ("c. 108" matches 108, "108.5" would match 108.5)
-                        const bpmMatch: RegExpMatchArray = bpm.value.match(/(\d+\.?\d*)/);
+                        const perMinute: string = bpm.value.trim();
+                        const bpmMatch: RegExpMatchArray = perMinute.match(/(\d+\.?\d*)/);
                         const bpmNumber: number = bpmMatch ? parseFloat(bpmMatch[1]) : NaN;
+                        // keep the whole text for display ("c. 108", "80 e")
+                        const perMinuteText: string = bpmMatch && bpmMatch[1] !== perMinute ? perMinute : undefined;
+                        const precedingMark: InstantaneousTempoExpression = this.metronomeMarkAt(currentMeasure, timestampFraction);
+                        if (precedingMark && !isTempoInstruction &&
+                            !ExpressionReader.isSameMetronomeMark(precedingMark, beatUnit.value, dotted, perMinute)) {
+                            // Another, different metronome mark at the same time without a <sound tempo> of its own
+                            // ("♩. = 80 e ♩. = 50", two alternatives) is drawn after the first one on the same line.
+                            // Only the first one sets the tempo. Repeated identical marks (exporter duplicates) and marks
+                            // with their own <sound tempo> (tempo changes) are read as before.
+                            const followingMark: InstantaneousTempoExpression =
+                                new InstantaneousTempoExpression(undefined,
+                                                                 this.placement,
+                                                                 this.staffNumber,
+                                                                 bpmNumber,
+                                                                 precedingMark.ParentMultiTempoExpression,
+                                                                 true);
+                            followingMark.parentMeasure = currentMeasure;
+                            followingMark.dotted = dotted;
+                            followingMark.beatUnit = beatUnit.value;
+                            followingMark.perMinuteText = perMinuteText;
+                            precedingMark.followingMetronomeMarks.push(followingMark);
+                            continue;
+                        }
                         this.createNewTempoExpressionIfNeeded(currentMeasure);
                         const instantaneousTempoExpression: InstantaneousTempoExpression =
                             new InstantaneousTempoExpression(undefined,
@@ -266,6 +292,8 @@ export class ExpressionReader {
                         this.musicSheet.HasBPMInfo = true;
                         instantaneousTempoExpression.dotted = dotted;
                         instantaneousTempoExpression.beatUnit = beatUnit.value;
+                        instantaneousTempoExpression.perMinuteText = perMinuteText;
+                        this.lastMetronomeMark = { expression: instantaneousTempoExpression, timestamp: timestampFraction.clone() };
                         this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, "");
                         this.currentMultiTempoExpression.CombinedExpressionsText = "test";
                     }
@@ -865,6 +893,27 @@ export class ExpressionReader {
             currentMeasure.StaffLinkedExpressions[this.globalStaffIndex].push(existingMultiExpression);
         }
         return existingMultiExpression;
+    }
+
+    private static isSameMetronomeMark(mark: InstantaneousTempoExpression, beatUnit: string, dotted: boolean, perMinute: string): boolean {
+        for (const other of [mark].concat(mark.followingMetronomeMarks)) {
+            const otherPerMinute: string = other.perMinuteText ?? String(other.TempoInBpm);
+            if (other.beatUnit === beatUnit && other.dotted === dotted &&
+                (otherPerMinute === perMinute || Number(perMinute) === other.TempoInBpm)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The metronome mark already read for this staff at the given time of the measure, if any. */
+    private metronomeMarkAt(currentMeasure: SourceMeasure, timestamp: Fraction): InstantaneousTempoExpression {
+        const last: InstantaneousTempoExpression = this.lastMetronomeMark?.expression;
+        if (last?.parentMeasure === currentMeasure && last.StaffNumber === this.staffNumber &&
+            this.lastMetronomeMark.timestamp.Equals(timestamp)) {
+            return last;
+        }
+        return undefined;
     }
 
     private createNewTempoExpressionIfNeeded(currentMeasure: SourceMeasure): void {

@@ -1050,7 +1050,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const markBaselineOffset: number = -2;
     const markBottomBelowBaseline: number = 0.5;
     const markTopAboveBaseline: number = 2.5;
-    const markWidthEstimate: number = 8; // "♩. = 120", generous
+    const markWidthEstimate: number = VexFlowMusicSheetCalculator.metronomeMarkWidthEstimate(metronomeExpression);
     const markStartX: number = Math.max(0, vfMeasure.PositionAndShape.RelativePosition.x +
       (firstMetronomeMark ? this.rules.MetronomeMarkXShift : 0));
     const markEndX: number = vfMeasure.PositionAndShape.RelativePosition.x + vfMeasure.beginInstructionsWidth + markWidthEstimate;
@@ -1070,19 +1070,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       );
       (vfStave as any).setTempo({ noteEquation }, yShift * unitInPixels);
     } else {
-      // Simple metronome mark: note = BPM
-      let vexflowDuration: string = "q";
-      if (metronomeExpression.beatUnit) {
-        const duration: Fraction = NoteTypeHandler.getNoteDurationFromType(metronomeExpression.beatUnit);
-        vexflowDuration = VexFlowConverter.durations(duration, false)[0];
-      }
-      vfStave.setTempo(
-        {
-            bpm: metronomeExpression.TempoInBpm,
-            dots: metronomeExpression.dotted,
-            duration: vexflowDuration
-        },
-        yShift * unitInPixels);
+      // Simple metronome mark: note = BPM, followed by further marks at the same time on the same line
+      const tempo: any = VexFlowMusicSheetCalculator.staveTempoOfMetronomeMark(metronomeExpression);
+      tempo.following = metronomeExpression.followingMetronomeMarks.map(
+        mark => VexFlowMusicSheetCalculator.staveTempoOfMetronomeMark(mark));
+      vfStave.setTempo(tempo, yShift * unitInPixels);
     }
 
     const xShift: number = firstMetronomeMark ? this.rules.MetronomeMarkXShift * unitInPixels : 0;
@@ -1103,6 +1095,30 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       }
       skyline[0] = Math.min(skyline[0], markTop);
     }
+  }
+
+  /** The note, dots and number (or the <per-minute> text, e.g. "c. 108") of a simple metronome mark for VexFlow's StaveTempo. */
+  private static staveTempoOfMetronomeMark(metronomeExpression: InstantaneousTempoExpression): any {
+    let vexflowDuration: string = "q";
+    if (metronomeExpression.beatUnit) {
+      const duration: Fraction = NoteTypeHandler.getNoteDurationFromType(metronomeExpression.beatUnit);
+      vexflowDuration = VexFlowConverter.durations(duration, false)[0];
+    }
+    return {
+      bpm: metronomeExpression.perMinuteText ?? metronomeExpression.TempoInBpm,
+      dots: metronomeExpression.dotted,
+      duration: vexflowDuration
+    };
+  }
+
+  /** Generous width of a metronome mark line in units: about 8 for "♩. = 120", more for longer texts and following marks. */
+  private static metronomeMarkWidthEstimate(metronomeExpression: InstantaneousTempoExpression): number {
+    let width: number = 0;
+    for (const mark of [metronomeExpression].concat(metronomeExpression.followingMetronomeMarks)) {
+      const text: string = String(mark.perMinuteText ?? mark.TempoInBpm);
+      width += 8 + Math.max(0, text.length - 3);
+    }
+    return width;
   }
 
   /** Convert MetronomeNoteGroup data into the format expected by VexFlow's StaveTempo.drawNoteEquation(). */

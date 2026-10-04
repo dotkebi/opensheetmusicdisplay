@@ -70,46 +70,67 @@ export class StaveTempo extends StaveModifier {
         x += ctx.measureText('(').width;
       }
 
-      const code = Flow.getGlyphProps(duration);
-
-      x += 3 * scale;
-      Glyph.renderGlyph(ctx, x, y, options.glyph_font_scale, code.code_head);
-      x += code.getWidth() * scale;
-
-      // Draw stem and flags
-      if (code.stem) {
-        let stem_height = 30;
-
-        if (code.beam_count) stem_height += 3 * (code.beam_count - 1);
-
-        stem_height *= scale;
-
-        const y_top = y - stem_height;
-        ctx.fillRect(x - scale, y_top, scale, stem_height);
-
-        if (code.flag) {
-          Glyph.renderGlyph(ctx, x, y_top, options.glyph_font_scale, code.code_flag_upstem);
-
-          if (!dots) x += 6 * scale;
+      // VexFlowPatch: further marks at the same time (e.g. "♩. = 80 e ♩. = 50") follow on the same line
+      const marks = [{ duration, dots, bpm }].concat(this.tempo.following || []);
+      // a lone or leading space measures 0 in SVG, so measure one between two letters
+      const wordSpace = ctx.measureText('e e').width - ctx.measureText('ee').width;
+      for (let i = 0; i < marks.length; i++) {
+        if (i > 0) {
+          x += wordSpace;
         }
+        const closing = name && i === marks.length - 1 ? ')' : '';
+        x = this.drawSimpleMark(ctx, x, y, scale, marks[i], closing);
       }
-
-      // Draw dot
-      for (let i = 0; i < dots; i++) {
-        x += 6 * scale;
-        ctx.beginPath();
-        ctx.arc(x, y + 2 * scale, 2 * scale, 0, Math.PI * 2, false);
-        ctx.fill();
-      }
-
-      ctx.openGroup("bpm"); // VexFlowPatch: open group
-      ctx.fillText(' = ' + bpm + (name ? ')' : ''), x + 3 * scale, y);
-      ctx.closeGroup();
     }
 
     ctx.closeGroup();
     ctx.restore();
     return this;
+  }
+
+  /** Draw note = bpm and return the x after it. (VexFlowPatch: split out of draw() for following marks) */
+  drawSimpleMark(ctx, x, y, scale, mark, closing) {
+    const options = this.render_options;
+    const duration = mark.duration;
+    const dots = mark.dots;
+    const bpm = mark.bpm;
+    const code = Flow.getGlyphProps(duration);
+
+    x += 3 * scale;
+    Glyph.renderGlyph(ctx, x, y, options.glyph_font_scale, code.code_head);
+    x += code.getWidth() * scale;
+
+    // Draw stem and flags
+    if (code.stem) {
+      let stem_height = 30;
+
+      if (code.beam_count) stem_height += 3 * (code.beam_count - 1);
+
+      stem_height *= scale;
+
+      const y_top = y - stem_height;
+      ctx.fillRect(x - scale, y_top, scale, stem_height);
+
+      if (code.flag) {
+        Glyph.renderGlyph(ctx, x, y_top, options.glyph_font_scale, code.code_flag_upstem);
+
+        if (!dots) x += 6 * scale;
+      }
+    }
+
+    // Draw dot
+    for (let i = 0; i < dots; i++) {
+      x += 6 * scale;
+      ctx.beginPath();
+      ctx.arc(x, y + 2 * scale, 2 * scale, 0, Math.PI * 2, false);
+      ctx.fill();
+    }
+
+    ctx.openGroup("bpm"); // VexFlowPatch: open group
+    const text = ' = ' + bpm + closing;
+    ctx.fillText(text, x + 3 * scale, y);
+    ctx.closeGroup();
+    return x + 3 * scale + ctx.measureText(text).width;
   }
 
   /**
