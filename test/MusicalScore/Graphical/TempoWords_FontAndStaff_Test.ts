@@ -112,4 +112,41 @@ describe("Tempo words: font and staff", () => {
             expect(labels[0].Label.Label.fontStyle).to.equal(FontStyles.Bold);
         }
     });
+
+    it("draws a tempo change written below the first staff (placement=\"below\") below that staff", async () => {
+        // Enescu, Cantabile et Presto m44: "rit." placement="below", no <staff>
+        const ritBelow: string = "<direction placement=\"below\"><direction-type><words font-style=\"italic\">rit.</words></direction-type>" +
+            "<offset>-1</offset></direction>";
+        let osmd: OpenSheetMusicDisplay = await render(singleStaffScore(m17Notes.replace("__WORDS__", ritBelow)));
+        let line: StaffLine = staffLines(osmd)[0];
+        let labels: GraphicalInstantaneousTempoExpression[] = tempoLabels(line);
+        expect(labels.map((l) => l.Label.Label.text)).to.deep.equal(["rit."]);
+        let box: { RelativePosition: { y: number }, BorderTop: number, BorderBottom: number } = labels[0].Label.PositionAndShape;
+        expect(box.RelativePosition.y + box.BorderTop, "below the staff").to.be.at.least(line.StaffHeight - 0.001);
+        // default-y < 0 is a placement too (MuseScore exports)
+        const ritDefaultY: string = "<direction><direction-type><words default-y=\"-40\" font-style=\"italic\">rit.</words></direction-type>" +
+            "<offset>-1</offset></direction>";
+        osmd = await render(singleStaffScore(m17Notes.replace("__WORDS__", ritDefaultY)));
+        line = staffLines(osmd)[0];
+        box = tempoLabels(line)[0].Label.PositionAndShape;
+        expect(box.RelativePosition.y + box.BorderTop, "default-y below").to.be.at.least(line.StaffHeight - 0.001);
+        // no placement: above the system as before
+        const ritNoPlacement: string = "<direction><direction-type><words font-style=\"italic\">rit.</words></direction-type>" +
+            "<offset>-1</offset></direction>";
+        osmd = await render(singleStaffScore(m17Notes.replace("__WORDS__", ritNoPlacement)));
+        line = staffLines(osmd)[0];
+        expect(tempoLabels(line)[0].Label.PositionAndShape.RelativePosition.y, "no placement: above").to.be.lessThan(0);
+        // piano, staff 1 below: between the staves, under the right hand
+        const ritStaff1Below: string = "<direction placement=\"below\"><direction-type><words font-style=\"italic\">rit.</words></direction-type>" +
+            "<staff>1</staff></direction>";
+        osmd = await render(pianoScore(ritStaff1Below));
+        const [upper, lower] = staffLines(osmd);
+        expect(tempoLabels(lower).length).to.equal(0);
+        labels = tempoLabels(upper);
+        expect(labels.map((l) => l.Label.Label.text)).to.deep.equal(["rit."]);
+        box = labels[0].Label.PositionAndShape;
+        expect(box.RelativePosition.y + box.BorderTop, "below the right hand").to.be.at.least(upper.StaffHeight - 0.001);
+        const gap: number = lower.PositionAndShape.RelativePosition.y - upper.PositionAndShape.RelativePosition.y;
+        expect(box.RelativePosition.y + box.BorderBottom, "above the left hand").to.be.lessThan(gap);
+    });
 });

@@ -8,6 +8,9 @@ import { BoundingBox } from "./BoundingBox";
 import { SkyBottomLineCalculationResult } from "./SkyBottomLineCalculationResult";
 import { CanvasVexFlowBackend } from "./VexFlow/CanvasVexFlowBackend";
 import { GeometricSkyBottomLineContext } from "./GeometricSkyBottomLineContext";
+import { GraphicalMeasure } from "./GraphicalMeasure";
+import Vex from "vexflow";
+import VF = Vex.Flow;
 /**
  * This class calculates and holds the skyline and bottom line information.
  * It also has functions to update areas of the two lines if new elements are
@@ -185,6 +188,7 @@ export class SkyBottomLineCalculator {
             vsStaff.setWidth(oldMeasureWidth);
             try {
                 measure.draw(ctx);
+                this.drawTieStubsOfNextMeasure(measure, ctx);
                 // Vexflow errors can happen here, then our complete rendering loop would halt without catching errors.
             } catch (ex) {
                 log.warn("SkyBottomLineCalculator.calculateLines.draw", ex);
@@ -271,6 +275,7 @@ export class SkyBottomLineCalculator {
             geometricContext.initialize(width);
             try {
                 measure.draw(geometricContext as any);
+                this.drawTieStubsOfNextMeasure(measure, geometricContext as any);
                 // Vexflow errors can happen here, then our complete rendering loop would halt without catching errors.
             } catch (ex) {
                 log.warn("SkyBottomLineCalculator.calculateLinesGeometric.draw", ex);
@@ -297,6 +302,34 @@ export class SkyBottomLineCalculator {
         }
 
         this.updateLines(results);
+    }
+
+    /** Draws, into the skyline context of a measure, the start of every tie that begins in it but is drawn by
+     *  the next measure (a tie across the barline belongs to the measure of its end note). Each measure's skyline
+     *  is sampled from its own draw, so without this the start measure's skyline stops at the notehead and a label
+     *  placed above the tie's start lands on the tie (Enescu, Cantabile et Presto m52 "Piano" over the cue D6 tie).
+     *  The stub is VexFlow's one-sided tie: from the note to the stave end. */
+    private drawTieStubsOfNextMeasure(measure: VexFlowMeasure, ctx: any): void {
+        const measures: GraphicalMeasure[] = this.StaffLineParent.Measures;
+        const next: VexFlowMeasure = measures[measures.indexOf(measure) + 1] as VexFlowMeasure;
+        if (!next?.vfTies) {
+            return;
+        }
+        for (const tie of next.vfTies as any[]) {
+            if (tie instanceof VF.TabSlide) {
+                continue;
+            }
+            const firstNote: any = tie.first_note;
+            if (!firstNote || !tie.last_note || !firstNote.tickContext || firstNote.getStave() !== measure.getVFStave()) {
+                continue;
+            }
+            const stub: any = new VF.StaveTie({ first_note: firstNote, first_indices: tie.first_indices });
+            if (tie.direction) {
+                stub.setDirection(tie.direction);
+            }
+            stub.setContext(ctx);
+            stub.draw();
+        }
     }
 
     /** The per-measure side effects the geometric skyline calc applies before measuring extents: normalize
