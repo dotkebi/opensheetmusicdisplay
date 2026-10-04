@@ -99,8 +99,9 @@ describe("Tempo words: font and staff", () => {
         expect(labels[0].Label.Label.fontStyle).to.equal(FontStyles.Italic);
     });
 
-    it("keeps tempo words without a staff, for staff 1, or without a placement above the first staff in bold", async () => {
-        for (const [placement, staff] of [[" placement=\"below\"", ""], [" placement=\"below\"", "<staff>1</staff>"], ["", "<staff>2</staff>"]]) {
+    it("keeps tempo words without a staff, for staff 1, without a placement, or main tempo marks above the first staff in bold", async () => {
+        for (const [placement, staff] of [[" placement=\"below\"", ""], [" placement=\"below\"", "<staff>1</staff>"], ["", "<staff>2</staff>"],
+            [" placement=\"above\"", "<staff>2</staff>"]]) {
             const allegro: string = `<direction${placement}><direction-type><words>Allegro</words></direction-type>${staff}</direction>`;
             const osmd: OpenSheetMusicDisplay = await render(pianoScore(allegro));
             const [upper, lower] = staffLines(osmd);

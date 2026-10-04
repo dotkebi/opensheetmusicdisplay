@@ -2728,13 +2728,18 @@ export abstract class MusicSheetCalculator {
         }
     }
 
-    /** The MeasureList staff index of a tempo expression placed at a lower staff (<staff> 2 or higher) of its
-     *  instrument, or undefined if it belongs to the first staff or its direction gives no placement.
-     *  Without a placement, the default (below for multi-staff instruments) would often contradict the print,
-     *  so such tempo words stay above the system as before. */
+    /** The MeasureList staff index of a tempo change (e.g. "rit.", "a tempo", "accel.") placed at a lower staff
+     *  (<staff> 2 or higher) of its instrument, or undefined if it belongs to the first staff or its direction gives
+     *  no placement. Without a placement, the default (below for multi-staff instruments) would often contradict
+     *  the print, so such tempo words stay above the system as before. So do main tempo marks ("Allegro"),
+     *  which belong above the system even when an exporter attaches them to a lower staff. */
     private static lowerStaffIndexOfTempoExpression(multiTempoExpression: MultiTempoExpression): number {
         const expression: AbstractTempoExpression = multiTempoExpression.EntriesList[0]?.Expression;
         if (!expression || !(expression.StaffNumber > 1)) {
+            return undefined;
+        }
+        if (expression instanceof InstantaneousTempoExpression &&
+            (expression.TempoType === TempoType.inst || expression.TempoType === TempoType.metronomeMark)) {
             return undefined;
         }
         return expression.placementStaffIndex;
