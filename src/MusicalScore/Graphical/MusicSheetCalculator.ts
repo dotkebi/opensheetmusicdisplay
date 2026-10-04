@@ -3485,7 +3485,8 @@ export abstract class MusicSheetCalculator {
                                 const note: Note = voiceEntry.Notes[idx2];
                                 if (note.NoteTie) {
                                     const tie: Tie = note.NoteTie;
-                                    if (note === note.NoteTie.Notes.last()) {
+                                    if (note === note.NoteTie.Notes.last() &&
+                                        !(tie.Notes.length === 1 && MusicSheetCalculator.tieContinuesAfterRepeat(tie))) {
                                         continue; // nothing to do on last note. don't create last tie twice.
                                     }
                                     if (startStaffEntry) {
@@ -3517,6 +3518,14 @@ export abstract class MusicSheetCalculator {
         let startNote: GraphicalNote = undefined;
         let endGse: GraphicalStaffEntry = undefined;
         let endNote: GraphicalNote = undefined;
+        if (tie.Notes.length === 1 && MusicSheetCalculator.tieContinuesAfterRepeat(tie)) {
+            // a tie to the note that the repeat goes back to: drawn from its note to the backward repeat barline
+            startNote = startGse.findTieGraphicalNoteFromNote(tie.Notes[0]);
+            if (startNote?.sourceNote.PrintObject) {
+                startGse.GraphicalTies.push(this.createGraphicalTie(tie, startGse, undefined, startNote, undefined));
+            }
+            return;
+        }
         for (let i: number = 1; i < tie.Notes.length; i++) {
             startNote = startGse.findTieGraphicalNoteFromNote(tie.Notes[i - 1]);
             endGse = this.graphicalMusicSheet.GetGraphicalFromSourceStaffEntry(tie.Notes[i].ParentStaffEntry);
@@ -3542,6 +3551,19 @@ export abstract class MusicSheetCalculator {
             }
             startGse = endGse;
         }
+    }
+
+    /**
+     * Whether a tie without an end note goes on after a backward repeat: its note ends the measure that ends with the repeat,
+     * tied to the note that the repeat goes back to (e.g. Couperin, Concerts royaux I, Sarabande m29 to m10).
+     */
+    public static tieContinuesAfterRepeat(tie: Tie): boolean {
+        const note: Note = tie.StartNote;
+        const measure: SourceMeasure = note?.SourceMeasure;
+        if (!measure?.endsWithLineRepetition()) {
+            return false;
+        }
+        return Fraction.plus(note.ParentStaffEntry.Timestamp, note.Length).gte(measure.Duration);
     }
 
     private setTieDirections(staffEntry: GraphicalStaffEntry): void {
@@ -4311,7 +4333,8 @@ export abstract class MusicSheetCalculator {
                     for (const staffEntry of measure.staffEntries) {
                         for (const graphicalTie of staffEntry.GraphicalTies) {
                             if (graphicalTie.StartNote !== undefined && graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry === staffEntry) {
-                                const tieIsAtSystemBreak: boolean = (
+                                // (a tie without an end note, see tieContinuesAfterRepeat(), is drawn to the end of its staff)
+                                const tieIsAtSystemBreak: boolean = graphicalTie.EndNote !== undefined && (
                                     graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine !==
                                     graphicalTie.EndNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine
                                 );

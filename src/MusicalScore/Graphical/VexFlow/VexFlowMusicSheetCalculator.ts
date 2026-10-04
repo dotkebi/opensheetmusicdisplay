@@ -1452,9 +1452,14 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           } else if (tieDirection === PlacementEnum.Above) {
             vfTie.setDirection(-1);
           }
+          if (!vfEndNote) {
+            // a tie to the start of a repeat (no end note) ends before the backward repeat's dots, not on its thick line
+            vfTie.render_options.last_x_shift = -14;
+          }
         }
 
-        const measure: VexFlowMeasure = (endNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure);
+        // (a tie without an end note, see MusicSheetCalculator.tieContinuesAfterRepeat(), goes to the end of its note's staff)
+        const measure: VexFlowMeasure = ((endNote ?? startNote).parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure);
         measure.addStaveTie(vfTie, tie);
       }
     }
