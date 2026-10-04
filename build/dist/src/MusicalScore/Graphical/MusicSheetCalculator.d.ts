@@ -227,6 +227,8 @@ export declare abstract class MusicSheetCalculator {
      * @param staffIndex
      */
     protected calculateMoodAndUnknownExpression(multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
+    /** Calculates one words label of the given entries of multiExpression (see getEntryGroupsByPlacement()). */
+    private calculateMoodAndUnknownExpressionEntries;
     /**
      * Notes a dashed line (MusicXML <dashes>, e.g. "rit. - - - -") to be calculated after its text,
      * see calculateExpressionDashes().
