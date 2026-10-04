@@ -2774,6 +2774,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         continue;
       }
       drawn = true;
+      // a sign above a lower staff is between two staves: it reserves its space, so that the staves are spaced for it
+      //   (and the objects below the staff above, e.g. a "Petite reprise" text, are not drawn into it)
+      (repetition as any).reservesSkyline = measure !== measures.find(m => m?.ParentStaffLine && m.ParentStaff.isVisible());
       if (placement.timestamp.RealValue > 0) {
         // the first staff entry at or after the timestamp (e.g. after a rest or a grace note), else the measure end
         const entry: GraphicalStaffEntry = measure.staffEntries.find(e => e.relInMeasureTimestamp?.gte(placement.timestamp));
@@ -2944,8 +2947,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       repetition.setShiftY((repetition as any).y_shift + collisionShiftUnits * unitInPixels);
     }
     placedBoxes.push({ startX: startX, endX: endX, top: defaultTop + collisionShiftUnits });
-    if (collisionShiftUnits < 0) {
-      // only instructions that were shifted upwards reserve their space in the skyline, so that the
+    if (collisionShiftUnits < 0 || (repetition as any).reservesSkyline) {
+      // only instructions that were shifted upwards (or segno signs above a lower staff, see calculateSegnoSigns())
+      //   reserve their space in the skyline, so that the
       //   staffline borders (and thus the system spacing) account for them. Unshifted instructions stay
       //   in their default band close above the staff, which shouldn't increase the system spacing
       //   (as it also didn't before repetition instructions were placed via the skyline).

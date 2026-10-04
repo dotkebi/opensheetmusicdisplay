@@ -194,6 +194,12 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      * @param measureIndex
      */
     protected calculateWordRepetitionInstruction(repetitionInstruction: RepetitionInstruction, measureIndex: number): void;
+    /**
+     * Draws the signs of a segno where the MusicXML puts them (RepetitionInstruction.SymbolPlacements):
+     * above the staff of each sign, at the note of its timestamp (a sign at the start of the measure stays after the begin instructions).
+     * @returns false if none of the staves is drawn, so that the segno is drawn above the uppermost one
+     */
+    protected calculateSegnoSigns(repetitionInstruction: RepetitionInstruction, measures: VexFlowMeasure[]): boolean;
     /** The repetition instruction boxes already placed per staff line, for their mutual collision checks.
      *  (a WeakMap, so that the entries of a previous render's staff lines don't linger) */
     private placedWordRepetitionBoxes;

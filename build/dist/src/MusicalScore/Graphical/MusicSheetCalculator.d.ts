@@ -380,6 +380,11 @@ export declare abstract class MusicSheetCalculator {
     private subtitleRelativeY;
     protected createGraphicalTies(): void;
     private handleTie;
+    /**
+     * Whether a tie without an end note goes on after a backward repeat: its note ends the measure that ends with the repeat,
+     * tied to the note that the repeat goes back to (e.g. Couperin, Concerts royaux I, Sarabande m29 to m10).
+     */
+    static tieContinuesAfterRepeat(tie: Tie): boolean;
     private setTieDirections;
     private createAccidentalCalculators;
     private calculateVerticalContainersList;
