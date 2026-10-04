@@ -37,6 +37,12 @@ export declare class SkyBottomLineCalculator {
      * Same flow as calculateLines(), with the canvas replaced by a GeometricSkyBottomLineContext.
      */
     private calculateLinesGeometric;
+    /** Draws, into the skyline context of a measure, the start of every tie that begins in it but is drawn by
+     *  the next measure (a tie across the barline belongs to the measure of its end note). Each measure's skyline
+     *  is sampled from its own draw, so without this the start measure's skyline stops at the notehead and a label
+     *  placed above the tie's start lands on the tie (Enescu, Cantabile et Presto m52 "Piano" over the cue D6 tie).
+     *  The stub is VexFlow's one-sided tie: from the note to the stave end. */
+    private drawTieStubsOfNextMeasure;
     /** The per-measure side effects the geometric skyline calc applies before measuring extents: normalize
      *  absolute positions, bump the stave Y, and format the measure at the truncated skyline-canvas width.
      *  Later layout passes read this state (the VexFlow formatter is not idempotent), so the lazy skyline
