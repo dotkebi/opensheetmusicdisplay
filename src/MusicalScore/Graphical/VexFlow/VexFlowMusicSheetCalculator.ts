@@ -74,6 +74,28 @@ import { VexFlowGlissando } from "./VexFlowGlissando";
 import { WavyLine } from "../../VoiceData/Expressions/ContinuousExpressions/WavyLine";
 import { VexFlowVibratoBracket } from "./VexFlowVibratoBracket";
 import { Staff } from "../../VoiceData/Staff";
+import { DynamicEnum, InstantaneousDynamicExpression } from "../../VoiceData/Expressions/InstantaneousDynamicExpression";
+
+/** A dynamic (instantaneous or verbal) or a wedge on one side of one staff of a measure,
+ *  see VexFlowMusicSheetCalculator.fitExpressionsToFormattedEntries(). */
+interface ExpressionSlot {
+  timestamp: number;
+  endTimestamp: number;
+  below: boolean;
+  isLabel: boolean;
+  /** label borders relative to the x of timestamp */
+  left: number;
+  right: number;
+  text: string;
+}
+
+interface ExpressionPair {
+  measure: VexFlowMeasure;
+  earlier: ExpressionSlot;
+  later: ExpressionSlot;
+  /** distance the later label must keep from the earlier one */
+  need: number;
+}
 
 export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   /** space needed for a dash for lyrics spacing, calculated once */
@@ -755,7 +777,188 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       }
     }
 
-    return newMinimumStaffEntriesWidth;
+    return this.fitExpressionsToFormattedEntries(measuresVertical, oldMinimumStaffEntriesWidth, newMinimumStaffEntriesWidth);
+  }
+
+  /**
+   * Dynamics and wedges are placed only after the systems are laid out, so they never widened their measure:
+   * in a measure that stays near its minimum width, "sf > sf > sf" squeezed its wedges to nothing
+   * (Enescu, Cantabile et Presto m38). AlignmentManager puts neighbouring dynamics, verbal dynamics ("cresc.")
+   * and wedges on one baseline, where they can only make room for each other sideways.
+   * So, like the lyrics, reserve their width here: on each side of a staff, a dynamic must clear an earlier one
+   * by DynamicExpressionSpacer, and a wedge between two of them needs WedgeMinLength and another spacer.
+   * Same timestamps are left to the vertical alignment. Words are not reserved: the skyline stacks them clear of the dynamics.
+   * The measure grows by at most MaximumDynamicsElongationFactor of its minimum width; beyond that the dynamics are left overlapping (debug log).
+   * The gaps are checked with the formatter: widening a measure does not widen its note gaps in proportion.
+   * (Same as osmd-dart's VexFlowMusicSheetCalculator._fitExpressionsToFormattedEntries.)
+   * @returns the minimum staff entries width, widened if needed
+   */
+  private fitExpressionsToFormattedEntries(measures: GraphicalMeasure[], minimumWidth: number, candidateWidth: number): number {
+    const maxWidth: number = Math.max(candidateWidth, minimumWidth * this.rules.MaximumDynamicsElongationFactor);
+    if (!isFinite(candidateWidth) || candidateWidth <= 0 || maxWidth <= candidateWidth) {
+      return candidateWidth;
+    }
+    const pairs: ExpressionPair[] = [];
+    for (let staffIndex: number = 0; staffIndex < measures.length; staffIndex++) {
+      const measure: GraphicalMeasure = measures[staffIndex];
+      if (!(measure instanceof VexFlowMeasure) || !measure.isVisible() || measure.staffEntries.length === 0) {
+        continue;
+      }
+      const slots: ExpressionSlot[] = this.expressionSlots(measure, staffIndex);
+      if (slots.filter(slot => slot.isLabel).length > 1) {
+        pairs.push(...this.expressionPairs(measure, slots));
+      }
+    }
+    if (pairs.length === 0) {
+      return candidateWidth;
+    }
+    const pairGrowth: (pair: ExpressionPair) => number = (pair: ExpressionPair): number => {
+      const x0: number = this.xAtTimestamp(pair.measure, pair.earlier.timestamp);
+      const x1: number = this.xAtTimestamp(pair.measure, pair.later.timestamp);
+      const gap: number = x1 - x0;
+      const deficit: number = x0 + pair.earlier.right + pair.need - (x1 + pair.later.left);
+      return gap <= 0.01 || deficit <= 0.01 ? 1 : (gap + deficit) / gap;
+    };
+    // The current positions are the tighter ones of calculateMeasureXLayout(): if the dynamics fit there,
+    // they fit at candidateWidth, without formatting again.
+    if (pairs.every(pair => pairGrowth(pair) <= 1.0001)) {
+      return candidateWidth;
+    }
+    const visible: VexFlowMeasure[] = measures.filter(m => m instanceof VexFlowMeasure && m.isVisible()) as VexFlowMeasure[];
+    const originalWidths: number[] = visible.map(m => m.PositionAndShape.Size.width);
+    const formatAt: (width: number) => void = (width: number): void => {
+      for (const measure of visible) {
+        measure.setWidth(width + measure.beginInstructionsWidth + measure.endInstructionsWidth);
+      }
+      visible[0].formatVoices?.(width * unitInPixels, visible[0]);
+      for (const measure of visible) {
+        for (const staffEntry of measure.staffEntries) {
+          (staffEntry as VexFlowStaffEntry).calculateXPosition();
+        }
+      }
+    };
+    try {
+      formatAt(candidateWidth);
+      for (let pass: number = 0; pass < 8; pass++) {
+        const factor: number = pairs.reduce((growth, pair) => Math.max(growth, pairGrowth(pair)), 1);
+        if (factor <= 1.0001) {
+          break;
+        }
+        const next: number = Math.min(candidateWidth * factor, maxWidth);
+        if (next <= candidateWidth + 0.0001) {
+          log.debug(`measure ${visible[0].MeasureNumber}: dynamics still overlap at ${candidateWidth.toFixed(2)} ` +
+            "(MaximumDynamicsElongationFactor)");
+          break;
+        }
+        candidateWidth = next;
+        formatAt(candidateWidth);
+      }
+    } finally {
+      for (let i: number = 0; i < visible.length; i++) {
+        visible[i].setWidth(originalWidths[i]);
+      }
+    }
+    return candidateWidth;
+  }
+
+  /** The dynamics and wedges that start in measure on the staff of staffIndex,
+   *  with the label widths they will be drawn with (calculateDynamicExpressions()). */
+  private expressionSlots(measure: VexFlowMeasure, staffIndex: number): ExpressionSlot[] {
+    const source: SourceMeasure = measure.parentSourceMeasure;
+    const slots: ExpressionSlot[] = [];
+    if (!source || staffIndex >= source.StaffLinkedExpressions.length) {
+      return slots;
+    }
+    for (const multiExpression of source.StaffLinkedExpressions[staffIndex]) {
+      const timestamp: number = multiExpression.Timestamp.RealValue;
+      const instantaneous: InstantaneousDynamicExpression = multiExpression.InstantaneousDynamic;
+      if (instantaneous) {
+        const box: BoundingBox = VexFlowInstantaneousDynamicExpression.createLabel(instantaneous, this.rules).PositionAndShape;
+        slots.push({
+          below: instantaneous.Placement === PlacementEnum.Below, endTimestamp: timestamp, isLabel: true,
+          left: box.BorderMarginLeft, right: box.BorderMarginRight, text: DynamicEnum[instantaneous.DynEnum], timestamp,
+        });
+      }
+      // calculateDynamicExpressions() skips a continuous dynamic that comes with words unless there is an instantaneous dynamic too.
+      const continuous: ContinuousDynamicExpression = multiExpression.StartingContinuousDynamic;
+      if (continuous && continuous.StartMultiExpression === multiExpression &&
+          (instantaneous || multiExpression.UnknownList.length === 0)) {
+        const below: boolean = continuous.Placement === PlacementEnum.Below;
+        if (continuous.Label && continuous.Label.length > 0) {
+          const box: BoundingBox = VexFlowContinuousDynamicExpression.createVerbalLabel(continuous, this.rules).PositionAndShape;
+          slots.push({
+            below, endTimestamp: timestamp, isLabel: true,
+            left: box.BorderMarginLeft, right: box.BorderMarginRight, text: continuous.Label, timestamp,
+          });
+        } else {
+          const end: MultiExpression = continuous.EndMultiExpression;
+          if (end && end.SourceMeasureParent === source) {
+            slots.push({ below, endTimestamp: end.Timestamp.RealValue, isLabel: false, left: 0, right: 0, text: "wedge", timestamp });
+          }
+        }
+      }
+    }
+    return slots;
+  }
+
+  /** Dynamic pairs on one side of a staff that start at different timestamps, with the distance the later one must keep from the earlier one. */
+  private expressionPairs(measure: VexFlowMeasure, slots: ExpressionSlot[]): ExpressionPair[] {
+    const spacer: number = this.rules.DynamicExpressionSpacer;
+    const wedgeLength: number = this.rules.WedgeMinLength;
+    const pairs: ExpressionPair[] = [];
+    for (const below of [false, true]) {
+      // stable sort by timestamp
+      const labels: ExpressionSlot[] = slots.filter(s => s.isLabel && s.below === below)
+        .map((slot, index) => ({ index, slot }))
+        .sort((a, b) => a.slot.timestamp - b.slot.timestamp || a.index - b.index)
+        .map(entry => entry.slot);
+      const wedges: ExpressionSlot[] = slots.filter(s => !s.isLabel && s.below === below);
+      for (const later of labels) {
+        const earlierLabels: ExpressionSlot[] = labels.filter(s => s.timestamp < later.timestamp);
+        if (earlierLabels.length === 0) {
+          continue;
+        }
+        const previousTimestamp: number = Math.max(...earlierLabels.map(s => s.timestamp));
+        for (const earlier of earlierLabels) {
+          let need: number = spacer;
+          // A wedge ends at the last note before its stop (the reader's EndMultiExpression),
+          // so one from a dynamic to the next one on the following note starts and ends at the same timestamp.
+          if (earlier.timestamp === previousTimestamp &&
+              wedges.some(w => w.timestamp >= earlier.timestamp && w.timestamp < later.timestamp && w.endTimestamp <= later.timestamp)) {
+            need += wedgeLength + spacer;
+          }
+          pairs.push({ earlier, later, measure, need });
+        }
+      }
+    }
+    return pairs;
+  }
+
+  /** The x of timestamp (relative to its measure) between the measure's staff entries,
+   *  as getRelativePositionInStaffLineFromTimestamp() interpolates it. */
+  private xAtTimestamp(measure: VexFlowMeasure, timestamp: number): number {
+    let left: GraphicalStaffEntry = undefined;
+    let right: GraphicalStaffEntry = undefined;
+    for (const staffEntry of measure.staffEntries) {
+      const t: number = staffEntry.relInMeasureTimestamp.RealValue;
+      if (t <= timestamp) {
+        left = staffEntry;
+      }
+      if (t >= timestamp) {
+        right = staffEntry;
+        break;
+      }
+    }
+    left = left ?? right;
+    right = right ?? left;
+    const leftX: number = left.PositionAndShape.RelativePosition.x;
+    const rightX: number = right.PositionAndShape.RelativePosition.x;
+    const t0: number = left.relInMeasureTimestamp.RealValue;
+    const t1: number = right.relInMeasureTimestamp.RealValue;
+    if (t1 <= t0) {
+      return leftX;
+    }
+    return leftX + (rightX - leftX) * (timestamp - t0) / (t1 - t0);
   }
 
   private computeContainerOverflows(lastEntryDict: { [i: number]: any }, measureWidth: number): number[] {

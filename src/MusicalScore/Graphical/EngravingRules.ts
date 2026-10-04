@@ -308,6 +308,9 @@ export class EngravingRules {
     public LyricOverlapAllowedIntoNextMeasure: number;
     public MinimumDistanceBetweenDashes: number;
     public MaximumLyricsElongationFactor: number;
+    /** How far a measure may be widened so that dynamics starting at different timestamps (and a wedge between them)
+     *  don't overlap, as a factor of its minimum width (cf. MaximumLyricsElongationFactor). 1 turns this off. Default 2.5. */
+    public MaximumDynamicsElongationFactor: number;
 
     public SlurPlacementFromXML: boolean;
     public SlurPlacementAtStems: boolean;
@@ -956,6 +959,7 @@ export class EngravingRules {
         this.LyricOverlapAllowedIntoNextMeasure = 3.4; // optimal for dashed last lyric, see Land der Berge
         this.MinimumDistanceBetweenDashes = 10;
         this.MaximumLyricsElongationFactor = 2.5;
+        this.MaximumDynamicsElongationFactor = 2.5;
 
         // expressions variables
         this.TempoYSpacing = 0.5; // note this is correlated with MetronomeMarkYShift: one-sided change can cause collisions
