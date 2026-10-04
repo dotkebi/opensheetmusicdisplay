@@ -1,4 +1,6 @@
 import {Repetition} from "../../MusicSource/Repetition";
+import {Fraction} from "../../../Common/DataObjects/Fraction";
+import {Staff} from "../Staff";
 
 export class RepetitionInstructionComparer /*implements IComparer<RepetitionInstruction>*/ {
     public static Compare(x: RepetitionInstruction, y: RepetitionInstruction): number {
@@ -79,6 +81,13 @@ export class RepetitionInstruction /*implements IComparable*/ {
      * It is played, but not drawn (no backward repeat barline that the score doesn't have).
      */
     public Implicit: boolean = false;
+    /**
+     * Where the MusicXML puts the signs of a segno: the staff and the timestamp in the measure,
+     * one per <direction> with the sign, e.g. one above each hand of a piano part at different notes
+     * (Couperin, Concerts royaux III, Allemande m17). Only the ones of the first part with the segno in the measure.
+     * Empty for a segno from words: drawn at the start of the measure, above the top staff.
+     */
+    public SymbolPlacements: RepetitionSymbolPlacement[] = [];
 
     public CompareTo(obj: Object): number {
         const other: RepetitionInstruction = <RepetitionInstruction>obj;
@@ -165,6 +174,14 @@ export class RepetitionInstruction /*implements IComparable*/ {
         }
         return true;
     }
+}
+
+/** Where a sign of a repetition instruction (a segno) is drawn, see RepetitionInstruction.SymbolPlacements. */
+export interface RepetitionSymbolPlacement {
+    /** the staff of the <direction> */
+    staff: Staff;
+    /** the timestamp in the measure */
+    timestamp: Fraction;
 }
 
 export enum RepetitionInstructionEnum {
