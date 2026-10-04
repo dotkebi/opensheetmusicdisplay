@@ -17,6 +17,8 @@ export declare class ExpressionReader {
     private globalStaffIndex;
     private directionTimestamp;
     private currentMultiTempoExpression;
+    /** The last simple metronome mark read, to attach further marks at the same time to it. */
+    private lastMetronomeMark;
     private openContinuousDynamicExpressions;
     private openContinuousTempoExpression;
     private activeInstantaneousDynamic;
@@ -58,6 +60,9 @@ export declare class ExpressionReader {
     private interpretWedge;
     private interpretRehearsalMark;
     private createNewMultiExpressionIfNeeded;
+    private static isSameMetronomeMark;
+    /** The metronome mark already read for this staff at the given time of the measure, if any. */
+    private metronomeMarkAt;
     private createNewTempoExpressionIfNeeded;
     private addWedge;
     private fillMultiOrTempoExpression;

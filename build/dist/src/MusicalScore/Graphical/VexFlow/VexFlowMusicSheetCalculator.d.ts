@@ -116,6 +116,10 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     protected layoutGraphicalTie(tie: GraphicalTie, tieIsAtSystemBreak: boolean, isTab: boolean): void;
     protected calculateDynamicExpressionsForMultiExpression(multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
     protected createMetronomeMark(metronomeExpression: InstantaneousTempoExpression): void;
+    /** The note, dots and number (or the <per-minute> text, e.g. "c. 108") of a simple metronome mark for VexFlow's StaveTempo. */
+    private static staveTempoOfMetronomeMark;
+    /** Generous width of a metronome mark line in units: about 8 for "♩. = 120", more for longer texts and following marks. */
+    private static metronomeMarkWidthEstimate;
     /** Convert MetronomeNoteGroup data into the format expected by VexFlow's StaveTempo.drawNoteEquation(). */
     private buildNoteEquationForVexFlow;
     protected calculateRehearsalMark(measure: SourceMeasure): void;

@@ -35,6 +35,12 @@ export declare class InstantaneousTempoExpression extends AbstractTempoExpressio
     dotted: boolean;
     beatUnit: string;
     isMetronomeMark: boolean;
+    /** The <per-minute> text of a metronome mark when it holds more than the number (e.g. "c. 108", "80 e").
+     *  Drawn instead of TempoInBpm. Undefined when the text is just the number. */
+    perMinuteText: string;
+    /** Further metronome marks at the same time, written after this one (e.g. "♩. = 80 e ♩. = 50": two alternatives).
+     *  Drawn on the same line after this mark. Display only: this mark sets the tempo. */
+    followingMetronomeMarks: InstantaneousTempoExpression[];
     /** For complex metronome marks (note equations like swing): left-side note group */
     metronomeNoteGroupLeft: MetronomeNoteGroup;
     /** For complex metronome marks (note equations like swing): right-side note group */
