@@ -10,7 +10,7 @@ import { TestUtils } from "../../Util/TestUtils";
 /**
  * Dynamics at different timestamps in a measure at its minimum width (Enescu, Cantabile et Presto m38: "sf > sf > sf >"
  * with "cédez" under the third sf): their wedges keep WedgeMinLength, the dynamics DynamicExpressionSpacer,
- * and words that run into them sideways are stacked below them, not on their row. Same as osmd-dart test/dynamics_horizontal_spacing_test.dart.
+ * and words stay clear of them, also after the dynamics are aligned onto a common baseline. Same as osmd-dart test/dynamics_horizontal_spacing_test.dart.
  */
 describe("Dynamics: horizontal spacing", () => {
     function note(step: string, octave: number, duration: number, type: string, dot: boolean = false): string {
@@ -20,17 +20,16 @@ describe("Dynamics: horizontal spacing", () => {
     function below(directionType: string): string {
         return `<direction placement="below"><direction-type>${directionType}</direction-type></direction>`;
     }
-    function score(measure: string): string {
+    /** one cello staff in 3/4; measures are the contents of measures 1, 2, ... */
+    function score(...measures: string[]): string {
+        const body: string = measures.map((measure, i) => `<measure number="${i + 1}">` +
+            (i === 0 ? "<attributes><divisions>4</divisions><time><beats>3</beats><beat-type>4</beat-type></time>" +
+                "<clef><sign>C</sign><line>4</line></clef></attributes>" : "") +
+            `${measure}</measure>`).join("");
         return `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>Cello</part-name></score-part></part-list>
-  <part id="P1">
-    <measure number="1">
-      <attributes><divisions>4</divisions><time><beats>3</beats><beat-type>4</beat-type></time>
-        <clef><sign>C</sign><line>4</line></clef></attributes>
-      ${measure}
-    </measure>
-  </part>
+  <part id="P1">${body}</part>
 </score-partwise>`;
     }
 
@@ -43,7 +42,7 @@ describe("Dynamics: horizontal spacing", () => {
     ].join("\n"));
 
     /** sf > sf > sf > on dotted-eighth/sixteenth pairs, "cédez" below on the third beat together with the third sf */
-    const sforzandoChain: string = score([
+    const sforzandoChainNotes: string = [
         below("<dynamics><sf/></dynamics>"), below("<wedge type=\"diminuendo\" number=\"1\"/>"),
         note("C", 4, 3, "eighth", true), note("B", 3, 1, "16th"),
         below("<dynamics><sf/></dynamics>"), below("<wedge type=\"stop\" number=\"1\"/>"), below("<wedge type=\"diminuendo\" number=\"2\"/>"),
@@ -52,7 +51,18 @@ describe("Dynamics: horizontal spacing", () => {
         below("<wedge type=\"stop\" number=\"2\"/>"), below("<wedge type=\"diminuendo\" number=\"3\"/>"),
         note("B", 4, 3, "eighth", true), note("A", 4, 1, "16th"),
         below("<wedge type=\"stop\" number=\"3\"/>"),
-    ].join("\n"));
+    ].join("\n");
+    const sforzandoChain: string = score(sforzandoChainNotes);
+
+    /** the same after a measure whose crescendo runs under low notes into the first sf (m37-38 on one system, as in the app
+     *  at zoom 0.6): the dynamics' baseline is pulled down to the crescendo's after the word was placed */
+    const sforzandoChainAfterLowCrescendo: string = score([
+        below("<wedge type=\"crescendo\" number=\"1\"/>"),
+        ...([["G", 3], ["F", 3], ["E", 3], ["D", 3], ["C", 3], ["B", 2], ["A", 2], ["G", 2], ["F", 2], ["E", 2]] as [string, number][])
+            .map(([step, octave]) => note(step, octave, 1, "16th")),
+        note("D", 2, 2, "eighth"),
+        below("<wedge type=\"stop\" number=\"1\"/>"),
+    ].join("\n"), sforzandoChainNotes);
 
     /** sf > sf > sf on three eighths: tighter than m38 in both renderers */
     const sforzandoEighths: string = score([
@@ -80,9 +90,8 @@ describe("Dynamics: horizontal spacing", () => {
             top: box.AbsolutePosition.y + box.BorderMarginTop,
         };
     }
-    /** a word below that runs into a dynamic or wedge sideways must be stacked under it, not on its row */
-    function onSameRow(word: Box, other: Box): boolean {
-        return word.left < other.right && other.left < word.right && word.top < (other.top + other.bottom) / 2;
+    function overlaps(a: Box, b: Box): boolean {
+        return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
     }
     function describeBox(b: Box): string {
         return `${b.name}[${b.left.toFixed(2)}, ${b.right.toFixed(2)}] x [${b.top.toFixed(2)}, ${b.bottom.toFixed(2)}]`;
@@ -129,7 +138,7 @@ describe("Dynamics: horizontal spacing", () => {
         return osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines[0];
     }
 
-    it("keeps the spacer between dynamics at different beats, and stacks words below them", async () => {
+    it("keeps the spacer between dynamics at different beats, and words clear of them", async () => {
         const osmd: OpenSheetMusicDisplay = await render(eighthsWithDynamics);
         const labels: Box[] = expressionBoxes(firstStaffLine(osmd)).labels;
         expect(labels.map(b => b.name)).to.deep.equal(["sf", "sf", "dolce", "sf"]);
@@ -140,7 +149,7 @@ describe("Dynamics: horizontal spacing", () => {
         }
         const word: Box = labels.find(b => b.name === "dolce");
         for (const dynamic of dynamics) {
-            expect(onSameRow(word, dynamic), `${describeBox(word)} runs into ${describeBox(dynamic)}`).to.equal(false);
+            expect(overlaps(word, dynamic), `${describeBox(word)} overlaps ${describeBox(dynamic)}`).to.equal(false);
         }
     });
 
@@ -164,13 +173,16 @@ describe("Dynamics: horizontal spacing", () => {
         });
     }
 
-    it("stacks a word under a later dynamic below the dynamics and wedges", async () => {
-        // at the minimum width (no reserved room), as when a measure is too short for MaximumDynamicsElongationFactor
-        const osmd: OpenSheetMusicDisplay = await render(sforzandoChain, 1.0);
-        const boxes: { labels: Box[], wedges: Box[] } = expressionBoxes(firstStaffLine(osmd));
-        const word: Box = boxes.labels.find(b => b.name === "cédez");
-        for (const other of [...boxes.labels.filter(b => b !== word), ...boxes.wedges]) {
-            expect(onSameRow(word, other), `${describeBox(word)} runs into ${describeBox(other)}`).to.equal(false);
-        }
-    });
+    // m38 at the minimum width (no reserved room), as when a measure is too short for MaximumDynamicsElongationFactor
+    for (const [name, xml, maximumFactor] of [["m38", sforzandoChain, 1.0], ["m37-38", sforzandoChainAfterLowCrescendo, undefined]] as
+        [string, string, number][]) {
+        it(`keeps a word under a later dynamic below the dynamics and wedges (${name})`, async () => {
+            const osmd: OpenSheetMusicDisplay = await render(xml, maximumFactor);
+            const boxes: { labels: Box[], wedges: Box[] } = expressionBoxes(firstStaffLine(osmd));
+            const word: Box = boxes.labels.find(b => b.name === "cédez");
+            for (const other of [...boxes.labels.filter(b => b !== word), ...boxes.wedges]) {
+                expect(overlaps(word, other), `${describeBox(word)} overlaps ${describeBox(other)}`).to.equal(false);
+            }
+        });
+    }
 });

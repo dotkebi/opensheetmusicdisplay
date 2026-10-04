@@ -49,6 +49,9 @@ import { GraphicalSlur } from "../GraphicalSlur";
 import { BoundingBox } from "../BoundingBox";
 import { ContinuousDynamicExpression } from "../../VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
 import { VexFlowContinuousDynamicExpression } from "./VexFlowContinuousDynamicExpression";
+import { GraphicalInstantaneousDynamicExpression } from "../GraphicalInstantaneousDynamicExpression";
+import { GraphicalContinuousDynamicExpression } from "../GraphicalContinuousDynamicExpression";
+import { GraphicalUnknownExpression } from "../GraphicalUnknownExpression";
 import { InstantaneousTempoExpression, MetronomeNoteGroup, TempoType } from "../../VoiceData/Expressions/InstantaneousTempoExpression";
 import { AlignRestOption } from "../../../OpenSheetMusicDisplay/OSMDOptions";
 import { VexFlowStaffLine } from "./VexFlowStaffLine";
@@ -2621,6 +2624,89 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   }
 
   /**
+   * The words were placed clear of the dynamics and wedges, but AlignmentManager then moves those onto a common baseline:
+   * a dynamic pulled down to a wedge's baseline can land on a word under it (Enescu, Cantabile et Presto m37-38 on one
+   * system: the third sf of m38 on "cédez"). Stack such words beyond the dynamics and wedges again.
+   * (Same as osmd-dart's VexFlowMusicSheetCalculator._restackWordsClearOfDynamics.)
+   */
+  private restackWordsClearOfDynamics(staffLine: StaffLine): void {
+    const boxes: { placement: PlacementEnum, left: number, right: number, top: number, bottom: number }[] = [];
+    for (const expression of staffLine.AbstractExpressions) {
+      if (expression instanceof GraphicalInstantaneousDynamicExpression) {
+        const box: BoundingBox = expression.PositionAndShape;
+        boxes.push({
+          bottom: box.RelativePosition.y + box.BorderMarginBottom,
+          left: box.RelativePosition.x + box.BorderMarginLeft,
+          placement: expression.Placement,
+          right: box.RelativePosition.x + box.BorderMarginRight,
+          top: box.RelativePosition.y + box.BorderMarginTop,
+        });
+      } else if (expression instanceof GraphicalContinuousDynamicExpression) {
+        const x0: number = expression.PositionAndShape.RelativePosition.x;
+        const y0: number = expression.PositionAndShape.RelativePosition.y;
+        if (expression.IsVerbal) {
+          // the label is placed inside the expression's box
+          const box: BoundingBox = expression.Label.PositionAndShape;
+          boxes.push({
+            bottom: y0 + box.RelativePosition.y + box.BorderMarginBottom,
+            left: x0 + box.RelativePosition.x + box.BorderMarginLeft,
+            placement: expression.ContinuousDynamic.Placement,
+            right: x0 + box.RelativePosition.x + box.BorderMarginRight,
+            top: y0 + box.RelativePosition.y + box.BorderMarginTop,
+          });
+        } else if (expression.Lines.length >= 2) {
+          const box: BoundingBox = expression.PositionAndShape;
+          boxes.push({
+            bottom: y0 + box.BorderMarginBottom,
+            left: x0 + box.BorderMarginLeft,
+            placement: expression.ContinuousDynamic.Placement,
+            right: x0 + box.BorderMarginRight,
+            top: y0 + box.BorderMarginTop,
+          });
+        }
+      }
+    }
+    if (boxes.length === 0) {
+      return;
+    }
+    for (const word of new Set(staffLine.AbstractExpressions)) {
+      if (!(word instanceof GraphicalUnknownExpression)) {
+        continue;
+      }
+      const below: boolean = word.Placement === PlacementEnum.Below;
+      if (!below && word.Placement !== PlacementEnum.Above) {
+        continue;
+      }
+      const label: BoundingBox = word.Label.PositionAndShape;
+      const left: number = label.RelativePosition.x + label.BorderMarginLeft;
+      const right: number = label.RelativePosition.x + label.BorderMarginRight;
+      let top: number = label.RelativePosition.y + label.BorderMarginTop;
+      let bottom: number = label.RelativePosition.y + label.BorderMarginBottom;
+      let shift: number = 0;
+      // moving past one box can run into the next one further out
+      for (let pass: number = 0; pass < boxes.length; pass++) {
+        let moved: boolean = false;
+        for (const box of boxes) {
+          if (box.placement !== word.Placement || box.left >= right || left >= box.right || box.top >= bottom || top >= box.bottom) {
+            continue;
+          }
+          const delta: number = below ? box.bottom - top : box.top - bottom;
+          top += delta;
+          bottom += delta;
+          shift += delta;
+          moved = true;
+        }
+        if (!moved) {
+          break;
+        }
+      }
+      if (shift !== 0) {
+        label.RelativePosition = new PointF2D(label.RelativePosition.x, label.RelativePosition.y + shift);
+      }
+    }
+  }
+
+  /**
    * Re-adjust the x positioning of expressions. Update the skyline afterwards
    */
   protected calculateExpressionAlignements(): void {
@@ -2628,6 +2714,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       for (const staffLine of musicSystem.StaffLines) {
         try {
           (<VexFlowStaffLine>staffLine).AlignmentManager.alignDynamicExpressions();
+          this.restackWordsClearOfDynamics(staffLine);
           staffLine.AbstractExpressions.forEach(ae => {
             ae.updateSkyBottomLine();
           });
