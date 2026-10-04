@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1"><part-name>Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <!-- m1: words above and below at the same time (Couperin, Concerts royaux III Chaconne m70) -->
+    <measure number="1">
+      <attributes>
+        <divisions>2</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>2</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <direction placement="above">
+        <direction-type><words font-style="italic">Majeur</words></direction-type>
+        <staff>1</staff>
+      </direction>
+      <direction placement="below">
+        <direction-type><words font-style="italic">(fort)</words></direction-type>
+        <staff>1</staff>
+      </direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+    <!-- m2: the same with an offset to the second beat (Chaconne m57) -->
+    <measure number="2">
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+      <direction placement="above">
+        <direction-type><words font-style="italic">(Rondeau)</words></direction-type>
+        <offset>0</offset>
+        <staff>1</staff>
+      </direction>
+      <direction placement="below">
+        <direction-type><words font-style="italic">fort</words></direction-type>
+        <offset>0</offset>
+        <staff>1</staff>
+      </direction>
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+    <!-- m3: two words above at the same time stay on one line -->
+    <measure number="3">
+      <direction placement="above">
+        <direction-type><words>poco</words></direction-type>
+        <staff>1</staff>
+      </direction>
+      <direction placement="above">
+        <direction-type><words>espress.</words></direction-type>
+        <staff>1</staff>
+      </direction>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>
