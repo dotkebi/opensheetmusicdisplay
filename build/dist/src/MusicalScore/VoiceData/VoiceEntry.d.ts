@@ -9,6 +9,7 @@ import { KeyInstruction } from "./Instructions/KeyInstruction";
 import { Dictionary } from "typescript-collections";
 import { Arpeggio } from "./Arpeggio";
 import { Articulation } from "./Articulation";
+import { PlacementEnum } from "./Expressions/AbstractExpression";
 /**
  * A [[VoiceEntry]] contains the notes in a voice at a timestamp.
  */
@@ -31,6 +32,8 @@ export declare class VoiceEntry {
     private graceAfterMainNote;
     private graceNoteSlash;
     private graceSlur;
+    /** The placement attribute of the grace slur's start in the XML (NotYetDefined if not given). */
+    private graceSlurPlacement;
     private articulations;
     private technicalInstructions;
     private lyricsEntries;
@@ -61,6 +64,8 @@ export declare class VoiceEntry {
     set GraceNoteSlash(value: boolean);
     get GraceSlur(): boolean;
     set GraceSlur(value: boolean);
+    get GraceSlurPlacement(): PlacementEnum;
+    set GraceSlurPlacement(value: PlacementEnum);
     get Articulations(): Articulation[];
     set Articulations(value: Articulation[]);
     get TechnicalInstructions(): TechnicalInstruction[];
