@@ -96,8 +96,12 @@ export class AccidentalCalculator {
                             pitchKey,
                             this.keySignatureNoteAlterationsDict.getValue(pitchKey)
                         );
-                    } else {
+                    } else if (pitch.AccidentalHalfTones === 0) {
                         this.currentInMeasureNoteAlterationsDict.remove(pitchKey);
+                    } else {
+                        // an alteration of a pitch that the key leaves natural, e.g. D# after D natural in G major:
+                        //   remember it, so that the next D# of the measure gets no accidental
+                        this.currentInMeasureNoteAlterationsDict.setValue(pitchKey, pitch.AccidentalHalfTones);
                     }
                 } else {
                     // pitch.Accidental === NONE: returning to natural state
