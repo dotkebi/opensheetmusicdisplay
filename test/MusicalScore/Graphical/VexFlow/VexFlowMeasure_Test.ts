@@ -471,6 +471,37 @@ describe("VexFlow Measure", () => {
    // Before fix: baseFingeringXOffset was calculated across all notes in the staff entry,
    // causing grace notes to have incorrect offsets based on collision with other grace notes
    // at different horizontal positions. The fix calculates offsets per voice entry for grace notes.
+   // The arc of a grace note group (slur from a grace note to its own main note) followed the grace
+   //   note's stem and ignored the slur's XML placement: stem-down grace notes slurred below
+   //   (Couperin, Concerts Royaux IV/5 Sarabande m4) were drawn above.
+   it("Draws a grace note group slur on the side given by the XML placement", (done: Mocha.Done) => {
+      const score: Document = TestUtils.getScore("test_grace_slur_placement_xml.musicxml");
+      const div: HTMLElement = TestUtils.getDivElement(document);
+      const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
+
+      osmd.load(score).then(() => {
+         osmd.render();
+         // VexFlow direction of each drawn group arc per measure: 1 = below the notes, -1 = above
+         const directions: number[][] = [];
+         for (let measureIndex: number = 0; measureIndex < 3; measureIndex++) {
+            const measureDirections: number[] = [];
+            for (const staffEntry of osmd.GraphicSheet.findGraphicalMeasure(measureIndex, 0).staffEntries) {
+               for (const gve of staffEntry.graphicalVoiceEntries as VexFlowVoiceEntry[]) {
+                  for (const modifier of (gve.vfStaveNote as any)?.getModifiers?.() ?? []) {
+                     if (modifier instanceof VF.GraceNoteGroup && (modifier as any).slur) {
+                        const slur: any = (modifier as any).slur;
+                        measureDirections.push(slur.direction ?? slur.last_note.getStemDirection());
+                     }
+                  }
+               }
+            }
+            directions.push(measureDirections);
+         }
+         expect(directions).to.deep.equal([[1, 1], [-1], [1]]);
+         done();
+      }).catch(done);
+   });
+
    it("Grace notes should have baseFingeringXOffset calculated per voice entry", (done: Mocha.Done) => {
       const score: Document = TestUtils.getScore("test_grace_note_fingerings_position.musicxml");
       const div: HTMLElement = TestUtils.getDivElement(document);

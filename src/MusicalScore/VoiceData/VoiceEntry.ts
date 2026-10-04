@@ -13,6 +13,7 @@ import { Dictionary } from "typescript-collections";
 import {Arpeggio} from "./Arpeggio";
 import { SourceMeasure } from "./SourceMeasure";
 import { Articulation } from "./Articulation";
+import { PlacementEnum } from "./Expressions/AbstractExpression";
 
 /**
  * A [[VoiceEntry]] contains the notes in a voice at a timestamp.
@@ -54,6 +55,8 @@ export class VoiceEntry {
     private graceAfterMainNote: boolean;
     private graceNoteSlash: boolean;
     private graceSlur: boolean; // TODO grace slur system could be refined to be non-binary
+    /** The placement attribute of the grace slur's start in the XML (NotYetDefined if not given). */
+    private graceSlurPlacement: PlacementEnum = PlacementEnum.NotYetDefined;
     private articulations: Articulation[] = [];
     private technicalInstructions: TechnicalInstruction[] = [];
     private lyricsEntries: Dictionary<string, LyricsEntry> = new Dictionary<string, LyricsEntry>();
@@ -115,6 +118,12 @@ export class VoiceEntry {
     }
     public set GraceSlur(value: boolean) {
         this.graceSlur = value;
+    }
+    public get GraceSlurPlacement(): PlacementEnum {
+        return this.graceSlurPlacement;
+    }
+    public set GraceSlurPlacement(value: PlacementEnum) {
+        this.graceSlurPlacement = value;
     }
     public get Articulations(): Articulation[] {
         return this.articulations;

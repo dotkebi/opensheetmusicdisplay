@@ -1598,6 +1598,14 @@ export class VexFlowMeasure extends GraphicalMeasure {
                         graceNotes.push(vfStaveNote);
                     }
                     const graceNoteGroup: VF.GraceNoteGroup = new VF.GraceNoteGroup(graceNotes, graceSlur);
+                    // the group's arc to the main note follows the grace note's stem unless the XML places the slur
+                    const graceSlurPlacement: PlacementEnum = graceGVoiceEntriesBefore.find(
+                        (graceGve: GraphicalVoiceEntry) => graceGve.parentVoiceEntry.GraceSlur)?.parentVoiceEntry.GraceSlurPlacement;
+                    if (this.rules.SlurPlacementFromXML &&
+                        (graceSlurPlacement === PlacementEnum.Above || graceSlurPlacement === PlacementEnum.Below)) {
+                        (graceNoteGroup as any).slur_direction = graceSlurPlacement === PlacementEnum.Below ?
+                            VF.StaveNote.STEM_UP : VF.StaveNote.STEM_DOWN; // a VexFlow tie for stem up curves below the notes
+                    }
                     let xMargin: number = this.rules.GraceNoteGroupXMargin;
                     if (graceNotes.length > 1) {
                         xMargin /= 3; // prevent overlap. multiple grace notes end up closer to the main note.
