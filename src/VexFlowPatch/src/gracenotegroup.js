@@ -93,6 +93,9 @@ export class GraceNoteGroup extends Modifier {
 
     this.show_slur = show_slur;
     this.slur = null;
+    // vexflowpatch: direction of the slur to the main note, set externally from the XML placement
+    //   (otherwise the slur follows the stem direction of the first grace note)
+    this.slur_direction = undefined;
 
     this.formatter = new Formatter();
     this.voice = new Voice({
@@ -185,6 +188,9 @@ export class GraceNoteGroup extends Modifier {
         last_indices: [0],
       });
 
+      if (this.slur_direction) {
+        this.slur.setDirection(this.slur_direction); // vexflowpatch
+      }
       this.slur.render_options.cp2 = 12;
       this.slur.render_options.y_shift = (is_stavenote ? 7 : 5) + this.render_options.slur_y_shift;
       this.slur.setContext(this.context).draw();

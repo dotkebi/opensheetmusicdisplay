@@ -161,6 +161,16 @@ export class VoiceGenerator {
           if (glissElements.length > 0) {
             this.slurReader.addSlur(glissElements, this.currentNote);
           }
+        } else if (this.currentNote.ParentVoiceEntry.IsGrace &&
+                   this.currentVoiceEntry.GraceSlurPlacement === PlacementEnum.NotYetDefined) {
+          // a grace note's slur is only kept as VoiceEntry.GraceSlur (drawn by the grace note group),
+          //   but its placement is needed to draw the arc on the written side (e.g. below stem-down grace notes)
+          for (const slurElement of slurElements) {
+            if (slurElement.attribute("type")?.value === "start") {
+              this.currentVoiceEntry.GraceSlurPlacement = this.getTieDirection(slurElement);
+              break;
+            }
+          }
         }
         // read voice leading guides (visual only, see VoiceLeadingGuide)
         const otherNotationElements: IXmlElement[] = notationNode.elements("other-notation");
