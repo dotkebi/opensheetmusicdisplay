@@ -1,5 +1,6 @@
 import { Staff } from "../VoiceData/Staff";
 import { GraphicalLine } from "./GraphicalLine";
+import { GraphicalExpressionDashes } from "./GraphicalExpressionDashes";
 import { GraphicalStaffEntry } from "./GraphicalStaffEntry";
 import { GraphicalObject } from "./GraphicalObject";
 import { GraphicalMeasure } from "./GraphicalMeasure";
@@ -26,6 +27,8 @@ export declare abstract class StaffLine extends GraphicalObject {
     protected lyricLines: GraphicalLine[];
     protected lyricsDashes: GraphicalLabel[];
     protected abstractExpressions: AbstractGraphicalExpression[];
+    /** Dashed lines after text expressions (MusicXML <dashes>) on this staffline. */
+    ExpressionDashes: GraphicalExpressionDashes[];
     /** The staff height in units */
     private staffHeight;
     private topLineOffset;

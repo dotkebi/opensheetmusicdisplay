@@ -134,6 +134,8 @@ export declare abstract class MusicSheetDrawer {
     protected drawStaffLine(staffLine: StaffLine): void;
     protected drawLyricLines(lyricLines: GraphicalLine[], staffLine: StaffLine): void;
     protected drawExpressions(staffline: StaffLine): void;
+    /** Draws the dashed lines after text expressions (MusicXML <dashes>, e.g. "rit. - - -"). */
+    protected drawExpressionDashes(staffLine: StaffLine): void;
     protected drawGraphicalLine(graphicalLine: GraphicalLine, lineWidth: number, colorOrStyle?: string): Node;
     protected drawLine(start: PointF2D, stop: PointF2D, color: string, lineWidth: number): Node;
     /**

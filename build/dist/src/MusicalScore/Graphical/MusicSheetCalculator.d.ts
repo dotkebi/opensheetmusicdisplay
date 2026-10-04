@@ -36,7 +36,7 @@ import { ITransposeCalculator } from "../Interfaces/ITransposeCalculator";
 import { AccidentalCalculator } from "./AccidentalCalculator";
 import { GraphicalLyricWord } from "./GraphicalLyricWord";
 import { SkyBottomLineCalculator } from "./SkyBottomLineCalculator";
-import { PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
+import { AbstractExpression, PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
 import { InstantaneousTempoExpression } from "../VoiceData/Expressions/InstantaneousTempoExpression";
 import { FontStyles } from "../../Common/Enums/FontStyles";
 import { GraphicalInstantaneousDynamicExpression } from "./GraphicalInstantaneousDynamicExpression";
@@ -75,6 +75,10 @@ export declare abstract class MusicSheetCalculator {
     protected graphicalMusicSheet: GraphicalMusicSheet;
     protected rules: EngravingRules;
     protected musicSystems: MusicSystem[];
+    /** Dashed lines after expression texts, collected while the texts are placed (see calculateExpressionDashes()). */
+    private pendingExpressionDashes;
+    /** Sky- and bottomline of each staffline before expressions are placed. */
+    private skyBottomLinesBeforeExpressions;
     /** Lazy rendering: cache of computed sky/bottom lines, keyed per staff line by its system's
      *  measure range + staff index. A growing-prefix batch re-runs the (expensive) skyline pass over the
      *  whole prefix; this lets stable interior systems reuse the lines computed in an earlier batch instead
@@ -223,6 +227,30 @@ export declare abstract class MusicSheetCalculator {
      */
     protected calculateMoodAndUnknownExpression(multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
     /**
+     * Notes a dashed line (MusicXML <dashes>, e.g. "rit. - - - -") to be calculated after its text,
+     * see calculateExpressionDashes().
+     * @param label the expression's text, already positioned on staffLine
+     * @param staffIndex index of staffLine's staff in a MeasureList entry
+     * @param measureIndex MeasureList index of the measure the expression belongs to
+     */
+    protected addExpressionDashes(expression: AbstractExpression, label: GraphicalLabel, placement: PlacementEnum, staffLine: StaffLine, staffIndex: number, measureIndex: number): void;
+    /** Where the dashed line after an expression's text ends on staffLine (its end, or the end of staffLine if it
+     *  continues on a later system), or undefined if the expression has no dashed line. */
+    private expressionDashesEndX;
+    /** Copies the sky- and bottomlines before expressions are placed (see calculateExpressionDashes()). */
+    protected saveSkyBottomLinesBeforeExpressions(): void;
+    /**
+     * Calculates the dashed lines that follow the texts of expressions up to where their MusicXML <dashes> stop
+     * (e.g. "rit. - - - -"), after all expressions are placed: one GraphicalExpressionDashes per staffline a line crosses.
+     * Next to its text a line stays at the text's height and ends before anything that reaches it. Words stacked
+     * entirely above (below) the line don't count: under them, the sky- (bottom)line from before the expressions is used.
+     * On later systems, the line is lifted above (lowered below) the notes. The lines are entered into the sky-/bottomline.
+     */
+    protected calculateExpressionDashes(): void;
+    /** The first x in [startX, endX) where something on staffLine reaches a dashed line at height y, else endX.
+     *  See calculateExpressionDashes(). */
+    private firstExpressionDashesObstacleX;
+    /**
      * Delete all Objects that must be recalculated.
      * If graphicalMusicSheet.reCalculate has been called, then this method will be called to reset or remove all flexible
      * graphical music symbols (e.g. Ornaments, Lyrics, Slurs) graphicalMusicSheet will have MusicPages, they will have MusicSystems etc...
@@ -314,8 +342,14 @@ export declare abstract class MusicSheetCalculator {
      * @param rightOpen
      */
     protected layoutSingleRepetitionEnding(start: GraphicalMeasure, end: GraphicalMeasure, numberText: string, offset: number, leftOpen: boolean, rightOpen: boolean): void;
-    protected calculateLabel(staffLine: StaffLine, relative: PointF2D, combinedString: string, style: FontStyles, placement: PlacementEnum, fontHeight: number, textAlignment?: TextAlignmentEnum, yPadding?: number): GraphicalLabel;
+    protected calculateLabel(staffLine: StaffLine, relative: PointF2D, combinedString: string, style: FontStyles, placement: PlacementEnum, fontHeight: number, textAlignment?: TextAlignmentEnum, yPadding?: number, skyBottomLineRangeEndX?: number): GraphicalLabel;
     protected calculateTempoExpressionsForMultiTempoExpression(sourceMeasure: SourceMeasure, multiTempoExpression: MultiTempoExpression, measureIndex: number): void;
+    /** The MeasureList staff index of a tempo change (e.g. "rit.", "a tempo", "accel.") placed at a lower staff
+     *  (<staff> 2 or higher) of its instrument, or undefined if it belongs to the first staff or its direction gives
+     *  no placement. Without a placement, the default (below for multi-staff instruments) would often contradict
+     *  the print, so such tempo words stay above the system as before. So do main tempo marks ("Allegro"),
+     *  which belong above the system even when an exporter attaches them to a lower staff. */
+    private static lowerStaffIndexOfTempoExpression;
     protected createMetronomeMark(metronomeExpression: InstantaneousTempoExpression): void;
     protected graphicalMeasureCreatedCalculations(measure: GraphicalMeasure): void;
     protected clearSystemsAndMeasures(): void;

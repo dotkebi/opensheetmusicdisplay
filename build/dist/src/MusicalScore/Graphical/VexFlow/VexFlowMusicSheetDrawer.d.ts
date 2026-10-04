@@ -110,6 +110,7 @@ export declare class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
     protected drawPedals(staffLine: StaffLine): void;
     protected drawWavyLines(staffLine: StaffLine): void;
     protected drawExpressions(staffline: StaffLine): void;
+    protected drawExpressionDashes(staffLine: StaffLine): void;
     protected drawInstantaneousDynamic(instantaneousDynamic: GraphicalInstantaneousDynamicExpression): void;
     protected drawContinuousDynamic(graphicalExpression: VexFlowContinuousDynamicExpression): void;
     /**

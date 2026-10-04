@@ -201,6 +201,10 @@ export declare class SkyBottomLineCalculator {
      * @param endIndex end index (including)
      */
     private getMinInRange;
+    /** The minimum of a copy of a sky- or bottomline (see SkyLine, BottomLine) in the given x range (in units). */
+    getMinInRangeOf(skyBottomArray: number[], start: number, end: number): number;
+    /** The maximum of a copy of a sky- or bottomline (see SkyLine, BottomLine) in the given x range (in units). */
+    getMaxInRangeOf(skyBottomArray: number[], start: number, end: number): number;
     /**
      * Get the maximum value inside the given indices
      * @param skyBottomArray Skyline or bottom line
