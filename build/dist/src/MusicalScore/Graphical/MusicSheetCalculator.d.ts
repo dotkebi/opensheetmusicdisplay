@@ -350,10 +350,11 @@ export declare abstract class MusicSheetCalculator {
     /** Whether two metronome marks print the same: note equations by their notes rather than their playback tempo,
      *  other marks by beat unit and bpm. */
     /** The MeasureList staff index of a tempo change (e.g. "rit.", "a tempo", "accel.") placed at a lower staff
-     *  (<staff> 2 or higher) of its instrument, or undefined if it belongs to the first staff or its direction gives
-     *  no placement. Without a placement, the default (below for multi-staff instruments) would often contradict
-     *  the print, so such tempo words stay above the system as before. So do main tempo marks ("Allegro"),
-     *  which belong above the system even when an exporter attaches them to a lower staff. */
+     *  (<staff> 2 or higher) of its instrument, or placed below its first staff (placement="below", as "rit." under
+     *  a solo part), or undefined if the tempo change stays above the system: when its direction gives no placement
+     *  (the default, below for multi-staff instruments, would often contradict the print), or when it is written
+     *  above the first staff anyway. Main tempo marks ("Allegro") also stay above the system even when an exporter
+     *  attaches them to a lower staff or puts them below. */
     private static lowerStaffIndexOfTempoExpression;
     /** Whether two metronome marks print the same: note equations by their notes rather than their playback tempo,
      *  other marks by beat unit and bpm. */
