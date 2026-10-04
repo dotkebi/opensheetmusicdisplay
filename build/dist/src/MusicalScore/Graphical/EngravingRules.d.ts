@@ -299,6 +299,9 @@ export declare class EngravingRules {
     LyricOverlapAllowedIntoNextMeasure: number;
     MinimumDistanceBetweenDashes: number;
     MaximumLyricsElongationFactor: number;
+    /** How far a measure may be widened so that dynamics starting at different timestamps (and a wedge between them)
+     *  don't overlap, as a factor of its minimum width (cf. MaximumLyricsElongationFactor). 1 turns this off. Default 2.5. */
+    MaximumDynamicsElongationFactor: number;
     SlurPlacementFromXML: boolean;
     SlurPlacementAtStems: boolean;
     SlurPlacementUseSkyBottomLine: boolean;

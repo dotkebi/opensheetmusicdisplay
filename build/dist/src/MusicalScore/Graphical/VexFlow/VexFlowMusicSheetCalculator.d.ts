@@ -76,6 +76,28 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         };
     };
     calculateMeasureWidthFromStaffEntries(measuresVertical: GraphicalMeasure[], oldMinimumStaffEntriesWidth: number): number;
+    /**
+     * Dynamics and wedges are placed only after the systems are laid out, so they never widened their measure:
+     * in a measure that stays near its minimum width, "sf > sf > sf" squeezed its wedges to nothing
+     * (Enescu, Cantabile et Presto m38). AlignmentManager puts neighbouring dynamics, verbal dynamics ("cresc.")
+     * and wedges on one baseline, where they can only make room for each other sideways.
+     * So, like the lyrics, reserve their width here: on each side of a staff, a dynamic must clear an earlier one
+     * by DynamicExpressionSpacer, and a wedge between two of them needs WedgeMinLength and another spacer.
+     * Same timestamps are left to the vertical alignment. Words are not reserved: the skyline stacks them clear of the dynamics.
+     * The measure grows by at most MaximumDynamicsElongationFactor of its minimum width; beyond that the dynamics are left overlapping (debug log).
+     * The gaps are checked with the formatter: widening a measure does not widen its note gaps in proportion.
+     * (Same as osmd-dart's VexFlowMusicSheetCalculator._fitExpressionsToFormattedEntries.)
+     * @returns the minimum staff entries width, widened if needed
+     */
+    private fitExpressionsToFormattedEntries;
+    /** The dynamics and wedges that start in measure on the staff of staffIndex,
+     *  with the label widths they will be drawn with (calculateDynamicExpressions()). */
+    private expressionSlots;
+    /** Dynamic pairs on one side of a staff that start at different timestamps, with the distance the later one must keep from the earlier one. */
+    private expressionPairs;
+    /** The x of timestamp (relative to its measure) between the measure's staff entries,
+     *  as getRelativePositionInStaffLineFromTimestamp() interpolates it. */
+    private xAtTimestamp;
     private computeContainerOverflows;
     protected createGraphicalTie(tie: Tie, startGse: GraphicalStaffEntry, endGse: GraphicalStaffEntry, startNote: GraphicalNote, endNote: GraphicalNote): GraphicalTie;
     protected updateStaffLineBorders(staffLine: StaffLine): void;
@@ -174,6 +196,13 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      *  The geometric and per-staff-line paths yield after each staff line; the batch path is a single native
      *  call, so we yield around it. */
     private computeSkyBottomLinesForAsync;
+    /**
+     * The words were placed clear of the dynamics and wedges, but AlignmentManager then moves those onto a common baseline:
+     * a dynamic pulled down to a wedge's baseline can land on a word under it (Enescu, Cantabile et Presto m37-38 on one
+     * system: the third sf of m38 on "cédez"). Stack such words beyond the dynamics and wedges again.
+     * (Same as osmd-dart's VexFlowMusicSheetCalculator._restackWordsClearOfDynamics.)
+     */
+    private restackWordsClearOfDynamics;
     /**
      * Re-adjust the x positioning of expressions. Update the skyline afterwards
      */
