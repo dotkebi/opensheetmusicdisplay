@@ -483,9 +483,14 @@ export class InstrumentReader {
           }
           let handeled: boolean = false;
           if (this.repetitionInstructionReader) {
+            const directionStaff: Staff = this.instrument.Staves[this.readExpressionStaffNumber(xmlNode) - 1] ?? this.instrument.Staves[0];
             handeled = this.repetitionInstructionReader.handleRepetitionInstructionsFromWordsOrSymbols( directionTypeNode,
                                                                                                         relativePositionInMeasure,
-                                                                                                        xmlNode.element("sound"));
+                                                                                                        xmlNode.element("sound"),
+                                                                                                        directionStaff ? {
+                                                                                                          staff: directionStaff,
+                                                                                                          timestamp: currentFraction.clone()
+                                                                                                        } : undefined);
           }
           if (!handeled) {
            let expressionReader: ExpressionReader = this.expressionReaders[0];

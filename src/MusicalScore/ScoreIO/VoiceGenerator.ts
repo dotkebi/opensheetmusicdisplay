@@ -1193,6 +1193,13 @@ export class VoiceGenerator {
               tie.NoteIndexToTieDirection[tie.Notes.length - 1] = placement;
             }
           }
+        } else {
+          // nothing to stop (e.g. the note before a backward repeat, tied to the note that the repeat goes back to,
+          //   and also marked as a tie end): the start still starts a tie
+          const startNode: IXmlElement = tieNodeList.find(tieNode => tieNode.attribute("type")?.value === "start");
+          if (startNode) {
+            this.addTie([startNode], measureStartAbsoluteTimestamp, maxTieNoteFraction, tieType);
+          }
         }
       }
     }

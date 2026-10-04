@@ -12,6 +12,7 @@ import { SystemLinesEnum } from "../SystemLinesEnum";
 import { FontStyles } from "../../../Common/Enums/FontStyles";
 import { Fonts } from "../../../Common/Enums/Fonts";
 import { OutlineAndFillStyleEnum } from "../DrawingEnums";
+import { VoiceEntry } from "../../VoiceData/VoiceEntry";
 import { SystemLinePosition } from "../SystemLinePosition";
 import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
 import { OrnamentContainer } from "../../VoiceData/OrnamentContainer";
@@ -72,6 +73,19 @@ export declare class VexFlowConverter {
      * @param gve the GraphicalVoiceEntry which can hold a note or a chord on the staff belonging to one voice
      * @returns {VF.StaveNote}
      */
+    /**
+     * The side of a rest in a staff with several voices, if both its voice's notes say so: above (1) the other voices' notes
+     * at its time if the nearest note of its voice in the measure is higher than them and the MusicXML gives the voice's notes
+     * upward stems, below (-1) if it's lower and they have downward stems, else undefined (the side by the voice number).
+     * The rests were put above for voice 1 (or 5) only, so the rest of another voice that is the upper one by its stems
+     * and its notes was put below, under the other voice's stems (Couperin, Concerts royaux II, Prelude m1-2: the quarter rest
+     * of voice 6, far below the left hand's D3). Both are required: voices cross, and stems can be the other way round
+     * (e.g. Concerts royaux IV, Courante françoise m6: a rest of the voice with downward stems above the other voice).
+     * @param rest the rest's voice entry
+     * @param highestOther the highest halftone of the other voices' notes at the rest's time
+     * @param lowestOther the lowest halftone of the other voices' notes at the rest's time
+     */
+    static restSideFromVoice(rest: VoiceEntry, highestOther: number, lowestOther: number): number;
     static StaveNote(gve: GraphicalVoiceEntry): VF.StaveNote;
     static generateArticulations(vfnote: VF.StemmableNote, gNote: GraphicalNote, rules: EngravingRules): void;
     static generateOrnaments(vfnote: VF.StemmableNote, oContainer: OrnamentContainer): void;

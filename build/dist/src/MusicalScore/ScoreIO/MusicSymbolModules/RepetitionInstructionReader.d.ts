@@ -1,7 +1,7 @@
 import { MusicSheet } from "../../MusicSheet";
 import { IXmlElement } from "../../../Common/FileIO/Xml";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
-import { RepetitionInstruction } from "../../VoiceData/Instructions/RepetitionInstruction";
+import { RepetitionInstruction, RepetitionSymbolPlacement } from "../../VoiceData/Instructions/RepetitionInstruction";
 export declare class RepetitionInstructionReader {
     /**
      * A global list of all repetition instructions in the musicsheet.
@@ -25,9 +25,10 @@ export declare class RepetitionInstructionReader {
      * @param soundNode the direction's sound element, if any: <sound segno="..."> marks a segno as the target of a D.S.
      *   Its dacapo, dalsegno, fine, tocoda, segno and coda attributes say which instruction the direction is when its words
      *   don't name one themselves, e.g. "Fin", "Da Capo bis Ende" or "D.C. senza replica".
+     * @param symbolPlacement the staff and the timestamp in the measure of the direction, where a segno sign is drawn
      * @returns true if the direction is a repetition instruction, false if it is drawn as text
      */
-    handleRepetitionInstructionsFromWordsOrSymbols(directionTypeNode: IXmlElement, relativeMeasurePosition: number, soundNode?: IXmlElement): boolean;
+    handleRepetitionInstructionsFromWordsOrSymbols(directionTypeNode: IXmlElement, relativeMeasurePosition: number, soundNode?: IXmlElement, symbolPlacement?: RepetitionSymbolPlacement): boolean;
     /**
      * Returns the repetition instruction that the words are, or undefined if they are a general text,
      * which may mention an instruction, e.g. "voice tacet on D.S." (see #1687).
@@ -46,4 +47,9 @@ export declare class RepetitionInstructionReader {
     private findInstructionInPreviousMeasure;
     private backwardSearchForPreviousIdenticalInstruction;
     private addInstruction;
+    /**
+     * Adds the sign placements of a second direction of the same instruction in the measure (e.g. a segno above each hand)
+     * to the instruction. Only the ones of the same part: a segno that each part of a score repeats is drawn once, above the top part.
+     */
+    private addSymbolPlacements;
 }

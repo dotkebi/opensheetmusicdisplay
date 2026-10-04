@@ -1,4 +1,6 @@
 import {Repetition} from "../../MusicSource/Repetition";
+import {Fraction} from "../../../Common/DataObjects/Fraction";
+import {Staff} from "../Staff";
 
 export class RepetitionInstructionComparer /*implements IComparer<RepetitionInstruction>*/ {
     public static Compare(x: RepetitionInstruction, y: RepetitionInstruction): number {
@@ -73,6 +75,19 @@ export class RepetitionInstruction /*implements IComparable*/ {
     public Words: string;
     /** Whether the MusicXML marks this segno as the target of a D.S. (<sound segno="...">): it is never taken for a D.S. itself. */
     public MarkedAsTarget: boolean = false;
+    /**
+     * Whether the RepetitionCalculator added this instruction for playback, without a sign for it in the MusicXML:
+     * the backward jump that closes a forward repeat without a backward repeat at the end of the piece.
+     * It is played, but not drawn (no backward repeat barline that the score doesn't have).
+     */
+    public Implicit: boolean = false;
+    /**
+     * Where the MusicXML puts the signs of a segno: the staff and the timestamp in the measure,
+     * one per <direction> with the sign, e.g. one above each hand of a piano part at different notes
+     * (Couperin, Concerts royaux III, Allemande m17). Only the ones of the first part with the segno in the measure.
+     * Empty for a segno from words: drawn at the start of the measure, above the top staff.
+     */
+    public SymbolPlacements: RepetitionSymbolPlacement[] = [];
 
     public CompareTo(obj: Object): number {
         const other: RepetitionInstruction = <RepetitionInstruction>obj;
@@ -159,6 +174,14 @@ export class RepetitionInstruction /*implements IComparable*/ {
         }
         return true;
     }
+}
+
+/** Where a sign of a repetition instruction (a segno) is drawn, see RepetitionInstruction.SymbolPlacements. */
+export interface RepetitionSymbolPlacement {
+    /** the staff of the <direction> */
+    staff: Staff;
+    /** the timestamp in the measure */
+    timestamp: Fraction;
 }
 
 export enum RepetitionInstructionEnum {

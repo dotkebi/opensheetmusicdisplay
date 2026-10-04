@@ -18,6 +18,7 @@ import {Fonts} from "../../../Common/Enums/Fonts";
 import {OutlineAndFillStyleEnum, OUTLINE_AND_FILL_STYLE_DICT} from "../DrawingEnums";
 import log from "loglevel";
 import { ArticulationEnum, StemDirectionType, VoiceEntry } from "../../VoiceData/VoiceEntry";
+import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { SystemLinePosition } from "../SystemLinePosition";
 import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
 import { OrnamentEnum, OrnamentContainer } from "../../VoiceData/OrnamentContainer";
@@ -281,6 +282,52 @@ export class VexFlowConverter {
      * @param gve the GraphicalVoiceEntry which can hold a note or a chord on the staff belonging to one voice
      * @returns {VF.StaveNote}
      */
+    /**
+     * The side of a rest in a staff with several voices, if both its voice's notes say so: above (1) the other voices' notes
+     * at its time if the nearest note of its voice in the measure is higher than them and the MusicXML gives the voice's notes
+     * upward stems, below (-1) if it's lower and they have downward stems, else undefined (the side by the voice number).
+     * The rests were put above for voice 1 (or 5) only, so the rest of another voice that is the upper one by its stems
+     * and its notes was put below, under the other voice's stems (Couperin, Concerts royaux II, Prelude m1-2: the quarter rest
+     * of voice 6, far below the left hand's D3). Both are required: voices cross, and stems can be the other way round
+     * (e.g. Concerts royaux IV, Courante françoise m6: a rest of the voice with downward stems above the other voice).
+     * @param rest the rest's voice entry
+     * @param highestOther the highest halftone of the other voices' notes at the rest's time
+     * @param lowestOther the lowest halftone of the other voices' notes at the rest's time
+     */
+    public static restSideFromVoice(rest: VoiceEntry, highestOther: number, lowestOther: number): number {
+        const measure: SourceMeasure = rest?.ParentSourceStaffEntry?.VerticalContainerParent?.ParentMeasure;
+        if (!measure || highestOther === undefined) {
+            return undefined;
+        }
+        let nearest: VoiceEntry = undefined;
+        let nearestDistance: number = Infinity;
+        let stemSide: number = undefined;
+        for (const entry of rest.ParentVoice.VoiceEntries) {
+            if (entry === rest || entry.IsGrace || entry.Notes.length === 0 || entry.Notes[0].isRest() || !entry.Notes[0].Pitch ||
+                entry.ParentSourceStaffEntry?.VerticalContainerParent?.ParentMeasure !== measure) {
+                continue;
+            }
+            const side: number = entry.StemDirectionXml === StemDirectionType.Up ? 1 :
+                entry.StemDirectionXml === StemDirectionType.Down ? -1 : undefined;
+            if (side === undefined || stemSide !== undefined && side !== stemSide) {
+                return undefined; // no stems or both directions in the measure
+            }
+            stemSide = side;
+            const distance: number = Math.abs(entry.Timestamp.RealValue - rest.Timestamp.RealValue);
+            // (the note after the rest when two are as near: the one the rest leads to)
+            if (distance < nearestDistance || distance === nearestDistance && entry.Timestamp.RealValue > rest.Timestamp.RealValue) {
+                nearestDistance = distance;
+                nearest = entry;
+            }
+        }
+        if (!nearest) {
+            return undefined;
+        }
+        const halftones: number[] = nearest.Notes.filter(n => n.Pitch).map(n => n.Pitch.getHalfTone());
+        const pitchSide: number = Math.min(...halftones) > highestOther ? 1 : Math.max(...halftones) < lowestOther ? -1 : undefined;
+        return pitchSide === stemSide ? pitchSide : undefined;
+    }
+
     public static StaveNote(gve: GraphicalVoiceEntry): VF.StaveNote {
         // if (gve.octaveShiftValue !== OctaveEnum.NONE) { // gves with accidentals in octave shift brackets can be unsorted
         gve.sortForVexflow(); // also necessary for some other cases, see test_sorted_notes... sample
@@ -390,6 +437,18 @@ export class VexFlowConverter {
                     const staffGves: GraphicalVoiceEntry[] = note.parentVoiceEntry.parentStaffEntry.graphicalVoiceEntries;
                     //Find all visible voice entries (don't want invisible rests/notes causing visible shift)
                     const restVoiceId: number = note.parentVoiceEntry.parentVoiceEntry.ParentVoice.VoiceId;
+                    let highestOther: number = undefined;
+                    let lowestOther: number = undefined;
+                    for (const staffGve of staffGves) {
+                        for (const gveNote of staffGve.notes) {
+                            if (gveNote !== note && !gveNote.sourceNote.isRest() && gveNote.sourceNote.PrintObject && gveNote.sourceNote.Pitch) {
+                                const halftone: number = gveNote.sourceNote.Pitch.getHalfTone();
+                                highestOther = highestOther === undefined ? halftone : Math.max(highestOther, halftone);
+                                lowestOther = lowestOther === undefined ? halftone : Math.min(lowestOther, halftone);
+                            }
+                        }
+                    }
+                    const restSide: number = VexFlowConverter.restSideFromVoice(note.parentVoiceEntry.parentVoiceEntry, highestOther, lowestOther);
                     let maxHalftone: number;
                     let linesShift: number;
                     for (const staffGve of staffGves) {
@@ -400,7 +459,9 @@ export class VexFlowConverter {
                             // unfortunately, we don't have functional note bounding boxes at this point,
                             //   so we have to infer the note positions and sizes manually.
                             const wantedStemDirection: StemDirectionType = gveNote.parentVoiceEntry.parentVoiceEntry.WantedStemDirection;
-                            const isUpperVoiceRest: boolean = restVoiceId === 1 || restVoiceId === 5;
+                            // a rest is on the side of its voice's notes (see restSideFromVoice()).
+                            //   Else voice 1 (or 5, the first voice of a second staff) is the upper voice.
+                            const isUpperVoiceRest: boolean = restSide !== undefined ? restSide === 1 : restVoiceId === 1 || restVoiceId === 5;
                             const lineShiftDirection: number = isUpperVoiceRest ? 1 : -1; // voice 1: put rest above (-y). other voices: below
                             const gveNotePitch: Pitch = gveNote.sourceNote.Pitch;
                             const noteHalftone: number = gveNotePitch.getHalfTone();
@@ -416,6 +477,11 @@ export class VexFlowConverter {
                                     linesShift += 7; // rest should be below notes with down stem
                                 } else if (isUpperVoiceRest) {
                                     linesShift += 1;
+                                    if (restVoiceId !== 1 && restVoiceId !== 5 && !duration.includes("8")) {
+                                        // a rest that is the upper voice by its voice's notes (see above), at a notehead
+                                        //   with a down stem: a quarter or longer rest needs more lines to clear the head
+                                        linesShift += 2.5;
+                                    }
                                 } else {
                                     linesShift += 2;
                                 }

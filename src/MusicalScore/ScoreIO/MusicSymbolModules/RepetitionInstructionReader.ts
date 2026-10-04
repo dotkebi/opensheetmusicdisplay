@@ -1,9 +1,10 @@
 import {MusicSheet} from "../../MusicSheet";
 import {IXmlElement} from "../../../Common/FileIO/Xml";
 import {SourceMeasure} from "../../VoiceData/SourceMeasure";
-import {RepetitionInstruction, RepetitionInstructionEnum, AlignmentType} from "../../VoiceData/Instructions/RepetitionInstruction";
+import {RepetitionInstruction, RepetitionInstructionEnum, AlignmentType, RepetitionSymbolPlacement} from "../../VoiceData/Instructions/RepetitionInstruction";
 import {RepetitionInstructionComparer} from "../../VoiceData/Instructions/RepetitionInstruction";
 import {StringUtil} from "../../../Common/Strings/StringUtil";
+import {Instrument} from "../../Instrument";
 export class RepetitionInstructionReader {
   /**
    * A global list of all repetition instructions in the musicsheet.
@@ -141,10 +142,11 @@ export class RepetitionInstructionReader {
    * @param soundNode the direction's sound element, if any: <sound segno="..."> marks a segno as the target of a D.S.
    *   Its dacapo, dalsegno, fine, tocoda, segno and coda attributes say which instruction the direction is when its words
    *   don't name one themselves, e.g. "Fin", "Da Capo bis Ende" or "D.C. senza replica".
+   * @param symbolPlacement the staff and the timestamp in the measure of the direction, where a segno sign is drawn
    * @returns true if the direction is a repetition instruction, false if it is drawn as text
    */
   public handleRepetitionInstructionsFromWordsOrSymbols(directionTypeNode: IXmlElement, relativeMeasurePosition: number,
-                                                        soundNode?: IXmlElement): boolean {
+                                                        soundNode?: IXmlElement, symbolPlacement?: RepetitionSymbolPlacement): boolean {
     const wordsNode: IXmlElement = directionTypeNode.element("words");
     const measureIndex: number = this.currentMeasureIndex;
     if (wordsNode) {
@@ -183,6 +185,9 @@ export class RepetitionInstructionReader {
       // }
       const newInstruction: RepetitionInstruction = new RepetitionInstruction(measureIndex, RepetitionInstructionEnum.Segno);
       newInstruction.MarkedAsTarget = !!soundNode?.attribute("segno");
+      if (symbolPlacement) {
+        newInstruction.SymbolPlacements.push(symbolPlacement);
+      }
       this.addInstruction(this.repetitionInstructions, newInstruction);
       return true;
     } else if (directionTypeNode.element("coda")) {
@@ -392,11 +397,31 @@ export class RepetitionInstructionReader {
       const repetitionInstruction: RepetitionInstruction = currentRepetitionInstructions[idx];
       if (newInstruction.equals(repetitionInstruction)) {
         addInstruction = false;
+        this.addSymbolPlacements(repetitionInstruction, newInstruction);
         break;
       }
     }
     if (addInstruction) {
       currentRepetitionInstructions.push(newInstruction);
+    }
+  }
+
+  /**
+   * Adds the sign placements of a second direction of the same instruction in the measure (e.g. a segno above each hand)
+   * to the instruction. Only the ones of the same part: a segno that each part of a score repeats is drawn once, above the top part.
+   */
+  private addSymbolPlacements(instruction: RepetitionInstruction, sameInstruction: RepetitionInstruction): void {
+    if (instruction.SymbolPlacements.length === 0) {
+      return; // e.g. a segno from words: drawn at the start of the measure
+    }
+    const part: Instrument = instruction.SymbolPlacements[0].staff.ParentInstrument;
+    for (const placement of sameInstruction.SymbolPlacements) {
+      if (placement.staff.ParentInstrument !== part) {
+        continue;
+      }
+      if (!instruction.SymbolPlacements.some(other => other.staff === placement.staff && other.timestamp.Equals(placement.timestamp))) {
+        instruction.SymbolPlacements.push(placement);
+      }
     }
   }
 }

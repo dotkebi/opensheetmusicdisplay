@@ -16,7 +16,7 @@ import { Tie } from "../../VoiceData/Tie";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { SourceStaffEntry } from "../../VoiceData/SourceStaffEntry";
 import { MultiExpression } from "../../VoiceData/Expressions/MultiExpression";
-import { RepetitionInstruction } from "../../VoiceData/Instructions/RepetitionInstruction";
+import { RepetitionInstruction, RepetitionInstructionEnum } from "../../VoiceData/Instructions/RepetitionInstruction";
 import { Beam } from "../../VoiceData/Beam";
 import { ClefInstruction } from "../../VoiceData/Instructions/ClefInstruction";
 import { OctaveEnum, OctaveShift } from "../../VoiceData/Expressions/ContinuousExpressions/OctaveShift";
@@ -1452,9 +1452,14 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           } else if (tieDirection === PlacementEnum.Above) {
             vfTie.setDirection(-1);
           }
+          if (!vfEndNote) {
+            // a tie to the start of a repeat (no end note) ends before the backward repeat's dots, not on its thick line
+            vfTie.render_options.last_x_shift = -14;
+          }
         }
 
-        const measure: VexFlowMeasure = (endNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure);
+        // (a tie without an end note, see MusicSheetCalculator.tieContinuesAfterRepeat(), goes to the end of its note's staff)
+        const measure: VexFlowMeasure = ((endNote ?? startNote).parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure);
         measure.addStaveTie(vfTie, tie);
       }
     }
@@ -2729,9 +2734,13 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
    * @param measureIndex
    */
   protected calculateWordRepetitionInstruction(repetitionInstruction: RepetitionInstruction, measureIndex: number): void {
+    const measures: VexFlowMeasure[] = <VexFlowMeasure[]>this.graphicalMusicSheet.MeasureList[measureIndex];
+    if (repetitionInstruction.type === RepetitionInstructionEnum.Segno && repetitionInstruction.SymbolPlacements.length > 0 &&
+        this.calculateSegnoSigns(repetitionInstruction, measures)) {
+      return;
+    }
     // find first visible StaffLine
     let uppermostMeasure: VexFlowMeasure = undefined;
-    const measures: VexFlowMeasure[] = <VexFlowMeasure[]>this.graphicalMusicSheet.MeasureList[measureIndex];
     for (let idx: number = 0, len: number = measures.length; idx < len; ++idx) {
       const graphicalMeasure: VexFlowMeasure = measures[idx];
       if (graphicalMeasure && graphicalMeasure.ParentStaffLine && graphicalMeasure.ParentStaff.isVisible()) {
@@ -2746,6 +2755,46 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       const repetition: VF.Repetition = uppermostMeasure.addWordRepetition(repetitionInstruction);
       this.placeWordRepetitionInSkyline(uppermostMeasure, repetition);
     }
+  }
+
+  /**
+   * Draws the signs of a segno where the MusicXML puts them (RepetitionInstruction.SymbolPlacements):
+   * above the staff of each sign, at the note of its timestamp (a sign at the start of the measure stays after the begin instructions).
+   * @returns false if none of the staves is drawn, so that the segno is drawn above the uppermost one
+   */
+  protected calculateSegnoSigns(repetitionInstruction: RepetitionInstruction, measures: VexFlowMeasure[]): boolean {
+    let drawn: boolean = false;
+    for (const placement of repetitionInstruction.SymbolPlacements) {
+      const measure: VexFlowMeasure = measures.find(m => m?.ParentStaffLine && m.ParentStaff === placement.staff && m.ParentStaff.isVisible());
+      if (!measure) {
+        continue;
+      }
+      const repetition: VF.Repetition = measure.addWordRepetition(repetitionInstruction);
+      if (!repetition) {
+        continue;
+      }
+      drawn = true;
+      // a sign above a lower staff is between two staves: it reserves its space, so that the staves are spaced for it
+      //   (and the objects below the staff above, e.g. a "Petite reprise" text, are not drawn into it)
+      (repetition as any).reservesSkyline = measure !== measures.find(m => m?.ParentStaffLine && m.ParentStaff.isVisible());
+      if (placement.timestamp.RealValue > 0) {
+        // the first staff entry at or after the timestamp (e.g. after a rest or a grace note), else the measure end
+        const entry: GraphicalStaffEntry = measure.staffEntries.find(e => e.relInMeasureTimestamp?.gte(placement.timestamp));
+        const noteX: number = entry ? entry.PositionAndShape.RelativePosition.x : measure.PositionAndShape.Size.width;
+        // the glyph is centered on the notehead (about 1.2 units wide), the sign (v8c at 30pt) is about 1.6 units wide
+        const anchorX: number = noteX + 0.6 - 0.8;
+        (repetition as any).anchorX = anchorX;
+        const anchorPx: number = anchorX * unitInPixels;
+        (repetition as any).draw = function(stave: any): any {
+          this.setRendered();
+          const y: number = stave.getYForTopText(stave.options.num_lines) + this.y_shift;
+          (VF.Glyph as any).renderGlyph(stave.context, stave.getX() + anchorPx, y + 25, 30, "v8c", true);
+          return this;
+        };
+      }
+      this.placeWordRepetitionInSkyline(measure, repetition);
+    }
+    return drawn;
   }
 
   /** The repetition instruction boxes already placed per staff line, for their mutual collision checks.
@@ -2826,7 +2875,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const measureWidth: number = measure.PositionAndShape.Size.width;
     let startX: number;
     let endX: number;
-    if (type === repetitionTypes.SEGNO_LEFT) {
+    if (type === repetitionTypes.SEGNO_LEFT && (repetition as any).anchorX !== undefined) {
+      // a segno at a note, see calculateSegnoSigns()
+      startX = measureStartX + (repetition as any).anchorX;
+      endX = startX + 1.6;
+    } else if (type === repetitionTypes.SEGNO_LEFT) {
       // drawSignoFixed() draws the glyph after the measure's begin instructions (clef, key, time signature):
       //   its x anchor additionally gets the stave's modifier x shift, which is the begin instructions width
       //   at draw time - and that can still change (e.g. shrink by alignment) after this calculation.
@@ -2894,8 +2947,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       repetition.setShiftY((repetition as any).y_shift + collisionShiftUnits * unitInPixels);
     }
     placedBoxes.push({ startX: startX, endX: endX, top: defaultTop + collisionShiftUnits });
-    if (collisionShiftUnits < 0) {
-      // only instructions that were shifted upwards reserve their space in the skyline, so that the
+    if (collisionShiftUnits < 0 || (repetition as any).reservesSkyline) {
+      // only instructions that were shifted upwards (or segno signs above a lower staff, see calculateSegnoSigns())
+      //   reserve their space in the skyline, so that the
       //   staffline borders (and thus the system spacing) account for them. Unshifted instructions stay
       //   in their default band close above the staff, which shouldn't increase the system spacing
       //   (as it also didn't before repetition instructions were placed via the skyline).
