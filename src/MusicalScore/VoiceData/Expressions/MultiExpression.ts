@@ -105,34 +105,71 @@ export class MultiExpression {
         this.combinedExpressionsText = value;
     }
     public getPlacementOfFirstEntry(): PlacementEnum {
+        return MultiExpression.getPlacementOfEntry(this.expressions[0]);
+    }
+
+    /** The placement of an entry's expression (Above if it has none or there is no entry). */
+    public static getPlacementOfEntry(entry: MultiExpressionEntry): PlacementEnum {
         let placement: PlacementEnum = PlacementEnum.Above;
-        if (this.expressions.length > 0) {
-            if (this.expressions[0].expression instanceof InstantaneousDynamicExpression) {
-                placement = (<InstantaneousDynamicExpression>(this.expressions[0].expression)).Placement;
-            } else if (this.expressions[0].expression instanceof ContinuousDynamicExpression) {
-                placement = (<ContinuousDynamicExpression>(this.expressions[0].expression)).Placement;
-            } else if (this.expressions[0].expression instanceof MoodExpression) {
-                placement = (<MoodExpression>(this.expressions[0].expression)).Placement;
-            } else if (this.expressions[0].expression instanceof UnknownExpression) {
-                placement = (<UnknownExpression>(this.expressions[0].expression)).Placement;
+        if (entry) {
+            if (entry.expression instanceof InstantaneousDynamicExpression) {
+                placement = (<InstantaneousDynamicExpression>(entry.expression)).Placement;
+            } else if (entry.expression instanceof ContinuousDynamicExpression) {
+                placement = (<ContinuousDynamicExpression>(entry.expression)).Placement;
+            } else if (entry.expression instanceof MoodExpression) {
+                placement = (<MoodExpression>(entry.expression)).Placement;
+            } else if (entry.expression instanceof UnknownExpression) {
+                placement = (<UnknownExpression>(entry.expression)).Placement;
             }
         }
         return placement;
     }
 
     public getFontstyleOfFirstEntry(): FontStyles {
+        return MultiExpression.getFontstyleOfEntry(this.expressions[0]);
+    }
+
+    /** The font style an entry's expression is drawn with (Regular if there is no entry). */
+    public static getFontstyleOfEntry(entry: MultiExpressionEntry): FontStyles {
        let fontStyle: FontStyles = FontStyles.Regular;
-       if (this.expressions.length > 0) {
-           if (this.expressions[0].expression instanceof ContinuousDynamicExpression) {
+       if (entry) {
+           if (entry.expression instanceof ContinuousDynamicExpression) {
             fontStyle = FontStyles.Italic;
-           } else if (this.expressions[0].expression instanceof MoodExpression) {
+           } else if (entry.expression instanceof MoodExpression) {
             fontStyle = FontStyles.Italic;
-           } else if (this.expressions[0].expression instanceof UnknownExpression) {
-            const unknownExpression: UnknownExpression = (this.expressions[0].expression as UnknownExpression);
+           } else if (entry.expression instanceof UnknownExpression) {
+            const unknownExpression: UnknownExpression = (entry.expression as UnknownExpression);
             fontStyle = unknownExpression.fontStyle ?? FontStyles.Regular;
            }
        }
        return fontStyle;
+    }
+
+    /**
+     * The entries that are drawn as one words label each. Words of a staff at the same time share a MultiExpression;
+     * if its mood and unknown (words) expressions have different placements, e.g. "Majeur" above and "(fort)" below,
+     * there is one group per placement, in the order the placements first occur among the words. The other entries
+     * (e.g. dynamics) join the group of the first words. Otherwise there is one group with all entries.
+     */
+    public getEntryGroupsByPlacement(): MultiExpressionEntry[][] {
+        const wordsPlacements: PlacementEnum[] = [];
+        for (const entry of this.expressions) {
+            if (entry.expression instanceof MoodExpression || entry.expression instanceof UnknownExpression) {
+                const placement: PlacementEnum = MultiExpression.getPlacementOfEntry(entry);
+                if (!wordsPlacements.includes(placement)) {
+                    wordsPlacements.push(placement);
+                }
+            }
+        }
+        if (wordsPlacements.length < 2) {
+            return [this.expressions];
+        }
+        const groups: MultiExpressionEntry[][] = wordsPlacements.map((): MultiExpressionEntry[] => []);
+        for (const entry of this.expressions) {
+            const isWords: boolean = entry.expression instanceof MoodExpression || entry.expression instanceof UnknownExpression;
+            groups[isWords ? wordsPlacements.indexOf(MultiExpression.getPlacementOfEntry(entry)) : 0].push(entry);
+        }
+        return groups;
     }
 
     public getColorXMLOfFirstEntry(): string {

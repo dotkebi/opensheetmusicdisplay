@@ -22,6 +22,7 @@ import { MusicSystem } from "./MusicSystem";
 import { GraphicalTie } from "./GraphicalTie";
 import { RepetitionInstruction, RepetitionInstructionEnum, AlignmentType } from "../VoiceData/Instructions/RepetitionInstruction";
 import { MultiExpression, MultiExpressionEntry } from "../VoiceData/Expressions/MultiExpression";
+import { UnknownExpression } from "../VoiceData/Expressions/UnknownExpression";
 import { StaffEntryLink } from "../VoiceData/StaffEntryLink";
 import { MusicSystemBuilder } from "./MusicSystemBuilder";
 import { MultiTempoExpression } from "../VoiceData/Expressions/MultiTempoExpression";
@@ -950,16 +951,27 @@ export abstract class MusicSheetCalculator {
      * @param staffIndex
      */
     protected calculateMoodAndUnknownExpression(multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void {
+        if ((multiExpression.MoodList.length > 0) || (multiExpression.UnknownList.length > 0)) {
+            // words above and below the staff at the same time are drawn as one label each on their own side
+            for (const entries of multiExpression.getEntryGroupsByPlacement()) {
+                this.calculateMoodAndUnknownExpressionEntries(multiExpression, entries, measureIndex, staffIndex);
+            }
+        }
+    }
+
+    /** Calculates one words label of the given entries of multiExpression (see getEntryGroupsByPlacement()). */
+    private calculateMoodAndUnknownExpressionEntries(multiExpression: MultiExpression, entries: MultiExpressionEntry[],
+                                                     measureIndex: number, staffIndex: number): void {
         // calculate absolute Timestamp
         const absoluteTimestamp: Fraction = multiExpression.AbsoluteTimestamp;
         const measures: GraphicalMeasure[] = this.graphicalMusicSheet.MeasureList[measureIndex];
         let relative: PointF2D = new PointF2D();
 
-        const defaultYXml: number = multiExpression.UnknownList[0]?.defaultYXml;
-        if ((multiExpression.MoodList.length > 0) || (multiExpression.UnknownList.length > 0)) {
+        const defaultYXml: number = (entries.find(entry => entry.expression instanceof UnknownExpression)
+            ?.expression as UnknownExpression)?.defaultYXml;
         let combinedExprString: string  = "";
-        for (let idx: number = 0, len: number = multiExpression.EntriesList.length; idx < len; ++idx) {
-            const entry: MultiExpressionEntry = multiExpression.EntriesList[idx];
+        for (let idx: number = 0, len: number = entries.length; idx < len; ++idx) {
+            const entry: MultiExpressionEntry = entries[idx];
             if (entry.prefix !== "") {
                 if (combinedExprString === "") {
                     combinedExprString += entry.prefix;
@@ -985,21 +997,21 @@ export abstract class MusicSheetCalculator {
         }
 
         const fontHeight: number = this.rules.UnknownTextHeight;
-        const placement: PlacementEnum = multiExpression.getPlacementOfFirstEntry();
-        const lastEntry: MultiExpressionEntry = multiExpression.EntriesList[multiExpression.EntriesList.length - 1];
+        const placement: PlacementEnum = MultiExpression.getPlacementOfEntry(entries[0]);
+        const lastEntry: MultiExpressionEntry = entries[entries.length - 1];
         const graphLabel: GraphicalLabel  = this.calculateLabel(staffLine,
                                                                 relative, combinedExprString,
-                                                                multiExpression.getFontstyleOfFirstEntry(),
+                                                                MultiExpression.getFontstyleOfEntry(entries[0]),
                                                                 placement,
                                                                 fontHeight,
                                                                 undefined,
                                                                 undefined,
                                                                 this.expressionDashesEndX(lastEntry?.expression, staffLine, staffIndex));
-        const colorXML: string = multiExpression.getColorXMLOfFirstEntry();
+        const colorXML: string = entries[0]?.expression.ColorXML;
         if (this.rules.ExpressionsUseXMLColor && colorXML) {
             graphLabel.ColorXML = colorXML;
         }
-        graphLabel.Label.language = multiExpression.EntriesList[0]?.expression.language;
+        graphLabel.Label.language = entries[0]?.expression.language;
         if (this.rules.PlaceWordsInsideStafflineFromXml) {
             if (defaultYXml < 0 && defaultYXml > -50) { // within staffline
                 let newY: number = defaultYXml / 10; // OSMD units
@@ -1015,7 +1027,6 @@ export abstract class MusicSheetCalculator {
         //                         but MultiExpression is not an AbstractExpression.
         if (lastEntry?.expression) {
             this.addExpressionDashes(lastEntry.expression, graphLabel, placement, staffLine, staffIndex, measureIndex);
-        }
         }
     }
 

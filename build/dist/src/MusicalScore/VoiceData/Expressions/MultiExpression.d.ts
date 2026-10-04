@@ -54,7 +54,18 @@ export declare class MultiExpression {
     get CombinedExpressionsText(): string;
     set CombinedExpressionsText(value: string);
     getPlacementOfFirstEntry(): PlacementEnum;
+    /** The placement of an entry's expression (Above if it has none or there is no entry). */
+    static getPlacementOfEntry(entry: MultiExpressionEntry): PlacementEnum;
     getFontstyleOfFirstEntry(): FontStyles;
+    /** The font style an entry's expression is drawn with (Regular if there is no entry). */
+    static getFontstyleOfEntry(entry: MultiExpressionEntry): FontStyles;
+    /**
+     * The entries that are drawn as one words label each. Words of a staff at the same time share a MultiExpression;
+     * if its mood and unknown (words) expressions have different placements, e.g. "Majeur" above and "(fort)" below,
+     * there is one group per placement, in the order the placements first occur among the words. The other entries
+     * (e.g. dynamics) join the group of the first words. Otherwise there is one group with all entries.
+     */
+    getEntryGroupsByPlacement(): MultiExpressionEntry[][];
     getColorXMLOfFirstEntry(): string;
     addExpression(abstractExpression: AbstractExpression, prefix: string): void;
     CompareTo(other: MultiExpression): number;
