@@ -23,7 +23,7 @@ export declare class SvgVexFlowBackend extends VexFlowBackend {
     clear(): void;
     scale(k: number): void;
     translate(x: number, y: number): void;
-    renderText(fontHeight: number, fontStyle: FontStyles, font: Fonts, text: string, heightInPixel: number, screenPosition: PointF2D, color?: string, fontFamily?: string): Node;
+    renderText(fontHeight: number, fontStyle: FontStyles, font: Fonts, text: string, heightInPixel: number, screenPosition: PointF2D, color?: string, fontFamily?: string, language?: string): Node;
     renderRectangle(rectangle: RectangleF2D, styleId: number, colorHex: string, alpha?: number): Node;
     renderLine(start: PointF2D, stop: PointF2D, color?: string, lineWidth?: number, id?: string): Node;
     renderCurve(points: PointF2D[], isSlur?: boolean, startNote?: VexFlowGraphicalNote): Node;

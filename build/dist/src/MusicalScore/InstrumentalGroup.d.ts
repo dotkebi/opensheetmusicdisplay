@@ -5,6 +5,8 @@ export declare class InstrumentalGroup {
     private number;
     private abbreviation;
     private groupSymbol;
+    private printName;
+    private printAbbreviation;
     private musicSheet;
     private parent;
     private instrumentalGroups;
@@ -19,5 +21,9 @@ export declare class InstrumentalGroup {
     set Abbreviation(value: string);
     get GroupSymbol(): string;
     set GroupSymbol(value: string);
+    get PrintName(): boolean;
+    set PrintName(value: boolean);
+    get PrintAbbreviation(): boolean;
+    set PrintAbbreviation(value: boolean);
     get GetMusicSheet(): MusicSheet;
 }

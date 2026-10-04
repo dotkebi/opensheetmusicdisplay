@@ -38,7 +38,7 @@ describe("GraphicalSlur", () => {
         };
 
         const result: { endX: number, endY: number } =
-            (graphicalSlur as any).calculateStartAndEnd(undefined, endNote, undefined, rules, undefined);
+            (graphicalSlur as any).calculateStartAndEnd(undefined, endNote, { StaffHeight: 4 }, rules, undefined);
 
         expect(result.endX).to.equal(6);
         expect(result.endY).to.equal(1.5);

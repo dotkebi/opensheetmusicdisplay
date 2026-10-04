@@ -152,7 +152,7 @@ export class VoiceGenerator {
         const slideElements: IXmlElement[] = notationNode.elements("slide");
         const glissElements: IXmlElement[] = notationNode.elements("glissando");
         if (this.slurReader !== undefined &&
-            (slurElements.length > 0 || slideElements.length > 0) &&
+            (slurElements.length > 0 || slideElements.length > 0 || glissElements.length > 0) &&
             !this.currentNote.ParentVoiceEntry.IsGrace) {
           this.slurReader.addSlur(slurElements, this.currentNote);
           if (slideElements.length > 0) {
@@ -358,6 +358,8 @@ export class VoiceGenerator {
     //log.debug("addSingleNote called");
     let noteAlter: number = 0;
     let accidentalValue: string;
+    let accidentalParentheses: boolean = false;
+    let accidentalBracket: boolean = false;
     let noteAccidental: AccidentalEnum = AccidentalEnum.NONE;
     let noteStep: NoteEnum = NoteEnum.C;
     let displayStepUnpitched: NoteEnum = NoteEnum.C;
@@ -416,6 +418,13 @@ export class VoiceGenerator {
           }
         } else if (noteElement.name === "accidental") {
           accidentalValue = noteElement.value;
+          const parenthesesXml: string = noteElement.attribute("parentheses")?.value;
+          const bracketXml: string = noteElement.attribute("bracket")?.value;
+          accidentalParentheses = parenthesesXml === "yes";
+          accidentalBracket = bracketXml === "yes";
+          if (parenthesesXml === undefined && bracketXml === undefined && this.musicSheet.Rules.RenderCautionaryAccidentalsInParentheses) {
+            accidentalParentheses = noteElement.attribute("cautionary")?.value === "yes"; // as MuseScore reads it
+          }
           if (accidentalValue === "natural") {
             noteAccidental = AccidentalEnum.NATURAL;
             // following accidentals: ambiguous in alter value
@@ -524,6 +533,8 @@ export class VoiceGenerator {
       this.handleTremoloBetweenNotes(tremoloInfo, note);
     }
     note.PlaybackInstrumentId = playbackInstrumentId;
+    note.AccidentalParenthesesXml = accidentalParentheses;
+    note.AccidentalBracketXml = accidentalBracket;
     if ((noteheadShapeXml !== undefined && noteheadShapeXml !== "normal") || noteheadFilledXml !== undefined) {
       note.Notehead = new Notehead(note, noteheadShapeXml, noteheadFilledXml);
     } // if normal, leave note head undefined to save processing/runtime

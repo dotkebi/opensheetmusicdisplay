@@ -8,6 +8,8 @@ export declare class AbstractExpression {
     DashesEndMeasure: SourceMeasure;
     /** Timestamp within DashesEndMeasure where the dashed line ends. */
     DashesEndTimestamp: Fraction;
+    /** The xml:lang of the expression's words, see Label.language. */
+    language: string;
     constructor(placement: PlacementEnum);
     protected static isStringInStringList(stringList: Array<string>, inputString: string): boolean;
     /** Placement of the expression */

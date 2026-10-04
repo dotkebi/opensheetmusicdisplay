@@ -76,13 +76,15 @@ export declare class OpenSheetMusicDisplay {
     /** A function that is executed when the XML has been read.
      * The return value will be used as the actual XML OSMD parses,
      * so you can make modifications to the xml that OSMD will use.
-     * Note that this is (re-)set on osmd.setOptions as `{return xml}`, unless you specify the function in the options. */
+     * By default it returns the XML unchanged. It can also be set by the onXMLRead option,
+     * and osmd.setOptions() keeps it when the option is left out. */
     OnXMLRead: (xml: string) => string;
     /**
      * Load a MusicXML file
      * @param content is either the url of a file, or the root node of a MusicXML document,
      *   or the string content of a .xml/.mxl file, or a file blob.
      * @param tempTitle is used as the title for the piece if there is no title in the XML.
+     *   The name or path of a MusicXML file (e.g. "scores/Sonata No. 1.musicxml") is used without its folder and extension.
      */
     load(content: string | Document | Blob, tempTitle?: string): Promise<{}>;
     /**

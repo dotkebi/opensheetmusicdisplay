@@ -86,10 +86,18 @@ export declare class MusicSheetReader {
      * @param filePath
      */
     private pushSheetLabels;
+    /** Reads the default languages of the lyrics, <defaults><lyric-language xml:lang="..."> (MusicSheet.LyricLanguages). */
+    private readLyricLanguages;
+    /** Reads first-page credits without inferring a role from position or alignment. */
+    private readFirstPageCreditWords;
     private presentAttrsWithValue;
     private readComposer;
     private readCopyright;
     private readTitleAndComposerFromCredits;
+    /** Joins <credit-words> in document order and returns a type only for exactly one <credit-type>, and the xml:lang of
+     * the first <credit-words>. Untyped and multi-type credits retain their text without a type.
+     */
+    private getCreditTypeTextAndLanguage;
     /** @deprecated Old OSMD < 1.8.6 way of parsing composer + subtitles,
      * ignores multiline composer + subtitles, uses XML identification tags instead.
      * Will probably be removed soon.
@@ -103,6 +111,15 @@ export declare class MusicSheetReader {
      * @returns {{}}
      */
     private createInstrumentGroups;
+    private countInstrumentsInGroup;
+    private groupNumbersAreProperlyNested;
+    /**
+     * Returns the part-list entries with the part-group starts and stops between two parts in nesting order:
+     * stops before starts, an inner group's stop first, an outer group's start first.
+     * The part-list may give them in any order, e.g. Finale starts a bracket after a brace starting at the same part.
+     * Groups whose parts overlap stay crossed.
+     */
+    private orderPartGroupsByNesting;
     /**
      * Read from each xmlInstrumentPart the first xmlMeasure in order to find out the [[Instrument]]'s number of Staves
      * @param partInst

@@ -160,7 +160,8 @@ export declare class EngravingRules {
     /** Not always a symbol, can also be text (RepetitionInstruction). Keeping the name for backwards compatibility. */
     RepetitionSymbolsYOffset: number;
     /** Adds a percent of the stave's width (e.g. 0.4 = 40%) to the x position of end instructions like Fine or D.C. al fine.
-     *  Only applied in the last measure of a staffline, so that the instruction is not shifted into the next measure. */
+     *  Only applied in the last measure of a staffline, so that the instruction is not shifted into the next measure,
+     *  and at most up to the measure's end barline, so that it isn't shifted off the page in a wide measure. */
     RepetitionEndInstructionXShiftAsPercentOfStaveWidth: number;
     RehearsalMarkXOffset: number;
     RehearsalMarkXOffsetDefault: number;
@@ -529,12 +530,27 @@ export declare class EngravingRules {
     MaxSystemToDrawNumber: number;
     /** Whether to render a label for the composer of the piece at the top of the sheet. */
     RenderComposer: boolean;
+    /** Whether to read typed first-page credit words and lay out the remaining words above the first system,
+     * when page layout cannot supply their roles. With page layout, the default position-based reader is retained.
+     * Default false. Set before loading a score; changing it requires reloading the score. Typed title, subtitle,
+     * composer and lyricist credits override metadata; identification rights retain priority over rights credits.
+     * This reflows plain first-page words and does not reproduce source coordinates, per-run styling, images or later pages.
+     */
+    ReadFirstPageCreditWords: boolean;
+    /** Visibility of independent first-page credit labels, set by DrawingParameters.DrawCredits. */
+    RenderFirstPageCreditWords: boolean;
     RenderTitle: boolean;
     RenderSubtitle: boolean;
     RenderLyricist: boolean;
     RenderCopyright: boolean;
     RenderPartNames: boolean;
+    /** Whether to render part-group names and abbreviations. Requires RenderPartNames. Default true. */
+    RenderPartGroupNames: boolean;
     RenderPartAbbreviations: boolean;
+    /** Whether to render part abbreviations on systems with only one staff.
+     *  Requires RenderPartNames and RenderPartAbbreviations. Default false.
+     */
+    RenderPartAbbreviationsForSingleStaff: boolean;
     /** Internal cache-gate for lazy (renderAppend) rendering: when true, the lazy reuse caches (skyline)
      *  are active. Set by OpenSheetMusicDisplay.renderAppend() and forced false by a normal render(), so
      *  the caches never affect a non-lazy render. Not a user toggle. */
@@ -553,6 +569,13 @@ export declare class EngravingRules {
     RenderChordSymbols: boolean;
     RenderMultipleRestMeasures: boolean;
     AutoGenerateMultipleRestMeasuresFromRestMeasures: boolean;
+    /** Draw explicit MusicXML measure-repeat declarations as signs (default true).
+     *  Notes, timestamps, measure widths, cursor and iterator are preserved.
+     *  A whole repeat unit stays written out if it spans systems or the draw range, its reference is not visible,
+     *  or it contains clef/key/time changes, grace notes, lyrics/extenders, trill lines, multi-rests,
+     *  connections outside the unit or to another staff, or a slur with an unattached end.
+     *  TAB staves and incremental renderNext() remain written out. */
+    RenderMeasureRepeats: boolean;
     RenderRehearsalMarks: boolean;
     RenderClefsAtBeginningOfStaffline: boolean;
     RenderKeySignatures: boolean;
@@ -566,6 +589,7 @@ export declare class EngravingRules {
     RenderWavyLines: boolean;
     DynamicExpressionMaxDistance: number;
     DynamicExpressionSpacer: number;
+    /** Skip a dynamic marking that repeats the currently active one, i.e. has the same text (e.g. a second p in a row). Default false. */
     IgnoreRepeatedDynamics: boolean;
     ExpressionsUseXMLColor: boolean;
     ArticulationPlacementFromXML: boolean;
@@ -607,6 +631,11 @@ export declare class EngravingRules {
      * but were inserted as a words element in the MusicXML, which can't be matched to the note anymore,
      * and would otherwise just be placed somewhere else. See OSMD Issue 1251. */
     IgnoreBracketsWords: boolean;
+    /** Whether to draw cautionary accidentals (<accidental cautionary="yes">) in parentheses when the XML gives
+     *  neither parentheses nor bracket, as MuseScore reads them. Default false: only accidentals with parentheses="yes"
+     *  or bracket="yes" are drawn in parentheses, as parentheses take space. Read in load().
+     */
+    RenderCautionaryAccidentalsInParentheses: boolean;
     PlaceWordsInsideStafflineFromXml: boolean;
     PlaceWordsInsideStafflineYOffset: number;
     SpacingBetweenTextLines: number;

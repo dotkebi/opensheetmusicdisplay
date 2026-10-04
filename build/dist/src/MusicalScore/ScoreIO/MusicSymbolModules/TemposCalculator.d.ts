@@ -20,8 +20,8 @@ export declare class TemposCalculator implements IAfterSheetReadingModule {
     private static processTempoExpressions;
     /** Clean the start of the  expressions list and return the TempoPrimo BPM.
      *
-     * Make sure that there is an Inst tempo at [0 0/1] with a non-zero BPM.
-     * Return that BPM for TempoPrimo.
+     * Use the initial setting until the first playback instruction, or resolve an instruction at time zero.
+     * Return that BPM for TempoPrimo; a later instruction must not become the starting tempo.
      */
     private static cleanExpListStartingEntry;
 }

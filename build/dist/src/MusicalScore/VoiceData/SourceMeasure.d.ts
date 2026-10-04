@@ -1,4 +1,5 @@
 import { Fraction } from "../../Common/DataObjects/Fraction";
+import { MeasureRepeatInstruction } from "./Instructions/MeasureRepeatInstruction";
 import { VerticalSourceStaffEntryContainer } from "./VerticalSourceStaffEntryContainer";
 import { SourceStaffEntry } from "./SourceStaffEntry";
 import { RepetitionInstruction } from "./Instructions/RepetitionInstruction";
@@ -60,6 +61,8 @@ export declare class SourceMeasure {
     MeasureNumberPrinted: number;
     RhythmPrinted: RhythmInstruction;
     multipleRestMeasures: number;
+    /** MusicXML measure-repeat declarations indexed by global staff. */
+    MeasureRepeatInstructions: Map<number, MeasureRepeatInstruction[]>;
     private absoluteTimestamp;
     private completeNumberOfStaves;
     private duration;

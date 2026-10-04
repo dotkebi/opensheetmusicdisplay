@@ -231,7 +231,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         }
         let rightX: number = Number.NEGATIVE_INFINITY;
         const startGNote: GraphicalNote = this.rules.GNote(graphicalSlur.slur.StartNote);
-        const endGNote: GraphicalNote = this.rules.GNote(graphicalSlur.slur.EndNote);
+        const endGNote: GraphicalNote = graphicalSlur.slur.EndNote ? this.rules.GNote(graphicalSlur.slur.EndNote) : undefined;
         if (startGNote) {
             rightX = Math.max(rightX, startGNote.PositionAndShape.AbsolutePosition.x);
         }
@@ -364,9 +364,13 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         // Draw the StaffEntries
         for (const staffEntry of measure.staffEntries) {
             this.drawStaffEntry(staffEntry);
-            newBuzzRollId = this.drawBuzzRolls(staffEntry, newBuzzRollId);
+            if (!measure.NotesAreAbbreviated) { // these notes aren't drawn either (EngravingRules.RenderMeasureRepeats)
+                newBuzzRollId = this.drawBuzzRolls(staffEntry, newBuzzRollId);
+            }
         }
-        this.drawTremolosBetweenNotes(measure);
+        if (!measure.NotesAreAbbreviated) {
+            this.drawTremolosBetweenNotes(measure);
+        }
     }
 
     protected drawBuzzRolls(staffEntry: GraphicalStaffEntry, newBuzzRollId): number {
@@ -1007,8 +1011,8 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             const currLine: {text: string, xOffset: number, width: number} = graphicalLabel.TextLines[i];
             const xOffsetInPixel: number = this.calculatePixelDistance(currLine.xOffset);
             const linePosition: PointF2D = new PointF2D(screenPosition.x + xOffsetInPixel, screenPosition.y);
-            const newNode: Node =
-                this.backend.renderText(height, fontStyle, font, currLine.text, fontHeightInPixel, linePosition, color, graphicalLabel.Label.fontFamily);
+            const newNode: Node = this.backend.renderText(height, fontStyle, font, currLine.text, fontHeightInPixel, linePosition, color,
+                                                          graphicalLabel.Label.fontFamily, graphicalLabel.Label.language);
             if (!node) {
                 node = newNode;
             } else {

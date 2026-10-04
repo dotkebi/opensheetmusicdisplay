@@ -1,0 +1,1274 @@
+{
+  "upstreamTag": "2.2.0",
+  "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+  "forkBase": "02c6d0637ffc75c4e3a987bb7c411b9fd27cbc3b",
+  "commits": [
+    {
+      "sha": "7ef9d470d05f86cc950624820f27422894d4a4c2",
+      "title": "fix(Repetition): Play a first ending that has no second ending after it on the first pass only (PR #1758)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "eeb2e56334260868e99431be1f9d5b2098c4bf26",
+      "title": "fix(Repetition): Don't take repeats again after a D.C. or D.S., take a D.C. after a repeat from the first measure, and don't play the whole piece twice for a D.C. al Coda or an ending without repeat signs (follow-up to PR #1758)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "5d4284f57181f007c5f7bfa952a1afec34a65eb0",
+      "title": "fix(Repetition): Don't loop endlessly on a forward jump to the same or an earlier measure, e.g. from a \"2.\" bracket placed before the \"1.\" bracket",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "68a130da93de5f8ea1ecc1930cd79e105fa227cb",
+      "title": "fix(Repetition): Read \"D.C.al Fine\" and \"Da Capo al Fine\", and a D.C. or D.S. after a name like \"Menuetto D.C. al Fine\", which is played but drawn as written",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "d3db884b56ca156e581c1a5436bec0e12f910b8c",
+      "title": "fix(Repetition): A D.C. jumps back to the start of its movement, a repeat without a forward repeat to after the previous repeat, and a D.S. al Fine or al Coda whose segno is at a forward repeat is taken",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "595bcdf57104e4b5cc43e4515cceaeae717d62d8",
+      "title": "fix(Repetition): The Fine of a D.C. or D.S. al Fine ends its movement, not the whole piece, if another movement follows",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "4771fd436fe0429f07ad045440f20fec0763397c",
+      "title": "fix(Repetition): Don't take a second segno for a D.S. when the MusicXML marks it as a D.S. target (<sound segno>), and a segno after a D.S. is a new one",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "187d86462107b45318b7d06d7944032d81c9270a",
+      "title": "fix(Repetition): Draw one repetition sign or text of each kind per measure, e.g. a Fine once when a D.C. al Fine found it backwards",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "44666350ae9246636d1870e0548a6058395e70c8",
+      "title": "fix(Repetition): Read D.C., D.S., Fine and Coda from the sound element, and play a plain D.C. or D.S. al Fine or al Coda when a Fine or To Coda comes before it (PR #1759)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "9bc3a235478f7496cef67a00dea6e896fd437a22",
+      "title": "fix(Repetition): Draw a Fine, To Coda or coda sign that no D.C. or D.S. takes, e.g. a Fine without a D.C. al Fine",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "bda6ef3f52acc84d9ab362cf126f73efccc7b950",
+      "title": "fix(Repetition): A D.S. takes a Fine or To Coda only after its segno, and a D.S. without a segno jumps back again when a Fine comes before it",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "fb8590efd17e73fba8721ef0db07e3035d550e11",
+      "title": "fix(Repetition): Don't skip a backward repeat or D.C. at the end of the measure before a first ending that starts its repetition",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "e4e96683b7ec8b3ea0a794788583a9bdf33fda70",
+      "title": "fix(Repetition): Play a repeat sign and a D.C. or D.S. at the same barline: first the repeat, then the D.C. or D.S.",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "2f2641c1e7b420b649528d1f1fc9ec196c210d60",
+      "title": "fix(Tempo): Keep the current tempo at metronome marks without a BPM (PR #1756)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "495db2689f08c141d9407a35a497e110ad5eb3a0",
+      "title": "test(Tempo): Use swing marks in two tempo state fixtures, where keeping the tempo is the musically correct result, and add one after the metric modulation (follow-up to PR #1756)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "a2032e1f5b899c9d6df588b1b01903a987f0cc46",
+      "title": "feat(Tempo): A metric modulation without a BPM changes the tempo by the ratio of its note values (quarter = dotted quarter: 96 -> 144), a swing mark keeps it. Also: draw a tuplet on the left side of a note equation on that side (follow-up to PR #1756)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "a290f941479f15fb0f1e5705b7eaae7128028c98",
+      "title": "feat(Metronome Mark): Read a note equation written with two beat units, MusicXML's simpler form of a metric modulation (e.g. quarter = dotted quarter): draw it and change the tempo by its ratio (follow-up to PR #1756)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "aeba46a9523ef1faef4fdbf69865e6c1ec727c9c",
+      "title": "fix(Metronome): Keep marks at their beats without moving sound changes (PR #1757) (e.g. make metronome marks at beats 2+ visible when beat 1 has one too)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "0f3ff5d0f7f9404f0b69b3a1d677b464c21efe1d",
+      "title": "fix(Metronome Mark): Draw the ties in note equations, from beat-unit-tied and metronome-tied (PR #1763).",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "3f8988faad1a59f83670670c375c6a15563be396",
+      "title": "fix API: Keep the public members VexFlowMeasure.hasMetronomeMark (since 1.8.2) and StringUtil.StringContainsSeparatedWord (since 0.3.0), removed after 2.1.3 (follow-up to PR #1757)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "4b9bc840e6870645a86d434c4ac07ef24da36bea",
+      "title": "fix(Metronome Mark): Don't draw a metronome mark with print-object=\"no\" (PR #1747)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "383db1689620f7d47e4200cc4cf991a158094492",
+      "title": "fix(Lyrics): End an extend line before the next syllable of its own verse, not of any verse, e.g. the line of a verse 1 melisma was missing where verse 2 has a syllable on each note (PR #1773)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "a9f873b85a8f01034f4001e085774f09463ce7a4",
+      "title": "fix(Lyrics): Calculate and draw lyric extend lines and dashes once, after all lyrics are positioned, e.g. a word's dash in the next system was drawn in the staff (PR #1783)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "e24ea1f2ce7763924817c7189da383869559adeb",
+      "title": "fix(Lyrics): Give notes room for the longest syllable of all verses, not just of the first long one, e.g. a longer second verse no longer runs together (PR #1771)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "36456df6bfd74b5979871069c0cc4394fe17457d",
+      "title": "fix(Layout): Keep systems and the copyright above the page bottom margin with page formats, e.g. the last system of a page was cut off at the page edge (PR #1777)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "d5e54def408a17ea52450e6d2d9e988cc48d5e57",
+      "title": "fix(Expressions): Align close dynamics above the staff with the highest one, e.g. an mf above high notes was pulled down onto them by the p next to it (PR #1781, #1775, #1779)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "153238cdff00dfe508b28a1c3a5cc5b73a6100d7",
+      "title": "fix(Expressions): Avoid collisions of dynamics, \"cresc.\"/\"dim.\" and words when aligning close dynamics, e.g. pp and sffz were drawn over \"crescendo\" (PR #1782)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "0f43d8c41ff4aa7254d07236d448ec4078ea3fb8",
+      "title": "fix(Expressions): More precise skyline values, space savings. Don't stack dynamics and words whose boxes only touch the same sky/bottom line sample, e.g. a dash of a spread \"cre - scen - do\" in Gounod's Meditation m58 (PR #1784)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "c32be62f8ffdcd789074ed978f308b30acdb66e8",
+      "title": "fix(Direction Nodes): Keep a direction's placement, offset and sound values after a words or wedge child: dynamics were drawn over the clef, wedges across the staff (PR #1734)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "5d94de8e2d68c60793aaee1b3d7f6418cbfdc0f7",
+      "title": "test(Direction Nodes): Test wedges and words that share a direction with other direction-types (follow-up to PR #1734)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "d315c25106ee3add566b638367e45c7955de936f",
+      "title": "fix(Words): Draw each words direction once instead of twice at the same position (e.g. \"dolce\", \"espress.\")",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "01d464e9787787b27d00edc3838d0598dc1773f5",
+      "title": "fix(Words): Draw all the words of a direction, not only the first, when an exporter splits them where the formatting changes (PR #1768)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "1e9247abbd0674b75755ecfd8e45b11020dbcc2b",
+      "title": "fix(DrawFromMeasure): Draw the tempo markings of the drawn measures when drawing starts after measure 1 (e.g. drawFromMeasureNumber option) (PR #1737)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "b5dafb19783caf48df2b376a3557e053e4704ab1",
+      "title": "fix(Metronome Mark): Place the right side of SVG note equations by the text advance of \"=\", as the layout does, so that an equation at the end of a staff stays inside it, e.g. in Firefox on macOS (PR #1765)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "e05d9b8a37177231d207eca28c608300fc9df557",
+      "title": "test(Metronome): Check marks against tempo text by their ink, not by SVG text boxes, which reach further below the baseline with the Linux fonts for times and Times New Roman (reported in PR #1759)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "9ebc165839daa2ce1adc834f41eb9de53b2885ef",
+      "title": "fix(Layout): Don't draw a note too early after a gap of a whole note or more in its voice (PR #1746)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "467350e1ac291ccfcf72990a7083f49c26cdf19c",
+      "title": "fix(Grace Notes): Fix error in a measure that holds grace notes only (regression in 2.1.3 from #1706), and hold a pedal line through a system with nothing on its staff (PR #1745)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "0fa61838f6f1ef36f8343cd685f676520f633937",
+      "title": "fix(Spanners): Draw octave shifts, slurs, glissandi, pedals and trills around a system or measure with nothing on their staff, e.g. a measure of grace notes only, instead of aborting the render or leaving them out (follow-up to PR #1745)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "9194f99379de33823d35fca0a300d0dc8163e450",
+      "title": "fix(Grace Notes): Draw a grace note that a voice holds alone at its time, and keep its accidental, clef and octave after updateGraphic() (follow-up to PR #1745). Also: keep the slash of grace notes drawn on their own (PR #1753)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "035aef82e04131c87c0e3068e648d4a80f1e4d1d",
+      "title": "fix(Grace Notes): Draw the fingerings, string numbers and arpeggios of grace notes once, and no grace note fingerings with drawFingerings: false (PR #1760)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "a0c657bd03cf6d870a55970b000053cc70597f3f",
+      "title": "fix(Ornaments): Render ornaments with placement=\"below\" below the staff instead of always above (#866, PR #1740)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "6c3ff2e92099868a48f2a3cf7af47d7f582b4c02",
+      "title": "fix(Skyline): Extend beamed stems before drawing the notes, so an ornament above a beamed stem-up note is measured where it is drawn (PR #1744)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "087544d4323c1033a7cc88fc6ab2f5c517cce3e9",
+      "title": "fix(Ornaments): Don't fail to load a score with a triple-sharp accidental mark (PR #1752)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "bec801e1616505c4dede788f12573184670b147c",
+      "title": "fix(Unison): Keep a hidden unison notehead transparent where it would fill a visible head of another shape (PR #1732, see #1729, #1730))",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "f19671113c2a8be4ac7c84fc83f63edcfd14ba36",
+      "title": "fix(Unison): Don't draw a stray 16th for hidden notes that write out a tremolo for playback (see #1038, #1730)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "ceb20c49176224e1e51a5f26646739e68cb75947",
+      "title": "fix(Unison): Let a hidden unison note share the visible note's head instead of staggering it (see #1730, #1732)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "2a24002f26673eda8c9bc8eb3ac7d7a38641218a",
+      "title": "fix(Barlines): Add the double barline before a key change also when only a later visible part (staff 2+) changes key (PR #1741)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "ad64725b6deef28a08b62e65c67b7d48d207b5da",
+      "title": "fix(Barlines): Keep the file's barline style before a key change (e.g. light-heavy at a movement end) instead of forcing a double barline (follow-up to PR #1741)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "1f421adef8bc73ce426c003203bf0b4638856d13",
+      "title": "fix Barlines: Keep the double barline before a key change for barline styles we can't draw yet (e.g. dashed, dotted), instead of drawing a regular barline",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "76b0487b97ffe6265526836f73ec4c72594a715c",
+      "title": "fix(Part Names): Don't draw the placeholder \"Instr. P1\" for a part with an empty part-name. Also: don't indent the first system for an empty or whitespace-only part-name (PR #1736)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "818f54603e3e174ef24b3a44e247a6f65cdbef7a",
+      "title": "fix(Part Names): Don't draw the part id (e.g. \"P1\") as the label of a part without a part-name element (follow-up to PR #1736)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "091b066ea29ffd37a246b9be9ef0d6d01b065e40",
+      "title": "fix(Part Names): Don't draw part abbreviations over the clefs of later systems when a part has none (PR #1748)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "61039208606e89131252d33ddcfba98f28e14268",
+      "title": "fix(Credits): Don't ignore the title, subtitle, composer and lyricist given by credit-type without page layout. Draw them (PR #1751)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "eb9d7dcc5ee314657a2aa4e41af788da70b6ef61",
+      "title": "fix(Title): Keep the tempTitle given to load() as the title of a score without one: don't cut it at the first dot or keep a slash of its path, and don't lose it when loading a URL, a Blob or an MXL file (see PR #1751)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "292d3cd1124aa034575ea24ee6317dab9672cd6e",
+      "title": "feat(Credits): Read and draw the first-page credits of scores without page layout, e.g. Guitar Pro's subtitle and arranger (osmd.EngravingRules.ReadFirstPageCreditWords = true) (PR #1755)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "583e855a95b859a93d67649091a38e2dcbea27a7",
+      "title": "feat(Measure Repeats (Simile/slashes)): Draw MusicXML measure-repeat signs by default (#877). Add EngravingRules.RenderMeasureRepeats, default true (applies if given in MusicXML) (PR #1750)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "9ad794c4c24139fe476655551bc672e498107ba4",
+      "title": "feat(Part Groups): Draw part-group names and abbreviations before the part names, e.g. \"Horns in F\" before horn staves named \"1 2\" and \"3 4\" (PR #1762)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "3dcead85d9598c3d894483bfe1153585bf4aee8e",
+      "title": "fix(Accidentals): Draw accidentals given in parentheses or brackets in parentheses, e.g. cautionary accidentals. Add EngravingRule RenderCautionaryAccidentalsInParentheses (default false) (PR #1772)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "7e6f741172c05a8b9b3b97ef793e5d8096d1304e",
+      "title": "fix(Options): Let setOptions({drawMeasureNumbersOnlyAtSystemStart: false}) turn the option off again (follow-up to PR #1743)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "2e2dbf3fe7ed4e844cdcfe5bb47d45a39db07e27",
+      "title": "fix(Options): Let setOptions() turn the tupletsRatioed, tupletsBracketed and tripletsBracketed options off again",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "1defbb3831b6816a29b817529c7e39ee80077051",
+      "title": "fix(Options): Keep the onXMLRead function when setOptions() is called without it, e.g. setOptions({drawTitle: false}) removed it before the next load()",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "0b7cddf123af52b789dacd3680b1a53339a5f28f",
+      "title": "feat(Text): Draw texts in the language given by xml:lang, so that browsers choose fitting fonts, e.g. Japanese instead of Chinese glyphs for kanji (PR #1774)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "992debbf1e1bdd332e91625a95edc08c262ccae3",
+      "title": "fix(Click): Find the clicked note instead of another voice's note next to it: GetNearestVoiceEntry() measures to the note heads, not to the voice entry's top",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "339f5f23d005c722a80fb182fcf77c9a8f9c2b86",
+      "title": "fix(Grace Notes): Place the voice entries of grace notes where they are drawn, so clicks find the grace notes and their main notes (GetNearestVoiceEntry())",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "a021abb04404cdd006a1fe0bbc95b86239a72378",
+      "title": "fix(Click): Place notes at the heights of their note heads, also grace notes and cue notes, which were below them (GetNearestNote())",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "a5bb87eec2b9952a198693afe406f55636fba655",
+      "title": "fix(Tabs): Place the notes of a TAB chord on their strings, so a click finds the clicked note (GetNearestNote())",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "b1f9ea4fe6396099f867ec7b66ff5f864f93fbe9",
+      "title": "fix(Click): Place TAB notes at the centres of their fret numbers, and grace notes at their note heads, not right of them (GetNearestNote())",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "4b53479d4b77992d2b05c7e5da3a4028f5014946",
+      "title": "fix(Click): Place every note at the centre of its note head, e.g. with a flag or in a second, not at its staff entry's x (GetNearestNote())",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "4ec3289b42da1091ddb435f48398eacbe5e9e60a",
+      "title": "feat(Click): GetNearestVoiceEntry(), GetNearestNote(), GetNearestStaffEntry() and GetNearestObject() can search only one page, as each page has its own coordinates",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "17e910c73868e4cde5fe91ca35493dbfd3d531c6",
+      "title": "fix(Click): Find objects by class, e.g. GetNearestObject(position, GraphicalMeasure): in minified builds, class names also matched other classes, e.g. notes",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "ef374fd898edf4a08407bde3eedb3dd1a26d315d",
+      "title": "fix(Tabs): setColor() colors TAB notes: their fret numbers, and their bends",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "3f0e6299b52814897e09db35ed666b3acd883ccc",
+      "title": "fix(Tabs): getSVGGElement() returns the SVG group of a TAB note too, so e.g. setVisible() can hide it",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "b24777e0278508b5053e25775d565d404e329e1a",
+      "title": "fix(Click): Don't find the rests of a TAB staff, which aren't drawn, instead of the note whose fret number was clicked (GetNearestNote())",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "a6300aa3331df5f526a7f042b17daa99456eefc3",
+      "title": "perf(Cursor): Only redraw the cursor image when its width or options changed, not on every cursor step (PR #1742)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "9ec10acc7b45ae22b95f92932e2cba3bccdf8e87",
+      "title": "fix(Cursor): Keep the cursor's height when page CSS overrides img heights, e.g. Tailwind's img { height: auto } (see PR #1178)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "232d8bba05c4dfc6bd93a924892b386ba64ceafb",
+      "title": "fix(Cursor): Fade the standard cursor out to transparent instead of white, so it has no light edges on dark or colored backgrounds (see PR #1178)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "aaa313f422813ee1b0cb94ce6beec57c1f2568e4",
+      "title": "perf(Cursor): Draw the image of a solid color cursor as one pixel, so it isn't redrawn when only the cursor's width changes (CurrentArea, CurrentAreaLeft) (see PR #1178)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "b5f72df901e9d4b5f6aed994cab24e923bb5df10",
+      "title": "fix(Cursor): Hide the cursor image from screen readers (alt=\"\") and don't let it be dragged (see PR #1178)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "5abeeacb1cbb49128346117ca508753ce0fa2398",
+      "title": "fix(Cursor): Keep the cursor on the pages of its own sheet with several OSMD instances on a web page, e.g. the second sheet's cursor moved to page 2 of the first sheet",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "1e51284ebfc1c9661dc98eb748f0347fcbf257f3",
+      "title": "fix(Cursor): Hide the cursor on a page that isn't drawn, e.g. after drawUpToPageNumber, where moving onto it threw a TypeError",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "e46bdd14a46747c9ac86c9fa00bc31574acb557a",
+      "title": "fix(Options): Keep the cursors when setOptions() is called without cursorsOptions, e.g. setOptions({darkMode: true}) replaced custom cursors by the standard cursor",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "b7e459f71e214d44fa1e3159b1a7a0eb1b69dc19",
+      "title": "fix(Cursor): Remove the cursors that new cursorsOptions leave out, e.g. after setOptions() with one cursor instead of two, the second stayed in osmd.cursors",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "4c28406cf502587ea219a5fdbe33d38a0ee05cb0",
+      "title": "fix(Dynamics): Render not only first part of combined dynamics like sfmp; render <other-dynamics> texts like ffz or cresc. (#1705, PR #1724)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "b490e49ca8be0f0b6211b962e42ac50ff8dfc154",
+      "title": "fix(Dynamics): Compare the whole marking for IgnoreRepeatedDynamics, keep the active dynamic's text and enum in sync, trim <other-dynamics> text (#1705)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "def540a00a48552347fb5ba519da785de0b56f6b",
+      "title": "feat(Dynamics): Add the MusicXML 4.0 dynamics pf, sfzp and n to DynamicEnum, with playback volumes (#1705)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "ac70d22208eb47919ae88b68147f0b2eaf9e446b",
+      "title": "fix(Dynamics): Derive the playback dynamic from the whole marking text, e.g. ffz -> ff, \"f con fuoco\" -> f, sfmp spelled letter by letter -> sf (#1705)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "4b32bfde30959299ccfe8ab2af5b6f0de221916b",
+      "title": "fix(Dynamics): Combine two dynamics at the same position on a staff into one marking (e.g. ff + marcato) instead of dropping the first (#1705)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "c4cbc0b2fcaea159b1f78e4b76f3a3b1eacbde9f",
+      "title": "fix(Tabs): Render grace notes in tablature staves as smaller fret numbers attached to their main note, they were missing before (#1721)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "e28cc5d22191b1166bdc784da43b10e1af474454",
+      "title": "fix(Unison): Draw the notehead of a hidden unison note (print-object=\"no\", e.g. 8th under a half note in another voice) beside the visible head instead of leaving its beamed stem bare; center tuplet number over it (PR #1730, #1729)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "26f89749f9d832627712abc98e622fea8d19a0eb",
+      "title": "fix(Unison): Color the notehead drawn for a hidden unison note like the visible note whose head it shares, so it never overprints that note's color (follow-up to #1730, #1729)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "91e0c06d18931977a25abd383d4339e45d87814f",
+      "title": "feat(Part Names): Add opt-in abbreviations for single-staff systems: EngravingRules.RenderPartAbbreviationsForSingleStaff (PR #1754)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "4eb250cffd6836560f2b50d18c24e7cc32c5e7b3",
+      "title": "feat(Slurs): Draw a slur with start and stop on the same note, which Dolet for Sibelius writes for a slur whose end isn't attached to a note, from a measure's last note to the barline (see PR #1516)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "6f211125d783de8c14af26f33d8f470a5726f48b",
+      "title": "fix(Glissando): Read and draw a glissando that has no slur or slide on the same note, keep a slur around a glissando or slide with the same number, and draw both glissandi or slides of a note that ends one and starts the next (PR #1735)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "4630f7306ca580114a3a3cd7c25018a8238ca425",
+      "title": "fix(Glissando): Keep the slides of a standard and a tab staff with the same number apart, and don't skip all following tab slides when one can't be drawn",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "4c4ec929af2c6d290fe712c71327de8f05ecf56e",
+      "title": "fix(Accidentals): Render sharp-sharp as two sharp signs instead of the double sharp symbol (#1084). Also: render single-note tremolos on notes with triple sharps or flats (PR #1739)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "0b53cc2f486f15169fbc00cae9b3627c00072ef8",
+      "title": "feat(Accidentals): Render natural-sharp and natural-flat as a natural sign followed by a sharp or flat sign, not just the sharp or flat (#1084)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "df490a42ac88717eb7f7d4c26194eb5240ca786e",
+      "title": "fix(MeasureNumbers): With the drawMeasureNumbersOnlyAtSystemStart option, don't also draw the number of each system's second measure (PR #1743)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "41c59049ac47dde41ebf843be5f2451a04c4d693",
+      "title": "fix(MeasureNumbers): With drawMeasureNumbersOnlyAtSystemStart, draw the number of the measure after an implicit first measure (e.g. the second part of a split measure) regardless of measureNumberInterval (follow-up to PR #1743)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "16c33815ebbec04445bff686b2e92430d99ebada",
+      "title": "fix(Grace Notes): Group grace notes after their main note (Nachschlag) with the main note like grace notes before it: same staff entry and cursor step, so cursor.VoicesUnderCursor() returns them together, instead of an extra staff entry at the end of the measure (#1706)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "ac478eb647d163b4df916a313a529885b22d2588",
+      "title": "fix(Ties): Draw a tie that starts or ends at a notehead shared with a hidden unison note of another voice (PR #1731)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "ca725dcb86a1fb2f50a69f254534207dd9ccb5bf",
+      "title": "fix(Ties): Draw the tie of a hidden unison note at the visible note whose notehead it shares, and draw the tie of notes doubled by a hidden voice only once (follow-up to PR #1731)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "31b4b300ebcc823b6a9d5feaa9cd29486efe4ef5",
+      "title": "fix(WavyLine): Don't error for trill lines across systems that end with a courtesy key/time signature or sit below a hidden instrument, and draw them to the system's last note (PR #1733)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "89936150ae3a3defd3c3911b5dab843c1b986fd3",
+      "title": "fix(WavyLine): Skip a wavy line segment without a start note instead of aborting the render, add a test sample for wavy lines across systems that end with courtesy signatures (follow-up to PR #1733)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "95e0c21793bb02ea6ee1b32dff3ed097acc94239",
+      "title": "perf(Skyline): ~4% faster render: Format each vertical measure once for the skyline, not once per staff, and merge the contour more cheaply. Render ~4% faster on average in Chrome, up to 15% for orchestral scores (PR #1785)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "81586c2db1c909a967721e1b65693b4269a2946f",
+      "title": "perf: ~11% faster render() and ~16% faster load() in Chrome, with byte-identical output: cheaper SVG attributes, slur curves, skyline and bounding boxes, and MusicXML element lookups (PR #1786)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "f92f4aa8bc60aa0eed129733a2612ed2e8153e6e",
+      "title": "fix(Repetition): Draw words like \"D.C. senza replica\" or \"Fin\" instead of the labels \"D.C.\" and \"Fine\", where the labels go (#1767)",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    },
+    {
+      "sha": "ca235cee622fc3b32d921d3290111b8701b633dc",
+      "title": "fix(Repetition): Shift an end instruction like \"D.C.\" in the last measure of a system at most up to the end barline, not off the page",
+      "method": "기능별 diff 이식 및 포크 보존 계약과 수동 병합"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "test/data/test_accidental_natural-sharp_natural-flat.musicxml",
+      "sha256": "c4c8a53f76004e8aa9b5eba7519fafc7ca114ec13e674ae14948b9bc8b0544fe",
+      "gitBlob": "906b1a2bb9fb0fe503158690cf5d564847df9abe",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "906b1a2bb9fb0fe503158690cf5d564847df9abe",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_accidental_parentheses_bracket.musicxml",
+      "sha256": "66371a471b1cd9f6c834f222833ee2aec263fb61b08780e88534a156bdb041a4",
+      "gitBlob": "14debe5a29bb43f74fd587535b953b21044dcdc4",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "14debe5a29bb43f74fd587535b953b21044dcdc4",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_accidental_sharp-sharp_double-sharp.musicxml",
+      "sha256": "2bb12a74fd0f51359b0a0578c5e52b2e9c9c4c3510770a9b03c770cee3baf18b",
+      "gitBlob": "6bfefe0a0f96a256491ea92235230de9b6cfa03d",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "6bfefe0a0f96a256491ea92235230de9b6cfa03d",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_combined_dynamics_1705.musicxml",
+      "sha256": "025de6a03d977724dcec881674d50bc7c8a8b2c28322a4b9ec19d6c875f1eb36",
+      "gitBlob": "71faa38ef109ce0e987e14d4125388fe8a0ab39f",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "71faa38ef109ce0e987e14d4125388fe8a0ab39f",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_courtesy_accidentals_repeated_and_unison.musicxml",
+      "sha256": "13b39a4eb6fe98a4c5283a3fa23137109f9e1f6df791e3eacfcd715e24f6b935",
+      "gitBlob": "ca089d80bbe7c7ca01c9bc1fb5403ade53dea0c9",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "ca089d80bbe7c7ca01c9bc1fb5403ade53dea0c9",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_credits_without_page_layout.musicxml",
+      "sha256": "8f5886ea874e93b119ff155fbdf7268e2ebc3c47ead17a88f12f0c1852c6e201",
+      "gitBlob": "2b9471e12dc0a8c6da25f52ec501b70e5738eaaf",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "2b9471e12dc0a8c6da25f52ec501b70e5738eaaf",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_crossing_part_groups.musicxml",
+      "sha256": "17f4025d309ebfded824fc873c41bdc8e1bf43b9c9f73afad8582c207b2d4f61",
+      "gitBlob": "638c8c76568dcf1ac06208ab734559e93aacf1fe",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "638c8c76568dcf1ac06208ab734559e93aacf1fe",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_direction_dynamics_after_words_and_wedge.musicxml",
+      "sha256": "148341e7251739445d478575b86dac0b3ae1d4070bd86896ce81fa0206f13734",
+      "gitBlob": "69485fa42028f70547c0f61acdf4ff125b542745",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "69485fa42028f70547c0f61acdf4ff125b542745",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_direction_several_direction_types.musicxml",
+      "sha256": "e4ca6dc0016fb74c1b5661e672dde2856b56c790e4e6d4a65ea348c555b4f1a2",
+      "gitBlob": "89bf92a93bef5d5ec7a141ee608f96360304e56c",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "89bf92a93bef5d5ec7a141ee608f96360304e56c",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_direction_words_split.musicxml",
+      "sha256": "4cb71f1a09de710dc9394543fbd6ca83c9c8c30eebf510b0c14ca4a4fc1de1da",
+      "gitBlob": "b8bade6d8cba6044ababe75fa16da75ca5cdbcaa",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "b8bade6d8cba6044ababe75fa16da75ca5cdbcaa",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_drawFromMeasureNumber_2_tempo_markings.musicxml",
+      "sha256": "fd0ac4d422fce9d0e2945b9c20df9cbe1431012e515799887ebd7edbbb980db6",
+      "gitBlob": "1a0a8b32cd9875608f2a9797f0012cf31dfad34d",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "1a0a8b32cd9875608f2a9797f0012cf31dfad34d",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_dynamics_alignment_above_staff.musicxml",
+      "sha256": "5e06e5c3a5da94dcdeba765beb8c1d03bf2650e432de84f66b74ce94d4006855",
+      "gitBlob": "1abb0e2a4746d3d40c7c5ad5fae707d8d870aad1",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "1abb0e2a4746d3d40c7c5ad5fae707d8d870aad1",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_dynamics_alignment_placement_change.musicxml",
+      "sha256": "7e3bd188e4f0b89e0375a492943fe6ef898e3be54e5c17974189dde2581dc736",
+      "gitBlob": "44d5ffbbb86650c0e3713823edb2fe62abd3cd3c",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "44d5ffbbb86650c0e3713823edb2fe62abd3cd3c",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_dynamics_alignment_verbal.musicxml",
+      "sha256": "1f8e9f4900b402216c2f1867ece87d3cf7e00168be96dc0c695b1558f0beb85c",
+      "gitBlob": "dd4c793b8be37b2fa8b39a8689b20c3761d9ea75",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "dd4c793b8be37b2fa8b39a8689b20c3761d9ea75",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_dynamics_alignment_words.musicxml",
+      "sha256": "024109cef5ee45521062f7d6fc247d1bd88b4765dc5e6aa9f4744ca630ccf139",
+      "gitBlob": "3d513ace7725e21fdf7ca3720a3d8f1aa25e299a",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "3d513ace7725e21fdf7ca3720a3d8f1aa25e299a",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_dynamics_ignore_repeated_combined.musicxml",
+      "sha256": "4d3849728c2ab53b459a05d22f16f6d884ffe6b8b6bdf2291d832b153ed25934",
+      "gitBlob": "f84f14d4d9a71cc7a582b5072a2c57b3bac375ea",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "f84f14d4d9a71cc7a582b5072a2c57b3bac375ea",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_dynamics_musicxml4_n_pf_sfzp.musicxml",
+      "sha256": "d75fafcefc59d210e36de1cba431ae05c036303945f09e8c4c843961a9e2334d",
+      "gitBlob": "22e14b8452e8324cdaf8d5ea48cba22bda9543f2",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "22e14b8452e8324cdaf8d5ea48cba22bda9543f2",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_dynamics_other_dynamics_text_playback.musicxml",
+      "sha256": "47bf6c131eccc68772018b8968be14372c29f4217a5683bc16ffe8d5ea959785",
+      "gitBlob": "a0cd49fd8e8ff13e24f059f26d21910821c8efbb",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "a0cd49fd8e8ff13e24f059f26d21910821c8efbb",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_first_page_credit_words.musicxml",
+      "sha256": "7c76a9b453e0fe1a219d5c8362fafcac9d1ddc5e3d47429b2441e034058779dd",
+      "gitBlob": "589474f53a6a0faf2c01af1b2439b3deba35666b",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "589474f53a6a0faf2c01af1b2439b3deba35666b",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_first_page_credit_words_long.musicxml",
+      "sha256": "25397a3b3dd400d793c792500e944e698fb8484517f591e32d5c00e6d76ddb24",
+      "gitBlob": "3459b0aca15c9535115b674b0a749ef97f01d08e",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "3459b0aca15c9535115b674b0a749ef97f01d08e",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_glissando_without_slur_or_slide.musicxml",
+      "sha256": "0ba72b75df09d93afe379eb1afd2728a9c39f5b184fa6dab9fda68834fbb2297",
+      "gitBlob": "727425589ac88b4dba887b3ef063d3d18b250479",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "727425589ac88b4dba887b3ef063d3d18b250479",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_grace_note_modifiers_once.musicxml",
+      "sha256": "db934af165813334d331b9498dbc547e89b198ad4313a1af07601d2a2f2edd48",
+      "gitBlob": "a9b8f194b9b2308a40f90b324122a8f230ef6a9e",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "a9b8f194b9b2308a40f90b324122a8f230ef6a9e",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_grace_notes_after_main_note_1706.musicxml",
+      "sha256": "ed87ff886898962918281cf1d0b4e7f56cda7382eb1aa1b0f636d5204b4556af",
+      "gitBlob": "a21e27ee91fba20e536a2075cb3d67c670ad868e",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "a21e27ee91fba20e536a2075cb3d67c670ad868e",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_grace_notes_only_measure.musicxml",
+      "sha256": "805fe5b302eb651cced08e70742bd75a3e7386bb39140a08a2f26381aca7814e",
+      "gitBlob": "02070b7765fd511e23cc0913c169bbb5c2504651",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "02070b7765fd511e23cc0913c169bbb5c2504651",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_grace_notes_only_measure_spanners.musicxml",
+      "sha256": "26e77b86bbbaaa41ad7f5661d74bee302a532b8fba9d737c6157bb9faaca6c48",
+      "gitBlob": "2fbe63a6cb54360e2c39e4343dae39b337d51874",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "2fbe63a6cb54360e2c39e4343dae39b337d51874",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_group_name_only.musicxml",
+      "sha256": "7191128c2fc18e0bbaf2a2c32c1ec1f29e102022e99a82cb96059c36794b827c",
+      "gitBlob": "5d3dfcec6d0780e7fcf09771d93e7c0c8915aa9b",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "5d3dfcec6d0780e7fcf09771d93e7c0c8915aa9b",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_group_names.musicxml",
+      "sha256": "fff9bcb1c3cfd939845ef3ac9a001aca29a87bb6139b5c89af7eba49364f0165",
+      "gitBlob": "8d0383b038ccdd5d923521d25360602db62eb317",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "8d0383b038ccdd5d923521d25360602db62eb317",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_instruction_only_endpoints.musicxml",
+      "sha256": "2f5559350b4a9fc88eb7dca2bd52a52306bdb590ce255520889d033a326ffca5",
+      "gitBlob": "6dbfe2367d07b01611dbff824e61ef4f3dea8885",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "6dbfe2367d07b01611dbff824e61ef4f3dea8885",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_key_change_keeps_given_barline_style.musicxml",
+      "sha256": "53c110a3eecb1d189e05526172ad87ca6c0a3d235bb2f1055cd4427f8e4b2d2a",
+      "gitBlob": "5d857325d54dadb0f58554f189a5823e06674bdc",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "5d857325d54dadb0f58554f189a5823e06674bdc",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_key_change_later_part_double_barline.musicxml",
+      "sha256": "a138969e89ace89924b0532776c95b4a98824ad7b131687242e919f070886aab",
+      "gitBlob": "85ba955e323c5e560cc4566e690b07c5d3b6df26",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "85ba955e323c5e560cc4566e690b07c5d3b6df26",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_key_signature_clef_change.musicxml",
+      "sha256": "91737b2828de029a5c987194a4639886db27a886dbb97937be1bc8721d8b3c25",
+      "gitBlob": "98047bba707cadda85bd7db528e9e24be6a36e29",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "98047bba707cadda85bd7db528e9e24be6a36e29",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_key_signature_grace_beam.musicxml",
+      "sha256": "4e0b62ba185839e9c1e6b1d4e684566e95d801c29d12223f3b58deed18775000",
+      "gitBlob": "0f6e3ccca3e5a89e6711d0f846cca5cac7e1ce32",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "0f6e3ccca3e5a89e6711d0f846cca5cac7e1ce32",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_key_signature_mid_measure.musicxml",
+      "sha256": "cc2b25d1c9c69862bc3351040774ee8be78571b52a3d081a6dd1a4659320d58d",
+      "gitBlob": "a074d0f944ba331040c729d055558a7c193640cd",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "a074d0f944ba331040c729d055558a7c193640cd",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_key_signature_multi_staff.musicxml",
+      "sha256": "39a5adc754c6f6f761533e384983059dc24f7a6ee48e4b0a06ae1d7945b9393a",
+      "gitBlob": "bac1e539b538ffef75758dd1988d520dba1f0a2a",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "bac1e539b538ffef75758dd1988d520dba1f0a2a",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_key_signature_no_onset.musicxml",
+      "sha256": "86043785fa849691c4d8cdd724f27f8843dff017b999459496769806b6f995d7",
+      "gitBlob": "0c220961b38a4b51b819f32e840cd8dfafce7c6b",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "0c220961b38a4b51b819f32e840cd8dfafce7c6b",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_key_signature_rest_sequence.musicxml",
+      "sha256": "8eb44ea5d413f0e1d7abaf83661bcf51a406abc71136a21e11f69b3b609b6e30",
+      "gitBlob": "eb5013605fcdc5d8ec17dbc4b6d9a17d762b6ccf",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "eb5013605fcdc5d8ec17dbc4b6d9a17d762b6ccf",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_lyrics_dash_continued_in_next_system.musicxml",
+      "sha256": "c6def31df840a0bdf51ae48154547784dde3730a18bfa9ac83eb15071cd27373",
+      "gitBlob": "5d9330811589d3e6fb30ebe6186427fe777c7c28",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "5d9330811589d3e6fb30ebe6186427fe777c7c28",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_lyrics_extend_verses.musicxml",
+      "sha256": "e6152ab35a4528eca90ce2ae0083c89b9c4548bac28bdcc87c06c1666549a5b4",
+      "gitBlob": "7b4126cd4428792a2405a106e66ea501c5aaad4f",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "7b4126cd4428792a2405a106e66ea501c5aaad4f",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_lyrics_x_padding_longer_second_verse.musicxml",
+      "sha256": "d0d9ce917b8a17258478ab3a36fc8f02ac42ce05149eaa726d7c17936a845cb4",
+      "gitBlob": "609f8328c8c8805c28baf1e61b52ad33e3f1a468",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "609f8328c8c8805c28baf1e61b52ad33e3f1a468",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_measure_numbers_only_at_system_start_split_measure.musicxml",
+      "sha256": "f5429ae4fe04fff9d19ab290b36c65ef7890ffc093de74b0112163aa6c797088",
+      "gitBlob": "c7492ef1660d53c2d4df84cadea3c34bc6b2e104",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "c7492ef1660d53c2d4df84cadea3c34bc6b2e104",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_measure_repeat_drums.musicxml",
+      "sha256": "2392fc0ffd7cc156de603028089ab3b38b07b0b4e077e393decc0e10dc66971b",
+      "gitBlob": "4f155e9fd084fccd29fca9c293ca7de1eefc72f1",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "4f155e9fd084fccd29fca9c293ca7de1eefc72f1",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_measure_repeat_piano_left_hand.musicxml",
+      "sha256": "2523369ca0ae641bd38200a8f2cab83a00b824e10c39e973a9bb63bed2485be0",
+      "gitBlob": "53c8c51d2122ad1687b608663a2cf7dd8eab758b",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "53c8c51d2122ad1687b608663a2cf7dd8eab758b",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_metronome_beat_unit_ties.musicxml",
+      "sha256": "968849c346b0bca3edca79746227c430adf9f7cf75f2718de26f4050a16c20de",
+      "gitBlob": "a13df872bcd7c93a8b95dfef074f6c00af0e0e5b",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "a13df872bcd7c93a8b95dfef074f6c00af0e0e5b",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_metronome_beside_tempo_text.musicxml",
+      "sha256": "90e64b0550e81039cc76c44915540de39b0e4a6325398de89d43cd79f23abca5",
+      "gitBlob": "5f8c2285698f8a0c69ec80b84c6be8b6f583bcd1",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "5f8c2285698f8a0c69ec80b84c6be8b6f583bcd1",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_metronome_close_positions.musicxml",
+      "sha256": "bf3cd5a1ed0d0b6b7b8fa06e412205aec7098f413e57cae8d003d8566fd38cea",
+      "gitBlob": "e5bcfef829c3518808979337f1f57e5ae227c833",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "e5bcfef829c3518808979337f1f57e5ae227c833",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_metronome_display_sound_offset.musicxml",
+      "sha256": "ed56922591a7676c55af790247144bdfbca8bfc2390391d621da8fe31238b9d1",
+      "gitBlob": "e9988667e3ef6c8f62c7abe83e103abef853135f",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "e9988667e3ef6c8f62c7abe83e103abef853135f",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_metronome_mark_print_object_no.musicxml",
+      "sha256": "cd42db4c3ca7234277f119ec86a128abd6263e08d9d2bc072c8b64d50808b66c",
+      "gitBlob": "06b75c8d0f0cdd0107072d3bba7f1df07c64d7af",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "06b75c8d0f0cdd0107072d3bba7f1df07c64d7af",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_metronome_positions.musicxml",
+      "sha256": "5ac878ea37eb8e2d32f3b7e608217579ee4ffd60ff14be7b082a53b9de9b7f9b",
+      "gitBlob": "9771e9d72ad93be363fb3834f80dc33bee1f9d9e",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "9771e9d72ad93be363fb3834f80dc33bee1f9d9e",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_ornament_accidental_mark_sharp-sharp.musicxml",
+      "sha256": "7a93a7f174bf6172672c2d8811ea988de65821b1c42ef85ec1fb874658093993",
+      "gitBlob": "a3e5cd86e4c88889997f3c9a3e689e8a1d316fd1",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "a3e5cd86e4c88889997f3c9a3e689e8a1d316fd1",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_ornament_accidental_mark_values.musicxml",
+      "sha256": "2611eb0d7ac6c1d8c8aec24464bc5761a19567a348468cfc4f392b83a08047d3",
+      "gitBlob": "b39cd74ff8cc2c9cfe15f8ca9c9970c616c4e1c6",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "b39cd74ff8cc2c9cfe15f8ca9c9970c616c4e1c6",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_ornament_fingering_beamed_stem_up_bwv847_measure34.musicxml",
+      "sha256": "f3caeeb5eb5dd028b65eac7d035812fea25d30918ab726cb088202dd2caf8046",
+      "gitBlob": "a56731f952c08d6243ea59b133df81eb8aee7a8d",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "a56731f952c08d6243ea59b133df81eb8aee7a8d",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_ornament_placement_below.musicxml",
+      "sha256": "2444bae338a59774607b0ae1bbe4d60293374fd83a98b94fdfae83f9fa89d0e9",
+      "gitBlob": "efca747fb13cfdf155f1fb7602bee02e9fbd2f56",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "efca747fb13cfdf155f1fb7602bee02e9fbd2f56",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_part_abbreviation_single_staff.musicxml",
+      "sha256": "f7bd8213ba3f1a28ca63131a27eb5e822af9d02e8871c308eb3fd329d17486f8",
+      "gitBlob": "3a170e667bac4ff21c3602dcfece6b7d04c86ebc",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "3a170e667bac4ff21c3602dcfece6b7d04c86ebc",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_part_abbreviations_partly_missing.musicxml",
+      "sha256": "8367a95d0b5d816df7c578bcc919b7b25ffcbbd58071397d1ed5500df8a8a0c3",
+      "gitBlob": "415625d174f285d32ad344bf83e172ad36376a90",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "415625d174f285d32ad344bf83e172ad36376a90",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_part_name_print_object_no.musicxml",
+      "sha256": "477b48b94dceec5cace06506d1309c15c742f81c7ba54ee25cd7415549c6f3b4",
+      "gitBlob": "4ec30b02e454299eadbdf359459ccb9928e10584",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "4ec30b02e454299eadbdf359459ccb9928e10584",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_renderNext_copyright_below_last_system_1710.musicxml",
+      "sha256": "1290d5ba34112262153e725ddc45ff3844db8853f2b983326e28c68d0e39b940",
+      "gitBlob": "80c7260aa690b652bc14b7c701611608c4103213",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "80c7260aa690b652bc14b7c701611608c4103213",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_repeat_da_capo_al_coda_after_repeat.musicxml",
+      "sha256": "10d589b4eaa50ac5eb0c8421249631ff68287dd376b6f8970f1413462495d79d",
+      "gitBlob": "70dd7730c425201e17a4daca71fc61b722e23dfe",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "70dd7730c425201e17a4daca71fc61b722e23dfe",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_repeat_da_capo_in_second_ending.musicxml",
+      "sha256": "0c08c29b8755406ed546bf86bfafb9bf0cdf4cdc0de727e9195774738c573897",
+      "gitBlob": "1b7b06238f8999ecaf13292a3a6a4db848602347",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "1b7b06238f8999ecaf13292a3a6a4db848602347",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_repeat_da_capo_to_coda_german.musicxml",
+      "sha256": "508c45bf9daa221a25a93a030f3104ff3794d50034e1c867bd778f488542907b",
+      "gitBlob": "08f7d92fd1b3af5eec1f72a7456e4000c2987ebe",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "08f7d92fd1b3af5eec1f72a7456e4000c2987ebe",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_repeat_da_capo_with_fine.musicxml",
+      "sha256": "9ea7a85cc98429a7acc9baef6a18cfeb645cfcd069fab0ae7052596f1e23968e",
+      "gitBlob": "368688feb23d68adf555fd73a7dc93f676f0de15",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "368688feb23d68adf555fd73a7dc93f676f0de15",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_repeat_first_ending_without_second_ending.musicxml",
+      "sha256": "7c3bec07134bc8a8b9d56b1fa3f8f411dc7727ea9dbc12a4f3dafc27db857074",
+      "gitBlob": "8dde029d2f5c6d875cb4fd581f8fc858ecea35a0",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "8dde029d2f5c6d875cb4fd581f8fc858ecea35a0",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_repeat_instructions_from_sound_french.musicxml",
+      "sha256": "0746a1e1d76b90d1d9a0a396c870764fe84c15ba69ca1b209fb1f96047f2c35e",
+      "gitBlob": "4c82ab26e383801fdb1aff40598c8255f3c89cba",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "4c82ab26e383801fdb1aff40598c8255f3c89cba",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_repeat_jumps_at_repeat_signs.musicxml",
+      "sha256": "b14b6eb2b9dd11599ee2eb1c870887f85580b85e142f3f3a280e959b39ae7b70",
+      "gitBlob": "e4fd56dda64ec9634e536293ecc8d48b8af28fda",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "e4fd56dda64ec9634e536293ecc8d48b8af28fda",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_repeat_movements.musicxml",
+      "sha256": "9596ec74814ba95fab5631587ae742f94d53e810b9484862c471207a36fe730b",
+      "gitBlob": "5f4b24df24bd97b367c9ff54998316d831e1dfb0",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "5f4b24df24bd97b367c9ff54998316d831e1dfb0",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_slides_standard_and_tab_staff.musicxml",
+      "sha256": "0cd6d21d0eb982493569145c0c32a6fe4e53e50d49bc060bdd5677246d98546b",
+      "gitBlob": "833b3d100086fc9b574f0f16b27508f5167ee1b6",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "833b3d100086fc9b574f0f16b27508f5167ee1b6",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_slur_flat_min_arc.musicxml",
+      "sha256": "4f8ced845f100f8a92986088b1ea4744f8f6b2d7e7770083bfce5cde389b681f",
+      "gitBlob": "92c48223fa35b02ad62e571db9d1234798d46fa7",
+      "upstreamCommit": null,
+      "upstreamBlob": null,
+      "unchangedFromTag": false,
+      "origin": "자체 평탄한 슬러 최소 곡률 픽스처"
+    },
+    {
+      "path": "test/data/test_slur_unattached_end_to_barline.musicxml",
+      "sha256": "5ee13107633d8c5f88f6d22d112ca2144bded752922bfce077c3bc0f8713cb5a",
+      "gitBlob": "bea5780fae5a3a2844f264c00f322d3b2cc05162",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "bea5780fae5a3a2844f264c00f322d3b2cc05162",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_staff_specific_keys.musicxml",
+      "sha256": "aae5acbf86f54ec75b64e0bb36664f86525c344124e50b2de7254339fc3dd653",
+      "gitBlob": "268cad3f2cfdf4c7a1647b66b9f32ed691c53d52",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "268cad3f2cfdf4c7a1647b66b9f32ed691c53d52",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_tab_grace_note_simple.musicxml",
+      "sha256": "70eec2716d095ea1cc1f299c3591c0601af2093bf81b4e43d1cf47df8a6206a8",
+      "gitBlob": "a150a8017524288bc3f12ab00b670a7388f05313",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "a150a8017524288bc3f12ab00b670a7388f05313",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_tempo_state.musicxml",
+      "sha256": "147071d2693cdd31f161d39bed96cf9875d0a93c62b42d4357aaf555067dc50f",
+      "gitBlob": "df9dfc9a151ecc24132261849f8f0e217da4bfd9",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "df9dfc9a151ecc24132261849f8f0e217da4bfd9",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_tempo_state_delayed_equation.musicxml",
+      "sha256": "58a6d77b4cad29ef0fac4ca8df889c219969014d613a2136264241f3a835575f",
+      "gitBlob": "a45ae8d5b484ad719d54e7b33e434df87e666c77",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "a45ae8d5b484ad719d54e7b33e434df87e666c77",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_tempo_state_start_fallback.musicxml",
+      "sha256": "44063a6578c68c83cd543218298a29dc62a825811da826d7f427184053787e26",
+      "gitBlob": "296751282a67ab40361a5919aeced34190ffc1d0",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "296751282a67ab40361a5919aeced34190ffc1d0",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_text_language_xml_lang.musicxml",
+      "sha256": "e738f6c67b8c706e0196f673194e0ba5e3ba2fa2872008c6901c315dab564287",
+      "gitBlob": "457db847bac90ea9ae7aa12143925bb2915d9c24",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "457db847bac90ea9ae7aa12143925bb2915d9c24",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_tie_hidden_unison_bwv847_measure35.musicxml",
+      "sha256": "e64b4198a84ebaccae2e2bb270d2ef054098872c4513e9211f88fc6fdbb3ed2b",
+      "gitBlob": "7ae0c24618a3d71e84e67d8c92e853b94aa3db68",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "7ae0c24618a3d71e84e67d8c92e853b94aa3db68",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_tremolo_single_note_triple_accidentals.musicxml",
+      "sha256": "01754147673e3721efa43577f51d7d89e6fec698aa1b28f4f6ba716769faaec7",
+      "gitBlob": "550217b02dacb99f0bf1d84d1a121c5590326b13",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "550217b02dacb99f0bf1d84d1a121c5590326b13",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_triplet_dotted_whole_note_duration.musicxml",
+      "sha256": "de55d21eec88fc205dccdb8ad621c766d55314e7ae8e31ab2046d64ee454b109",
+      "gitBlob": "8ad5886add8d22920a67e8905cb02d827ee2b323",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "8ad5886add8d22920a67e8905cb02d827ee2b323",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_unison_hidden_tremolo_playback_notes_actor_prelude_measure33.musicxml",
+      "sha256": "47a3cb91c3ec65a0cec03c0ce367e872db0cfdf0ea160cb1768fc450b10138e5",
+      "gitBlob": "4fe5be805cf82e48e6b1b4476ae00559b3409c6a",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "4fe5be805cf82e48e6b1b4476ae00559b3409c6a",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_unison_notehead_over_chord_liebestraum_measure42.musicxml",
+      "sha256": "716b45e7013941c62ebc71c600bb44638397073b82f0e5cdf6849cf2d91e1516",
+      "gitBlob": "40296d62cfe49f0967051bbed327810fba350785",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "40296d62cfe49f0967051bbed327810fba350785",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_unison_notehead_tuplet_arabesque_measure3.musicxml",
+      "sha256": "52b54bcf245a69ee8ee0c5486e8ab6897cb998b3151966649902dca58a2f065e",
+      "gitBlob": "c9bcba884ee3c9ba54506b7fbfaf23552ee8c0f4",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "c9bcba884ee3c9ba54506b7fbfaf23552ee8c0f4",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_voice_gaps_of_a_whole_note_or_more.musicxml",
+      "sha256": "1c10d6ad8bc671ebfe5a99d8f988abfc1849a0841e0316b99b84b6f465a5f6e0",
+      "gitBlob": "1217e7001f2e46fe500bff2a9f97e9fe229828e0",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "1217e7001f2e46fe500bff2a9f97e9fe229828e0",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    },
+    {
+      "path": "test/data/test_wavy_line_multiline_extragraphicalmeasure.musicxml",
+      "sha256": "1bff4b483da70904c313d7b4518211cbe541af30f2dd7b7d1405cb1cede8f968",
+      "gitBlob": "2ac322c0e52483b00009021bb3f21b008052c5ca",
+      "upstreamCommit": "b416d38707b87d6ed0a56c5bd8309124ad99172d",
+      "upstreamBlob": "2ac322c0e52483b00009021bb3f21b008052c5ca",
+      "unchangedFromTag": true,
+      "origin": "upstream 고정 태그"
+    }
+  ],
+  "braille": "포크에 Braille 플러그인이 없어 소스와 전용 테스트는 플랫폼 해당 없음. 웹 slur 검증은 유지."
+}

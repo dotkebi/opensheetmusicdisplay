@@ -9,6 +9,8 @@ export class AbstractExpression {
     public DashesEndMeasure: SourceMeasure;
     /** Timestamp within DashesEndMeasure where the dashed line ends. */
     public DashesEndTimestamp: Fraction;
+    /** The xml:lang of the expression's words, see Label.language. */
+    public language: string;
 
     constructor(placement: PlacementEnum) {
         this.placement = placement;

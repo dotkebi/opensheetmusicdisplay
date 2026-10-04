@@ -16,6 +16,9 @@ export declare class Label {
     fontFamily: string;
     fontStyle: FontStyles;
     fontHeight: number;
+    /** The language of the text as a BCP 47 tag, e.g. "ja" or "zh-CN", read from MusicXML's xml:lang (undefined if not given).
+     * It is drawn as the text's language, so that e.g. a browser draws kanji with Japanese instead of Chinese glyphs. */
+    language: string;
     textAlignment: TextAlignmentEnum;
     IsCreditLabel: boolean;
     ToString(): string;

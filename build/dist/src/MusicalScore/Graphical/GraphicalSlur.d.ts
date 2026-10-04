@@ -57,6 +57,12 @@ export declare class GraphicalSlur extends GraphicalCurve {
     private static clampEndPointAbove;
     /** Y of a slur-below end point: no higher than StaffHeight - 1.5 while the point is within the staff. */
     private static clampEndPointBelow;
+    /** Where a slur without end note ends (see Slur.HasUnattachedEnd), relative to the staffline: at the barline of its
+     *  measure, before the end instructions like a repeat sign or a clef change at the measure end.
+     *  If that's too close to the start note to look like a slur (e.g. before a repeat sign), it reaches a bit past the note,
+     *  over the repeat dots, but not up to the barline.
+     */
+    private getUnattachedEndX;
     /**
      * This method calculates the placement of the Curve.
      * @param skyBottomLineCalculator

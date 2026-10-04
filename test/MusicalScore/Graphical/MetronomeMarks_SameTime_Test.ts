@@ -152,7 +152,7 @@ describe("Metronome marks at the same time", () => {
         // a second mark with its own <sound tempo> is a tempo change, not an alternative
         const withSound: string = metronome("50", 110).replace("</direction-type>", "</direction-type><sound tempo=\"75\"/>");
         ({ osmd, div } = await render(cantoScore(metronome("80", 0) + withSound)));
-        expect(bpmTexts(div)).to.deep.equal([" = 80"]);
+        expect(bpmTexts(div)).to.deep.equal([" = 80", " = 50"]);
         const marks: InstantaneousTempoExpression[] = metronomeMarks(osmd.Sheet.SourceMeasures[0]);
         expect(marks.map((m) => m.TempoInBpm)).to.deep.equal([80, 50]);
         expect(marks[0].followingMetronomeMarks).to.deep.equal([]);

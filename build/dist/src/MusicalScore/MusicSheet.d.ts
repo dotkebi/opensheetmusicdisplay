@@ -11,6 +11,15 @@ import { MusicSheetErrors } from "../Common/DataObjects/MusicSheetErrors";
 import { MultiTempoExpression } from "./VoiceData/Expressions/MultiTempoExpression";
 import { EngravingRules } from "./Graphical/EngravingRules";
 import { PlaybackSettings } from "../Common/DataObjects/PlaybackSettings";
+/** A default language of lyrics, from MusicXML's <defaults><lyric-language xml:lang="..." number="..." name="...">. */
+export interface LyricLanguage {
+    /** The lyric number it's for (undefined: any number, unless a name is given) */
+    number?: string;
+    /** The lyric name it's for (undefined: any name, unless a number is given) */
+    name?: string;
+    /** The language as a BCP 47 tag, e.g. "ja", see Label.language */
+    language: string;
+}
 /**
  * This is the representation of a complete piece of sheet music.
  * It includes the contents of a MusicXML file after the reading.
@@ -36,6 +45,7 @@ export declare class MusicSheet {
     private title;
     private subtitle;
     private composer;
+    private firstPageCreditWords;
     private lyricist;
     private copyright;
     private musicPartManager;
@@ -62,6 +72,8 @@ export declare class MusicSheet {
     IgnoreTempoInstructions: boolean;
     /** Whether any note has a [[VoiceLeadingGuide]]. Lets the drawer skip the search in all other sheets. */
     HasVoiceLeadingGuides: boolean;
+    /** The default languages of the lyrics. A lyric's own xml:lang comes first, see LyricsEntry.language. */
+    LyricLanguages: LyricLanguage[];
     /**
      * Get the global index within the music sheet for this staff.
      * @param staff
@@ -107,6 +119,7 @@ export declare class MusicSheet {
     set Subtitle(value: Label);
     get Composer(): Label;
     set Composer(value: Label);
+    get FirstPageCreditWords(): Label[];
     get Lyricist(): Label;
     set Lyricist(value: Label);
     get Copyright(): Label;
@@ -168,6 +181,7 @@ export declare class MusicSheet {
      */
     getRepetitionByIndex(index: number): Repetition;
     CompareTo(other: MusicSheet): number;
+    /** The tempo at the start of the piece, not the first later tempo instruction. */
     getExpressionsStartTempoInBPM(): number;
     get Errors(): {
         [n: number]: string[];

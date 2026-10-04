@@ -52,6 +52,20 @@ export declare class GeometricSkyBottomLineContext {
     private minY;
     /** Maximum drawn y per pixel column (the bottom-line, in device pixels). -Infinity = column untouched. */
     private maxY;
+    /** Minimum y of the horizontal strokes that cover every column of the measure, like the stave lines (see mergeHorizontalStroke()).
+     *  Kept as a single value instead of being merged into every column, applied to all columns in copyExtentsInto().
+     *  +Infinity = no such stroke. */
+    private fullWidthMinY;
+    /** Maximum y of the horizontal strokes that cover every column of the measure, see fullWidthMinY. -Infinity = no such stroke. */
+    private fullWidthMaxY;
+    /** Top of the covered band: drawing that lies within [coveredBandTop, coveredBandBottom] can't change any column's extents,
+     *  because every column already extends at least that far up and down (see updateCoveredBand()), so it's not merged.
+     *  +Infinity = no band (yet). */
+    private coveredBandTop;
+    /** Bottom of the covered band, see coveredBandTop. -Infinity = no band (yet). */
+    private coveredBandBottom;
+    /** Whether updateCoveredBand() was called for the current measure. */
+    private coveredBandUpdated;
     private width;
     private translateX;
     private translateY;
@@ -86,6 +100,20 @@ export declare class GeometricSkyBottomLineContext {
      * columns where nothing was drawn are left undefined.
      */
     copyExtentsInto(skyLine: number[], bottomLine: number[]): void;
+    /**
+     * Like copyExtentsInto(), into typed arrays from an offset on (see SkyBottomLineCalculator.calculateLinesGeometric()).
+     * A separate method, so that each method's array accesses only see one kind of array (fast in JavaScript engines).
+     * @param skyLine the skyline buffer
+     * @param bottomLine the bottom line buffer
+     * @param offset the index of column 0 in the buffers
+     */
+    copyExtentsIntoBuffers(skyLine: Float64Array, bottomLine: Float64Array, offset: number): void;
+    /**
+     * Returns the length that copyExtentsInto() extends an array to: one past the last column where something was drawn.
+     * Allocating the arrays with (at least) this length avoids growing them by writing past their end, which is slow.
+     * @returns The index of the last drawn column + 1, or 0 if nothing was drawn.
+     */
+    getDrawnLength(): number;
     beginPath(): void;
     moveTo(x: number, y: number): void;
     lineTo(x: number, y: number): void;
@@ -154,11 +182,36 @@ export declare class GeometricSkyBottomLineContext {
     glow(): GeometricSkyBottomLineContext;
     private deviceX;
     private deviceY;
+    /** Empties the covered band (see coveredBandTop), e.g. for a new measure. */
+    private resetCoveredBand;
+    /**
+     * Computes the covered band: the y range from the lowest column top to the highest column bottom drawn so far.
+     * Every column already extends at least that far up and down, and the extents only grow, so drawing that lies within
+     * the band can't change any column anymore and doesn't need to be merged - e.g. the note heads, rests and accidentals
+     * between the stave lines, a large part of the merging work. Called once per measure, at its first fill:
+     * the stave lines are drawn before anything else (in VexFlow's Stave.draw()), so by then they span the band.
+     * Without a column that was drawn into, there is no band.
+     * The band is shrunk by a tiny margin, which covers the rounding errors of interpolating within a segment
+     * (see mergeSegment()): drawing within the band never merges a value outside of it.
+     */
+    private updateCoveredBand;
     private flatteningSegments;
     /** Merges a line segment (in device coordinates) into the extent arrays. */
     private mergeSegment;
     /** Merges a stroked line segment by merging the outline of its (butt-capped) stroke rectangle. */
     private mergeStrokedSegment;
+    /**
+     * Merges the stroke rectangle of a horizontal line segment, with the same result as merging its four edges
+     * (see mergeStrokedSegment()), which give every column they touch both y values: the columns of the horizontal edges
+     * plus those of the vertical edges at non-integer x are exactly the columns mergeColumns() fills.
+     * A stroke covering every column of the measure, like a stave line, is only recorded in fullWidthMinY/fullWidthMaxY
+     * instead of being merged into each column (stave lines would otherwise be a large part of the merging work).
+     * @param x0 x of one end of the segment, in device pixels.
+     * @param x1 x of the other end of the segment.
+     * @param yEdge0 y of one horizontal edge of the stroke rectangle.
+     * @param yEdge1 y of the other horizontal edge.
+     */
+    private mergeHorizontalStroke;
     /** Merges the vertical range [top, bottom] into all columns intersecting [left, right) (device coordinates). */
     private mergeColumns;
     /** Font size in px, parsed from the current font string (e.g. "italic 10pt Arial" or "12px Times"). */
@@ -196,10 +249,10 @@ export declare class GeometricSkyBottomLineCaches {
     /** Character ink extents, cached by font + character (see measureCharacter()). */
     characterExtents: Map<string, ICharacterExtents>;
     /** Flattened line segments of glyph outlines (quadruples x0,y0,x1,y1, relative to the glyph
-     *  origin, already scaled and y-inverted), cached per outline (by reference) and scale, see
+     *  origin, already scaled and y-inverted) and their y range, cached per outline (by reference) and scale, see
      *  drawCachedGlyphOutline(). VexFlow caches the outline arrays on its font glyph entries,
      *  so they are stable keys that live as long as the font. */
-    glyphSegments: WeakMap<object, Map<number, Float64Array>>;
+    glyphSegments: WeakMap<object, Map<number, IGlyphSegments>>;
     /** Scratch context used to flatten glyph outlines (reused, see computeGlyphSegments()). */
     glyphSegmentsScratch: GeometricSkyBottomLineContext;
     /** Tiny hidden canvas used to probe the exact rasterized ink extents of single characters
@@ -207,6 +260,19 @@ export declare class GeometricSkyBottomLineCaches {
     characterProbeCanvas: HTMLCanvasElement;
     characterProbeContext: CanvasRenderingContext2D;
     characterProbeCreationFailed: boolean;
+    /** The sky- and bottom lines of all measures of a staffline, one after the other, before subsampling them
+     *  (reused for all stafflines, see SkyBottomLineCalculator.calculateLinesGeometric()). */
+    skyLineBuffer: Float64Array;
+    bottomLineBuffer: Float64Array;
+}
+/** The flattened line segments of a glyph outline at one scale (see GeometricSkyBottomLineCaches.glyphSegments). */
+export interface IGlyphSegments {
+    /** Quadruples x0,y0,x1,y1, relative to the glyph origin. */
+    segments: Float64Array;
+    /** Minimum y of the segments. */
+    minY: number;
+    /** Maximum y of the segments. */
+    maxY: number;
 }
 /** Ink extents of a single character, in px for the font it was measured with.
  *  inkLeft/inkRight are relative to the pen position (inkLeft can be slightly negative,

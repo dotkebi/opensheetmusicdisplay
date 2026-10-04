@@ -29,6 +29,7 @@ export declare abstract class MusicSystem extends GraphicalObject {
      * That is why the labels are labels.values() and not labels.keys().
      */
     protected labels: Dictionary<Instrument, GraphicalLabel>;
+    protected groupLabels: Map<InstrumentalGroup, GraphicalLabel>;
     protected measureNumberLabels: GraphicalLabel[];
     protected maxLabelLength: number;
     protected objectsToRedraw: [Object[], Object][];
@@ -106,6 +107,9 @@ export declare abstract class MusicSystem extends GraphicalObject {
      * @param labelMarginBorderFactor
      */
     createMusicSystemLabel(instrumentLabelTextHeight: number, systemLabelsRightMargin: number, labelMarginBorderFactor: number, isFirstSystem?: boolean): void;
+    private createGroupLabels;
+    private instrumentBelongsToGroup;
+    private staffLinesForGroup;
     /**
      * Set the Y-Positions for the MusicSystem's Labels.
      */

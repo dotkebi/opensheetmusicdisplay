@@ -1,5 +1,7 @@
 import { StaffLine } from "./StaffLine";
 import { PointF2D } from "../../Common/DataObjects/PointF2D";
+import { IVerticalMeasureFormat } from "./VexFlow/VexFlowMeasure";
+import { SourceMeasure } from "../VoiceData/SourceMeasure";
 import { BoundingBox } from "./BoundingBox";
 import { SkyBottomLineCalculationResult } from "./SkyBottomLineCalculationResult";
 /**
@@ -27,26 +29,49 @@ export declare class SkyBottomLineCalculator {
      */
     updateLines(calculationResults: SkyBottomLineCalculationResult[]): void;
     /**
-     * This method calculates the Sky- and BottomLines for a StaffLine.
+     * Sets the sky- and bottom lines of mStaffLineParent from the lines of all its measures, one after the other
+     * (device-pixel resolution): subsampled to the sampling unit and remapped to units relative to the staffline.
+     * @param skyLineConcat the skylines of the measures
+     * @param bottomLineConcat the bottom lines of the measures
+     * @param concatLength the length of the lines of the measures in the arrays
      */
-    calculateLines(): void;
+    private setLinesFromConcatenated;
+    /**
+     * This method calculates the Sky- and BottomLines for a StaffLine.
+     * @param lastMeasureFormats For the geometric calculation of several stafflines: the last format of each vertical measure in it,
+     *   so that the stafflines of a vertical measure don't repeat its format (see VexFlowMeasure.format()).
+     */
+    calculateLines(lastMeasureFormats?: Map<SourceMeasure, IVerticalMeasureFormat>): void;
     /**
      * This method calculates the Sky- and BottomLines for a StaffLine geometrically, from the extents
      * of the VexFlow draw calls of each measure, instead of drawing each measure on a canvas
      * and reading back its pixels (see calculateLines()), which is much slower (see #937).
      * Same flow as calculateLines(), with the canvas replaced by a GeometricSkyBottomLineContext.
+     * @param lastMeasureFormats see calculateLines()
      */
     private calculateLinesGeometric;
+    /**
+     * Fills the columns of a measure's line where nothing was drawn (NaN) like calculateLines() fills them (undefined) for the
+     * raster method, one after the other, each with the maximum of the value before it in the measure (findPreviousValidNumber(),
+     * the filled value of the previous column, or 0) and the next drawn value (findNextValidNumber(), or 0):
+     * so all columns of a run of undrawn columns get the same value.
+     * @param line the lines of the measures, one after the other
+     * @param start the index of the measure's first column
+     * @param end the index after the measure's last column
+     */
+    private static fillUndrawnColumns;
     /** The per-measure side effects the geometric skyline calc applies before measuring extents: normalize
      *  absolute positions, bump the stave Y, and format the measure at the truncated skyline-canvas width.
      *  Later layout passes read this state (the VexFlow formatter is not idempotent), so the lazy skyline
-     *  reuse must replay it via applyGeometricSkylineSideEffectsOnly. Returns the skyline-canvas width. */
+     *  reuse must replay it via applyGeometricSkylineSideEffectsOnly. Returns the skyline-canvas width.
+     *  lastMeasureFormats: see calculateLines(). */
     private prepareMeasureForGeometricSkyline;
     /** Replay the geometric skyline calc's per-measure side effects WITHOUT the expensive extent
      *  measurement, so lazy rendering can reuse cached sky/bottom lines while leaving the measures in the exact
      *  state a normal render would. (calculateLinesGeometric does correctNotePositions inside measure.draw;
-     *  here we call it directly since the draw is skipped.) No-op for the non-default raster skyline path. */
-    applyGeometricSkylineSideEffectsOnly(): void;
+     *  here we call it directly since the draw is skipped.) No-op for the non-default raster skyline path.
+     *  lastMeasureFormats: see calculateLines(). */
+    applyGeometricSkylineSideEffectsOnly(lastMeasureFormats?: Map<SourceMeasure, IVerticalMeasureFormat>): void;
     updateSkyLineWithLine(start: PointF2D, end: PointF2D, value: number): void;
     /**
      * This method updates the SkyLine for a given Wedge.
@@ -92,6 +117,41 @@ export declare class SkyBottomLineCalculator {
      */
     updateBottomLineInRange(startIndex: number, endIndex: number, value: number): void;
     /**
+     * Updates the SkyLine with a label's box, e.g. a dynamic's, from its left to its right margin (relative to the staffline):
+     *   only in the samples the box covers completely. A label placed later reads every sample its box touches
+     *   (getSkyLineMinForLabel()), so labels whose boxes don't overlap don't read each other.
+     * With updateSkyLineInRange() and getSkyLineMinInRange(), which round outward to the samples (1 / SamplingUnit wide),
+     *   a label next to another one, e.g. a p right after "dim.", was placed further from the staff than it
+     *   when both touched the same sample. The margins keep a label clear of what is in a sample it covers only partially.
+     * @param left Left margin of the box
+     * @param right Right margin of the box
+     * @param value Top margin of the box
+     */
+    updateSkyLineWithLabel(left: number, right: number, value: number): void;
+    /**
+     * Updates the BottomLine with a label's box, e.g. a dynamic's, from its left to its right margin (relative to the staffline):
+     *   only in the samples the box covers completely. See updateSkyLineWithLabel().
+     * @param left Left margin of the box
+     * @param right Right margin of the box
+     * @param value Bottom margin of the box
+     */
+    updateBottomLineWithLabel(left: number, right: number, value: number): void;
+    /**
+     * Returns the SkyLine's minimum for a label's box, e.g. a dynamic's, from its left to its right margin (relative to the staffline):
+     *   in every sample the box touches. Unlike getSkyLineMinInRange(), not also in the sample after the box.
+     *   See updateSkyLineWithLabel().
+     * @param left Left margin of the box
+     * @param right Right margin of the box
+     */
+    getSkyLineMinForLabel(left: number, right: number): number;
+    /**
+     * Returns the BottomLine's maximum for a label's box, e.g. a dynamic's, from its left to its right margin (relative to the staffline):
+     *   in every sample the box touches. See getSkyLineMinForLabel().
+     * @param left Left margin of the box
+     * @param right Right margin of the box
+     */
+    getBottomLineMaxForLabel(left: number, right: number): number;
+    /**
      * Resets a SkyLine in a range to its original value
      * @param startIndex Start index of the range
      * @param endIndex End index of the range (excluding)
@@ -124,7 +184,11 @@ export declare class SkyBottomLineCalculator {
      */
     updateStaffLineBorders(): void;
     /**
-     * This method finds the minimum value of the SkyLine.
+     * This method finds the minimum value of the SkyLine, ignoring NaN values.
+     * A loop of Math.min(min, value) gives the same result as Math.min(...this.SkyLine.filter(s => !isNaN(s)))
+     * (including -0 before 0, and Infinity for no values), without copying the line and spreading it into the arguments
+     * of a call, which is slow for lines of thousands of values and fails for very long ones.
+     * @returns the minimum
      */
     getSkyLineMin(): number;
     getSkyLineMinAtPoint(point: number): number;
@@ -135,7 +199,8 @@ export declare class SkyBottomLineCalculator {
      */
     getSkyLineMinInRange(startIndex: number, endIndex: number): number;
     /**
-     * This method finds the maximum value of the BottomLine.
+     * This method finds the maximum value of the BottomLine, ignoring NaN values (a loop, see getSkyLineMin()).
+     * @returns the maximum
      */
     getBottomLineMax(): number;
     getBottomLineMaxAtPoint(point: number): number;
@@ -186,6 +251,23 @@ export declare class SkyBottomLineCalculator {
      * @param value value to fill in (default: 0)
      */
     private updateInRange;
+    /**
+     * Updates an array in the samples the range covers completely (see updateSkyLineWithLabel()), like updateInRange():
+     *   only where the value is further from the staff. A range that covers no sample completely updates the sample of its center.
+     * @param array Sky or bottom line
+     * @param start Start of the range (relative to the staffline)
+     * @param end End of the range
+     * @param value Value to fill in
+     */
+    private updateInRangeOfCoveredSamples;
+    /**
+     * Returns the minimum or maximum of an array in the samples the range touches, at least one.
+     * @param array Sky or bottom line
+     * @param start Start of the range (relative to the staffline)
+     * @param end End of the range
+     * @param minimum Whether to return the minimum (sky line) or the maximum (bottom line)
+     */
+    private getExtremeInTouchedSamples;
     /**
      * Sets the value given to the range inside the array. NOTE: will always update the value
      * @param array Array to fill in the new value

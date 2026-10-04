@@ -39,6 +39,7 @@ import { SkyBottomLineCalculator } from "./SkyBottomLineCalculator";
 import { AbstractExpression, PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
 import { InstantaneousTempoExpression } from "../VoiceData/Expressions/InstantaneousTempoExpression";
 import { FontStyles } from "../../Common/Enums/FontStyles";
+import { AbstractTempoExpression } from "../VoiceData/Expressions/AbstractTempoExpression";
 import { GraphicalInstantaneousDynamicExpression } from "./GraphicalInstantaneousDynamicExpression";
 import { GraphicalContinuousDynamicExpression } from "./GraphicalContinuousDynamicExpression";
 import { IStafflineNoteCalculator } from "../Interfaces/IStafflineNoteCalculator";
@@ -344,13 +345,22 @@ export declare abstract class MusicSheetCalculator {
     protected layoutSingleRepetitionEnding(start: GraphicalMeasure, end: GraphicalMeasure, numberText: string, offset: number, leftOpen: boolean, rightOpen: boolean): void;
     protected calculateLabel(staffLine: StaffLine, relative: PointF2D, combinedString: string, style: FontStyles, placement: PlacementEnum, fontHeight: number, textAlignment?: TextAlignmentEnum, yPadding?: number, skyBottomLineRangeEndX?: number): GraphicalLabel;
     protected calculateTempoExpressionsForMultiTempoExpression(sourceMeasure: SourceMeasure, multiTempoExpression: MultiTempoExpression, measureIndex: number): void;
+    /** Whether tempo text has already been placed at this position, typically from another part. */
+    protected isTempoMarkingAlreadyRendered(staffLine: StaffLine, tempoExpression: AbstractTempoExpression, absoluteTimestamp: Fraction): boolean;
+    /** Whether two metronome marks print the same: note equations by their notes rather than their playback tempo,
+     *  other marks by beat unit and bpm. */
     /** The MeasureList staff index of a tempo change (e.g. "rit.", "a tempo", "accel.") placed at a lower staff
      *  (<staff> 2 or higher) of its instrument, or undefined if it belongs to the first staff or its direction gives
      *  no placement. Without a placement, the default (below for multi-staff instruments) would often contradict
      *  the print, so such tempo words stay above the system as before. So do main tempo marks ("Allegro"),
      *  which belong above the system even when an exporter attaches them to a lower staff. */
     private static lowerStaffIndexOfTempoExpression;
+    /** Whether two metronome marks print the same: note equations by their notes rather than their playback tempo,
+     *  other marks by beat unit and bpm. */
+    protected isSameMetronomeMark(first: InstantaneousTempoExpression, second: InstantaneousTempoExpression): boolean;
+    private isSameMetronomeNoteGroup;
     protected createMetronomeMark(metronomeExpression: InstantaneousTempoExpression): void;
+    protected layoutMetronomeMarks(): void;
     protected graphicalMeasureCreatedCalculations(measure: GraphicalMeasure): void;
     protected clearSystemsAndMeasures(): void;
     protected handleVoiceEntry(voiceEntry: VoiceEntry, graphicalStaffEntry: GraphicalStaffEntry, accidentalCalculator: AccidentalCalculator, openLyricWords: LyricWord[], activeClef: ClefInstruction, openTuplets: Tuplet[], openBeams: Beam[], octaveShiftValue: OctaveEnum, staffIndex: number, linkedNotes?: Note[], sourceStaffEntry?: SourceStaffEntry): OctaveEnum;
@@ -358,11 +368,15 @@ export declare abstract class MusicSheetCalculator {
     protected layoutVoiceEntries(graphicalStaffEntry: GraphicalStaffEntry, staffIndex: number): void;
     protected maxInstrNameLabelLength(): number;
     protected calculateSheetLabelBoundingBoxes(): void;
+    private calculateFirstPageCreditWordLabels;
+    private wrapFirstPageCreditWords;
     protected checkMeasuresForWholeRestNotes(): void;
     protected optimizeRestNotePlacement(graphicalStaffEntry: GraphicalStaffEntry, measure: GraphicalMeasure): void;
     protected getRelativePositionInStaffLineFromTimestamp(timestamp: Fraction, verticalIndex: number, staffLine: StaffLine, multiStaffInstrument: boolean, firstVisibleMeasureRelativeX?: number, useLeftStaffEntryBorder?: boolean): PointF2D;
     protected getRelativeXPositionFromTimestamp(timestamp: Fraction): number;
     protected calculatePageLabels(page: GraphicalMusicPage): void;
+    /** Subtitle position shared by drawing and first-page credit clearance. */
+    private subtitleRelativeY;
     protected createGraphicalTies(): void;
     private handleTie;
     private setTieDirections;
@@ -370,10 +384,18 @@ export declare abstract class MusicSheetCalculator {
     private calculateVerticalContainersList;
     private setIndicesToVerticalGraphicalContainers;
     private createGraphicalMeasuresForSourceMeasure;
+    /**
+     * Returns the octave shift active at the given timestamp in a staff: the measure's open one (started in an earlier measure)
+     * if the timestamp lies within it, otherwise one of the measure's own octave shifts, or undefined if none is active.
+     */
+    private getActiveOctaveShift;
+    private keyForGraphicalMeasure;
     private createGraphicalMeasure;
     private checkNoteForAccidental;
     private handleStaffEntries;
     protected calculateSkyBottomLines(): void;
+    /** Reserves skyline space for measure-repeat counts. */
+    protected reserveSkylineForMeasureRepeats(): void;
     /**
      * Re-adjust the x positioning of expressions.
      */
@@ -413,6 +435,13 @@ export declare abstract class MusicSheetCalculator {
      * @param {GraphicalLyricEntry} lyricEntry
      */
     private calculateLyricExtend;
+    private hasLyricsOfVerse;
+    /** Whether the voice has syllables of other verses in the measure, but none of the given verse. */
+    private isSungOnlyInOtherVerses;
+    /** Whether the verse has a syllable in or after the given vertical container. */
+    private isVerseSungFrom;
+    /** Whether the voice has only rests in the staff entry. False if the voice has no notes there. */
+    private voiceRestsInStaffEntry;
     /**
      * This method calculates a single underscoreLine.
      * @param staffLine

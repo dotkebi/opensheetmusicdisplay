@@ -35,7 +35,11 @@ export declare abstract class VexFlowBackend {
     /** (Try to) free memory. Currently only relevant on iOS. */
     abstract free(): void;
     abstract translate(x: number, y: number): void;
-    abstract renderText(fontHeight: number, fontStyle: FontStyles, font: Fonts, text: string, heightInPixel: number, screenPosition: PointF2D, color?: string, fontFamily?: string): Node;
+    /**
+     * Renders a text to the screen.
+     * @param language the language of the text as a BCP 47 tag (e.g. "ja"), for the browser's choice of fonts (see Label.language)
+     */
+    abstract renderText(fontHeight: number, fontStyle: FontStyles, font: Fonts, text: string, heightInPixel: number, screenPosition: PointF2D, color?: string, fontFamily?: string, language?: string): Node;
     /**
      * Renders a rectangle with the given style to the screen.
      * It is given in screen coordinates.

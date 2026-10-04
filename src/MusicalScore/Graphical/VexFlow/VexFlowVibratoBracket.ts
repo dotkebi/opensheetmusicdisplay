@@ -49,6 +49,10 @@ export class VexFlowVibratoBracket extends GraphicalWavyLine {
      * @param graphicalStaffEntry the staff entry that holds the end note
      */
     public setEndNote(graphicalStaffEntry: GraphicalStaffEntry): boolean {
+        if (!graphicalStaffEntry) {
+            // e.g. an empty measure in the drawing range, or an IsExtraGraphicalMeasure, has no staff entries
+            return false;
+        }
         // this is duplicate code from setStartNote, but if we make one general method, we add a lot of branching.
         if (!graphicalStaffEntry) { // empty measure in the drawing range (e.g. large orchestral scores) yields no staff entry
             return false;

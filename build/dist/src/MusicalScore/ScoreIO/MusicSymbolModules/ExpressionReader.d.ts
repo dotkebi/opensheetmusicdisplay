@@ -10,6 +10,8 @@ export declare class ExpressionReader {
     /** Whether the current direction gives its placement (placement attribute or default-y). */
     private placementFromXml;
     private soundTempo;
+    private soundTimestamp;
+    private explicitSoundTempo;
     private soundDynamic;
     private divisions;
     private offsetDivisions;
@@ -48,6 +50,15 @@ export declare class ExpressionReader {
     private readPosition;
     /** Parse a complex metronome mark with metronome-note elements and a metronome-relation (e.g. swing notation). */
     private parseComplexMetronomeMark;
+    /** Parse a note equation written with two beat units instead of metronome-note elements, e.g. quarter = dotted quarter
+     *  (MusicXML's simpler form of a metric modulation). The first beat unit, with its dots and tied beat units, is the left
+     *  side, the second one the right side.
+     */
+    private parseBeatUnitNoteEquation;
+    /** Add a note equation (e.g. a swing mark or a metric modulation) as a metronome mark. Its BPM is the direction's
+     *  sound tempo, or 0, which TemposCalculator replaces with the tempo in force times the equation's tempo factor.
+     */
+    private addNoteEquation;
     private interpretInstantaneousDynamics;
     private interpretWords;
     /** The staff a tempo expression is placed at: its own staff if the direction gives a placement, else undefined. */
@@ -63,6 +74,7 @@ export declare class ExpressionReader {
     private static isSameMetronomeMark;
     /** The metronome mark already read for this staff at the given time of the measure, if any. */
     private metronomeMarkAt;
+    private readTempoTimestamp;
     private createNewTempoExpressionIfNeeded;
     private addWedge;
     private fillMultiOrTempoExpression;

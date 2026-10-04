@@ -33,6 +33,10 @@ export declare class MusicPartManagerIterator {
     private currentRelativeInMeasureTimestamp;
     private currentVerticalContainerInMeasureTimestamp;
     private jumpResponsibleRepetition;
+    /** The D.C. or D.S. repetition whose measures are played again after its jump back,
+     *  until it jumps forward (to its coda, its last ending or the end) or its measures are passed.
+     *  Repeats are not taken again in these measures. */
+    private replayedRepetitionFromWords;
     private currentBpm;
     private activeDynamicExpressions;
     private activeTempoExpression;
@@ -87,12 +91,18 @@ export declare class MusicPartManagerIterator {
     moveToPrevious(): void;
     moveToPreviousVisibleVoiceEntry(notesOnly: boolean): void;
     moveToNext(): void;
+    private updateCurrentBpm;
     moveToNextVisibleVoiceEntry(notesOnly: boolean): void;
     private resetRepetitionIterationCount;
     private incrementRepetitionIterationCount;
     private setRepetitionIterationCount;
     private getRepetitionIterationCount;
     private handleRepetitionsAtMeasureBegin;
+    /**
+     * Starts a repetition again that lies within the repetition that jumped last: it is played with all its passes again.
+     * After a D.C. or D.S., repeats are not taken again: it is played once, as its last pass (with its last ending).
+     */
+    private restartNestedRepetition;
     private handleRepetitionsAtMeasureEnd;
     private doBackJump;
     private activateCurrentRhythmInstructions;

@@ -2,6 +2,7 @@ import { PointF2D } from "../../Common/DataObjects/PointF2D";
 import { SizeF2D } from "../../Common/DataObjects/SizeF2D";
 import { RectangleF2D } from "../../Common/DataObjects/RectangleF2D";
 import { GraphicalObject } from "./GraphicalObject";
+import { ClassType } from "../Interfaces/AClassHierarchyTrackable";
 /**
  * A bounding box delimits an area on the 2D plane.
  * @param dataObject Graphical object where the bounding box will be attached
@@ -103,9 +104,17 @@ export declare class BoundingBox {
     calculateAbsolutePositionsOfChildren(): void;
     /**
      * This method calculates the BoundingBoxes
+     * @param ignoreClasses The classes (or class names, see isInstanceOfClass()) of the objects whose bounding boxes,
+     *   and their children's, to leave as they are, e.g. [GraphicalMeasure]
      */
-    calculateBoundingBox(ignoreClasses?: string[]): void;
-    calculateTopBottomBorders(): void;
+    calculateBoundingBox(ignoreClasses?: (ClassType | string)[]): void;
+    /**
+     * Calculates the top and bottom borders (and margins) of this bounding box from those of its child elements.
+     * @param recursive whether to calculate those of the child elements first, recursively (default).
+     *   false only recalculates this bounding box, when the borders below it are up to date
+     *   (repeating the calculation for an unchanged child element gives the same borders).
+     */
+    calculateTopBottomBorders(recursive?: boolean): void;
     /**
      * This method computes the first non-overlapping position in the placementPsi Element for the current (this) positionAndShapeInfo
      * @param placementPsi
@@ -147,7 +156,13 @@ export declare class BoundingBox {
      */
     computeNonOverlappingPosition(placementPsi: BoundingBox, direction: ColDirEnum, position: PointF2D): void;
     getClickedObjectOfType<T>(clickPosition: PointF2D): T;
-    getObjectsInRegion<T extends GraphicalObject>(region: BoundingBox, liesInside?: boolean, className?: string): T[];
+    /**
+     * Returns the objects of this bounding box and its descendants that lie inside the region (liesInside), or overlap it.
+     * The generic type T doesn't select the objects (types don't exist at runtime), classOrName does.
+     * @param classOrName The class of the objects, e.g. GraphicalMeasure, or its name, which is unreliable in minified builds
+     *   (see isInstanceOfClass())
+     */
+    getObjectsInRegion<T extends GraphicalObject>(region: BoundingBox, liesInside?: boolean, classOrName?: ClassType | string): T[];
     protected calculateRectangle(): void;
     protected calculateMarginRectangle(): void;
     /**

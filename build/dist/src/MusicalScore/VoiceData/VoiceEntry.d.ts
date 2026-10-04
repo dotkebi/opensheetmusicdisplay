@@ -46,6 +46,9 @@ export declare class VoiceEntry {
     /** Color of the stem currently set. RGB Hexadecimal, like #00FF00. */
     private stemColor;
     get ParentSourceStaffEntry(): SourceStaffEntry;
+    /** Moves the voice entry to another staff entry, e.g. grace notes after their main note into the main note's staff entry
+     * (InstrumentReader.attachGraceNotesAfterMainNote). Also re-parents its notes. Doesn't change the staff entries' VoiceEntries lists. */
+    set ParentSourceStaffEntry(value: SourceStaffEntry);
     get ParentVoice(): Voice;
     get Timestamp(): Fraction;
     set Timestamp(value: Fraction);

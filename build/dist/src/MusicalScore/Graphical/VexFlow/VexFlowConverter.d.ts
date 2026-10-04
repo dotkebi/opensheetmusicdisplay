@@ -6,6 +6,7 @@ import { Pitch } from "../../../Common/DataObjects/Pitch";
 import { Fraction } from "../../../Common/DataObjects/Fraction";
 import { RhythmInstruction } from "../../VoiceData/Instructions/RhythmInstruction";
 import { KeyInstruction } from "../../VoiceData/Instructions/KeyInstruction";
+import { AccidentalEnum } from "../../../Common/DataObjects/Pitch";
 import { GraphicalNote } from "../GraphicalNote";
 import { SystemLinesEnum } from "../SystemLinesEnum";
 import { FontStyles } from "../../../Common/Enums/FontStyles";
@@ -22,6 +23,8 @@ import { ArpeggioType } from "../../VoiceData/Arpeggio";
  * from OSMD objects to VexFlow objects.
  */
 export declare class VexFlowConverter {
+    /** XML accidental parentheses/brackets are handled before formatting, at normal accidental scale. */
+    static readonly HasXmlAccidentalParentheses: boolean;
     /**
      * Mapping from numbers of alterations on the key signature to major keys
      * @type {[alterationsNo: number]: string; }
@@ -58,6 +61,13 @@ export declare class VexFlowConverter {
     static NoteHeadCode(notehead: Notehead): string;
     static GhostNotes(frac: Fraction): VF.GhostNote[];
     /**
+     * Adds an accidental to the key (note) of the given index of a VexFlow note.
+     * @param inParentheses Draw the accidental in parentheses (a cautionary accidental).
+     *   For an accidental made of two signs, only the one next to the notehead gets them,
+     *   as VexFlow draws parentheses around a single accidental sign.
+     */
+    private static addAccidental;
+    /**
      * Convert a GraphicalVoiceEntry to a VexFlow StaveNote
      * @param gve the GraphicalVoiceEntry which can hold a note or a chord on the staff belonging to one voice
      * @returns {VF.StaveNote}
@@ -65,6 +75,9 @@ export declare class VexFlowConverter {
     static StaveNote(gve: GraphicalVoiceEntry): VF.StaveNote;
     static generateArticulations(vfnote: VF.StemmableNote, gNote: GraphicalNote, rules: EngravingRules): void;
     static generateOrnaments(vfnote: VF.StemmableNote, oContainer: OrnamentContainer): void;
+    /** The VexFlow accidentals of an ornament's accidental mark, from left to right. As for notes in StaveNote(),
+     *  marks without a glyph of their own are drawn as two accidentals, e.g. sharp-sharp as two sharps. */
+    static ornamentAccidentals(accidental: AccidentalEnum, accidentalXml: string): string[];
     static StrokeTypeFromArpeggioType(arpeggioType: ArpeggioType): VF.Stroke.Type;
     /**
      * Convert a set of GraphicalNotes to a VexFlow StaveNote

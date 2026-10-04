@@ -12,6 +12,8 @@ export class InstrumentalGroup {
     private number: string = "";
     private abbreviation: string = "";
     private groupSymbol: string = "";
+    private printName: boolean = true;
+    private printAbbreviation: boolean = true;
     private musicSheet: MusicSheet;
     private parent: InstrumentalGroup;
     private instrumentalGroups: InstrumentalGroup[] = [];
@@ -46,6 +48,18 @@ export class InstrumentalGroup {
     }
     public set GroupSymbol(value: string) {
         this.groupSymbol = value;
+    }
+    public get PrintName(): boolean {
+        return this.printName;
+    }
+    public set PrintName(value: boolean) {
+        this.printName = value;
+    }
+    public get PrintAbbreviation(): boolean {
+        return this.printAbbreviation;
+    }
+    public set PrintAbbreviation(value: boolean) {
+        this.printAbbreviation = value;
     }
     public get GetMusicSheet(): MusicSheet {
         return this.musicSheet;

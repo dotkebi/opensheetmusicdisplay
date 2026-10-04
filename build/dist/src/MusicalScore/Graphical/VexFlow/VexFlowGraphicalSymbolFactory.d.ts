@@ -109,6 +109,7 @@ export declare class VexFlowGraphicalSymbolFactory implements IGraphicalSymbolFa
      * @param clefInstruction
      */
     createInStaffClef(graphicalStaffEntry: GraphicalStaffEntry, clefInstruction: ClefInstruction): void;
+    createInStaffKey(graphicalStaffEntry: GraphicalStaffEntry, key: KeyInstruction, previousKey: KeyInstruction, clef: ClefInstruction): void;
     /**
      * Adds a chord symbol at the given staff entry
      * @param sourceStaffEntry

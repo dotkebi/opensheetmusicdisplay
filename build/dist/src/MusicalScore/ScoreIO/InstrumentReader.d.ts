@@ -30,10 +30,13 @@ export declare class InstrumentReader {
     private currentStaff;
     private currentStaffEntry;
     private activeClefs;
-    private activeKey;
+    private activeKeys;
+    private pendingEndKeys;
+    private measureEndFraction;
+    private keyAtMeasureStart;
     private activeRhythm;
     private activeClefsHaveBeenInitialized;
-    private activeKeyHasBeenInitialized;
+    private activeKeysHaveBeenInitialized;
     private abstractInstructions;
     private expressionReaders;
     private currentVoiceGenerator;
@@ -52,12 +55,24 @@ export declare class InstrumentReader {
      * @returns {boolean}
      */
     readNextXmlMeasure(currentMeasure: SourceMeasure, measureStartAbsoluteTimestamp: Fraction, octavePlusOne: boolean): boolean;
+    /**
+     * Attaches grace notes after the last main note of a staff in this measure (a Nachschlag, e.g. the two small notes ending
+     * a trill: MusicXML puts them after their main note, without a following note) to that main note's [[SourceStaffEntry]],
+     * marked with VoiceEntry.GraceAfterMainNote. Having no duration, they were read into an own staff entry at the main note's
+     * end timestamp, i.e. at the end of the measure, which made the cursor stop on them separately (#1706) and even lengthened
+     * the measure by their notated length (SourceMeasure.Duration). They are still drawn right of the main note as their own
+     * small notes (VexFlowMeasure.graphicalMeasureCreatedCalculations). The emptied staff entry is removed afterwards by
+     * MusicSheetReader.checkSourceMeasureForNullEntries(). Grace notes before a following main note are not affected.
+     */
+    private attachGraceNotesAfterMainNote;
     private getStemDirectionAndColors;
     /** Parse a color in XML format. Can be #ARGB or #RGB format, colors as byte hex values.
      *  @return color in Vexflow format #[A]RGB or undefined for invalid xmlColorString
      */
     parseXmlColor(xmlColorString: string): string;
     doCalculationsAfterDurationHasBeenSet(): void;
+    /** Keep a key at the actual measure end for the following measure, including pickups. */
+    finalizeKeyInstructions(): void;
     /**
      * Get or create the passing [[VoiceGenerator]].
      * @param voiceId
@@ -72,9 +87,14 @@ export declare class InstrumentReader {
      */
     private createDefaultClefInstruction;
     /**
-     * Create the default [[KeyInstruction]] in case no [[KeyInstruction]] is given in the whole [[Instrument]].
+     * Create the default key for one staff without overwriting the other staves.
      */
     private createDefaultKeyInstruction;
+    private storeInitialKeyInstruction;
+    /** Measure-repeat lengths supported by the renderer. */
+    private static readonly SUPPORTED_MEASURE_REPEAT_LENGTHS;
+    /** Reads measure-repeat declarations into their target staff entries. */
+    private readMeasureRepeats;
     /**
      * Check if the given attributesNode is at the begin of a XmlMeasure.
      * @param parentNode
@@ -130,7 +150,7 @@ export declare class InstrumentReader {
     private getNoteDurationForTuplet;
     /**
      * The note's duration derived from its <type>, including augmentation <dot>s (e.g. a dotted eighth
-     * yields 3/16). Returns a zero Fraction when no <type> is given.
+     * yields 3/16, a dotted whole note 3/2). Returns a zero Fraction when no <type> is given.
      * @param xmlNode
      * @returns {Fraction}
      */

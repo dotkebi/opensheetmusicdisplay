@@ -25,6 +25,7 @@ export declare class Instrument extends InstrumentalGroup {
     private lyricVersesNumbers;
     private subInstruments;
     private partAbbreviation;
+    private partAbbreviationPrintObject;
     get Voices(): Voice[];
     get Staves(): Staff[];
     get NameLabel(): Label;
@@ -48,6 +49,9 @@ export declare class Instrument extends InstrumentalGroup {
     getSubInstrument(subInstrumentIdString: string): SubInstrument;
     get PartAbbreviation(): string;
     set PartAbbreviation(value: string);
+    /** Whether the part abbreviation is shown: false for print-object="no" on part-abbreviation or part-abbreviation-display. */
+    get PartAbbreviationPrintObject(): boolean;
+    set PartAbbreviationPrintObject(value: boolean);
     get Visible(): boolean;
     /** Checks that Instrument.Visible and at least one staff visible. */
     isVisible(): boolean;

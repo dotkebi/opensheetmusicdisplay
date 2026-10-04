@@ -11,6 +11,14 @@ export declare class RepetitionInstruction {
     parentRepetition: Repetition;
     /** How many times this should be repeated */
     Times: number;
+    /**
+     * The words of the score, drawn instead of the instruction's label (e.g. "D.C."), where the label goes,
+     * as they say more than the label or say it in another language, e.g. "D.C. senza replica", "Menuetto D.C. al Fine" or "Fin".
+     * Undefined for words that only name the instruction (e.g. "Da Capo", drawn as "D.C."), and for a segno or coda sign.
+     */
+    Words: string;
+    /** Whether the MusicXML marks this segno as the target of a D.S. (<sound segno="...">): it is never taken for a D.S. itself. */
+    MarkedAsTarget: boolean;
     CompareTo(obj: Object): number;
     equals(other: RepetitionInstruction): boolean;
 }

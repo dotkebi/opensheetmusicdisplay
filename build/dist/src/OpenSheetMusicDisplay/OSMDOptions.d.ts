@@ -84,7 +84,9 @@ export interface IOSMDOptions {
      * see DrawingParameters.ts:setForCompactTightMode().
      */
     drawingParameters?: string | DrawingParametersEnum;
-    /** Whether to draw credits (title, subtitle, composer, lyricist) (in future: copyright etc., see <credit>). */
+    /** Whether to draw credits, including title, subtitle, composer, lyricist, copyright and independent first-page words.
+     *  Independent words require EngravingRules.ReadFirstPageCreditWords to be enabled before loading the score.
+     */
     drawCredits?: boolean;
     /** Whether to draw the title of the piece. If false, disables drawing Subtitle as well. */
     drawTitle?: boolean;
@@ -100,7 +102,9 @@ export interface IOSMDOptions {
      *  unless explicitly enabled (drawPartNames: false, drawPartAbbreviations: true).
      */
     drawPartNames?: boolean;
-    /** Whether to draw part (instrument) name abbreviations each system after the first. Only draws if drawPartNames. Default true. */
+    /** Whether to draw part (instrument) name abbreviations each system after the first. Only draws if drawPartNames. Default true.
+     *  Single-staff systems additionally need EngravingRules.RenderPartAbbreviationsForSingleStaff.
+     */
     drawPartAbbreviations?: boolean;
     /** Whether to draw measure numbers (labels). Default true.
      * Draws a measure number label at first measure, system start measure,
@@ -255,7 +259,8 @@ export interface IOSMDOptions {
      */
     autoGenerateMultipleRestMeasuresFromRestMeasures?: boolean;
     /**
-     * Defines multiple simultaneous cursors. If left undefined the standard cursor will be used.
+     * Defines multiple simultaneous cursors. If left undefined the standard cursor will be used,
+     * or with osmd.setOptions(), the cursors set before are kept.
      */
     cursorsOptions?: CursorOptions[];
     /**

@@ -21,6 +21,7 @@ import { MusicSheetDrawer } from "./MusicSheetDrawer";
 import { GraphicalVoiceEntry } from "./GraphicalVoiceEntry";
 import { GraphicalObject } from "./GraphicalObject";
 import { CooperativeYielder } from "../../Util/CooperativeYielder";
+import { ClassType } from "../Interfaces/AClassHierarchyTrackable";
 /**
  * The graphical counterpart of a [[MusicSheet]]
  */
@@ -36,6 +37,7 @@ export declare class GraphicalMusicSheet {
     private title;
     private subtitle;
     private composer;
+    private firstPageCreditWords;
     private lyricist;
     private copyright;
     private cursors;
@@ -58,6 +60,8 @@ export declare class GraphicalMusicSheet {
     set Subtitle(value: GraphicalLabel);
     get Composer(): GraphicalLabel;
     set Composer(value: GraphicalLabel);
+    get FirstPageCreditWords(): GraphicalLabel[];
+    set FirstPageCreditWords(value: GraphicalLabel[]);
     get Lyricist(): GraphicalLabel;
     set Lyricist(value: GraphicalLabel);
     get Copyright(): GraphicalLabel;
@@ -150,26 +154,72 @@ export declare class GraphicalMusicSheet {
     /**
      * Generic method to find graphical objects on the sheet at a given location.
      * @param clickPosition Position in units where we are searching on the sheet
-     * @param className String representation of the class we want to find. Must extend GraphicalObject
+     * @param classOrName The class we want to find, e.g. GraphicalVoiceEntry. Must extend GraphicalObject.
+     *   Or its name, which is unreliable in minified builds (see AClassHierarchyTrackable.isInstanceOfClass()).
      * @param startSearchArea The area in units around our point to look for our graphical object, default 5
      * @param maxSearchArea The max area we want to search around our point
      * @param searchAreaIncrement The amount we expand our search area for each iteration that we don't find an object of the given type
      * @param shouldBeIncludedTest A callback that determines if the object should be included in our results- return false for no, true for yes
+     * @param distanceTo A callback that returns an object's (squared) distance to the click position, by which the nearest object is chosen.
+     *   By default, the distance of the object's position.
+     * @param page The page to search, or undefined for all pages (see pagesToSearch()).
      */
     private GetNearestGraphicalObject;
-    GetNearestVoiceEntry(clickPosition: PointF2D): GraphicalVoiceEntry;
-    GetNearestNote(clickPosition: PointF2D, maxClickDist: PointF2D): GraphicalNote;
+    /**
+     * Returns the pages to search for the objects at a position: the given page, or all pages.
+     * Each page has its own coordinates: with a page format (EngravingRules.PageFormat), each page is drawn on its own canvas (SVG),
+     * from its top left (see GraphicalMusicPage.setMusicPageAbsolutePosition()). So a position, e.g. of a click on a page,
+     * is on every page, and the nearest object of all pages can be on another page, e.g. in the first system there.
+     */
+    private pagesToSearch;
+    /**
+     * Returns the voice entry with the note (head) nearest to the position, e.g. of a click.
+     * @param clickPosition The position in units
+     * @param ignoreGraceNotes Whether to skip voice entries of grace notes
+     * @param page The page to search, e.g. the one clicked on: each page has its own coordinates, so the position is on every page.
+     *   By default, all pages.
+     */
+    GetNearestVoiceEntry(clickPosition: PointF2D, ignoreGraceNotes?: boolean, page?: GraphicalMusicPage): GraphicalVoiceEntry;
+    /**
+     * Whether the voice entry is a rest in a TAB staff, which isn't drawn (see VexFlowTabMeasure), so a click can't be on it.
+     * Its position can be where a fret number of the next note is drawn, and it could be found instead of that note.
+     */
+    private static isUndrawnTabRest;
+    /**
+     * Returns the (squared) distance of the voice entry's nearest note (head) to the position.
+     * The voice entry's own position is the top of its bounding box, e.g. the stem tip of an up-stem note,
+     * which is often farther from a click on its note head than another voice's note head next to it.
+     */
+    private distanceToNearestNote;
+    /**
+     * Returns the note (head) nearest to the position, e.g. of a click: the nearest note of the nearest voice entry.
+     * @param clickPosition The position in units
+     * @param maxClickDist Unused
+     * @param page The page to search, e.g. the one clicked on: each page has its own coordinates, so the position is on every page.
+     *   By default, all pages.
+     */
+    GetNearestNote(clickPosition: PointF2D, maxClickDist: PointF2D, page?: GraphicalMusicPage): GraphicalNote;
     domToSvg(point: PointF2D): PointF2D;
     svgToDom(point: PointF2D): PointF2D;
     svgToOsmd(point: PointF2D): PointF2D;
     private domToSvgTransform;
     GetClickableLabel(clickPosition: PointF2D): GraphicalLabel;
-    GetNearestStaffEntry(clickPosition: PointF2D): GraphicalStaffEntry;
+    /**
+     * Returns the staff entry nearest to the position, e.g. of a click.
+     * @param clickPosition The position in units
+     * @param page The page to search, e.g. the one clicked on: each page has its own coordinates, so the position is on every page.
+     *   By default, all pages.
+     */
+    GetNearestStaffEntry(clickPosition: PointF2D, page?: GraphicalMusicPage): GraphicalStaffEntry;
     /** Returns nearest object of type T near clickPosition.
-     * E.g. GetNearestObject<GraphicalMeasure>(pos, GraphicalMeasure.name) returns the nearest measure.
+     * E.g. GetNearestObject(pos, GraphicalMeasure) returns the nearest measure.
      * Note that there is also GetNearestStaffEntry(), which has a bit more specific code for staff entries.
+     * @param classOrName The class of the object, e.g. GraphicalMeasure. Or its name (e.g. GraphicalMeasure.name), which is unreliable
+     *   in minified builds: they can give other classes the same name, e.g. GraphicalNote (see AClassHierarchyTrackable.isInstanceOfClass()).
+     * @param page The page to search, e.g. the one clicked on: each page has its own coordinates, so the position is on every page.
+     *   By default, all pages.
      * */
-    GetNearestObject<T extends GraphicalObject>(clickPosition: PointF2D, className: string): T;
+    GetNearestObject<T extends GraphicalObject>(clickPosition: PointF2D, classOrName: ClassType<T> | string, page?: GraphicalMusicPage): T;
     GetPossibleCommentAnchor(clickPosition: PointF2D): SourceStaffEntry;
     getClickedObjectOfType<T>(positionOnMusicSheet: PointF2D): T;
     tryGetTimestampFromPosition(positionOnMusicSheet: PointF2D): Fraction;

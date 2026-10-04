@@ -46,7 +46,9 @@ export declare abstract class GraphicalStaffEntry extends GraphicalObject {
      */
     getAbsoluteTimestamp(): Fraction;
     /**
-     * Search through all the GraphicalNotes to find the suitable one for a TieEndNote.
+     * Search through all the GraphicalNotes to find the suitable one for a TieEndNote:
+     * the tie note's own GraphicalNote if this staff entry has it, otherwise one of the same pitch at the same time.
+     * For a hidden tie note that shares its notehead with a visible unison note, it is that visible note's GraphicalNote.
      * @param tieNote
      * @returns {any}
      */

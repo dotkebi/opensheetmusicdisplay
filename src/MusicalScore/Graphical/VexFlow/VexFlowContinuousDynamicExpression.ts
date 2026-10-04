@@ -18,6 +18,7 @@ export class VexFlowContinuousDynamicExpression extends GraphicalContinuousDynam
         super(continuousDynamic, staffLine, measure);
         if (this.IsVerbal) {
             this.label = VexFlowContinuousDynamicExpression.createVerbalLabel(continuousDynamic, this.rules, textHeight, this.PositionAndShape);
+            this.label.Label.language = continuousDynamic.language;
             this.PositionAndShape.calculateBoundingBox();
 
             if (continuousDynamic.ColorXML && this.rules.ExpressionsUseXMLColor) {

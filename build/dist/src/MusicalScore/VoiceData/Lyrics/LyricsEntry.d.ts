@@ -9,6 +9,8 @@ export declare class LyricsEntry {
     private verseNumber;
     private syllableIndex;
     extend: boolean;
+    /** The language of the text: its xml:lang or the sheet's default for the lyric (MusicSheet.LyricLanguages), see Label.language. */
+    language: string;
     get Text(): string;
     set Text(value: string);
     get Word(): LyricWord;

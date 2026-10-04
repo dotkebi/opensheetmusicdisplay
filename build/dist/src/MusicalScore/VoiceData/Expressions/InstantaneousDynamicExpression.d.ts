@@ -6,9 +6,10 @@ import { Dictionary } from "typescript-collections";
 import { Fraction } from "../../../Common/DataObjects/Fraction";
 export declare class InstantaneousDynamicExpression extends AbstractExpression {
     static staticConstructor(): void;
-    constructor(dynamicExpression: string, soundDynamics: number, placement: PlacementEnum, staffNumber: number, measure: SourceMeasure);
+    constructor(dynamicExpression: string, soundDynamics: number, placement: PlacementEnum, staffNumber: number, measure: SourceMeasure, dynamicEnum?: DynamicEnum);
     static dynamicToRelativeVolumeDict: Dictionary<DynamicEnum, number>;
     private multiExpression;
+    private dynamicExpression;
     private dynamicEnum;
     private soundDynamic;
     private staffNumber;
@@ -16,6 +17,9 @@ export declare class InstantaneousDynamicExpression extends AbstractExpression {
     InMeasureTimestamp: Fraction;
     get ParentMultiExpression(): MultiExpression;
     set ParentMultiExpression(value: MultiExpression);
+    /** The marking as written, e.g. "sfmp" for <sf/><mp/>, "ffz" or "cresc." from <other-dynamics>. This is what gets rendered. */
+    get DynamicExpression(): string;
+    set DynamicExpression(value: string);
     get DynEnum(): DynamicEnum;
     set DynEnum(value: DynamicEnum);
     get SoundDynamic(): number;
@@ -28,6 +32,17 @@ export declare class InstantaneousDynamicExpression extends AbstractExpression {
     get MidiVolume(): number;
     get Volume(): number;
     static isInputStringInstantaneousDynamic(inputString: string): boolean;
+    /**
+     * The playback dynamic (DynEnum) for the text of a marking, or undefined if the text doesn't denote one:
+     * - the whole text, if it is a known dynamic: "sfz", "MF", "pf"
+     * - for a plain sequence of dynamics letters, the longest known dynamic it starts with, i.e. the first symbol of a
+     *   combined marking: "sfmp" -> sf, "ffz" -> ff (also how Finale, Sibelius and MuseScore write these in <other-dynamics>)
+     * - for a text, its leading dynamic word: "f con fuoco" -> f, "p dolce" -> p. A dynamic letter that merely starts a
+     *   longer word doesn't count ("fine", "forte", "pesante"), nor does a text not starting with a dynamic ("cresc.", "più f").
+     */
+    static dynamicEnumFromText(text: string): DynamicEnum;
+    /** All known dynamics (the DynamicEnum names except "other"), longest first. See dynamicEnumFromText(). */
+    private static knownDynamicNames;
     private static listInstantaneousDynamics;
     getDynamicExpressionSymbol(c: string): DynamicExpressionSymbolEnum;
     private calculateLength;
@@ -57,5 +72,11 @@ export declare enum DynamicEnum {
     sfz = 21,
     sffz = 22,
     fz = 23,
-    other = 24
+    other = 24,
+    /** poco forte */
+    pf = 25,
+    /** sforzando-piano */
+    sfzp = 26,
+    /** niente */
+    n = 27
 }

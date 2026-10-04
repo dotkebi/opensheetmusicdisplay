@@ -37,9 +37,28 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      *  with the overflow. Indexed first by Staff, then by verse/container index. */
     private previousLyricOverflowsByStaff;
     private previousChordOverflowsByStaff;
+    private metronomePlacements;
+    /** Multi-measure repeat units awaiting skyline reservation in the current render. */
+    private measureRepeatUnitsPendingSkyline;
     constructor(rules: EngravingRules);
     protected clearRecreatedObjects(): void;
     protected formatMeasures(): void;
+    /** Assigns repeat signs after fully written-out measures establish widths and system breaks. */
+    private prepareMeasureRepeats;
+    /** Groups each staff's contiguous valid repeat declarations into complete units. */
+    private static findMeasureRepeatUnits;
+    /** Assigns a repeat sign when its unit and referenced pattern are visible and abbreviable. */
+    private tryCreateMeasureRepeat;
+    /** Whether the unit can hide its notes without losing instructions, lyrics or connections to visible notation. */
+    private static canAbbreviateMeasureRepeatUnit;
+    /** Scan backwards to a rest-only entry or a lyric in any verse, matching calculateLyricExtend()'s forward scan. */
+    private static hasIncomingLyricExtender;
+    /** Whether a connection leaves this staff's unit, or a slur has an unattached end that may reach the barline. */
+    private static measureRepeatNoteCrosses;
+    /** Collects trill wavy-line ranges for this staff. */
+    private findWavyLineRanges;
+    /** Reserve after calculateSkyBottomLines() replaces the skyline and before measure numbers are placed above it. */
+    protected reserveSkylineForMeasureRepeats(): void;
     /**
      * Calculates the x layout of the staff entries within the staff measures belonging to one source measure.
      * All staff entries are x-aligned throughout all vertically aligned staff measures.
@@ -138,10 +157,11 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     protected layoutGraphicalTie(tie: GraphicalTie, tieIsAtSystemBreak: boolean, isTab: boolean): void;
     protected calculateDynamicExpressionsForMultiExpression(multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
     protected createMetronomeMark(metronomeExpression: InstantaneousTempoExpression): void;
+    /** Measures the drawn mark and its clearance from the notation, before tempo text takes its space. */
+    private prepareMetronomePlacement;
+    protected layoutMetronomeMarks(): void;
     /** The note, dots and number (or the <per-minute> text, e.g. "c. 108") of a simple metronome mark for VexFlow's StaveTempo. */
     private static staveTempoOfMetronomeMark;
-    /** Generous width of a metronome mark line in units: about 8 for "♩. = 120", more for longer texts and following marks. */
-    private static metronomeMarkWidthEstimate;
     /** Convert MetronomeNoteGroup data into the format expected by VexFlow's StaveTempo.drawNoteEquation(). */
     private buildNoteEquationForVexFlow;
     protected calculateRehearsalMark(measure: SourceMeasure): void;
@@ -156,8 +176,13 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      * @param staffIndex
      */
     protected calculateSingleOctaveShift(sourceMeasure: SourceMeasure, multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
-    /** Finds the last staffline measure that has staffentries. (staffentries necessary for octaveshift and pedal) */
+    private hasVexFlowNote;
+    /** Instruction-only entries carry key/clef changes but cannot anchor a line or bracket. */
+    private findBoundaryNoteEntry;
+    /** Finds the last staffline measure with a note that can anchor an expression. */
     protected findLastStafflineMeasure(staffline: StaffLine): GraphicalMeasure;
+    /** Finds the first staffline measure with a note that can anchor an expression. */
+    protected findFirstStafflineMeasure(staffline: StaffLine): GraphicalMeasure;
     protected calculateSinglePedal(sourceMeasure: SourceMeasure, multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
     protected calculateSingleWavyLine(sourceMeasure: SourceMeasure, multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
     private calculateWavyLineSkyBottomLine;
@@ -186,7 +211,8 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     protected calculateSkyBottomLines(): void;
     /** Compute (not reuse) the sky/bottom lines for the given staff lines: geometric, or the batched /
      *  per-staff-line path. This is the original calculateSkyBottomLines body, extracted so the lazy reuse
-     *  path can feed it just the staff lines that actually need computing. */
+     *  path can feed it just the staff lines that actually need computing.
+     *  lastMeasureFormats: for the geometric calculation, see SkyBottomLineCalculator.calculateLines(). */
     private computeSkyBottomLinesFor;
     /** Loading-path async mirror of {@link calculateSkyBottomLines}: identical lazy-cache reuse and output,
      *  but the (dominant) compute pass is chunked with event-loop yields. {@link onCellProcessed} reports
@@ -256,6 +282,8 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      */
     findIndexGraphicalSlurFromSlur(gSlurs: GraphicalSlur[], slur: Slur): number;
     indexOfGraphicalGlissFromGliss(gGlissandi: GraphicalGlissando[], glissando: Glissando): number;
+    /** Returns whether a repeat sign replaces the note's graphical measure. */
+    private measureRepeatHidesNote;
     protected calculateSlurs(): void;
     calculateGlissandi(): void;
 }

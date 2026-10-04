@@ -13,8 +13,13 @@ export declare class MultiTempoExpression {
     private continuousTempo;
     private expressions;
     private combinedExpressionsText;
+    /** Explicit MusicXML sound timing, independent of the printed direction's position. */
+    PlaybackTimestamp: Fraction;
+    /** Explicit sound tempo in quarter notes per minute, which may differ from the printed mark. */
+    PlaybackTempoInBpm: number;
     get Timestamp(): Fraction;
     get AbsoluteTimestamp(): Fraction;
+    get AbsolutePlaybackTimestamp(): Fraction;
     get SourceMeasureParent(): SourceMeasure;
     set SourceMeasureParent(value: SourceMeasure);
     get InstantaneousTempo(): InstantaneousTempoExpression;

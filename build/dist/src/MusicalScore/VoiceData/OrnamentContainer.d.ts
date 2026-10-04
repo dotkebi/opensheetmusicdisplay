@@ -6,6 +6,11 @@ export declare class OrnamentContainer {
     placement: PlacementEnum;
     private accidentalAbove;
     private accidentalBelow;
+    /** The MusicXML value of the accidental mark above, e.g. "sharp-sharp", which AccidentalAbove doesn't tell apart
+     *  from "double-sharp" (like Pitch.AccidentalXml for notes). */
+    AccidentalAboveXml: string;
+    /** The MusicXML value of the accidental mark below, see AccidentalAboveXml. */
+    AccidentalBelowXml: string;
     get GetOrnament(): OrnamentEnum;
     get AccidentalAbove(): AccidentalEnum;
     set AccidentalAbove(value: AccidentalEnum);

@@ -1,6 +1,7 @@
 import Vex from "vexflow";
 import VF = Vex.Flow;
 import { GraphicalMeasure } from "../GraphicalMeasure";
+import { VexFlowMeasureRepeat } from "./VexFlowMeasureRepeat";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { Staff } from "../../VoiceData/Staff";
 import { StaffLine } from "../StaffLine";
@@ -19,6 +20,13 @@ import { VexFlowVoiceEntry } from "./VexFlowVoiceEntry";
 import { Voice } from "../../VoiceData/Voice";
 import { EngravingRules } from "../EngravingRules";
 import { GraphicalTie } from "../GraphicalTie";
+/** A format of the voices of a vertical measure (see VexFlowMeasure.format()). */
+export interface IVerticalMeasureFormat {
+    /** The format function, shared by the measures of the vertical measure (see VexFlowMeasure.formatVoices). */
+    formatVoices: (width: number, parent: VexFlowMeasure) => void;
+    /** The width the voices were justified to, in pixels. */
+    justifyWidth: number;
+}
 export declare class VexFlowMeasure extends GraphicalMeasure {
     /** Capability markers used by consumers to avoid reinstalling obsolete runtime patches. */
     static readonly HasMeasureLocalCorrectNotePositions: boolean;
@@ -36,6 +44,7 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
     vfTies: VF.StaveTie[];
     /** The repetition instructions given as words or symbols (coda, dal segno..) */
     vfRepetitionWords: VF.Repetition[];
+    /** Whether a metronome mark is drawn on this staff measure (they are drawn on the first visible staff). */
     hasMetronomeMark: boolean;
     /** The VexFlow Stave (= one measure in a staffline) */
     protected stave: VF.Stave;
@@ -56,6 +65,9 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
     /** VexFlow Tuplets */
     private vftuplets;
     rules: EngravingRules;
+    /** Repeat unit drawn in place of this measure's note content, if any. */
+    MeasureRepeat: VexFlowMeasureRepeat;
+    get NotesAreAbbreviated(): boolean;
     setAbsoluteCoordinates(x: number, y: number): void;
     /**
      * Reset all the geometric values and parameters of this measure and put it in an initialized state.
@@ -131,10 +143,52 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      * @param ctx
      */
     draw(ctx: Vex.IRenderContext): void;
-    format(): void;
+    /** Draws this measure's note content. */
+    private drawNotes;
+    /** Makes the beams drawn by draw() extend their notes' stems now, before the notes are drawn.
+     * A Vexflow beam extends its notes' stems to reach it in Beam.postFormat(), which Beam.draw() calls, i.e. after the notes
+     * were drawn. But a note's modifiers are placed from its stem as the note is drawn, e.g. an ornament above a stem-up note
+     * (Ornament.draw() reads note.getStem().getExtents()). So the first draw of a measure, the one that measures the skyline
+     * (SkyBottomLineCalculator), drew such an ornament from the unextended stem, lower than every later draw: the skyline missed
+     * the ornament as rendered, and what was placed from the skyline could cover it, e.g. a fingering in Bach's Prelude BWV 847
+     * m.34 (test_ornament_fingering_beamed_stem_up_bwv847_measure34).
+     */
+    private postFormatBeams;
+    /**
+     * Formats the voices of this measure's vertical measure, i.e. of all its staves (see VexFlowMusicSheetCalculator.formatMeasures()),
+     * to the width of this measure's stave.
+     * @param lastFormats For a series of formats, like the skyline calculation's (see SkyBottomLineCalculator), which formats every
+     *   measure, and so each vertical measure once per staff: the last format of each vertical measure in the series.
+     *   A format that would just repeat the last one of its vertical measure is skipped: it would compute the same result again
+     *   (see isRepeatedFormat()). Without lastFormats, the measure is always formatted.
+     */
+    format(lastFormats?: Map<SourceMeasure, IVerticalMeasureFormat>): void;
+    /**
+     * Whether formatting this measure now would repeat the last format of its vertical measure in lastFormats: the same format
+     * function (shared by the vertical measure's staves, unless they align rests differently) to the same width. The staves of
+     * a vertical measure have the same width and aligned note start x (see Stave.formatBegModifiers()), so that's the rule,
+     * and the repeated format would compute the same result, leaving the voices as they are. Otherwise, records this format
+     * in lastFormats as the vertical measure's last one.
+     * Never a repeat if the vertical measure has tablature: a tab note re-measures its width with the stave's current context
+     * when it's drawn (TabNote.setStave()), which can change the result of the next format.
+     * @param lastFormats the last format of each vertical measure in a series of formats.
+     * @returns true if the format would be a repeat (and can be skipped), false if it was recorded as the last format.
+     */
+    private isRepeatedFormat;
+    /**
+     * Places each note at the height of its drawn note head, relative to its voice entry, e.g. where a click finds it
+     * (GraphicalMusicSheet.GetNearestNote()). A voice entry is at the top of its Vexflow note's bounding box (see
+     * VexFlowVoiceEntry.applyBordersFromVexflow()), e.g. the stem tip of a note with its stem up, and stems differ in length:
+     * the stems of grace notes and cue notes are shorter, those of 32nd notes longer.
+     * A note's x: see VexFlowStaffEntry.calculateXPosition(). Called at the end of draw() (note.setIndex() needs to have been called).
+     */
     correctNotePositions(): void;
-    /** Length of a grace note's stem in staff lines, from Vexflow's stem extents; `fallback` if unavailable. */
-    private static graceStemLength;
+    /**
+     * Places each note of this TAB measure on its string, where its fret number is drawn.
+     * The voice entry is placed on the string of its last note, and its notes relative to it, at its x (the right end of the widest
+     * fret number, see VexFlowStaffEntry.calculateXPosition()). The voice entry's bounding box spans its notes, e.g. all strings of a chord.
+     */
+    private correctTabNotePositions;
     /**
      * Returns all the voices that are present in this measure
      */
@@ -153,6 +207,12 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      * @param voice the voice for which the ghost notes shall be searched.
      */
     protected getRestFilledVexFlowStaveNotesPerVoice(voice: Voice): GraphicalVoiceEntry[];
+    /**
+     * Reduces the vexflow ticks of the given tickables in proportion if they don't fit into the available time,
+     * unless there is no time available.
+     * @returns the ticks the tickables take together
+     */
+    private fitTicks;
     private createGhostGves;
     /**
      * Add a note to a beam
@@ -177,7 +237,13 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      */
     finalizeTuplets(): void;
     layoutStaffEntry(graphicalStaffEntry: GraphicalStaffEntry): void;
+    /** Whether a grace note gets the slash given in the XML (slash="yes"): only the first of several grace notes in a row
+     *  (Vexflow would draw a slash through each of them), and not a hidden one (Vexflow would draw its slash anyway). */
+    private hasGraceSlash;
     graphicalMeasureCreatedCalculations(): void;
+    /** Share modifier spacing with the note's accidentals, and keep clef/key order explicit. */
+    private attachInStaffKeys;
+    protected createInStaffInstructionVoice(): void;
     private createArpeggio;
     /**
      * Copy the stem directions chosen by VexFlow to the StemDirection variable of the graphical notes

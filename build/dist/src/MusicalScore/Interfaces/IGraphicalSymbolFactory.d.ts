@@ -31,5 +31,6 @@ export interface IGraphicalSymbolFactory {
     addFermataAtTiedEndNote(tiedNote: Note, graphicalStaffEntry: GraphicalStaffEntry): void;
     createGraphicalTechnicalInstruction(technicalInstruction: TechnicalInstruction, graphicalStaffEntry: GraphicalStaffEntry): void;
     createInStaffClef(graphicalStaffEntry: GraphicalStaffEntry, clefInstruction: ClefInstruction): void;
+    createInStaffKey(graphicalStaffEntry: GraphicalStaffEntry, key: KeyInstruction, previousKey: KeyInstruction, clef: ClefInstruction): void;
     createChordSymbols(sourceStaffEntry: SourceStaffEntry, graphicalStaffEntry: GraphicalStaffEntry, keyInstruction: KeyInstruction, transposeHalftones: number): void;
 }

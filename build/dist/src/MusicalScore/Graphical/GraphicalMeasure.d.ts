@@ -54,6 +54,8 @@ export declare abstract class GraphicalMeasure extends GraphicalObject {
     isTabMeasure: boolean;
     /** Only exists on multiple rest measure (VexFlowMultiRestMeasure). See isMultiRestMeasure() function. */
     multiRestElement: any;
+    /** Whether a backend replaces this measure's note content with a repeat sign. */
+    get NotesAreAbbreviated(): boolean;
     get ParentStaff(): Staff;
     get ParentMusicSystem(): MusicSystem;
     set ParentMusicSystem(value: MusicSystem);

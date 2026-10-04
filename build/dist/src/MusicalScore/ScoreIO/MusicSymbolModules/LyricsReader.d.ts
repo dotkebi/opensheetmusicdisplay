@@ -12,4 +12,9 @@ export declare class LyricsReader {
      * @param {VoiceEntry} currentVoiceEntry
      */
     addLyricEntry(lyricNodeList: IXmlElement[], currentVoiceEntry: VoiceEntry): void;
+    /**
+     * Returns the language of a lyric: the xml:lang of its text, else the sheet's default language for its number or name,
+     * else the sheet's default language for all lyrics (MusicSheet.LyricLanguages, from <defaults><lyric-language>).
+     */
+    private readLanguage;
 }
