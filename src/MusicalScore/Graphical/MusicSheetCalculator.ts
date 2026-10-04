@@ -2734,14 +2734,20 @@ export abstract class MusicSheetCalculator {
         } else if (!this.rules.RenderTitle) {
             this.graphicalMusicSheet.Title = undefined; // clear label if rendering it was disabled after last render
         }
-        if (musicSheet.Subtitle !== undefined && this.rules.RenderSubtitle) {
+        // A movement-title (or work-number) that only repeats the work-title adds nothing: many
+        // single-movement exports fill both fields with the same string, which would print the
+        // title twice. Draw the subtitle only when it differs from the drawn title.
+        const subtitleRepeatsTitle: boolean = this.rules.RenderTitle && musicSheet.Title !== undefined
+            && musicSheet.Subtitle !== undefined
+            && musicSheet.Subtitle.text?.trim() === musicSheet.Title.text?.trim();
+        if (musicSheet.Subtitle !== undefined && this.rules.RenderSubtitle && !subtitleRepeatsTitle) {
             const subtitle: GraphicalLabel = new GraphicalLabel(
                 musicSheet.Subtitle, this.rules.SheetSubtitleHeight, TextAlignmentEnum.CenterCenter, this.rules);
             subtitle.Label.IsCreditLabel = true;
             subtitle.Label.colorDefault = defaultColorTitle;
             this.graphicalMusicSheet.Subtitle = subtitle;
             subtitle.setLabelPositionAndShapeBorders();
-        } else if (!this.rules.RenderSubtitle) {
+        } else if (!this.rules.RenderSubtitle || subtitleRepeatsTitle) {
             this.graphicalMusicSheet.Subtitle = undefined;
         }
         if (musicSheet.Composer !== undefined && this.rules.RenderComposer) {
