@@ -115,6 +115,9 @@ export class Note {
      *    That's why we don't save a GraphicalNote reference directly in Note.
      */
     public NoteToGraphicalNoteObjectId: number; // used with EngravingRules.NoteToGraphicalNoteMap
+    /** Whether the notehead is printed in parentheses (<notehead parentheses="yes">), e.g. an editorial or optional note.
+     *  Stored here and not in Note.Notehead, because Note.Notehead is undefined for normal noteheads (see NoteheadColorXml). */
+    public NoteheadParentheses: boolean = false;
 
     public ToStringShort(octaveOffset: number = 0): string {
         if (!this.Pitch || this.isRest()) {

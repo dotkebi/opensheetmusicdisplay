@@ -366,6 +366,7 @@ export class VoiceGenerator {
     let playbackInstrumentId: string = undefined;
     let noteheadShapeXml: string = undefined;
     let noteheadFilledXml: boolean = undefined; // if undefined, the final filled parameter will be calculated from duration
+    let noteheadParenthesesXml: boolean = false;
 
     const xmlnodeElementsArr: IXmlElement[] = node.elements();
     for (let idx: number = 0, len: number = xmlnodeElementsArr.length; idx < len; ++idx) {
@@ -463,6 +464,7 @@ export class VoiceGenerator {
           if (noteElement.attribute("filled")) {
             noteheadFilledXml = noteElement.attribute("filled").value === "yes";
           }
+          noteheadParenthesesXml = noteElement.attribute("parentheses")?.value === "yes";
         }
       } catch (ex) {
         log.info("VoiceGenerator.addSingleNote: ", ex);
@@ -525,11 +527,16 @@ export class VoiceGenerator {
     if ((noteheadShapeXml !== undefined && noteheadShapeXml !== "normal") || noteheadFilledXml !== undefined) {
       note.Notehead = new Notehead(note, noteheadShapeXml, noteheadFilledXml);
     } // if normal, leave note head undefined to save processing/runtime
+    note.NoteheadParentheses = noteheadParenthesesXml;
     if (stemDirectionXml === StemDirectionType.None) {
       stemColorXml = "#00000000";  // just setting this to transparent for now
     }
     this.currentVoiceEntry.Notes.push(note);
-    this.currentVoiceEntry.StemDirectionXml = stemDirectionXml;
+    if (!chord || stemDirectionXml !== StemDirectionType.Undefined) {
+      // a chord note without its own <stem> must not reset the direction read from the chord's first note,
+      //   otherwise VexFlow auto-stems the whole chord (e.g. a lower voice written stem-down gets stems up).
+      this.currentVoiceEntry.StemDirectionXml = stemDirectionXml;
+    }
     if (stemColorXml) {
       this.currentVoiceEntry.StemColorXml = stemColorXml;
       this.currentVoiceEntry.StemColor = stemColorXml;

@@ -138,3 +138,7 @@ Because of that, we need to patch in a few fixes that came after 1.2.93, as well
 
 For vexflow 4 state of these changes, also see PR 1139 (vexflow 4 -> develop):
 https://github.com/opensheetmusicdisplay/opensheetmusicdisplay/pull/1139
+
+modifiercontext.js (custom addition):
+ModifierContext.PREFORMAT_CUSTOM: host-registered modifier classes are formatted after the built-in categories
+(used by OSMD's VexFlowNoteheadParenthesis for <notehead parentheses="yes">)

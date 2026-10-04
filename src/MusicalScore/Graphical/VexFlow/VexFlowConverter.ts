@@ -22,6 +22,7 @@ import { SystemLinePosition } from "../SystemLinePosition";
 import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
 import { OrnamentEnum, OrnamentContainer } from "../../VoiceData/OrnamentContainer";
 import { Notehead, NoteHeadShape } from "../../VoiceData/Notehead";
+import { VexFlowNoteheadParenthesis } from "./VexFlowNoteheadParenthesis";
 import { unitInPixels } from "./VexFlowMusicSheetDrawer";
 import { EngravingRules } from "../EngravingRules";
 import { Note, TremoloBetweenNotes, TremoloInfo } from "../../../MusicalScore/VoiceData/Note";
@@ -705,6 +706,13 @@ export class VexFlowConverter {
                 (tremolo as any).extra_stroke_scale = rules.TremoloStrokeScale;
                 (tremolo as any).y_spacing_scale = rules.TremoloYSpacingScale;
                 vfnote.addModifier(i, tremolo);
+            }
+        }
+        for (let i: number = 0; i < notes.length; i++) {
+            if (!isRest && notes[i].sourceNote.NoteheadParentheses) {
+                // <notehead parentheses="yes">: VexFlow 1.2.93 has no Parenthesis modifier, see VexFlowNoteheadParenthesis
+                vfnote.addModifier(i, new VexFlowNoteheadParenthesis(VF.Modifier.Position.LEFT));
+                vfnote.addModifier(i, new VexFlowNoteheadParenthesis(VF.Modifier.Position.RIGHT));
             }
         }
 
