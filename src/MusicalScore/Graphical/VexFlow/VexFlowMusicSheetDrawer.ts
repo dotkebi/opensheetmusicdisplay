@@ -928,6 +928,22 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         }
     }
 
+    protected drawExpressionDashes(staffLine: StaffLine): void {
+        const staffLinePosition: PointF2D = staffLine.PositionAndShape.AbsolutePosition;
+        for (const dashes of staffLine.ExpressionDashes) {
+            // lazy horizontal: a line belongs to the batch that draws its right end
+            if (!this.lazyDrawsAtX(staffLinePosition.x + dashes.End.x)) {
+                continue;
+            }
+            const strokes: [PointF2D, PointF2D][] = dashes.calculateStrokes(this.rules).map(
+                ([start, stop]: [PointF2D, PointF2D]): [PointF2D, PointF2D] => [
+                    this.applyScreenTransformation(new PointF2D(staffLinePosition.x + start.x, staffLinePosition.y + start.y)),
+                    this.applyScreenTransformation(new PointF2D(staffLinePosition.x + stop.x, staffLinePosition.y + stop.y))]);
+            dashes.SVGElement = this.backend.renderStrokes(
+                strokes, dashes.Color ?? this.rules.DefaultColorMusic ?? "#000000", dashes.Width * unitInPixels, "expression-dashes");
+        }
+    }
+
     protected drawInstantaneousDynamic(instantaneousDynamic: GraphicalInstantaneousDynamicExpression): void {
         const label: GraphicalLabel = (instantaneousDynamic as VexFlowInstantaneousDynamicExpression).Label;
         label.SVGNode = this.drawLabel(label, <number>GraphicalLayers.Notes);

@@ -1,9 +1,14 @@
+import { Fraction } from "../../../Common/DataObjects/Fraction";
 import { SourceMeasure } from "../SourceMeasure";
 
 export class AbstractExpression {
     protected placement: PlacementEnum;
     public parentMeasure: SourceMeasure; // could be undefined
     public ColorXML: string;
+    /** Measure in which a dashed line (MusicXML <dashes>) after the expression's text ends, if it has one. */
+    public DashesEndMeasure: SourceMeasure;
+    /** Timestamp within DashesEndMeasure where the dashed line ends. */
+    public DashesEndTimestamp: Fraction;
 
     constructor(placement: PlacementEnum) {
         this.placement = placement;

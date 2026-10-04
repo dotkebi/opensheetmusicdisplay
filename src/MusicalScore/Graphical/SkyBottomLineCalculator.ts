@@ -801,6 +801,16 @@ export class SkyBottomLineCalculator {
         }
     }
 
+    /** The minimum of a copy of a sky- or bottomline (see SkyLine, BottomLine) in the given x range (in units). */
+    public getMinInRangeOf(skyBottomArray: number[], start: number, end: number): number {
+        return this.getMinInRange(skyBottomArray, start, end);
+    }
+
+    /** The maximum of a copy of a sky- or bottomline (see SkyLine, BottomLine) in the given x range (in units). */
+    public getMaxInRangeOf(skyBottomArray: number[], start: number, end: number): number {
+        return this.getMaxInRange(skyBottomArray, start, end);
+    }
+
     /**
      * Get the maximum value inside the given indices
      * @param skyBottomArray Skyline or bottom line

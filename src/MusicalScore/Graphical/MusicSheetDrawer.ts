@@ -596,6 +596,10 @@ export abstract class MusicSheetDrawer {
 
         this.drawExpressions(staffLine);
 
+        if (staffLine.ExpressionDashes.length > 0) {
+            this.drawExpressionDashes(staffLine);
+        }
+
         if (this.skyLineVisible) {
             this.drawSkyLine(staffLine);
         }
@@ -619,6 +623,11 @@ export abstract class MusicSheetDrawer {
     }
 
     protected drawExpressions(staffline: StaffLine): void {
+        // implemented by subclass (VexFlowMusicSheetDrawer)
+    }
+
+    /** Draws the dashed lines after text expressions (MusicXML <dashes>, e.g. "rit. - - -"). */
+    protected drawExpressionDashes(staffLine: StaffLine): void {
         // implemented by subclass (VexFlowMusicSheetDrawer)
     }
 

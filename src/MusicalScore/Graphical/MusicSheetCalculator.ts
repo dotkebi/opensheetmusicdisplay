@@ -53,11 +53,12 @@ import { Dictionary } from "typescript-collections";
 import { GraphicalLyricEntry } from "./GraphicalLyricEntry";
 import { GraphicalLyricWord } from "./GraphicalLyricWord";
 import { GraphicalLine } from "./GraphicalLine";
+import { GraphicalExpressionDashes } from "./GraphicalExpressionDashes";
 import { Label } from "../Label";
 import { GraphicalVoiceEntry } from "./GraphicalVoiceEntry";
 import { VerticalSourceStaffEntryContainer } from "../VoiceData/VerticalSourceStaffEntryContainer";
 import { SkyBottomLineCalculator } from "./SkyBottomLineCalculator";
-import { PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
+import { AbstractExpression, PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
 import { AbstractGraphicalInstruction } from "./AbstractGraphicalInstruction";
 import { GraphicalInstantaneousTempoExpression } from "./GraphicalInstantaneousTempoExpression";
 import { InstantaneousTempoExpression, TempoType } from "../VoiceData/Expressions/InstantaneousTempoExpression";
@@ -111,6 +112,13 @@ export abstract class MusicSheetCalculator {
     protected graphicalMusicSheet: GraphicalMusicSheet;
     protected rules: EngravingRules;
     protected musicSystems: MusicSystem[];
+    /** Dashed lines after expression texts, collected while the texts are placed (see calculateExpressionDashes()). */
+    private pendingExpressionDashes: {
+        expression: AbstractExpression; label: GraphicalLabel; placement: PlacementEnum;
+        staffLine: StaffLine; staffIndex: number; measureIndex: number;
+    }[] = [];
+    /** Sky- and bottomline of each staffline before expressions are placed. */
+    private skyBottomLinesBeforeExpressions: Map<StaffLine, [number[], number[]]>;
     /** Lazy rendering: cache of computed sky/bottom lines, keyed per staff line by its system's
      *  measure range + staff index. A growing-prefix batch re-runs the (expensive) skyline pass over the
      *  whole prefix; this lets stable interior systems reuse the lines computed in an earlier batch instead
@@ -967,11 +975,15 @@ export abstract class MusicSheetCalculator {
 
         const fontHeight: number = this.rules.UnknownTextHeight;
         const placement: PlacementEnum = multiExpression.getPlacementOfFirstEntry();
+        const lastEntry: MultiExpressionEntry = multiExpression.EntriesList[multiExpression.EntriesList.length - 1];
         const graphLabel: GraphicalLabel  = this.calculateLabel(staffLine,
                                                                 relative, combinedExprString,
                                                                 multiExpression.getFontstyleOfFirstEntry(),
                                                                 placement,
-                                                                fontHeight);
+                                                                fontHeight,
+                                                                undefined,
+                                                                undefined,
+                                                                this.expressionDashesEndX(lastEntry?.expression, staffLine, staffIndex));
         const colorXML: string = multiExpression.getColorXMLOfFirstEntry();
         if (this.rules.ExpressionsUseXMLColor && colorXML) {
             graphLabel.ColorXML = colorXML;
@@ -989,7 +1001,187 @@ export abstract class MusicSheetCalculator {
         //    multiExpression); // TODO would be nice to hand over and save reference to original expression,
         //                         but MultiExpression is not an AbstractExpression.
         staffLine.AbstractExpressions.push(gue);
+        if (lastEntry?.expression) {
+            this.addExpressionDashes(lastEntry.expression, graphLabel, placement, staffLine, staffIndex, measureIndex);
         }
+        }
+    }
+
+    /**
+     * Notes a dashed line (MusicXML <dashes>, e.g. "rit. - - - -") to be calculated after its text,
+     * see calculateExpressionDashes().
+     * @param label the expression's text, already positioned on staffLine
+     * @param staffIndex index of staffLine's staff in a MeasureList entry
+     * @param measureIndex MeasureList index of the measure the expression belongs to
+     */
+    protected addExpressionDashes(expression: AbstractExpression, label: GraphicalLabel, placement: PlacementEnum,
+                                  staffLine: StaffLine, staffIndex: number, measureIndex: number): void {
+        if (expression?.DashesEndMeasure && expression.DashesEndTimestamp && label) {
+            this.pendingExpressionDashes.push({expression, label, placement, staffLine, staffIndex, measureIndex});
+        }
+    }
+
+    /** Where the dashed line after an expression's text ends on staffLine (its end, or the end of staffLine if it
+     *  continues on a later system), or undefined if the expression has no dashed line. */
+    private expressionDashesEndX(expression: AbstractExpression, staffLine: StaffLine, staffIndex: number): number {
+        const endMeasure: SourceMeasure = expression?.DashesEndMeasure;
+        if (!endMeasure || !expression.DashesEndTimestamp || staffLine.Measures.length === 0) {
+            return undefined;
+        }
+        const lastMeasure: GraphicalMeasure = staffLine.Measures[staffLine.Measures.length - 1];
+        const staffLineEndX: number = lastMeasure.PositionAndShape.RelativePosition.x + lastMeasure.PositionAndShape.Size.width;
+        const endMeasureIndex: number = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures.indexOf(endMeasure);
+        if (this.graphicalMusicSheet.MeasureList[endMeasureIndex]?.[staffIndex]?.ParentStaffLine !== staffLine) {
+            return staffLineEndX;
+        }
+        const endPosition: PointF2D = this.getRelativePositionInStaffLineFromTimestamp(
+            Fraction.plus(endMeasure.AbsoluteTimestamp, expression.DashesEndTimestamp), staffIndex, staffLine,
+            staffLine.isPartOfMultiStaffInstrument());
+        return endPosition.x > 0 ? Math.min(endPosition.x, staffLineEndX) : staffLineEndX;
+    }
+
+    /** Copies the sky- and bottomlines before expressions are placed (see calculateExpressionDashes()). */
+    protected saveSkyBottomLinesBeforeExpressions(): void {
+        this.skyBottomLinesBeforeExpressions = new Map();
+        this.pendingExpressionDashes = [];
+        for (const musicSystem of this.musicSystems) {
+            for (const staffLine of musicSystem.StaffLines) {
+                const calculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+                this.skyBottomLinesBeforeExpressions.set(staffLine, [calculator.SkyLine.slice(), calculator.BottomLine.slice()]);
+            }
+        }
+    }
+
+    /**
+     * Calculates the dashed lines that follow the texts of expressions up to where their MusicXML <dashes> stop
+     * (e.g. "rit. - - - -"), after all expressions are placed: one GraphicalExpressionDashes per staffline a line crosses.
+     * Next to its text a line stays at the text's height and ends before anything that reaches it. Words stacked
+     * entirely above (below) the line don't count: under them, the sky- (bottom)line from before the expressions is used.
+     * On later systems, the line is lifted above (lowered below) the notes. The lines are entered into the sky-/bottomline.
+     */
+    protected calculateExpressionDashes(): void {
+        const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+        const distance: number = this.rules.ExpressionDashesTextDistance;
+        const lineWidth: number = this.rules.ExpressionDashesLineWidth;
+        for (const pending of this.pendingExpressionDashes) {
+            const expression: AbstractExpression = pending.expression;
+            const endMeasureIndex: number = Math.min(sourceMeasures.indexOf(expression.DashesEndMeasure), this.graphicalMusicSheet.MeasureList.length - 1);
+            if (endMeasureIndex < pending.measureIndex) {
+                continue;
+            }
+            const staffLines: StaffLine[] = [pending.staffLine];
+            for (let i: number = pending.measureIndex; i <= endMeasureIndex; i++) {
+                const parentStaffLine: StaffLine = this.graphicalMusicSheet.MeasureList[i]?.[pending.staffIndex]?.ParentStaffLine;
+                if (parentStaffLine && !staffLines.includes(parentStaffLine)) {
+                    staffLines.push(parentStaffLine);
+                }
+            }
+            const endTimestamp: Fraction = Fraction.plus(expression.DashesEndMeasure.AbsoluteTimestamp, expression.DashesEndTimestamp);
+            const box: BoundingBox = pending.label.PositionAndShape;
+            const textY: number = box.RelativePosition.y + (box.BorderTop + box.BorderBottom) / 2;
+            const below: boolean = pending.placement === PlacementEnum.Below;
+            for (let i: number = 0; i < staffLines.length; i++) {
+                const line: StaffLine = staffLines[i];
+                const measuresOfLine: GraphicalMeasure[] = line.Measures;
+                if (measuresOfLine.length === 0) {
+                    continue;
+                }
+                const lastMeasure: GraphicalMeasure = measuresOfLine[measuresOfLine.length - 1];
+                let startX: number;
+                if (i === 0) {
+                    startX = box.RelativePosition.x + box.BorderMarginRight + distance;
+                } else {
+                    startX = measuresOfLine[0].PositionAndShape.RelativePosition.x + measuresOfLine[0].beginInstructionsWidth;
+                }
+                let endX: number = lastMeasure.PositionAndShape.RelativePosition.x + lastMeasure.PositionAndShape.Size.width - distance;
+                if (i === staffLines.length - 1) {
+                    const endPosition: PointF2D = this.getRelativePositionInStaffLineFromTimestamp(
+                        endTimestamp, pending.staffIndex, line, line.isPartOfMultiStaffInstrument());
+                    if (endPosition.x > 0) {
+                        endX = Math.min(endX, endPosition.x - distance);
+                    }
+                }
+                if (endX - startX < this.rules.ExpressionDashesDashLength) {
+                    continue;
+                }
+                const skyBottomLine: SkyBottomLineCalculator = line.SkyBottomLineCalculator;
+                const before: [number[], number[]] = this.skyBottomLinesBeforeExpressions?.get(line);
+                let y: number = textY;
+                if (i > 0 && before) {
+                    y = below ?
+                        Math.max(y, skyBottomLine.getMaxInRangeOf(before[1], startX, endX) + distance) :
+                        Math.min(y, skyBottomLine.getMinInRangeOf(before[0], startX, endX) - distance);
+                }
+                endX = this.firstExpressionDashesObstacleX(line, pending.label, below, startX, endX, y) - distance;
+                if (endX - startX < this.rules.ExpressionDashesDashLength) {
+                    continue;
+                }
+                if (below) {
+                    skyBottomLine.updateBottomLineInRange(startX, endX, y + lineWidth);
+                } else {
+                    skyBottomLine.updateSkyLineInRange(startX, endX, y - lineWidth);
+                }
+                const dashes: GraphicalExpressionDashes = new GraphicalExpressionDashes(
+                    expression, new PointF2D(startX, y), new PointF2D(endX, y), lineWidth);
+                dashes.Color = pending.label.ColorXML;
+                line.ExpressionDashes.push(dashes);
+            }
+        }
+        this.pendingExpressionDashes = [];
+        this.skyBottomLinesBeforeExpressions = undefined;
+    }
+
+    /** The first x in [startX, endX) where something on staffLine reaches a dashed line at height y, else endX.
+     *  See calculateExpressionDashes(). */
+    private firstExpressionDashesObstacleX(staffLine: StaffLine, ownLabel: GraphicalLabel, below: boolean,
+                                           startX: number, endX: number, y: number): number {
+        const clearance: number = this.rules.ExpressionDashesTextDistance;
+        const limitY: number = below ? y - clearance : y + clearance;
+        const skyBottomLine: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        const before: [number[], number[]] = this.skyBottomLinesBeforeExpressions?.get(staffLine);
+        const labelBoxes: BoundingBox[] = [];
+        for (const expression of staffLine.AbstractExpressions) {
+            const label: GraphicalLabel = expression.Label;
+            if (label && label !== ownLabel && !labelBoxes.includes(label.PositionAndShape)) {
+                labelBoxes.push(label.PositionAndShape);
+            }
+        }
+        const reaches: (value: number) => boolean = (value: number) => below ? value > limitY : value < limitY;
+        const step: number = 0.1;
+        for (let x: number = startX; x < endX; x += step) {
+            const current: number = below ?
+                skyBottomLine.getBottomLineMaxInRange(x, x + step) :
+                skyBottomLine.getSkyLineMinInRange(x, x + step);
+            if (!reaches(current)) {
+                continue;
+            }
+            let coveredByWordsBeyondTheLine: boolean = false;
+            let blockedByWords: boolean = false;
+            for (const labelBox of labelBoxes) {
+                const left: number = labelBox.RelativePosition.x + labelBox.BorderMarginLeft;
+                const right: number = labelBox.RelativePosition.x + labelBox.BorderMarginRight;
+                if (right < x || left > x + step) {
+                    continue;
+                }
+                const top: number = labelBox.RelativePosition.y + labelBox.BorderMarginTop;
+                const bottom: number = labelBox.RelativePosition.y + labelBox.BorderMarginBottom;
+                if (below ? top > limitY : bottom < limitY) {
+                    coveredByWordsBeyondTheLine = true;
+                } else if (below ? bottom > limitY : top < limitY) {
+                    blockedByWords = true;
+                }
+            }
+            if (blockedByWords || !coveredByWordsBeyondTheLine || !before) {
+                return x;
+            }
+            const contentBefore: number = below ?
+                skyBottomLine.getMaxInRangeOf(before[1], x, x + step) :
+                skyBottomLine.getMinInRangeOf(before[0], x, x + step);
+            if (reaches(contentBefore)) {
+                return x;
+            }
+        }
+        return endX;
     }
 
     /**
@@ -1146,6 +1338,7 @@ export abstract class MusicSheetCalculator {
         }
         // calculate StaffEntry ChordSymbols
         this.calculateChordSymbols();
+        this.saveSkyBottomLinesBeforeExpressions();
         if (!this.leadSheet) {
             // calculate all Instantaneous/Continuous Dynamics Expressions
             this.calculateDynamicExpressions();
@@ -1172,6 +1365,8 @@ export abstract class MusicSheetCalculator {
         if (!this.leadSheet) {
             this.calculateTempoExpressions();
         }
+        // dashed lines after expression texts (e.g. "rit. - - -"), once all texts are placed
+        this.calculateExpressionDashes();
         this.calculateRehearsalMarks();
 
         // calculate all LyricWords Positions
@@ -1438,6 +1633,7 @@ export abstract class MusicSheetCalculator {
             await step(() => this.calculateOrnaments());
         }
         await step(() => this.calculateChordSymbols(), 0.91);
+        this.saveSkyBottomLinesBeforeExpressions();
         if (!this.leadSheet) {
             await step(() => this.calculateDynamicExpressions());
             await step(() => this.calculateMoodAndUnknownExpressions());
@@ -1455,6 +1651,7 @@ export abstract class MusicSheetCalculator {
         if (!this.leadSheet) {
             await step(() => this.calculateTempoExpressions());
         }
+        await step(() => this.calculateExpressionDashes());
         await step(() => this.calculateRehearsalMarks(), 0.94);
 
         await step(() => this.calculateLyricsPosition());
@@ -2337,7 +2534,8 @@ export abstract class MusicSheetCalculator {
                              placement: PlacementEnum,
                              fontHeight: number,
                              textAlignment: TextAlignmentEnum = TextAlignmentEnum.CenterBottom,
-                             yPadding: number = 0): GraphicalLabel {
+                             yPadding: number = 0,
+                             skyBottomLineRangeEndX: number = undefined): GraphicalLabel {
         const label: Label = new Label(combinedString, textAlignment);
         label.fontStyle = style;
         label.fontHeight = fontHeight;
@@ -2373,12 +2571,14 @@ export abstract class MusicSheetCalculator {
         }
 
         // find allowed position (where the Label can be positioned) from Sky- BottomLine
+        // (a label followed by a dashed line must also clear what is under the line)
         let drawingHeight: number;
         const skyBottomLineCalculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        const rangeRight: number = skyBottomLineRangeEndX > right ? skyBottomLineRangeEndX : right;
         if (placement === PlacementEnum.Below) {
-            drawingHeight = skyBottomLineCalculator.getBottomLineMaxInRange(left, right) + yPadding;
+            drawingHeight = skyBottomLineCalculator.getBottomLineMaxInRange(left, rangeRight) + yPadding;
         } else {
-            drawingHeight = skyBottomLineCalculator.getSkyLineMinInRange(left, right) - yPadding;
+            drawingHeight = skyBottomLineCalculator.getSkyLineMinInRange(left, rangeRight) - yPadding;
         }
 
         // set RelativePosition
@@ -2478,7 +2678,8 @@ export abstract class MusicSheetCalculator {
                                                                        entry.Expression.Placement,
                                                                        this.rules.UnknownTextHeight,
                                                                        textAlignment,
-                                                                       this.rules.TempoYSpacing);
+                                                                       this.rules.TempoYSpacing,
+                                                                       this.expressionDashesEndX(entry.Expression, staffLine, verticalIndex));
                 if (entry.Expression.ColorXML && this.rules.ExpressionsUseXMLColor) {
                     graphLabel.ColorXML = entry.Expression.ColorXML;
                 }
@@ -2519,6 +2720,7 @@ export abstract class MusicSheetCalculator {
                     //   The behavior difference rather affects playback (e.g. ritardando, which gradually changes tempo)
                     staffLine.AbstractExpressions.push(new GraphicalInstantaneousTempoExpression(entry.Expression, graphLabel));
                 }
+                this.addExpressionDashes(entry.Expression, graphLabel, entry.Expression.Placement, staffLine, verticalIndex, measureIndex);
             }
             for (const metronomeExpression of metronomeMarks) {
                 this.createMetronomeMark(metronomeExpression);

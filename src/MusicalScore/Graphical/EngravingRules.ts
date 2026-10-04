@@ -366,6 +366,13 @@ export class EngravingRules {
     public VoiceLeadingGuideDotSpacing: number;
     public VoiceLeadingGuideDashLength: number;
     public VoiceLeadingGuideDashGap: number;
+    /** Dashed line after a text expression (MusicXML <dashes>, e.g. "rit. - - -"): length of one dash. */
+    public ExpressionDashesDashLength: number;
+    /** Minimum gap between two dashes of an expression's dashed line. */
+    public ExpressionDashesDashGap: number;
+    public ExpressionDashesLineWidth: number;
+    /** Free space between the text of an expression and its dashed line, and between the line and the note it ends at. */
+    public ExpressionDashesTextDistance: number;
     /** Free space between a voice leading guide and the notehead (or its accidental/dots) it points at. */
     public VoiceLeadingGuideNoteGap: number;
     /** Distance a voice leading guide keeps from the staffline edge where it is interrupted by a system break. */
@@ -904,6 +911,10 @@ export class EngravingRules {
         this.VoiceLeadingGuideDashLength = 0.6;
         this.VoiceLeadingGuideDashGap = 0.4;
         this.VoiceLeadingGuideNoteGap = 0.35;
+        this.ExpressionDashesDashLength = 0.5;
+        this.ExpressionDashesDashGap = 0.5;
+        this.ExpressionDashesLineWidth = 0.12;
+        this.ExpressionDashesTextDistance = 0.4;
         this.VoiceLeadingGuideSystemBreakInset = 0.3;
         this.VoiceLeadingGuideSystemBreakMinimumLength = 1;
 
