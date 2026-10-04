@@ -523,6 +523,10 @@ export class SourceMeasure {
     public endsWithLineRepetition(): boolean {
         for (let idx: number = 0, len: number = this.LastRepetitionInstructions.length; idx < len; ++idx) {
             const instruction: RepetitionInstruction = this.LastRepetitionInstructions[idx];
+            if (instruction.Implicit) {
+                // e.g. the backward jump closing a forward repeat at the end of the piece: played, but there's no barline for it
+                continue;
+            }
             if (instruction.type === RepetitionInstructionEnum.BackJumpLine) {
                 return true;
             }

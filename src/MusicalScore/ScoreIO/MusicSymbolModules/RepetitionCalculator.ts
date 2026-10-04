@@ -117,6 +117,8 @@ export class RepetitionCalculator {
                                                                                                 RepetitionInstructionEnum.BackJumpLine,
                                                                                                 AlignmentType.End,
                                                                                                 last.RepetitonUnderConstruction);
+                  // played, but not drawn: the score has no backward repeat barline there
+                  backJumpInstruction.Implicit = true;
                   last.RepetitonUnderConstruction.BackwardJumpInstructions.push(backJumpInstruction);
                   sourceMeasures[lastMeasureIndex].LastRepetitionInstructions.push(backJumpInstruction);
               }
