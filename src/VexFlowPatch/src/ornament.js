@@ -92,6 +92,10 @@ export class Ornament extends Modifier {
     this.type = type;
     this.position = Modifier.Position.ABOVE;
     this.delayed = false;
+    // VexFlowPatch: OSMD's layout raises an ornament above a slur that would touch it
+    // (MusicSheetCalculator.calculateOrnaments), and reads where the ornament was drawn (layoutInk).
+    this.slurClearanceYShift = 0;
+    this.layoutInk = undefined;
 
     this.accidentalUpper = null;
     this.accidentalLower = null;
@@ -196,6 +200,9 @@ export class Ornament extends Modifier {
       glyphY = Math.max(stave.getYForBottomText(this.text_line), noteBottom + bottomSpacing) + height;
     }
     glyphY += this.y_shift;
+    // VexFlowPatch: the ink without the slur clearance shift, relative to the stave's left edge and top line
+    const inkGlyphY = glyphY;
+    glyphY += this.slurClearanceYShift;
 
     // Ajdust x position if ornament is delayed
     if (this.delayed) {
@@ -229,6 +236,21 @@ export class Ornament extends Modifier {
     if (this.accidentalUpper) {
       glyphY -= this.render_options.accidentalUpperPadding;
       this.accidentalUpper.render(ctx, glyphX, glyphY);
+    }
+
+    // VexFlowPatch: record the ink of an ornament above (see slurClearanceYShift)
+    if (this.position === Modifier.Position.ABOVE) {
+      const width = this.glyph.getMetrics().width;
+      let top = glyphY - this.slurClearanceYShift;
+      if (this.accidentalUpper) {
+        top -= this.accidentalUpper.getMetrics().height;
+      }
+      this.layoutInk = {
+        left: glyphX - width / 2 - stave.getX(),
+        right: glyphX + width / 2 - stave.getX(),
+        top: top - stave.getYForLine(0),
+        bottom: inkGlyphY - stave.getYForLine(0),
+      };
     }
   }
 }

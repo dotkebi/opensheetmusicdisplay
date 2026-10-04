@@ -2959,6 +2959,12 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
 
   protected calculateSkyBottomLines(): void {
     const allStaffLines: StaffLine[] = CollectionUtil.flat(this.musicSystems.map(musicSystem => musicSystem.StaffLines));
+    // the sky lines are measured without the previous layout's raises of ornaments over slurs (see layoutOrnament())
+    for (const staffLine of allStaffLines) {
+      for (const measure of staffLine.Measures) {
+        (measure as VexFlowMeasure).resetOrnamentSlurClearance?.();
+      }
+    }
 
     // Lazy rendering: reuse the sky/bottom lines of stable interior systems computed in an
     // earlier growing-prefix batch, and only (re)compute the rest. The skyline pass is the dominant layout
@@ -3310,6 +3316,61 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
 
   protected handleVoiceEntryOrnaments(ornamentContainer: OrnamentContainer, voiceEntry: VoiceEntry, graphicalStaffEntry: GraphicalStaffEntry): void {
     return;
+  }
+
+  /**
+   * Raise an ornament above the notes over a slur above that would touch it, after the slurs are laid out.
+   * A slur clears an ornament under it when it can (GraphicalSlur.liftOverOrnaments()); an ornament over the
+   * slur's first or last note, or one the slur would need a steep arch to clear, goes over the slur, with
+   * GraphicalSlur.ornamentClearance between them (Couperin, Concerts royaux I Prelude m7: the pincé over F#5, after
+   * the grace note the slur starts on). Over a slur the clearance counts from the slur's outer edge, drawn
+   * GraphicalSlur.thickness over its curve. The sky line reserves the ornament's new place.
+   */
+  protected layoutOrnament(ornaments: OrnamentContainer, voiceEntry: VoiceEntry, graphicalStaffEntry: GraphicalStaffEntry): void {
+    const measure: VexFlowMeasure = graphicalStaffEntry.parentMeasure as VexFlowMeasure;
+    const staffLine: StaffLine = measure.ParentStaffLine;
+    if (!staffLine || !measure.OrnamentInk) {
+      return;
+    }
+    const ornamentsOfEntry: any[] = [];
+    for (const gve of graphicalStaffEntry.graphicalVoiceEntries) {
+      if (gve.parentVoiceEntry === voiceEntry) {
+        ornamentsOfEntry.push(...((gve as VexFlowVoiceEntry).vfStaveNote as any)?.getModifiers?.() ?? []);
+      }
+    }
+    const clearance: number = GraphicalSlur.ornamentClearance;
+    const over: number = clearance + GraphicalSlur.thickness;
+    for (const ink of measure.OrnamentInk) {
+      if (ornamentsOfEntry.indexOf(ink.ornament) < 0) {
+        continue;
+      }
+      let raise: number = 0;
+      for (const slur of staffLine.GraphicalSlurs) {
+        if (slur.placement !== PlacementEnum.Above || !slur.bezierStartPt) {
+          continue;
+        }
+        let curveTop: number = Number.POSITIVE_INFINITY;
+        let touches: boolean = false;
+        for (let i: number = 0; i <= 128; i++) {
+          const point: PointF2D = slur.calculateCurvePointAtIndex(i / 128);
+          if (point.x < ink.left || point.x > ink.right) {
+            continue;
+          }
+          curveTop = Math.min(curveTop, point.y);
+          // (a slur lifted over the ornament clears it by the full clearance)
+          if (point.y > ink.top - clearance + 0.1 && point.y < ink.bottom + over - 0.1) {
+            touches = true;
+          }
+        }
+        if (touches) {
+          raise = Math.max(raise, ink.bottom + over - curveTop);
+        }
+      }
+      if (raise > 0) {
+        ink.ornament.slurClearanceYShift = -raise * unitInPixels;
+        staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
+      }
+    }
   }
 
   /**

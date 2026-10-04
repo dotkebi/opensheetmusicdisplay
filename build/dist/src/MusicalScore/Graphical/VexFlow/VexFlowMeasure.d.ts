@@ -269,6 +269,21 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      * @param lineType
      */
     lineTo(top: VexFlowMeasure, lineType: any, xShift?: number): void;
+    /** The ornaments drawn above this measure's notes (VexFlowPatch ornament.js records where). */
+    private get aboveOrnaments();
+    /** Where the ornaments above the notes were drawn, without a raise over a slur (see
+     *  MusicSheetCalculator.calculateOrnaments()), in units relative to the staff line (x) and its top line (y),
+     *  like its sky line.
+     */
+    get OrnamentInk(): {
+        ornament: any;
+        left: number;
+        right: number;
+        top: number;
+        bottom: number;
+    }[];
+    /** Forget the raises of the ornaments over slurs from a previous layout. */
+    resetOrnamentSlurClearance(): void;
     /**
      * Return the VexFlow Stave corresponding to this graphicalMeasure
      * @returns {VF.Stave}
