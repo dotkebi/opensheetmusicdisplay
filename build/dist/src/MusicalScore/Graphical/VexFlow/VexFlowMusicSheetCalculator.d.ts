@@ -261,6 +261,15 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     protected handleVoiceEntryLyrics(voiceEntry: VoiceEntry, graphicalStaffEntry: GraphicalStaffEntry, lyricWords: LyricWord[]): void;
     protected handleVoiceEntryOrnaments(ornamentContainer: OrnamentContainer, voiceEntry: VoiceEntry, graphicalStaffEntry: GraphicalStaffEntry): void;
     /**
+     * Raise an ornament above the notes over a slur above that would touch it, after the slurs are laid out.
+     * A slur clears an ornament under it when it can (GraphicalSlur.liftOverOrnaments()); an ornament over the
+     * slur's first or last note, or one the slur would need a steep arch to clear, goes over the slur, with
+     * GraphicalSlur.ornamentClearance between them (Couperin, Concerts royaux I Prelude m7: the pincé over F#5, after
+     * the grace note the slur starts on). Over a slur the clearance counts from the slur's outer edge, drawn
+     * GraphicalSlur.thickness over its curve. The sky line reserves the ornament's new place.
+     */
+    protected layoutOrnament(ornaments: OrnamentContainer, voiceEntry: VoiceEntry, graphicalStaffEntry: GraphicalStaffEntry): void;
+    /**
      * Add articulations to the given vexflow staff entry.
      * @param articulations
      * @param voiceEntry

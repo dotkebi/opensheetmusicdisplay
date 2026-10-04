@@ -15,7 +15,7 @@ import { GraphicalStaffEntry } from "./GraphicalStaffEntry";
 import { GraphicalMeasure } from "./GraphicalMeasure";
 import { Fraction } from "../../Common/DataObjects/Fraction";
 import { StemDirectionType } from "../VoiceData/VoiceEntry";
-import { VexFlowGraphicalNote } from "./VexFlow";
+import { VexFlowGraphicalNote, VexFlowMeasure } from "./VexFlow";
 import Vex from "vexflow";
 import VF = Vex.Flow;
 
@@ -152,6 +152,9 @@ export class GraphicalSlur extends GraphicalCurve {
                 endUpperLeft.x += endStaffEntry.staffEntryParent.PositionAndShape.RelativePosition.x;
             }
 
+            startUpperRight.x = this.graceRangeStartX(startUpperRight.x, slurStartNote, startX, endX);
+            endUpperLeft.x = this.graceRangeEndX(endUpperLeft.x, slurEndNote, startX, endX);
+
             // SkyLinePointsList between firstStaffEntry startUpperRightPoint and lastStaffentry endUpperLeftPoint
             points = this.calculateTopPoints(startUpperRight, endUpperLeft, staffLine, skyBottomLineCalculator);
 
@@ -267,6 +270,7 @@ export class GraphicalSlur extends GraphicalCurve {
             this.bezierStartControlPt = new PointF2D(startControlPoint.x, startControlPoint.y - startYOffset);
             this.bezierEndControlPt = new PointF2D(endControlPoint.x, endControlPoint.y - endYOffset);
             this.bezierEndPt = new PointF2D(endX, endY - endYOffset);
+            this.liftOverOrnaments(staffLine, startUpperRight.x, endUpperLeft.x);
 
             // calculate slur Curvepoints and update Skyline
             const length: number = staffLine.SkyLine.length;
@@ -326,6 +330,9 @@ export class GraphicalSlur extends GraphicalCurve {
             if (this.graceEnd) {
                 endLowerLeft.x += endStaffEntry.staffEntryParent.PositionAndShape.RelativePosition.x;
             }
+
+            startLowerRight.x = this.graceRangeStartX(startLowerRight.x, slurStartNote, startX, endX);
+            endLowerLeft.x = this.graceRangeEndX(endLowerLeft.x, slurEndNote, startX, endX);
 
             // BottomLinePointsList between firstStaffEntry startLowerRightPoint and lastStaffentry endLowerLeftPoint
             points = this.calculateBottomPoints(startLowerRight, endLowerLeft, staffLine, skyBottomLineCalculator);
@@ -564,6 +571,105 @@ export class GraphicalSlur extends GraphicalCurve {
      * @param rules
      * @param skyBottomLineCalculator
      */
+    /** Space (in units) a slur keeps from an ornament under or over it. */
+    public static readonly ornamentClearance: number = 0.3;
+    /** How far (in units) the slur's drawing reaches out from its curve in the middle: VexFlowMusicSheetDrawer.drawSlur
+     *  draws an outer curve with control points 0.3 out. */
+    public static readonly thickness: number = 0.25;
+
+    /**
+     * The curve above follows the sky line only roughly: it can pass through an ornament under the slur. Raise
+     * both control points until the curve clears by [[ornamentClearance]] every ornament above the notes in the
+     * middle of the slur's sky line range (rangeStartX to rangeEndX, see [[isInMiddleOfSlur]]), when that takes a
+     * modest raise: up to 1.5 units and 0.35 of the slur's width. A steeper raise makes a loop over a short slur;
+     * such an ornament, as one over the slur's first or last note, stays outside the slur and is raised over it
+     * instead (VexFlowMusicSheetCalculator.layoutOrnament()). Raising both control points by d raises the curve
+     * at t by 3·t·(1−t)·d.
+     */
+    private liftOverOrnaments(staffLine: StaffLine, rangeStartX: number, rangeEndX: number): void {
+        let lift: number = 0;
+        for (const measure of staffLine.Measures) {
+            if (!(measure instanceof VexFlowMeasure)) {
+                continue;
+            }
+            for (const ink of measure.OrnamentInk) {
+                const centre: number = (ink.left + ink.right) / 2;
+                if (centre < rangeStartX || centre > rangeEndX ||
+                    !GraphicalSlur.isInMiddleOfSlur(centre, this.bezierStartPt.x, this.bezierEndPt.x)) {
+                    continue;
+                }
+                for (let i: number = 1; i < 64; i++) {
+                    const t: number = i / 64;
+                    const point: PointF2D = this.calculateCurvePointAtIndex(t);
+                    if (point.x < ink.left || point.x > ink.right) {
+                        continue;
+                    }
+                    const below: number = point.y - (ink.top - GraphicalSlur.ornamentClearance);
+                    if (below > 0) {
+                        lift = Math.max(lift, below / (3 * t * (1 - t)));
+                    }
+                }
+            }
+        }
+        const maxLift: number = Math.min(1.5, 0.35 * (this.bezierEndPt.x - this.bezierStartPt.x));
+        if (lift === 0 || lift > maxLift) {
+            return;
+        }
+        this.bezierStartControlPt = new PointF2D(this.bezierStartControlPt.x, this.bezierStartControlPt.y - lift);
+        this.bezierEndControlPt = new PointF2D(this.bezierEndControlPt.x, this.bezierEndControlPt.y - lift);
+    }
+
+    /**
+     * A slur's sky/bottom line range runs from the right edge of its start staff entry to the left edge of its
+     * end staff entry. A grace note shares its main note's staff entry, so a slur from a grace note before its
+     * main note, or to a grace note after it, left out the main note under the slur and the ornament over it
+     * (Couperin, Concerts royaux I Prelude m7). Start (end) the range at the grace note itself instead, when the
+     * main note has an ornament near the middle of the slur (within a fifth of its width, see [[isInMiddleOfSlur]]).
+     * Off the middle, the slur's tangents would see the ornament near one end and throw a steep, lopsided arch over
+     * it; the ornament goes over the slur instead (VexFlowMusicSheetCalculator.layoutOrnament()).
+     */
+    private static readonly graceRangeMargin: number = 0.5;
+    private static readonly graceRangeMiddle: number = 0.4;
+
+    /**
+     * Whether x is in the middle of the slur from startX to endX: at least margin of its width from either end. A
+     * slur keeps an ornament in its middle half inside it; it can't clear one near its start or end without a steep
+     * arch, so such an ornament goes over the slur (VexFlowMusicSheetCalculator.layoutOrnament()).
+     */
+    private static isInMiddleOfSlur(x: number, startX: number, endX: number, margin: number = 0.25): boolean {
+        const fraction: number = (x - startX) / (endX - startX);
+        return fraction >= margin && fraction <= 1 - margin;
+    }
+
+    /** Whether a note of the entry has an ornament above it near the middle of the slur from startX to endX. */
+    private static hasOrnamentInMiddle(entry: GraphicalStaffEntry, startX: number, endX: number): boolean {
+        const measure: VexFlowMeasure = entry.parentMeasure as VexFlowMeasure;
+        if (!measure?.OrnamentInk) {
+            return false;
+        }
+        const notes: any[] = entry.graphicalVoiceEntries.map(gve => (gve as any).vfStaveNote).filter(note => note);
+        return measure.OrnamentInk.some(ink => notes.indexOf(ink.ornament.getNote()) >= 0 &&
+            GraphicalSlur.isInMiddleOfSlur((ink.left + ink.right) / 2, startX, endX, GraphicalSlur.graceRangeMiddle));
+    }
+
+    private graceRangeStartX(rangeStartX: number, startNote: GraphicalNote, startX: number, endX: number): number {
+        const entry: GraphicalStaffEntry = this.staffEntries[0];
+        if (this.graceStart || entry === this.staffEntries[this.staffEntries.length - 1] ||
+            !startNote?.sourceNote.ParentVoiceEntry?.IsGrace || !GraphicalSlur.hasOrnamentInMiddle(entry, startX, endX)) {
+            return rangeStartX;
+        }
+        return Math.min(rangeStartX, startX + GraphicalSlur.graceRangeMargin);
+    }
+
+    private graceRangeEndX(rangeEndX: number, endNote: GraphicalNote, startX: number, endX: number): number {
+        const entry: GraphicalStaffEntry = this.staffEntries[this.staffEntries.length - 1];
+        if (this.graceEnd || entry === this.staffEntries[0] ||
+            !endNote?.sourceNote.ParentVoiceEntry?.IsGrace || !GraphicalSlur.hasOrnamentInMiddle(entry, startX, endX)) {
+            return rangeEndX;
+        }
+        return Math.max(rangeEndX, endX - GraphicalSlur.graceRangeMargin);
+    }
+
     private calculateStartAndEnd(   slurStartNote: GraphicalNote,
                                     slurEndNote: GraphicalNote,
                                     staffLine: StaffLine,

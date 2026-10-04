@@ -2092,6 +2092,44 @@ export class VexFlowMeasure extends GraphicalMeasure {
         this.connectors.push(connector);
     }
 
+    /** The ornaments drawn above this measure's notes (VexFlowPatch ornament.js records where). */
+    private get aboveOrnaments(): any[] {
+        const ornaments: any[] = [];
+        for (const staffEntry of this.staffEntries) {
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                const note: any = (gve as VexFlowVoiceEntry).vfStaveNote;
+                for (const modifier of note?.getModifiers?.() ?? []) {
+                    if (modifier instanceof VF.Ornament && modifier.getPosition() === VF.Modifier.Position.ABOVE) {
+                        ornaments.push(modifier);
+                    }
+                }
+            }
+        }
+        return ornaments;
+    }
+
+    /** Where the ornaments above the notes were drawn, without a raise over a slur (see
+     *  MusicSheetCalculator.calculateOrnaments()), in units relative to the staff line (x) and its top line (y),
+     *  like its sky line.
+     */
+    public get OrnamentInk(): { ornament: any, left: number, right: number, top: number, bottom: number }[] {
+        const x: number = this.PositionAndShape.RelativePosition.x;
+        return this.aboveOrnaments.filter(ornament => ornament.layoutInk).map(ornament => ({
+            ornament,
+            left: x + ornament.layoutInk.left / unitInPixels,
+            right: x + ornament.layoutInk.right / unitInPixels,
+            top: ornament.layoutInk.top / unitInPixels,
+            bottom: ornament.layoutInk.bottom / unitInPixels,
+        }));
+    }
+
+    /** Forget the raises of the ornaments over slurs from a previous layout. */
+    public resetOrnamentSlurClearance(): void {
+        for (const ornament of this.aboveOrnaments) {
+            ornament.slurClearanceYShift = 0;
+        }
+    }
+
     /**
      * Return the VexFlow Stave corresponding to this graphicalMeasure
      * @returns {VF.Stave}
