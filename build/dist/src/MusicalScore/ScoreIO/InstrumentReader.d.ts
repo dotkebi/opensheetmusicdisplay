@@ -56,6 +56,14 @@ export declare class InstrumentReader {
      */
     readNextXmlMeasure(currentMeasure: SourceMeasure, measureStartAbsoluteTimestamp: Fraction, octavePlusOne: boolean): boolean;
     /**
+     * <arpeggiate number="n"> on both staves of the instrument at one timestamp: when one of the staves holds a single
+     * note only, which is no arpeggio by itself (Schumann, Myrthen, Lieder der Braut I m47: right-hand F#4 over the
+     * left-hand chord D3-F#3-C4), the two are one wavy line across both staves and are merged into the first staff's
+     * Arpeggio (its notes then span the staves, see VexFlowMeasure.createArpeggio()). Two chords with the same number
+     * (Jemand m10, m20, m21) stay two wavy lines, one per hand, as engraved. Without a number nothing is linked.
+     */
+    private linkArpeggiosAcrossStaves;
+    /**
      * Attaches grace notes after the last main note of a staff in this measure (a Nachschlag, e.g. the two small notes ending
      * a trill: MusicXML puts them after their main note, without a following note) to that main note's [[SourceStaffEntry]],
      * marked with VoiceEntry.GraceAfterMainNote. Having no duration, they were read into an own staff entry at the main note's

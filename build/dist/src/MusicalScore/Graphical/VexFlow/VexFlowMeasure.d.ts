@@ -42,6 +42,8 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
     formatVoices?: (width: number, parent: VexFlowMeasure) => void;
     /** The VexFlow Ties in the measure */
     vfTies: VF.StaveTie[];
+    /** True while SkyBottomLineCalculator draws this measure to measure its skyline and bottom line (not real ink). */
+    drawingForSkyline: boolean;
     /** The repetition instructions given as words or symbols (coda, dal segno..) */
     vfRepetitionWords: VF.Repetition[];
     /** Whether a metronome mark is drawn on this staff measure (they are drawn on the first visible staff). */
@@ -245,6 +247,11 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
     private attachInStaffKeys;
     protected createInStaffInstructionVoice(): void;
     private createArpeggio;
+    /** The VexFlow notes of the arpeggio's other participating voice entries (the stroke's own note is left out),
+     *  resolved when the stroke is drawn, so that notes of other voices and of the other staff exist and are formatted.
+     *  While the measure is drawn for its skyline/bottom line, notes of other staves are left out: the wavy line's part
+     *  in the other staff is not this staff's ink (it would push this staff's bottom line down to the other staff). */
+    private arpeggioSpanNotes;
     /**
      * Copy the stem directions chosen by VexFlow to the StemDirection variable of the graphical notes
      */
