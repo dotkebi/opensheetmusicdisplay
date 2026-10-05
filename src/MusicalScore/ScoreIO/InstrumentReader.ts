@@ -720,6 +720,9 @@ export class InstrumentReader {
   public finalizeKeyInstructions(): void {
     // A forward can extend beyond the last note; the other parts can also extend this measure.
     const end: Fraction = Fraction.max(this.currentMeasure.Duration, this.measureEndFraction);
+    // The last measure has no following measure to carry a key into; keep it
+    // where the MusicXML puts it so it is drawn at the end of the measure.
+    const hasFollowingMeasure: boolean = this.currentXmlMeasureIndex < this.xmlMeasureList.length;
     for (let staffIndex: number = 0; staffIndex < this.instrument.Staves.length; staffIndex++) {
       const globalIndex: number = this.inSourceMeasureInstrumentIndex + staffIndex;
       let activeKey: number = this.currentMeasure.getKeyInstruction(globalIndex)?.Key ?? this.keyAtMeasureStart[staffIndex];
@@ -733,7 +736,7 @@ export class InstrumentReader {
             }
             activeKey = instruction.Key;
             this.activeKeys[staffIndex] = instruction;
-            if (entry.Timestamp.Equals(end)) {
+            if (hasFollowingMeasure && entry.Timestamp.Equals(end)) {
               this.pendingEndKeys[staffIndex] = instruction;
               entry.Instructions.splice(entry.Instructions.indexOf(instruction), 1);
             }
