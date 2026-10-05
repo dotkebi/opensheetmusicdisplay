@@ -970,6 +970,35 @@ export abstract class MusicSheetCalculator {
         return measure.PositionAndShape.RelativePosition.x + last.PositionAndShape.RelativePosition.x;
     }
 
+    /** Words at a time where their own staff has no note, but another staff of the same instrument has one in the same
+     *  measure (e.g. "Fin" on the right hand on a beat only the left hand plays), are anchored at that note instead of
+     *  being interpolated between their own staff's notes, which can put them next to the following measure's first note. */
+    private otherStaffSameTimeX(measures: GraphicalMeasure[], staffIndex: number, timestamp: Fraction): number | undefined {
+        const containers: VerticalGraphicalStaffEntryContainer[] = this.graphicalMusicSheet.VerticalGraphicalStaffEntryContainers;
+        const index: number = this.graphicalMusicSheet.GetInterpolatedIndexInVerticalContainers(timestamp);
+        if (!(index >= 0) || index !== Math.floor(index) || index >= containers.length) {
+            return undefined;
+        }
+        const container: VerticalGraphicalStaffEntryContainer = containers[index];
+        const measure: GraphicalMeasure = measures[staffIndex];
+        if (!measure || !container.AbsoluteTimestamp.Equals(timestamp) || container.StaffEntries[staffIndex]) {
+            return undefined;
+        }
+        const instrument: Instrument = measure.ParentStaff.ParentInstrument;
+        const system: MusicSystem = measure.ParentStaffLine?.ParentMusicSystem;
+        for (let i: number = 0; i < container.StaffEntries.length && i < measures.length; i++) {
+            const entry: GraphicalStaffEntry = container.StaffEntries[i];
+            const otherMeasure: GraphicalMeasure = measures[i];
+            if (i === staffIndex || !entry || !otherMeasure || entry.parentMeasure !== otherMeasure ||
+                otherMeasure.ParentStaff.ParentInstrument !== instrument ||
+                otherMeasure.ParentStaffLine?.ParentMusicSystem !== system) {
+                continue;
+            }
+            return measure.PositionAndShape.RelativePosition.x + entry.PositionAndShape.RelativePosition.x;
+        }
+        return undefined;
+    }
+
     /** Calculates one words label of the given entries of multiExpression (see getEntryGroupsByPlacement()). */
     private calculateMoodAndUnknownExpressionEntries(multiExpression: MultiExpression, entries: MultiExpressionEntry[],
                                                      measureIndex: number, staffIndex: number): void {
@@ -1001,7 +1030,9 @@ export abstract class MusicSheetCalculator {
             log.debug("MusicSheetCalculator.calculateMoodAndUnknownExpression: staffLine undefined. Returning.");
             return;
         }
-        relative = this.getRelativePositionInStaffLineFromTimestamp(absoluteTimestamp, staffIndex, staffLine, staffLine?.isPartOfMultiStaffInstrument());
+        const otherStaffX: number = this.otherStaffSameTimeX(measures, staffIndex, absoluteTimestamp);
+        relative = otherStaffX !== undefined ? new PointF2D(otherStaffX, 0) :
+            this.getRelativePositionInStaffLineFromTimestamp(absoluteTimestamp, staffIndex, staffLine, staffLine?.isPartOfMultiStaffInstrument());
 
         if (Math.abs(relative.x - 0) < 0.0001) {
             relative.x = this.trailingExpressionX(measures[staffIndex], absoluteTimestamp) ??
