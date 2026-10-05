@@ -72,6 +72,9 @@ export declare class MusicSheet {
     IgnoreTempoInstructions: boolean;
     /** Whether any note has a [[VoiceLeadingGuide]]. Lets the drawer skip the search in all other sheets. */
     HasVoiceLeadingGuides: boolean;
+    /** Whether the MusicXML's 8-digit colors are #RRGGBBAA (alpha last) instead of the spec's #AARRGGBB.
+     *  Set by the reader from <software> (MuseScore 4 exports them like that), see [[musicXmlColorsAreAlphaLast]]. */
+    XmlColorAlphaLast: boolean;
     /** The default languages of the lyrics. A lyric's own xml:lang comes first, see LyricsEntry.language. */
     LyricLanguages: LyricLanguage[];
     /**

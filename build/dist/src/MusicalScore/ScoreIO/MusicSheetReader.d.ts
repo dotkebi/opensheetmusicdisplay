@@ -18,6 +18,8 @@ export declare class MusicSheetReader {
     rules: EngravingRules;
     get PluginManager(): ReaderPluginManager;
     get CompleteNumberOfStaves(): number;
+    /** All <identification><encoding><software> values (a file can name several programs). */
+    private static readEncodingSoftware;
     static doCalculationsAfterDurationHasBeenSet(instrumentReaders: InstrumentReader[]): void;
     /**
      * Read a music XML file and saves the values in the MusicSheet class.

@@ -66,7 +66,7 @@ export declare class InstrumentReader {
      */
     private attachGraceNotesAfterMainNote;
     private getStemDirectionAndColors;
-    /** Parse a color in XML format: #RRGGBB or #AARRGGBB (alpha first).
+    /** Parse a color in XML format: #RRGGBB or #AARRGGBB (alpha first), or #RRGGBBAA from MuseScore 4 (see MusicSheet.XmlColorAlphaLast).
      *  @return the color in CSS format (#RRGGBB or #RRGGBBAA), as used by OSMD options and passed to SVG/canvas
      */
     parseXmlColor(xmlColorString: string): string;
