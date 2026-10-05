@@ -8,7 +8,9 @@ import { TestUtils } from "../../Util/TestUtils";
 /**
  * Tempo words such as "rit." (O cessate di piagarmi, Canto m17 and Piano m23):
  * - the words keep the font of their XML font-style/font-weight (bold only when the XML gives nothing),
- * - words written for a lower staff of an instrument (<staff>2</staff>) with a placement are drawn at that staff.
+ * - words written for a lower staff of an instrument (<staff>2</staff>) with a placement are drawn at that staff,
+ * - so are words written above an instrument below the top one (Schumann, Myrthen Op. 25: the piano's "ritard." under the
+ *   voice), while a piano score alone, words without a placement and main tempo marks stay above the system.
  */
 describe("Tempo words: font and staff", () => {
     const attributes: string = `<attributes><divisions>4</divisions><time><beats>6</beats><beat-type>8</beat-type></time>
@@ -148,5 +150,121 @@ describe("Tempo words: font and staff", () => {
         expect(box.RelativePosition.y + box.BorderTop, "below the right hand").to.be.at.least(upper.StaffHeight - 0.001);
         const gap: number = lower.PositionAndShape.RelativePosition.y - upper.PositionAndShape.RelativePosition.y;
         expect(box.RelativePosition.y + box.BorderBottom, "above the left hand").to.be.lessThan(gap);
+    });
+
+    describe("tempo changes of an instrument below the top one", () => {
+        const pianoAttributes: string = `<attributes><divisions>2</divisions><time><beats>3</beats><beat-type>4</beat-type></time><staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>`;
+        const cantoMeasure1: string = `<attributes><divisions>2</divisions><time><beats>3</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef></attributes>
+        <note><pitch><step>G</step><octave>4</octave></pitch><duration>6</duration><type>half</type><dot/></note>`;
+        const quarter: string = "<note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice>" +
+            "<type>quarter</type><staff>1</staff></note>";
+
+        /** a measure of the piano: directions before the right hand's quarters */
+        function pianoMeasure(directions: string, stop: string = ""): string {
+            return `${directions}${quarter}${quarter}${stop}${quarter}<backup><duration>6</duration></backup>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>6</duration><voice>5</voice><type>half</type><dot/><staff>2</staff></note>`;
+        }
+
+        function songScore(cantoDirections: string, pianoDirections: string, pianoStop: string = ""): string {
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1"><part-name>Canto</part-name></score-part>
+    <score-part id="P2"><part-name>Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">${cantoMeasure1}</measure>
+    <measure number="2">${cantoDirections}<note><pitch><step>G</step><octave>4</octave></pitch><duration>6</duration><type>half</type><dot/></note></measure>
+  </part>
+  <part id="P2">
+    <measure number="1">${pianoAttributes}${pianoMeasure("")}</measure>
+    <measure number="2">${pianoMeasure(pianoDirections, pianoStop)}</measure>
+  </part>
+</score-partwise>`;
+        }
+
+        function pianoAloneScore(pianoDirections: string): string {
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P2"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P2">
+    <measure number="1">${pianoAttributes}${pianoMeasure("")}</measure>
+    <measure number="2">${pianoMeasure(pianoDirections)}</measure>
+  </part>
+</score-partwise>`;
+        }
+
+        function words(text: string, placement: string = " placement=\"above\"", staff: string = "<staff>1</staff>"): string {
+            return `<direction${placement}><direction-type><words font-style="italic">${text}</words></direction-type>${staff}</direction>`;
+        }
+
+        function tempoTexts(staffLine: StaffLine): string[] {
+            return tempoLabels(staffLine).map((l) => l.Label.Label.text);
+        }
+
+        it("draws the piano's \"ritard.\" above the piano, not above the voice", async () => {
+            for (const ritard of [words("ritard."), words("ritard.", " placement=\"above\"", "")]) {
+                const osmd: OpenSheetMusicDisplay = await render(songScore("", ritard));
+                const lines: StaffLine[] = staffLines(osmd);
+                expect(lines.length).to.equal(3);
+                expect(tempoTexts(lines[0]), "nothing above the voice").to.deep.equal([]);
+                expect(tempoTexts(lines[1])).to.deep.equal(["ritard."]);
+                expect(tempoTexts(lines[2])).to.deep.equal([]);
+                const box: { RelativePosition: { y: number }, BorderTop: number, BorderBottom: number } =
+                    tempoLabels(lines[1])[0].Label.PositionAndShape;
+                expect(box.RelativePosition.y + box.BorderBottom, "above the right hand").to.be.at.most(0.001);
+                const gap: number = lines[1].PositionAndShape.RelativePosition.y - lines[0].PositionAndShape.RelativePosition.y -
+                    lines[0].StaffHeight;
+                expect(box.RelativePosition.y + box.BorderTop, "between the voice and the piano").to.be.greaterThan(-gap);
+            }
+        });
+
+        it("draws the voice's and the piano's \"ritard.\" at the same moment once each, above their own staff", async () => {
+            const osmd: OpenSheetMusicDisplay = await render(songScore(words("ritard.", " placement=\"above\"", ""), words("ritard.")));
+            const lines: StaffLine[] = staffLines(osmd);
+            expect(tempoTexts(lines[0])).to.deep.equal(["ritard."]);
+            expect(tempoTexts(lines[1])).to.deep.equal(["ritard."]);
+            expect(tempoTexts(lines[2])).to.deep.equal([]);
+        });
+
+        it("keeps the \"ritard.\" of a piano score alone above the system", async () => {
+            const osmd: OpenSheetMusicDisplay = await render(pianoAloneScore(words("ritard.")));
+            const lines: StaffLine[] = staffLines(osmd);
+            expect(lines.length).to.equal(2);
+            expect(tempoTexts(lines[0])).to.deep.equal(["ritard."]);
+            expect(tempoTexts(lines[1])).to.deep.equal([]);
+            expect(tempoLabels(lines[0])[0].Label.PositionAndShape.RelativePosition.y).to.be.lessThan(0);
+        });
+
+        it("keeps a main tempo mark or words without a placement in the piano above the system", async () => {
+            for (const direction of [words("Allegro"), words("Allegro", " placement=\"above\"", ""), words("ritard.", "")]) {
+                const osmd: OpenSheetMusicDisplay = await render(songScore("", direction));
+                const lines: StaffLine[] = staffLines(osmd);
+                expect(tempoTexts(lines[0]).length, direction).to.equal(1);
+                expect(tempoTexts(lines[1]), direction).to.deep.equal([]);
+                expect(tempoTexts(lines[2]), direction).to.deep.equal([]);
+            }
+        });
+
+        it("draws the dashes of the piano's \"ritard.\" above the piano", async () => {
+            // Raethsel m16: "ritard. - - -" above the right hand
+            const ritardDashes: string = words("ritard.").replace("</direction-type>",
+                "</direction-type><direction-type><dashes type=\"start\" number=\"1\"/></direction-type>");
+            const stop: string = "<direction placement=\"above\"><direction-type><dashes type=\"stop\" number=\"1\"/></direction-type>" +
+                "<staff>1</staff></direction>";
+            const osmd: OpenSheetMusicDisplay = await render(songScore("", ritardDashes, stop));
+            const lines: StaffLine[] = staffLines(osmd);
+            expect(tempoTexts(lines[1])).to.deep.equal(["ritard."]);
+            expect(lines[0].ExpressionDashes.length).to.equal(0);
+            expect(lines[2].ExpressionDashes.length).to.equal(0);
+            expect(lines[1].ExpressionDashes.length).to.equal(1);
+            const label: { RelativePosition: { x: number }, BorderMarginLeft: number } = tempoLabels(lines[1])[0].Label.PositionAndShape;
+            const dashes: { Start: { x: number, y: number }, End: { x: number } } = lines[1].ExpressionDashes[0];
+            expect(dashes.Start.x, "after the words").to.be.greaterThan(label.RelativePosition.x + label.BorderMarginLeft);
+            expect(dashes.End.x).to.be.greaterThan(dashes.Start.x);
+            expect(dashes.Start.y, "above the right hand").to.be.lessThan(0);
+        });
     });
 });
