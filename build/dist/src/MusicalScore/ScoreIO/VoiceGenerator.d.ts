@@ -143,8 +143,17 @@ export declare class VoiceGenerator {
      */
     private getNextAvailableNumberForTie;
     /**
+     * The open tie that candidateNote stops: in this voice's staff first, then in the other staves of the instrument.
+     * A tie can start in one staff and end in the other (Schumann, Myrthen, Aus den hebräischen Gesängen m79-80:
+     * right-hand C4 half tied to the left-hand C4 whole, different voices); each staff keeps its own openTieDict,
+     * so the stop used to find nothing and both notes were drawn without a tie. The caller removes the tie from the
+     * dictionary it was found in (a stop+start pair that continues the tie keeps it).
+     */
+    private findOpenTie;
+    /**
      * Search the tieDictionary for the corresponding candidateNote to the currentNote.
      * Prefer the existing spelling/string match, then fall back to sounding pitch for enharmonic ties.
+     * @param openTieDict the open ties of a staff (this voice's, or another staff's of the instrument)
      * @param candidateNote
      * @returns {number}
      */
