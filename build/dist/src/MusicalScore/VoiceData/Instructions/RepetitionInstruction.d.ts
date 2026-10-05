@@ -41,8 +41,10 @@ export declare class RepetitionInstruction {
 export interface RepetitionSymbolPlacement {
     /** the staff of the <direction> */
     staff: Staff;
-    /** the timestamp in the measure */
+    /** the timestamp in the measure, with the direction's <offset> */
     timestamp: Fraction;
+    /** drawn below the staff (placement="below") */
+    below?: boolean;
 }
 export declare enum RepetitionInstructionEnum {
     StartLine = 0,
