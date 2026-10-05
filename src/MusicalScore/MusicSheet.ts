@@ -101,6 +101,9 @@ export class MusicSheet /*implements ISettableMusicSheet, IComparable<MusicSheet
     public IgnoreTempoInstructions: boolean = false;
     /** Whether any note has a [[VoiceLeadingGuide]]. Lets the drawer skip the search in all other sheets. */
     public HasVoiceLeadingGuides: boolean = false;
+    /** Whether the MusicXML's 8-digit colors are #RRGGBBAA (alpha last) instead of the spec's #AARRGGBB.
+     *  Set by the reader from <software> (MuseScore 4 exports them like that), see [[musicXmlColorsAreAlphaLast]]. */
+    public XmlColorAlphaLast: boolean = false;
     /** The default languages of the lyrics. A lyric's own xml:lang comes first, see LyricsEntry.language. */
     public LyricLanguages: LyricLanguage[] = [];
 

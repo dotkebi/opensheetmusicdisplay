@@ -850,7 +850,7 @@ export class ExpressionReader {
         }
         const colorAttr: Attr = wordsNode.attribute("color");
         if (colorAttr) {
-            fontColor = musicXmlColorToCss(colorAttr.value);
+            fontColor = musicXmlColorToCss(colorAttr.value, this.musicSheet.XmlColorAlphaLast);
         }
         const tempoFontStyle: FontStyles = ExpressionReader.readWordsFontStyle(wordsNode);
         const language: string = wordsNode.attribute("xml:lang")?.value;

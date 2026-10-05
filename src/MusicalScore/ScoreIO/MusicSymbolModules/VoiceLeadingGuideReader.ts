@@ -105,7 +105,7 @@ export class VoiceLeadingGuideReader {
             }
         }
         return {
-            color: musicXmlColorToCss(node.attribute("color")?.value),
+            color: musicXmlColorToCss(node.attribute("color")?.value, this.musicSheet.XmlColorAlphaLast),
             lineType: lineType,
             note: note,
             printObject: node.attribute("print-object")?.value !== "no",

@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
-import { musicXmlColorToCss } from "../../../src/Common/DataObjects/XmlColor";
+import { musicXmlColorToCss, musicXmlColorsAreAlphaLast } from "../../../src/Common/DataObjects/XmlColor";
 import { Note } from "../../../src/MusicalScore/VoiceData/Note";
 import { AbstractExpression } from "../../../src/MusicalScore/VoiceData/Expressions/AbstractExpression";
 import { TestUtils } from "../../Util/TestUtils";
@@ -9,14 +9,17 @@ import { TestUtils } from "../../Util/TestUtils";
  * MusicXML colors are #RRGGBB or #AARRGGBB (alpha first). OSMD hands colors to SVG, where 8-digit hex is CSS #RRGGBBAA.
  * The reader converts once, so the model holds CSS colors: color="#80FF0000" (half-transparent red) must become "#FF000080",
  * not be drawn as R=0x80 G=0xFF B=0x00 with alpha 0 (invisible).
+ * Exception: MuseScore 4 exports 8-digit colors as #RRGGBBAA (against the spec), so they are kept for files with <software>MuseScore 4.x.
  */
 describe("MusicXML color attributes", () => {
     const halfTransparentRedXml: string = "#80FF0000";
     const halfTransparentRedCss: string = "#FF000080";
 
-    function score(color: string): string {
+    function score(color: string, software?: string): string {
+        const identification: string = software ? `<identification><encoding><software>${software}</software></encoding></identification>` : "";
         return `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
+  ${identification}
   <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
   <part id="P1">
     <measure number="1">
@@ -35,11 +38,11 @@ describe("MusicXML color attributes", () => {
 </score-partwise>`;
     }
 
-    async function load(color: string): Promise<{ osmd: OpenSheetMusicDisplay, div: HTMLElement }> {
+    async function load(color: string, software?: string): Promise<{ osmd: OpenSheetMusicDisplay, div: HTMLElement }> {
         const div: HTMLElement = TestUtils.getDivElement(document);
         div.style.width = "800px";
         const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
-        await osmd.load(score(color));
+        await osmd.load(software === "file" ? color : score(color, software));
         return { div, osmd };
     }
 
@@ -65,6 +68,17 @@ describe("MusicXML color attributes", () => {
         expect(musicXmlColorToCss("#ff0000")).to.equal("#ff0000");
         expect(musicXmlColorToCss("red")).to.equal("red");
         expect(musicXmlColorToCss(undefined)).to.equal(undefined);
+        expect(musicXmlColorToCss("#FF000080", true), "alpha last (MuseScore 4)").to.equal("#FF000080");
+    });
+
+    it("recognizes MuseScore 4 as alpha last, not MuseScore 3 or other programs", () => {
+        expect(musicXmlColorsAreAlphaLast(["MuseScore 4.5.2"])).to.equal(true);
+        expect(musicXmlColorsAreAlphaLast(["MuseScore 4.0"])).to.equal(true);
+        expect(musicXmlColorsAreAlphaLast(["Dolet 8", "MuseScore 4.6.0"])).to.equal(true);
+        expect(musicXmlColorsAreAlphaLast(["MuseScore 3.6.2"])).to.equal(false);
+        expect(musicXmlColorsAreAlphaLast(["MuseScore 40"])).to.equal(false);
+        expect(musicXmlColorsAreAlphaLast(["Finale v27.4 for Mac", "Dolet 8.4"])).to.equal(false);
+        expect(musicXmlColorsAreAlphaLast([])).to.equal(false);
     });
 
     it("stores note and words colors as CSS #RRGGBBAA", async () => {
@@ -89,6 +103,28 @@ describe("MusicXML color attributes", () => {
         expect(wordsText, "words label").to.not.equal(undefined);
         expect(wordsText.getAttribute("fill")).to.equal(halfTransparentRedCss);
         expect(fillsOf(div, "*").filter(fill => fill === halfTransparentRedXml), "unconverted MusicXML color").to.deep.equal([]);
+    });
+
+    it("keeps MuseScore 4's #RRGGBBAA colors and draws them as such", async () => {
+        const { osmd, div } = await load(halfTransparentRedCss, "MuseScore 4.5.2");
+        expect(osmd.Sheet.XmlColorAlphaLast).to.equal(true);
+        expect(firstNote(osmd).NoteheadColorXml).to.equal(halfTransparentRedCss);
+        expect(wordsExpressions(osmd)[0].ColorXML).to.equal(halfTransparentRedCss);
+        osmd.render();
+        expect(fillsOf(div, "g.vf-notehead path")[0]).to.equal(halfTransparentRedCss);
+    });
+
+    it("converts the colors of MuseScore 3 files", async () => {
+        const { osmd } = await load(halfTransparentRedXml, "MuseScore 3.6.2");
+        expect(osmd.Sheet.XmlColorAlphaLast).to.equal(false);
+        expect(firstNote(osmd).NoteheadColorXml).to.equal(halfTransparentRedCss);
+    });
+
+    it("keeps the transparent note of OSMD's MuseScore 4.5.2 test file transparent (#0102B300 = #0102B3, alpha 0)", async () => {
+        const xml: string = new XMLSerializer().serializeToString(TestUtils.getScore("test_note_notehead_color_transparent.musicxml"));
+        const { osmd } = await load(xml, "file");
+        expect(osmd.Sheet.XmlColorAlphaLast).to.equal(true);
+        expect(firstNote(osmd).NoteheadColorXml).to.equal("#0102B300");
     });
 
     it("keeps 6-digit colors as they are", async () => {
