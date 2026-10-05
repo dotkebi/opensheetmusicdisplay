@@ -186,25 +186,25 @@ export class VoiceGenerator {
         // check for Arpeggios
         const arpeggioNode: IXmlElement = notationNode.element("arpeggiate");
         if (arpeggioNode !== undefined) {
+          // <arpeggiate number="n"> distinguishes simultaneous arpeggios; the notes of one arpeggio can be
+          // spread over several voices (a chord written voice by voice, one <arpeggiate> per note).
+          const numberAttr: Attr = arpeggioNode.attribute("number");
+          const arpeggioNumber: string = numberAttr ? numberAttr.value : undefined;
           let currentArpeggio: Arpeggio;
           if (this.currentVoiceEntry.Arpeggio) { // add note to existing Arpeggio
             currentArpeggio = this.currentVoiceEntry.Arpeggio;
           } else { // create new Arpeggio
-            let arpeggioAlreadyExists: boolean = false;
+            // an arpeggio already read in another voice of this staff at this timestamp (same number, or both without):
+            //   this note belongs to it, so that one wavy line covers the notes of all its voices.
             for (const voiceEntry of this.currentStaffEntry.VoiceEntries) {
-              if (voiceEntry.Arpeggio) {
-                arpeggioAlreadyExists = true;
+              if (voiceEntry.Arpeggio && voiceEntry.Arpeggio.XmlNumber === arpeggioNumber) {
                 currentArpeggio = voiceEntry.Arpeggio;
-                // TODO handle multiple arpeggios across multiple voices at same timestamp
-
-                // this.currentVoiceEntry.Arpeggio = currentArpeggio; // register the arpeggio in the current voice entry as well?
-                //   but then we duplicate information, and may have to take care not to render it multiple times
-
-                // we already have an arpeggio in another voice, at the current timestamp. add the notes there.
                 break;
               }
             }
-            if (!arpeggioAlreadyExists) {
+            // (the same, numbered, arpeggio in the other staff of the instrument is linked after the measure is read,
+            //   see InstrumentReader.linkArpeggiosAcrossStaves())
+            if (!currentArpeggio) {
                 let arpeggioType: ArpeggioType = ArpeggioType.ARPEGGIO_DIRECTIONLESS;
                 const directionAttr: Attr = arpeggioNode.attribute("direction");
                 if (directionAttr) {
@@ -221,8 +221,12 @@ export class VoiceGenerator {
                 }
 
                 currentArpeggio = new Arpeggio(this.currentVoiceEntry, arpeggioType);
+                currentArpeggio.XmlNumber = arpeggioNumber;
                 this.currentVoiceEntry.Arpeggio = currentArpeggio;
             }
+            // The Arpeggio stays attached to the voice entry that was read first (parentVoiceEntry); the other
+            //   participating voice entries are reached through its notes (note.ParentVoiceEntry). VexFlowMeasure
+            //   draws one stroke on that first entry, spanning all notes.
           }
           currentArpeggio.addNote(this.currentNote);
         }

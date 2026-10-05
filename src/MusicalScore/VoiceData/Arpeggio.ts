@@ -8,9 +8,13 @@ export class Arpeggio {
         this.notes = [];
     }
 
+    /** The voice entry the arpeggio was read with (first in XML order). Its notes may belong to other voice entries
+     *  of the same staff entry, or of another staff of the instrument (see VoiceGenerator: <arpeggiate number>). */
     public parentVoiceEntry: VoiceEntry;
     public notes: Note[];
     public type: ArpeggioType;
+    /** MusicXML <arpeggiate number="n">, undefined if not given. Only used while reading, to group the notes. */
+    public XmlNumber: string;
 
     public addNote(note: Note): void {
         this.notes.push(note);

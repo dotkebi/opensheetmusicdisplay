@@ -182,6 +182,7 @@ export abstract class SkyBottomLineBatchCalculatorBackend {
                 measure.format();
                 vsStaff.setWidth(oldMeasureWidth);
 
+                measure.drawingForSkyline = true;
                 try {
                     context.translate(u * elementWidth, v * elementHeight);
                     measure.draw(vexFlowContext);
@@ -189,6 +190,8 @@ export abstract class SkyBottomLineBatchCalculatorBackend {
                     // Vexflow errors can happen here, then our complete rendering loop would halt without catching errors.
                 } catch (ex) {
                     log.warn("SkyBottomLineBatchCalculatorBackend.calculateLines.draw", ex);
+                } finally {
+                    measure.drawingForSkyline = false;
                 }
             }
 
