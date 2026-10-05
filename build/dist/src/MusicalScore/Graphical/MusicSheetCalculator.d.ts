@@ -227,6 +227,10 @@ export declare abstract class MusicSheetCalculator {
      * @param staffIndex
      */
     protected calculateMoodAndUnknownExpression(multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
+    /** Words after the last note of the piece (e.g. "Fin" written after the final notes or with an offset to the end of
+     *  the last measure) have no following staff entry to interpolate to. Anchor them at the measure's last staff entry
+     *  instead of falling back to the start of the system. */
+    private trailingExpressionX;
     /** Calculates one words label of the given entries of multiExpression (see getEntryGroupsByPlacement()). */
     private calculateMoodAndUnknownExpressionEntries;
     /**
