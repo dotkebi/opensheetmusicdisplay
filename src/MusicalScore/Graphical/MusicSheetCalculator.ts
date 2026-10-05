@@ -1088,7 +1088,11 @@ export abstract class MusicSheetCalculator {
     }
 
     /** Where the dashed line after an expression's text ends on staffLine (its end, or the end of staffLine if it
-     *  continues on a later system), or undefined if the expression has no dashed line. */
+     *  continues on a later system), or undefined if the expression has no dashed line.
+     *  A stop at the end of the end measure (MusicXML: after its last note) is the time of the next measure's first note.
+     *  When the next measure starts a later system, that note's x belongs to the later system, which ended the line
+     *  near the start of staffLine and dropped it as too short (Myrthen 17 m29-31 "ritard. - - -", m31 the last
+     *  measure of its system): the line ends at the end of staffLine then. */
     private expressionDashesEndX(expression: AbstractExpression, staffLine: StaffLine, staffIndex: number): number {
         const endMeasure: SourceMeasure = expression?.DashesEndMeasure;
         if (!endMeasure || !expression.DashesEndTimestamp || staffLine.Measures.length === 0) {
@@ -1098,6 +1102,10 @@ export abstract class MusicSheetCalculator {
         const staffLineEndX: number = lastMeasure.PositionAndShape.RelativePosition.x + lastMeasure.PositionAndShape.Size.width;
         const endMeasureIndex: number = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures.indexOf(endMeasure);
         if (this.graphicalMusicSheet.MeasureList[endMeasureIndex]?.[staffIndex]?.ParentStaffLine !== staffLine) {
+            return staffLineEndX;
+        }
+        if (expression.DashesEndTimestamp.RealValue >= endMeasure.Duration.RealValue &&
+            this.graphicalMusicSheet.MeasureList[endMeasureIndex + 1]?.[staffIndex]?.ParentStaffLine !== staffLine) {
             return staffLineEndX;
         }
         const endPosition: PointF2D = this.getRelativePositionInStaffLineFromTimestamp(
@@ -1142,7 +1150,6 @@ export abstract class MusicSheetCalculator {
                     staffLines.push(parentStaffLine);
                 }
             }
-            const endTimestamp: Fraction = Fraction.plus(expression.DashesEndMeasure.AbsoluteTimestamp, expression.DashesEndTimestamp);
             const box: BoundingBox = pending.label.PositionAndShape;
             const textY: number = box.RelativePosition.y + (box.BorderTop + box.BorderBottom) / 2;
             const below: boolean = pending.placement === PlacementEnum.Below;
@@ -1161,11 +1168,7 @@ export abstract class MusicSheetCalculator {
                 }
                 let endX: number = lastMeasure.PositionAndShape.RelativePosition.x + lastMeasure.PositionAndShape.Size.width - distance;
                 if (i === staffLines.length - 1) {
-                    const endPosition: PointF2D = this.getRelativePositionInStaffLineFromTimestamp(
-                        endTimestamp, pending.staffIndex, line, line.isPartOfMultiStaffInstrument());
-                    if (endPosition.x > 0) {
-                        endX = Math.min(endX, endPosition.x - distance);
-                    }
+                    endX = Math.min(endX, this.expressionDashesEndX(expression, line, pending.staffIndex) - distance);
                 }
                 if (endX - startX < this.rules.ExpressionDashesDashLength) {
                     continue;
@@ -2764,16 +2767,9 @@ export abstract class MusicSheetCalculator {
                 }
                 graphLabel.Label.language = entry.Expression.language;
 
+                // isTempoMarkingAlreadyRendered above skips a marking that is already on this staff line. The graphical
+                //   expression's constructor adds it to its staff line's AbstractExpressions.
                 if (entry.Expression instanceof InstantaneousTempoExpression) {
-                    //already added?
-                    for (const expr of staffLine.AbstractExpressions) {
-                        if (expr instanceof GraphicalInstantaneousTempoExpression &&
-                            (expr.SourceExpression as AbstractTempoExpression).Label === entry.Expression.Label) {
-                            //already added
-                            continue;
-                        }
-                    }
-
                     const graphicalTempoExpr: GraphicalInstantaneousTempoExpression = new GraphicalInstantaneousTempoExpression(entry.Expression, graphLabel);
                     if (!graphicalTempoExpr.ParentStaffLine) {
                         log.warn("Adding staffline didn't work");
@@ -2782,16 +2778,11 @@ export abstract class MusicSheetCalculator {
                         // in their constructor
                     }
                 } else if (entry.Expression instanceof ContinuousTempoExpression) {
-                    for (const expr of staffLine.AbstractExpressions) {
-                        if (expr instanceof GraphicalInstantaneousTempoExpression &&
-                        (expr.SourceExpression as AbstractTempoExpression).Label === entry.Expression.Label) {
-                            continue; // already added
-                        }
-                    }
                     // TODO maybe create GraphicalContinuousTempoExpression class,
                     //   though the ContinuousTempoExpressions we have currently behave the same graphically (accelerando, ritardando, etc).
                     //   The behavior difference rather affects playback (e.g. ritardando, which gradually changes tempo)
-                    staffLine.AbstractExpressions.push(new GraphicalInstantaneousTempoExpression(entry.Expression, graphLabel));
+                    // Not pushed to staffLine.AbstractExpressions again: that registered it twice, drawing "riten." twice at the same spot.
+                    new GraphicalInstantaneousTempoExpression(entry.Expression, graphLabel);
                 }
                 this.addExpressionDashes(entry.Expression, graphLabel, entry.Expression.Placement, staffLine, verticalIndex, measureIndex);
             }
@@ -2822,25 +2813,53 @@ export abstract class MusicSheetCalculator {
     /** Whether two metronome marks print the same: note equations by their notes rather than their playback tempo,
      *  other marks by beat unit and bpm. */
 
+    /** Whether another tempo expression at the moment of multiTempoExpression is written for a staff above staffIndex
+     *  or without a placement (which could be any staff), see ownStaffIndexOfTempoExpression(). */
+    private static hasTempoExpressionAboveAt(multiTempoExpression: MultiTempoExpression, staffIndex: number): boolean {
+        for (const other of multiTempoExpression.SourceMeasureParent.TempoExpressions) {
+            if (other === multiTempoExpression || !other.Timestamp.Equals(multiTempoExpression.Timestamp)) {
+                continue;
+            }
+            for (const entry of other.EntriesList) {
+                const otherStaffIndex: number = entry.Expression?.placementStaffIndex;
+                if (otherStaffIndex === undefined || otherStaffIndex < staffIndex) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /** The MeasureList staff index of a tempo change (e.g. "rit.", "a tempo", "accel.") placed at a lower staff
      *  (<staff> 2 or higher) of its instrument, placed below its first staff (placement="below", as "rit." under
      *  a solo part), or placed above the first staff of an instrument below the top visible staff topStaffIndex (a
      *  piano's "ritard." in a song, printed above the piano and not above the voice). Undefined if the tempo change
      *  stays above the system: when its direction gives no placement (the default, below for multi-staff instruments,
      *  would often contradict the print), or when it is written above the top instrument anyway. Main tempo marks
-     *  ("Allegro") also stay above the system even when an exporter attaches them to a lower staff or instrument or
-     *  puts them below. */
+     *  ("Allegro", a whole word of the tempo lists, see InstantaneousTempoExpression.isWholeWordInstantaneousTempo)
+     *  stay above the system even when an exporter attaches them to a lower staff or puts them below, unless only an
+     *  instrument below the top one writes them above its first staff (a piano's "Adagio" in a song, with nothing at
+     *  that moment above the voice); a word that only contains one ("Gravement", "Etwas langsamer.") is placed like a
+     *  tempo change. osmd-dart places them by the same rule. */
     private static ownStaffIndexOfTempoExpression(multiTempoExpression: MultiTempoExpression, topStaffIndex: number): number {
         const expression: AbstractTempoExpression = multiTempoExpression.EntriesList[0]?.Expression;
         if (!expression) {
             return undefined;
         }
-        if (expression instanceof InstantaneousTempoExpression &&
-            (expression.TempoType === TempoType.inst || expression.TempoType === TempoType.metronomeMark)) {
-            return undefined;
-        }
         // undefined when the direction gives no placement (attribute or default-y)
         const ownStaffIndex: number = expression.placementStaffIndex;
+        if (expression instanceof InstantaneousTempoExpression && expression.TempoType === TempoType.metronomeMark) {
+            return undefined;
+        }
+        if (expression instanceof InstantaneousTempoExpression && expression.TempoType === TempoType.inst &&
+            InstantaneousTempoExpression.isWholeWordInstantaneousTempo(expression.Label)) {
+            if (ownStaffIndex !== undefined && ownStaffIndex > topStaffIndex && expression.StaffNumber === 1 &&
+                expression.Placement !== PlacementEnum.Below &&
+                !MusicSheetCalculator.hasTempoExpressionAboveAt(multiTempoExpression, ownStaffIndex)) {
+                return ownStaffIndex;
+            }
+            return undefined;
+        }
         if (ownStaffIndex === undefined) {
             return undefined;
         }

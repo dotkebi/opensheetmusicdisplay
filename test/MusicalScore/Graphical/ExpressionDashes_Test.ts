@@ -145,6 +145,47 @@ describe("Expression dashes", () => {
         expect(second.ExpressionDashes[0].End.x, "stops before the stop note").to.be.at.most(staffEntryX(second, 3, 1));
     });
 
+    /** "ritard." in measure 2 with dashes [dashes] up to a stop after the last note of measure 3, the last measure
+     *  of the first system (Myrthen 17, Venetianisches Lied I, m29-31: the stop's time is the first note of the next
+     *  system, whose x ended the line near the start of the system, so the line was dropped). */
+    function stopAtEndOfSystem(dashes: string): string {
+        const measure3: string = "<measure number=\"3\">" + filler +
+            "<direction placement=\"above\"><direction-type><dashes type=\"stop\" number=\"1\"/></direction-type></direction></measure>" +
+            "<measure number=\"4\"><print new-system=\"yes\"/>" + filler + "</measure>";
+        return singleStaffScore(dashes, "", measure3);
+    }
+
+    function expectDashesToTheEndOfTheFirstSystem(osmd: OpenSheetMusicDisplay): void {
+        expect(osmd.GraphicSheet.MusicPages[0].MusicSystems.length).to.equal(2);
+        const first: StaffLine = staffLines(osmd, 0)[0];
+        expect(first.ExpressionDashes.length, "drawn on the first system").to.equal(1);
+        expect(staffLines(osmd, 1)[0].ExpressionDashes.length, "nothing on the second system").to.equal(0);
+        const dashes: GraphicalExpressionDashes = first.ExpressionDashes[0];
+        expect(dashes.Start.x, "after the text").to.be.greaterThan(labelRight(tempoLabels(first)[0]));
+        expect(dashes.End.x, "past the last note of measure 3").to.be.greaterThan(staffEntryX(first, 3, 0));
+        const lastMeasure: GraphicalMeasure = first.Measures[first.Measures.length - 1];
+        expect(dashes.End.x, "to the end of the first system").to.be.greaterThan(
+            lastMeasure.PositionAndShape.RelativePosition.x + lastMeasure.PositionAndShape.Size.width - 2);
+    }
+
+    it("draws dashes up to a stop at the end of the last measure of a system", async () => {
+        const words: string = "<direction placement=\"above\"><direction-type><words>ritard.</words></direction-type>" +
+            "<direction-type><dashes type=\"start\" number=\"1\"/></direction-type></direction>";
+        const osmd: OpenSheetMusicDisplay = await render(stopAtEndOfSystem(words + filler),
+            (o) => { o.EngravingRules.NewSystemAtXMLNewSystemAttribute = true; });
+        expectDashesToTheEndOfTheFirstSystem(osmd);
+    });
+
+    it("draws dashes of a separate direction written after the notes with an offset back into the measure", async () => {
+        // Myrthen 17 Canto m29: <words>ritard.</words> before the notes, the dashes start after them with a negative offset
+        const words: string = "<direction placement=\"above\"><direction-type><words>ritard.</words></direction-type></direction>";
+        const start: string = "<direction placement=\"above\"><direction-type><dashes type=\"start\" number=\"1\"/></direction-type>" +
+            "<offset>-9</offset></direction>";
+        const osmd: OpenSheetMusicDisplay = await render(stopAtEndOfSystem(words + filler + start),
+            (o) => { o.EngravingRules.NewSystemAtXMLNewSystemAttribute = true; });
+        expectDashesToTheEndOfTheFirstSystem(osmd);
+    });
+
     it("draws no dashes for a start without a stop, or for dashes after a crescendo word", async () => {
         const open: string = "<direction placement=\"above\"><direction-type><words>rit.</words></direction-type>" +
             "<direction-type><dashes type=\"start\" number=\"1\"/></direction-type></direction>";

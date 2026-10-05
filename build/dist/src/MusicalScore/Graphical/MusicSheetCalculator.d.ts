@@ -246,7 +246,11 @@ export declare abstract class MusicSheetCalculator {
      */
     protected addExpressionDashes(expression: AbstractExpression, label: GraphicalLabel, placement: PlacementEnum, staffLine: StaffLine, staffIndex: number, measureIndex: number): void;
     /** Where the dashed line after an expression's text ends on staffLine (its end, or the end of staffLine if it
-     *  continues on a later system), or undefined if the expression has no dashed line. */
+     *  continues on a later system), or undefined if the expression has no dashed line.
+     *  A stop at the end of the end measure (MusicXML: after its last note) is the time of the next measure's first note.
+     *  When the next measure starts a later system, that note's x belongs to the later system, which ended the line
+     *  near the start of staffLine and dropped it as too short (Myrthen 17 m29-31 "ritard. - - -", m31 the last
+     *  measure of its system): the line ends at the end of staffLine then. */
     private expressionDashesEndX;
     /** Copies the sky- and bottomlines before expressions are placed (see calculateExpressionDashes()). */
     protected saveSkyBottomLinesBeforeExpressions(): void;
@@ -359,14 +363,20 @@ export declare abstract class MusicSheetCalculator {
     protected isTempoMarkingAlreadyRendered(staffLine: StaffLine, tempoExpression: AbstractTempoExpression, absoluteTimestamp: Fraction): boolean;
     /** Whether two metronome marks print the same: note equations by their notes rather than their playback tempo,
      *  other marks by beat unit and bpm. */
+    /** Whether another tempo expression at the moment of multiTempoExpression is written for a staff above staffIndex
+     *  or without a placement (which could be any staff), see ownStaffIndexOfTempoExpression(). */
+    private static hasTempoExpressionAboveAt;
     /** The MeasureList staff index of a tempo change (e.g. "rit.", "a tempo", "accel.") placed at a lower staff
      *  (<staff> 2 or higher) of its instrument, placed below its first staff (placement="below", as "rit." under
      *  a solo part), or placed above the first staff of an instrument below the top visible staff topStaffIndex (a
      *  piano's "ritard." in a song, printed above the piano and not above the voice). Undefined if the tempo change
      *  stays above the system: when its direction gives no placement (the default, below for multi-staff instruments,
      *  would often contradict the print), or when it is written above the top instrument anyway. Main tempo marks
-     *  ("Allegro") also stay above the system even when an exporter attaches them to a lower staff or instrument or
-     *  puts them below. */
+     *  ("Allegro", a whole word of the tempo lists, see InstantaneousTempoExpression.isWholeWordInstantaneousTempo)
+     *  stay above the system even when an exporter attaches them to a lower staff or puts them below, unless only an
+     *  instrument below the top one writes them above its first staff (a piano's "Adagio" in a song, with nothing at
+     *  that moment above the voice); a word that only contains one ("Gravement", "Etwas langsamer.") is placed like a
+     *  tempo change. osmd-dart places them by the same rule. */
     private static ownStaffIndexOfTempoExpression;
     /** Whether two metronome marks print the same: note equations by their notes rather than their playback tempo,
      *  other marks by beat unit and bpm. */
