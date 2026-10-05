@@ -66,8 +66,8 @@ export declare class InstrumentReader {
      */
     private attachGraceNotesAfterMainNote;
     private getStemDirectionAndColors;
-    /** Parse a color in XML format. Can be #ARGB or #RGB format, colors as byte hex values.
-     *  @return color in Vexflow format #[A]RGB or undefined for invalid xmlColorString
+    /** Parse a color in XML format: #RRGGBB or #AARRGGBB (alpha first).
+     *  @return the color in CSS format (#RRGGBB or #RRGGBBAA), as used by OSMD options and passed to SVG/canvas
      */
     parseXmlColor(xmlColorString: string): string;
     doCalculationsAfterDurationHasBeenSet(): void;
