@@ -959,6 +959,17 @@ export abstract class MusicSheetCalculator {
         }
     }
 
+    /** Words after the last note of the piece (e.g. "Fin" written after the final notes or with an offset to the end of
+     *  the last measure) have no following staff entry to interpolate to. Anchor them at the measure's last staff entry
+     *  instead of falling back to the start of the system. */
+    private trailingExpressionX(measure: GraphicalMeasure, timestamp: Fraction): number | undefined {
+        const last: GraphicalStaffEntry = measure.staffEntries[measure.staffEntries.length - 1];
+        if (!last || timestamp.lte(last.getAbsoluteTimestamp())) {
+            return undefined;
+        }
+        return measure.PositionAndShape.RelativePosition.x + last.PositionAndShape.RelativePosition.x;
+    }
+
     /** Calculates one words label of the given entries of multiExpression (see getEntryGroupsByPlacement()). */
     private calculateMoodAndUnknownExpressionEntries(multiExpression: MultiExpression, entries: MultiExpressionEntry[],
                                                      measureIndex: number, staffIndex: number): void {
@@ -993,7 +1004,8 @@ export abstract class MusicSheetCalculator {
         relative = this.getRelativePositionInStaffLineFromTimestamp(absoluteTimestamp, staffIndex, staffLine, staffLine?.isPartOfMultiStaffInstrument());
 
         if (Math.abs(relative.x - 0) < 0.0001) {
-            relative.x = measures[staffIndex].beginInstructionsWidth + this.rules.RhythmRightMargin;
+            relative.x = this.trailingExpressionX(measures[staffIndex], absoluteTimestamp) ??
+                measures[staffIndex].beginInstructionsWidth + this.rules.RhythmRightMargin;
         }
 
         const fontHeight: number = this.rules.UnknownTextHeight;

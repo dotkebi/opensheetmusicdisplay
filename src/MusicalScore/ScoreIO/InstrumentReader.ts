@@ -9,6 +9,7 @@ import {KeyInstruction} from "../VoiceData/Instructions/KeyInstruction";
 import {MeasureRepeatInstruction, MeasureRepeatType} from "../VoiceData/Instructions/MeasureRepeatInstruction";
 import {RhythmInstruction} from "../VoiceData/Instructions/RhythmInstruction";
 import {AbstractNotationInstruction} from "../VoiceData/Instructions/AbstractNotationInstruction";
+import {RepetitionSymbolPlacement} from "../VoiceData/Instructions/RepetitionInstruction";
 import {Fraction} from "../../Common/DataObjects/Fraction";
 import {musicXmlColorToCss} from "../../Common/DataObjects/XmlColor";
 import {IXmlElement} from "../../Common/FileIO/Xml";
@@ -485,13 +486,12 @@ export class InstrumentReader {
           let handeled: boolean = false;
           if (this.repetitionInstructionReader) {
             const directionStaff: Staff = this.instrument.Staves[this.readExpressionStaffNumber(xmlNode) - 1] ?? this.instrument.Staves[0];
+            const symbolPlacement: RepetitionSymbolPlacement =
+              directionStaff ? this.repetitionSymbolPlacement(xmlNode, directionStaff, currentFraction) : undefined;
             handeled = this.repetitionInstructionReader.handleRepetitionInstructionsFromWordsOrSymbols( directionTypeNode,
                                                                                                         relativePositionInMeasure,
                                                                                                         xmlNode.element("sound"),
-                                                                                                        directionStaff ? {
-                                                                                                          staff: directionStaff,
-                                                                                                          timestamp: currentFraction.clone()
-                                                                                                        } : undefined);
+                                                                                                        symbolPlacement);
           }
           if (!handeled) {
            let expressionReader: ExpressionReader = this.expressionReaders[0];
@@ -716,10 +716,24 @@ export class InstrumentReader {
     }
   }
 
+  /** Where the sign of a <direction> (a segno) is drawn: its staff, its time with its <offset> (a renvoi at the end of a
+   *  measure, Couperin, Concerts royaux I Gigue m31) and its placement. */
+  private repetitionSymbolPlacement(direction: IXmlElement, staff: Staff, currentFraction: Fraction): RepetitionSymbolPlacement {
+    const timestamp: Fraction = currentFraction.clone();
+    const offset: number = parseInt(direction.element("offset")?.value, 10);
+    if (offset && this.divisions > 0) {
+      timestamp.Add(new Fraction(offset, 4 * this.divisions));
+    }
+    return { staff, timestamp, below: direction.attribute("placement")?.value === "below" };
+  }
+
   /** Keep a key at the actual measure end for the following measure, including pickups. */
   public finalizeKeyInstructions(): void {
     // A forward can extend beyond the last note; the other parts can also extend this measure.
     const end: Fraction = Fraction.max(this.currentMeasure.Duration, this.measureEndFraction);
+    // The last measure has no following measure to carry a key into; keep it
+    // where the MusicXML puts it so it is drawn at the end of the measure.
+    const hasFollowingMeasure: boolean = this.currentXmlMeasureIndex < this.xmlMeasureList.length;
     for (let staffIndex: number = 0; staffIndex < this.instrument.Staves.length; staffIndex++) {
       const globalIndex: number = this.inSourceMeasureInstrumentIndex + staffIndex;
       let activeKey: number = this.currentMeasure.getKeyInstruction(globalIndex)?.Key ?? this.keyAtMeasureStart[staffIndex];
@@ -733,7 +747,7 @@ export class InstrumentReader {
             }
             activeKey = instruction.Key;
             this.activeKeys[staffIndex] = instruction;
-            if (entry.Timestamp.Equals(end)) {
+            if (hasFollowingMeasure && entry.Timestamp.Equals(end)) {
               this.pendingEndKeys[staffIndex] = instruction;
               entry.Instructions.splice(entry.Instructions.indexOf(instruction), 1);
             }

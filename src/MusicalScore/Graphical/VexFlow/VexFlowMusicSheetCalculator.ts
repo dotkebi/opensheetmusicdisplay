@@ -2739,6 +2739,13 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         this.calculateSegnoSigns(repetitionInstruction, measures)) {
       return;
     }
+    if (repetitionInstruction.type === RepetitionInstructionEnum.BackJumpLine) {
+      // the renvoi sign of the repeat (see RepetitionInstructionReader.repeatOfRenvoi()), if any
+      if (repetitionInstruction.SymbolPlacements.length > 0) {
+        this.calculateSegnoSigns(repetitionInstruction, measures);
+      }
+      return;
+    }
     // find first visible StaffLine
     let uppermostMeasure: VexFlowMeasure = undefined;
     for (let idx: number = 0, len: number = measures.length; idx < len; ++idx) {
@@ -2769,7 +2776,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (!measure) {
         continue;
       }
-      const repetition: VF.Repetition = measure.addWordRepetition(repetitionInstruction);
+      // (the renvoi sign of a backward repeat is drawn as a segno too)
+      const repetition: VF.Repetition = measure.addWordRepetition(repetitionInstruction.type === RepetitionInstructionEnum.Segno ?
+        repetitionInstruction : new RepetitionInstruction(repetitionInstruction.measureIndex, RepetitionInstructionEnum.Segno));
       if (!repetition) {
         continue;
       }
@@ -2777,22 +2786,47 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       // a sign above a lower staff is between two staves: it reserves its space, so that the staves are spaced for it
       //   (and the objects below the staff above, e.g. a "Petite reprise" text, are not drawn into it)
       (repetition as any).reservesSkyline = measure !== measures.find(m => m?.ParentStaffLine && m.ParentStaff.isVisible());
+      let anchorX: number = undefined;
+      let atMeasureEnd: boolean = false;
       if (placement.timestamp.RealValue > 0) {
         // the first staff entry at or after the timestamp (e.g. after a rest or a grace note), else the measure end
         const entry: GraphicalStaffEntry = measure.staffEntries.find(e => e.relInMeasureTimestamp?.gte(placement.timestamp));
-        const noteX: number = entry ? entry.PositionAndShape.RelativePosition.x : measure.PositionAndShape.Size.width;
-        // the glyph is centered on the notehead (about 1.2 units wide), the sign (v8c at 30pt) is about 1.6 units wide
-        const anchorX: number = noteX + 0.6 - 0.8;
+        atMeasureEnd = !entry;
+        // the glyph is centered on the notehead (about 1.2 units wide), the sign (v8c at 30pt) is about 1.6 units wide;
+        //   after the last note (a renvoi) it goes right before the end barline
+        anchorX = entry ? entry.PositionAndShape.RelativePosition.x + 0.6 - 0.8 : measure.PositionAndShape.Size.width - 1.6 - 0.4;
+      } else if (placement.below) {
+        anchorX = measure.beginInstructionsWidth + 0.4;
+      }
+      let belowBaseline: number = undefined;
+      if (placement.below) {
+        // under what is below the staff there, and the place reserved: the glyph reaches about 2.7 units above its
+        //   baseline and 0.6 below
+        const left: number = measure.PositionAndShape.RelativePosition.x + anchorX;
+        const calculator: SkyBottomLineCalculator = measure.ParentStaffLine.SkyBottomLineCalculator;
+        let bottom: number = calculator.getBottomLineMaxInRange(left, left + 1.6);
+        if (!isFinite(bottom) || bottom < 4) {
+          bottom = 4;
+        }
+        belowBaseline = bottom + 0.5 + 2.7;
+        calculator.updateBottomLineInRange(left, left + 1.6, belowBaseline + 0.6);
+      }
+      if (anchorX !== undefined) {
         (repetition as any).anchorX = anchorX;
         const anchorPx: number = anchorX * unitInPixels;
         (repetition as any).draw = function(stave: any): any {
           this.setRendered();
-          const y: number = stave.getYForTopText(stave.options.num_lines) + this.y_shift;
-          (VF.Glyph as any).renderGlyph(stave.context, stave.getX() + anchorPx, y + 25, 30, "v8c", true);
+          const x: number = atMeasureEnd ? stave.getNoteEndX() - 1.6 * unitInPixels - 2 : stave.getX() + anchorPx;
+          const y: number = belowBaseline !== undefined ?
+            stave.getYForLine(0) + belowBaseline * unitInPixels :
+            stave.getYForTopText(stave.options.num_lines) + this.y_shift + 25;
+          (VF.Glyph as any).renderGlyph(stave.context, x, y, 30, "v8c", true);
           return this;
         };
       }
-      this.placeWordRepetitionInSkyline(measure, repetition);
+      if (belowBaseline === undefined) {
+        this.placeWordRepetitionInSkyline(measure, repetition);
+      }
     }
     return drawn;
   }
@@ -3369,6 +3403,38 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (raise > 0) {
         ink.ornament.slurClearanceYShift = -raise * unitInPixels;
         staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
+      }
+    }
+    // The same below the notes (a lower voice, Couperin, Concerts royaux I Menuet en trio): an ornament a slur
+    //   below would touch goes under the slur.
+    for (const ink of measure.BelowOrnamentInk) {
+      if (ornamentsOfEntry.indexOf(ink.ornament) < 0) {
+        continue;
+      }
+      let drop: number = 0;
+      for (const slur of staffLine.GraphicalSlurs) {
+        if (slur.placement !== PlacementEnum.Below || !slur.bezierStartPt) {
+          continue;
+        }
+        let curveBottom: number = Number.NEGATIVE_INFINITY;
+        let touches: boolean = false;
+        for (let i: number = 0; i <= 128; i++) {
+          const point: PointF2D = slur.calculateCurvePointAtIndex(i / 128);
+          if (point.x < ink.left || point.x > ink.right) {
+            continue;
+          }
+          curveBottom = Math.max(curveBottom, point.y);
+          if (point.y > ink.top - over + 0.1 && point.y < ink.bottom + clearance - 0.1) {
+            touches = true;
+          }
+        }
+        if (touches) {
+          drop = Math.max(drop, curveBottom + over - ink.top);
+        }
+      }
+      if (drop > 0) {
+        ink.ornament.slurClearanceYShift = drop * unitInPixels;
+        staffLine.SkyBottomLineCalculator.updateBottomLineInRange(ink.left, ink.right, ink.bottom + drop);
       }
     }
   }

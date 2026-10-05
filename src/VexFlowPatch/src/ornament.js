@@ -92,8 +92,9 @@ export class Ornament extends Modifier {
     this.type = type;
     this.position = Modifier.Position.ABOVE;
     this.delayed = false;
-    // VexFlowPatch: OSMD's layout raises an ornament above a slur that would touch it
-    // (MusicSheetCalculator.calculateOrnaments), and reads where the ornament was drawn (layoutInk).
+    // VexFlowPatch: OSMD's layout raises an ornament above a slur that would touch it (an ornament below the
+    // note goes down under a slur below), see VexFlowMusicSheetCalculator.layoutOrnament(), and reads where the
+    // ornament was drawn (layoutInk).
     this.slurClearanceYShift = 0;
     this.layoutInk = undefined;
 
@@ -238,8 +239,8 @@ export class Ornament extends Modifier {
       this.accidentalUpper.render(ctx, glyphX, glyphY);
     }
 
-    // VexFlowPatch: record the ink of an ornament above (see slurClearanceYShift)
-    if (this.position === Modifier.Position.ABOVE) {
+    // VexFlowPatch: record the ink of an ornament above or below the note (see slurClearanceYShift)
+    if (this.position === Modifier.Position.ABOVE || this.position === Modifier.Position.BELOW) {
       const width = this.glyph.getMetrics().width;
       let top = glyphY - this.slurClearanceYShift;
       if (this.accidentalUpper) {

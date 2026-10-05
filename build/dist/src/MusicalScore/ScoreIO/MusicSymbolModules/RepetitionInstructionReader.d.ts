@@ -43,6 +43,12 @@ export declare class RepetitionInstructionReader {
     private static repetitionInstructionFromSound;
     /** Whether the instruction type is a D.C. or D.S. (with or without al Fine / al Coda). */
     private static isJumpFromWords;
+    /**
+     * The backward repeat a segno after another one is the renvoi of: written at the end of a measure that ends with
+     * that repeat (Couperin, Concerts royaux I Gigue m31, below the first ending, sending back to the segno of the
+     * Reprise). It is not a D.S. at the end of the measure before (that broke the repeat); the sign is drawn at its place.
+     */
+    private repeatOfRenvoi;
     removeRedundantInstructions(): void;
     private findInstructionInPreviousMeasure;
     private backwardSearchForPreviousIdenticalInstruction;

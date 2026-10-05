@@ -180,8 +180,10 @@ export class RepetitionInstruction /*implements IComparable*/ {
 export interface RepetitionSymbolPlacement {
     /** the staff of the <direction> */
     staff: Staff;
-    /** the timestamp in the measure */
+    /** the timestamp in the measure, with the direction's <offset> */
     timestamp: Fraction;
+    /** drawn below the staff (placement="below") */
+    below?: boolean;
 }
 
 export enum RepetitionInstructionEnum {

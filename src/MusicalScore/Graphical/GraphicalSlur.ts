@@ -436,6 +436,7 @@ export class GraphicalSlur extends GraphicalCurve {
             this.bezierStartControlPt = new PointF2D(startControlPoint.x, startControlPoint.y + startYOffset);
             this.bezierEndControlPt = new PointF2D(endControlPoint.x, endControlPoint.y + endYOffset);
             this.bezierEndPt = new PointF2D(endX, endY + endYOffset);
+            this.lowerUnderOrnaments(staffLine, startLowerRight.x, endLowerLeft.x);
 
             /* for DEBUG only */
             // this.intersection = transposeMatrix.vectorMultiplication(intersectionPoint);
@@ -620,6 +621,44 @@ export class GraphicalSlur extends GraphicalCurve {
     }
 
     /**
+     * [[liftOverOrnaments]] for a slur below the notes and the ornaments below them (a lower voice, Couperin,
+     * Concerts royaux I Menuet en trio): lower both control points until the curve passes under every ornament in
+     * the middle of the slur's bottom line range by ornamentClearance.
+     */
+    private lowerUnderOrnaments(staffLine: StaffLine, rangeStartX: number, rangeEndX: number): void {
+        let drop: number = 0;
+        for (const measure of staffLine.Measures) {
+            if (!(measure instanceof VexFlowMeasure)) {
+                continue;
+            }
+            for (const ink of measure.BelowOrnamentInk) {
+                const centre: number = (ink.left + ink.right) / 2;
+                if (centre < rangeStartX || centre > rangeEndX ||
+                    !GraphicalSlur.isInMiddleOfSlur(centre, this.bezierStartPt.x, this.bezierEndPt.x)) {
+                    continue;
+                }
+                for (let i: number = 1; i < 64; i++) {
+                    const t: number = i / 64;
+                    const point: PointF2D = this.calculateCurvePointAtIndex(t);
+                    if (point.x < ink.left || point.x > ink.right) {
+                        continue;
+                    }
+                    const above: number = ink.bottom + GraphicalSlur.ornamentClearance - point.y;
+                    if (above > 0) {
+                        drop = Math.max(drop, above / (3 * t * (1 - t)));
+                    }
+                }
+            }
+        }
+        const maxDrop: number = Math.min(1.5, 0.35 * (this.bezierEndPt.x - this.bezierStartPt.x));
+        if (drop === 0 || drop > maxDrop) {
+            return;
+        }
+        this.bezierStartControlPt = new PointF2D(this.bezierStartControlPt.x, this.bezierStartControlPt.y + drop);
+        this.bezierEndControlPt = new PointF2D(this.bezierEndControlPt.x, this.bezierEndControlPt.y + drop);
+    }
+
+    /**
      * A slur's sky/bottom line range runs from the right edge of its start staff entry to the left edge of its
      * end staff entry. A grace note shares its main note's staff entry, so a slur from a grace note before its
      * main note, or to a grace note after it, left out the main note under the slur and the ornament over it
@@ -641,21 +680,23 @@ export class GraphicalSlur extends GraphicalCurve {
         return fraction >= margin && fraction <= 1 - margin;
     }
 
-    /** Whether a note of the entry has an ornament above it near the middle of the slur from startX to endX. */
-    private static hasOrnamentInMiddle(entry: GraphicalStaffEntry, startX: number, endX: number): boolean {
+    /** Whether a note of the entry has an ornament on the slur's side near the middle of the slur from startX to endX. */
+    private hasOrnamentInMiddle(entry: GraphicalStaffEntry, startX: number, endX: number): boolean {
         const measure: VexFlowMeasure = entry.parentMeasure as VexFlowMeasure;
-        if (!measure?.OrnamentInk) {
+        const inks: { ornament: any, left: number, right: number }[] =
+            this.placement === PlacementEnum.Below ? measure?.BelowOrnamentInk : measure?.OrnamentInk;
+        if (!inks) {
             return false;
         }
         const notes: any[] = entry.graphicalVoiceEntries.map(gve => (gve as any).vfStaveNote).filter(note => note);
-        return measure.OrnamentInk.some(ink => notes.indexOf(ink.ornament.getNote()) >= 0 &&
+        return inks.some(ink => notes.indexOf(ink.ornament.getNote()) >= 0 &&
             GraphicalSlur.isInMiddleOfSlur((ink.left + ink.right) / 2, startX, endX, GraphicalSlur.graceRangeMiddle));
     }
 
     private graceRangeStartX(rangeStartX: number, startNote: GraphicalNote, startX: number, endX: number): number {
         const entry: GraphicalStaffEntry = this.staffEntries[0];
         if (this.graceStart || entry === this.staffEntries[this.staffEntries.length - 1] ||
-            !startNote?.sourceNote.ParentVoiceEntry?.IsGrace || !GraphicalSlur.hasOrnamentInMiddle(entry, startX, endX)) {
+            !startNote?.sourceNote.ParentVoiceEntry?.IsGrace || !this.hasOrnamentInMiddle(entry, startX, endX)) {
             return rangeStartX;
         }
         return Math.min(rangeStartX, startX + GraphicalSlur.graceRangeMargin);
@@ -664,7 +705,7 @@ export class GraphicalSlur extends GraphicalCurve {
     private graceRangeEndX(rangeEndX: number, endNote: GraphicalNote, startX: number, endX: number): number {
         const entry: GraphicalStaffEntry = this.staffEntries[this.staffEntries.length - 1];
         if (this.graceEnd || entry === this.staffEntries[0] ||
-            !endNote?.sourceNote.ParentVoiceEntry?.IsGrace || !GraphicalSlur.hasOrnamentInMiddle(entry, startX, endX)) {
+            !endNote?.sourceNote.ParentVoiceEntry?.IsGrace || !this.hasOrnamentInMiddle(entry, startX, endX)) {
             return rangeEndX;
         }
         return Math.max(rangeEndX, endX - GraphicalSlur.graceRangeMargin);

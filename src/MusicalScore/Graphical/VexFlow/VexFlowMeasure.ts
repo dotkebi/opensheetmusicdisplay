@@ -2100,14 +2100,14 @@ export class VexFlowMeasure extends GraphicalMeasure {
         this.connectors.push(connector);
     }
 
-    /** The ornaments drawn above this measure's notes (VexFlowPatch ornament.js records where). */
-    private get aboveOrnaments(): any[] {
+    /** The ornaments drawn above (or below) this measure's notes (VexFlowPatch ornament.js records where). */
+    private ornamentsAt(position: number): any[] {
         const ornaments: any[] = [];
         for (const staffEntry of this.staffEntries) {
             for (const gve of staffEntry.graphicalVoiceEntries) {
                 const note: any = (gve as VexFlowVoiceEntry).vfStaveNote;
                 for (const modifier of note?.getModifiers?.() ?? []) {
-                    if (modifier instanceof VF.Ornament && modifier.getPosition() === VF.Modifier.Position.ABOVE) {
+                    if (modifier instanceof VF.Ornament && modifier.getPosition() === position) {
                         ornaments.push(modifier);
                     }
                 }
@@ -2116,13 +2116,9 @@ export class VexFlowMeasure extends GraphicalMeasure {
         return ornaments;
     }
 
-    /** Where the ornaments above the notes were drawn, without a raise over a slur (see
-     *  MusicSheetCalculator.calculateOrnaments()), in units relative to the staff line (x) and its top line (y),
-     *  like its sky line.
-     */
-    public get OrnamentInk(): { ornament: any, left: number, right: number, top: number, bottom: number }[] {
+    private ornamentInkAt(position: number): { ornament: any, left: number, right: number, top: number, bottom: number }[] {
         const x: number = this.PositionAndShape.RelativePosition.x;
-        return this.aboveOrnaments.filter(ornament => ornament.layoutInk).map(ornament => ({
+        return this.ornamentsAt(position).filter(ornament => ornament.layoutInk).map(ornament => ({
             ornament,
             left: x + ornament.layoutInk.left / unitInPixels,
             right: x + ornament.layoutInk.right / unitInPixels,
@@ -2131,9 +2127,22 @@ export class VexFlowMeasure extends GraphicalMeasure {
         }));
     }
 
-    /** Forget the raises of the ornaments over slurs from a previous layout. */
+    /** Where the ornaments above the notes were drawn, without a raise over a slur (see
+     *  MusicSheetCalculator.calculateOrnaments()), in units relative to the staff line (x) and its top line (y),
+     *  like its sky line.
+     */
+    public get OrnamentInk(): { ornament: any, left: number, right: number, top: number, bottom: number }[] {
+        return this.ornamentInkAt(VF.Modifier.Position.ABOVE);
+    }
+
+    /** Where the ornaments below the notes were drawn, like [[OrnamentInk]], without a drop under a slur. */
+    public get BelowOrnamentInk(): { ornament: any, left: number, right: number, top: number, bottom: number }[] {
+        return this.ornamentInkAt(VF.Modifier.Position.BELOW);
+    }
+
+    /** Forget the raises (drops) of the ornaments over (under) slurs from a previous layout. */
     public resetOrnamentSlurClearance(): void {
-        for (const ornament of this.aboveOrnaments) {
+        for (const ornament of [...this.ornamentsAt(VF.Modifier.Position.ABOVE), ...this.ornamentsAt(VF.Modifier.Position.BELOW)]) {
             ornament.slurClearanceYShift = 0;
         }
     }

@@ -68,6 +68,12 @@ export declare class GraphicalSlur extends GraphicalCurve {
      */
     private liftOverOrnaments;
     /**
+     * [[liftOverOrnaments]] for a slur below the notes and the ornaments below them (a lower voice, Couperin,
+     * Concerts royaux I Menuet en trio): lower both control points until the curve passes under every ornament in
+     * the middle of the slur's bottom line range by ornamentClearance.
+     */
+    private lowerUnderOrnaments;
+    /**
      * A slur's sky/bottom line range runs from the right edge of its start staff entry to the left edge of its
      * end staff entry. A grace note shares its main note's staff entry, so a slur from a grace note before its
      * main note, or to a grace note after it, left out the main note under the slur and the ornament over it
@@ -84,8 +90,8 @@ export declare class GraphicalSlur extends GraphicalCurve {
      * arch, so such an ornament goes over the slur (VexFlowMusicSheetCalculator.layoutOrnament()).
      */
     private static isInMiddleOfSlur;
-    /** Whether a note of the entry has an ornament above it near the middle of the slur from startX to endX. */
-    private static hasOrnamentInMiddle;
+    /** Whether a note of the entry has an ornament on the slur's side near the middle of the slur from startX to endX. */
+    private hasOrnamentInMiddle;
     private graceRangeStartX;
     private graceRangeEndX;
     private calculateStartAndEnd;

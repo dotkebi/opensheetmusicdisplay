@@ -71,6 +71,9 @@ export declare class InstrumentReader {
      */
     parseXmlColor(xmlColorString: string): string;
     doCalculationsAfterDurationHasBeenSet(): void;
+    /** Where the sign of a <direction> (a segno) is drawn: its staff, its time with its <offset> (a renvoi at the end of a
+     *  measure, Couperin, Concerts royaux I Gigue m31) and its placement. */
+    private repetitionSymbolPlacement;
     /** Keep a key at the actual measure end for the following measure, including pickups. */
     finalizeKeyInstructions(): void;
     /**
