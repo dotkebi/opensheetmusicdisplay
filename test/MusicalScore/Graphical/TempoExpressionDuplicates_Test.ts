@@ -8,7 +8,9 @@ import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
  * Tempo markings are rendered on the first visible staff of the system, all of them: MusicXML from part-based
  * exporters (e.g. Finale) often repeats a tempo marking in every part, which stacked the same marking once per part
  * above the first system. Each distinct marking at a position is rendered once now, and continuous tempo markings
- * (rit., accel.) are registered once instead of twice (which drew them twice at the same spot).
+ * (rit., accel.) are registered once instead of twice (which drew them twice at the same spot). A tempo change written
+ * above a part below the top one is drawn above that part (see TempoWords_FontAndStaff_Test), so a "rit." in every
+ * part is drawn once per part, as a song's "ritard." above the voice and above the piano.
  */
 describe("Duplicate tempo expressions", () => {
     /** All rendered tempo labels of the sheet: [text, staff line] */
@@ -79,9 +81,12 @@ describe("Duplicate tempo expressions", () => {
         const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(container);
         await osmd.load(twoPartsWithRepeatedTempoMarkings());
         osmd.render();
-        const texts: string[] = renderedTempoLabels(osmd).map(([text]) => text).filter(text => text !== "");
+        const labels: [string, StaffLine][] = renderedTempoLabels(osmd).filter(([text]) => text !== "");
+        const texts: string[] = labels.map(([text]) => text);
         expect(texts.filter(text => text === "Allegro").length, "one 'Allegro'").to.equal(1);
-        expect(texts.filter(text => text === "rit.").length, "one 'rit.' (in measure 2, a different position)").to.equal(1);
+        const rits: [string, StaffLine][] = labels.filter(([text]) => text === "rit.");
+        expect(rits.map(([, staffLine]) => staffLine.ParentStaff.ParentInstrument.Name),
+               "one 'rit.' (in measure 2, a different position) above each part").to.deep.equal(["Flute", "Oboe"]);
         expect(container.querySelectorAll(".vf-stavetempo").length, "one printed metronome mark").to.equal(1);
         // public API since 1.8.2: VexFlowMeasure.hasMetronomeMark marks the staff measure that draws the mark
         const measure1Staves: any[] = osmd.GraphicSheet.MeasureList[0];

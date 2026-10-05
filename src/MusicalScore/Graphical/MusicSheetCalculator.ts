@@ -2645,8 +2645,9 @@ export abstract class MusicSheetCalculator {
                 }
             }
             // Tempo words written for a lower staff of an instrument (e.g. "rit." with <staff>2</staff> in the left hand
-            // of a piano part) are drawn at that staff like other words, not above the whole system.
-            const ownStaffIndex: number = MusicSheetCalculator.lowerStaffIndexOfTempoExpression(multiTempoExpression);
+            // of a piano part) or for an instrument below the top one (the piano's "ritard." under a voice) are drawn at
+            // that staff like other words, not above the whole system.
+            const ownStaffIndex: number = MusicSheetCalculator.ownStaffIndexOfTempoExpression(multiTempoExpression, verticalIndex);
             const ownStaffMeasure: GraphicalMeasure = ownStaffIndex !== undefined ? measures[ownStaffIndex] : undefined;
             const onOwnStaff: boolean = ownStaffMeasure?.ParentStaffLine?.Measures.length > 0 &&
                 ownStaffMeasure.ParentStaff.isVisible();
@@ -2779,12 +2780,14 @@ export abstract class MusicSheetCalculator {
      *  other marks by beat unit and bpm. */
 
     /** The MeasureList staff index of a tempo change (e.g. "rit.", "a tempo", "accel.") placed at a lower staff
-     *  (<staff> 2 or higher) of its instrument, or placed below its first staff (placement="below", as "rit." under
-     *  a solo part), or undefined if the tempo change stays above the system: when its direction gives no placement
-     *  (the default, below for multi-staff instruments, would often contradict the print), or when it is written
-     *  above the first staff anyway. Main tempo marks ("Allegro") also stay above the system even when an exporter
-     *  attaches them to a lower staff or puts them below. */
-    private static lowerStaffIndexOfTempoExpression(multiTempoExpression: MultiTempoExpression): number {
+     *  (<staff> 2 or higher) of its instrument, placed below its first staff (placement="below", as "rit." under
+     *  a solo part), or placed above the first staff of an instrument below the top visible staff topStaffIndex (a
+     *  piano's "ritard." in a song, printed above the piano and not above the voice). Undefined if the tempo change
+     *  stays above the system: when its direction gives no placement (the default, below for multi-staff instruments,
+     *  would often contradict the print), or when it is written above the top instrument anyway. Main tempo marks
+     *  ("Allegro") also stay above the system even when an exporter attaches them to a lower staff or instrument or
+     *  puts them below. */
+    private static ownStaffIndexOfTempoExpression(multiTempoExpression: MultiTempoExpression, topStaffIndex: number): number {
         const expression: AbstractTempoExpression = multiTempoExpression.EntriesList[0]?.Expression;
         if (!expression) {
             return undefined;
@@ -2798,7 +2801,7 @@ export abstract class MusicSheetCalculator {
         if (ownStaffIndex === undefined) {
             return undefined;
         }
-        if (expression.StaffNumber > 1 || expression.Placement === PlacementEnum.Below) {
+        if (expression.StaffNumber > 1 || expression.Placement === PlacementEnum.Below || ownStaffIndex > topStaffIndex) {
             return ownStaffIndex;
         }
         return undefined;
