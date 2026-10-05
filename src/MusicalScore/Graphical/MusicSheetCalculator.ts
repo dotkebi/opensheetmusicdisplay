@@ -1088,7 +1088,11 @@ export abstract class MusicSheetCalculator {
     }
 
     /** Where the dashed line after an expression's text ends on staffLine (its end, or the end of staffLine if it
-     *  continues on a later system), or undefined if the expression has no dashed line. */
+     *  continues on a later system), or undefined if the expression has no dashed line.
+     *  A stop at the end of the end measure (MusicXML: after its last note) is the time of the next measure's first note.
+     *  When the next measure starts a later system, that note's x belongs to the later system, which ended the line
+     *  near the start of staffLine and dropped it as too short (Myrthen 17 m29-31 "ritard. - - -", m31 the last
+     *  measure of its system): the line ends at the end of staffLine then. */
     private expressionDashesEndX(expression: AbstractExpression, staffLine: StaffLine, staffIndex: number): number {
         const endMeasure: SourceMeasure = expression?.DashesEndMeasure;
         if (!endMeasure || !expression.DashesEndTimestamp || staffLine.Measures.length === 0) {
@@ -1098,6 +1102,10 @@ export abstract class MusicSheetCalculator {
         const staffLineEndX: number = lastMeasure.PositionAndShape.RelativePosition.x + lastMeasure.PositionAndShape.Size.width;
         const endMeasureIndex: number = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures.indexOf(endMeasure);
         if (this.graphicalMusicSheet.MeasureList[endMeasureIndex]?.[staffIndex]?.ParentStaffLine !== staffLine) {
+            return staffLineEndX;
+        }
+        if (expression.DashesEndTimestamp.RealValue >= endMeasure.Duration.RealValue &&
+            this.graphicalMusicSheet.MeasureList[endMeasureIndex + 1]?.[staffIndex]?.ParentStaffLine !== staffLine) {
             return staffLineEndX;
         }
         const endPosition: PointF2D = this.getRelativePositionInStaffLineFromTimestamp(
@@ -1142,7 +1150,6 @@ export abstract class MusicSheetCalculator {
                     staffLines.push(parentStaffLine);
                 }
             }
-            const endTimestamp: Fraction = Fraction.plus(expression.DashesEndMeasure.AbsoluteTimestamp, expression.DashesEndTimestamp);
             const box: BoundingBox = pending.label.PositionAndShape;
             const textY: number = box.RelativePosition.y + (box.BorderTop + box.BorderBottom) / 2;
             const below: boolean = pending.placement === PlacementEnum.Below;
@@ -1161,11 +1168,7 @@ export abstract class MusicSheetCalculator {
                 }
                 let endX: number = lastMeasure.PositionAndShape.RelativePosition.x + lastMeasure.PositionAndShape.Size.width - distance;
                 if (i === staffLines.length - 1) {
-                    const endPosition: PointF2D = this.getRelativePositionInStaffLineFromTimestamp(
-                        endTimestamp, pending.staffIndex, line, line.isPartOfMultiStaffInstrument());
-                    if (endPosition.x > 0) {
-                        endX = Math.min(endX, endPosition.x - distance);
-                    }
+                    endX = Math.min(endX, this.expressionDashesEndX(expression, line, pending.staffIndex) - distance);
                 }
                 if (endX - startX < this.rules.ExpressionDashesDashLength) {
                     continue;
