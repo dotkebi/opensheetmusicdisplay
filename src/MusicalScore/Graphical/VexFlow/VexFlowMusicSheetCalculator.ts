@@ -3371,6 +3371,38 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
       }
     }
+    // The same below the notes (a lower voice, Couperin, Concerts royaux I Menuet en trio): an ornament a slur
+    //   below would touch goes under the slur.
+    for (const ink of measure.BelowOrnamentInk) {
+      if (ornamentsOfEntry.indexOf(ink.ornament) < 0) {
+        continue;
+      }
+      let drop: number = 0;
+      for (const slur of staffLine.GraphicalSlurs) {
+        if (slur.placement !== PlacementEnum.Below || !slur.bezierStartPt) {
+          continue;
+        }
+        let curveBottom: number = Number.NEGATIVE_INFINITY;
+        let touches: boolean = false;
+        for (let i: number = 0; i <= 128; i++) {
+          const point: PointF2D = slur.calculateCurvePointAtIndex(i / 128);
+          if (point.x < ink.left || point.x > ink.right) {
+            continue;
+          }
+          curveBottom = Math.max(curveBottom, point.y);
+          if (point.y > ink.top - over + 0.1 && point.y < ink.bottom + clearance - 0.1) {
+            touches = true;
+          }
+        }
+        if (touches) {
+          drop = Math.max(drop, curveBottom + over - ink.top);
+        }
+      }
+      if (drop > 0) {
+        ink.ornament.slurClearanceYShift = drop * unitInPixels;
+        staffLine.SkyBottomLineCalculator.updateBottomLineInRange(ink.left, ink.right, ink.bottom + drop);
+      }
+    }
   }
 
   /**
