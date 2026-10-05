@@ -15,7 +15,10 @@ import { Note } from "../../../src/MusicalScore/VoiceData/Note";
  * in the other staves of the instrument.
  *
  * Fixture (synthetic, piano, 4/4), test_tie_across_staves.musicxml: m1->m2 same voice staff 1->2 (B3);
- * m3->m4 voice 2 staff 1 -> voice 5 staff 2 (C4); m5->m6 staff 1->2 across a forced system break (E4).
+ * m3->m4 voice 2 staff 1 -> voice 5 staff 2 (C4); m5->m6 staff 1->2 across a forced system break (E4);
+ * m8->m9->m10 two voices of staff 1 tie the same B3 across the barlines (voice 2 m8->m9, voice 1 m9->m10):
+ * voices are read one after the other, so voice 1's start late in m9 is read before voice 2's stop at m9's start;
+ * the open-tie bookkeeping must keep both ties apart (the Dart port is aligned to this behaviour).
  */
 describe("Tie across staves", () => {
     let container: HTMLElement;
@@ -93,6 +96,17 @@ describe("Tie across staves", () => {
         expect(outgoing.stubs.length, "stub from E4 to the system end").to.equal(1);
         expect(incoming.full.length).to.equal(0);
         expect(incoming.stubs.length, "stub into the E4 of staff 2").to.equal(1);
+    });
+
+    it("(e) two voices tying the same pitch across barlines keep their own ties", () => {
+        const v2Start: Note = note(7, 0, 2);
+        const v2Stop: Note = note(8, 0, 2);
+        const v1Start: Note = note(8, 0, 1);
+        const v1Stop: Note = note(9, 0, 1);
+        expect(v2Start.NoteTie?.Notes).to.deep.equal([v2Start, v2Stop]);
+        expect(v1Start.NoteTie?.Notes).to.deep.equal([v1Start, v1Stop]);
+        expect(tiesIn(8).full.length).to.equal(1);
+        expect(tiesIn(9).full.length).to.equal(1);
     });
 
     it("open ties are not left behind in any staff", () => {
