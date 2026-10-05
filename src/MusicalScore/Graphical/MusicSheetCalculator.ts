@@ -2764,16 +2764,9 @@ export abstract class MusicSheetCalculator {
                 }
                 graphLabel.Label.language = entry.Expression.language;
 
+                // isTempoMarkingAlreadyRendered above skips a marking that is already on this staff line. The graphical
+                //   expression's constructor adds it to its staff line's AbstractExpressions.
                 if (entry.Expression instanceof InstantaneousTempoExpression) {
-                    //already added?
-                    for (const expr of staffLine.AbstractExpressions) {
-                        if (expr instanceof GraphicalInstantaneousTempoExpression &&
-                            (expr.SourceExpression as AbstractTempoExpression).Label === entry.Expression.Label) {
-                            //already added
-                            continue;
-                        }
-                    }
-
                     const graphicalTempoExpr: GraphicalInstantaneousTempoExpression = new GraphicalInstantaneousTempoExpression(entry.Expression, graphLabel);
                     if (!graphicalTempoExpr.ParentStaffLine) {
                         log.warn("Adding staffline didn't work");
@@ -2782,16 +2775,11 @@ export abstract class MusicSheetCalculator {
                         // in their constructor
                     }
                 } else if (entry.Expression instanceof ContinuousTempoExpression) {
-                    for (const expr of staffLine.AbstractExpressions) {
-                        if (expr instanceof GraphicalInstantaneousTempoExpression &&
-                        (expr.SourceExpression as AbstractTempoExpression).Label === entry.Expression.Label) {
-                            continue; // already added
-                        }
-                    }
                     // TODO maybe create GraphicalContinuousTempoExpression class,
                     //   though the ContinuousTempoExpressions we have currently behave the same graphically (accelerando, ritardando, etc).
                     //   The behavior difference rather affects playback (e.g. ritardando, which gradually changes tempo)
-                    staffLine.AbstractExpressions.push(new GraphicalInstantaneousTempoExpression(entry.Expression, graphLabel));
+                    // Not pushed to staffLine.AbstractExpressions again: that registered it twice, drawing "riten." twice at the same spot.
+                    new GraphicalInstantaneousTempoExpression(entry.Expression, graphLabel);
                 }
                 this.addExpressionDashes(entry.Expression, graphLabel, entry.Expression.Placement, staffLine, verticalIndex, measureIndex);
             }

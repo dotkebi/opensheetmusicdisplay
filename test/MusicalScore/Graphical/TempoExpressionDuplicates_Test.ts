@@ -8,7 +8,7 @@ import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
  * Tempo markings are rendered on the first visible staff of the system, all of them: MusicXML from part-based
  * exporters (e.g. Finale) often repeats a tempo marking in every part, which stacked the same marking once per part
  * above the first system. Each distinct marking at a position is rendered once now, and continuous tempo markings
- * (rit., accel.) are registered once instead of twice (which drew them twice at the same spot). A tempo change written
+ * (riten., accel.) are registered once instead of twice (which drew them twice at the same spot). A tempo change written
  * above a part below the top one is drawn above that part (see TempoWords_FontAndStaff_Test), so a "rit." in every
  * part is drawn once per part, as a song's "ritard." above the voice and above the piano.
  */
@@ -91,6 +91,46 @@ describe("Duplicate tempo expressions", () => {
         // public API since 1.8.2: VexFlowMeasure.hasMetronomeMark marks the staff measure that draws the mark
         const measure1Staves: any[] = osmd.GraphicSheet.MeasureList[0];
         expect(measure1Staves.filter(measure => measure.hasMetronomeMark).length, "metronome marks in measure 1").to.equal(1);
+    });
+
+    /** "riten." is a ContinuousTempoExpression (unlike "rit.", an instantaneous tempo change): in measure 2 of the only
+     *  part, or of both parts. */
+    function continuousTempoChange(parts: number): string {
+        const part: string = `
+        <measure number="1">
+          <attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
+            <clef><sign>G</sign><line>2</line></clef></attributes>
+          <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+        </measure>
+        <measure number="2">
+          <direction placement="above"><direction-type><words font-style="italic">riten.</words></direction-type></direction>
+          <note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+        </measure>`;
+        const ids: number[] = Array.from({ length: parts }, (_, index) => index + 1);
+        return `<?xml version="1.0" encoding="UTF-8"?>
+      <score-partwise version="3.0">
+        <part-list>${ids.map(id => `<score-part id="P${id}"><part-name>Part ${id}</part-name></score-part>`).join("")}</part-list>
+        ${ids.map(id => `<part id="P${id}">${part}</part>`).join("")}
+      </score-partwise>`;
+    }
+
+    it("registers a continuous tempo marking (riten.) once on its staff line (Der Nussbaum m31: drawn twice at the same spot)", async () => {
+        const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(container);
+        await osmd.load(continuousTempoChange(1));
+        osmd.render();
+        const ritens: [string, StaffLine][] = renderedTempoLabels(osmd).filter(([text]) => text === "riten.");
+        expect(ritens.length, "one 'riten.' in AbstractExpressions").to.equal(1);
+        const printed: number = Array.from(container.querySelectorAll("text")).filter(text => text.textContent === "riten.").length;
+        expect(printed, "one printed 'riten.'").to.equal(1);
+    });
+
+    it("registers a continuous tempo marking written in two parts once per part", async () => {
+        const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(container);
+        await osmd.load(continuousTempoChange(2));
+        osmd.render();
+        const ritens: [string, StaffLine][] = renderedTempoLabels(osmd).filter(([text]) => text === "riten.");
+        expect(ritens.map(([, staffLine]) => staffLine.ParentStaff.ParentInstrument.Name),
+               "one 'riten.' above each part").to.deep.equal(["Part 1", "Part 2"]);
     });
 
     it("still renders the marking when the part that carried the first copy is hidden", async () => {
