@@ -17,7 +17,9 @@ export declare function musicXmlColorToCss(color: string, alphaLast?: boolean): 
  * MuseScore 3 exports `QColor::name()`, i.e. `#RRGGBB` only, so it is not affected.
  * Example: OSMD's test_note_notehead_color_transparent.musicxml (MuseScore 4.5.2), `color="#0102B300"` = transparent #0102B3.
  *
- * Only `MuseScore 4.x` is matched. MuseScore main still writes alpha last, so check again when MuseScore 5 appears.
+ * Only MuseScore 4.x is matched: `<software>` is "MuseScore 4.x" up to 4.4 and "MuseScore Studio 4.x" from 4.5/4.6 on
+ * (v4.6.0 exportmusicxml.cpp: "MuseScore Studio " + version). MuseScore main still writes alpha last,
+ * so check again when MuseScore 5 appears.
  *
  * @param software the `<identification><encoding><software>` values of the file
  */

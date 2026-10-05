@@ -75,6 +75,9 @@ describe("MusicXML color attributes", () => {
         expect(musicXmlColorsAreAlphaLast(["MuseScore 4.5.2"])).to.equal(true);
         expect(musicXmlColorsAreAlphaLast(["MuseScore 4.0"])).to.equal(true);
         expect(musicXmlColorsAreAlphaLast(["Dolet 8", "MuseScore 4.6.0"])).to.equal(true);
+        expect(musicXmlColorsAreAlphaLast(["MuseScore Studio 4.6.5"]), "4.6+ writes MuseScore Studio").to.equal(true);
+        expect(musicXmlColorsAreAlphaLast(["MuseScore Studio 4.7.3"])).to.equal(true);
+        expect(musicXmlColorsAreAlphaLast(["MuseScore Studio 5.0"])).to.equal(false);
         expect(musicXmlColorsAreAlphaLast(["MuseScore 3.6.2"])).to.equal(false);
         expect(musicXmlColorsAreAlphaLast(["MuseScore 40"])).to.equal(false);
         expect(musicXmlColorsAreAlphaLast(["Finale v27.4 for Mac", "Dolet 8.4"])).to.equal(false);
