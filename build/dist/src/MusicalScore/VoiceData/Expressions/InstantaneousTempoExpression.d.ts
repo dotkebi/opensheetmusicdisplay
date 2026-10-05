@@ -89,6 +89,12 @@ export declare class InstantaneousTempoExpression extends AbstractTempoExpressio
      *  (the reader keeps one tuplet per side). Undefined for an empty side or an unknown note type.
      */
     private static getMetronomeNoteGroupLength;
+    /** Whether inputString names an instantaneous tempo with a whole word (or words) of the tempo lists, matched
+     *  case-sensitively and not inside a longer word, e.g. "Allegro con brio" or "Adagio.". isInputStringInstantaneousTempo
+     *  also reads "Etwas langsamer." (" langsam") or "Broadly" (any case) as a tempo, which sets the playback tempo, but
+     *  they are no main tempo marks for placement: see MusicSheetCalculator.ownStaffIndexOfTempoExpression.
+     *  Same rule as osmd-dart's InstantaneousTempoExpression.isWholeWordInstantaneousTempo. */
+    static isWholeWordInstantaneousTempo(inputString: string): boolean;
     static isInputStringInstantaneousTempo(inputString: string): boolean;
     get Label(): string;
     set Label(value: string);
