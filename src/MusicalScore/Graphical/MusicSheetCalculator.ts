@@ -3931,7 +3931,7 @@ export abstract class MusicSheetCalculator {
                 }
                 // SourceStaffEntry has inStaff ClefInstruction -> create graphical clef
                 for (const instruction of sourceStaffEntry.Instructions) {
-                    if (instruction instanceof ClefInstruction) {
+                    if (instruction instanceof ClefInstruction && instruction.PrintObject) {
                         MusicSheetCalculator.symbolFactory.createInStaffClef(
                             graphicalStaffEntry, instruction as ClefInstruction
                         );
