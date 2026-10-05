@@ -1,5 +1,6 @@
 ﻿import {MusicSheet} from "../../MusicSheet";
 import {Fraction} from "../../../Common/DataObjects/Fraction";
+import {musicXmlColorToCss} from "../../../Common/DataObjects/XmlColor";
 import {MultiTempoExpression} from "../../VoiceData/Expressions/MultiTempoExpression";
 import {ContDynamicEnum, ContinuousDynamicExpression} from "../../VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
 import {ContinuousTempoExpression} from "../../VoiceData/Expressions/ContinuousExpressions/ContinuousTempoExpression";
@@ -849,7 +850,7 @@ export class ExpressionReader {
         }
         const colorAttr: Attr = wordsNode.attribute("color");
         if (colorAttr) {
-            fontColor = colorAttr.value;
+            fontColor = musicXmlColorToCss(colorAttr.value);
         }
         const tempoFontStyle: FontStyles = ExpressionReader.readWordsFontStyle(wordsNode);
         const language: string = wordsNode.attribute("xml:lang")?.value;

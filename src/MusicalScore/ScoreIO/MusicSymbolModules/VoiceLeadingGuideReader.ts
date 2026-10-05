@@ -1,4 +1,5 @@
 import log from "loglevel";
+import { musicXmlColorToCss } from "../../../Common/DataObjects/XmlColor";
 import { IXmlElement } from "../../../Common/FileIO/Xml";
 import { MusicSheet } from "../../MusicSheet";
 import { Note } from "../../VoiceData/Note";
@@ -104,7 +105,7 @@ export class VoiceLeadingGuideReader {
             }
         }
         return {
-            color: node.attribute("color")?.value,
+            color: musicXmlColorToCss(node.attribute("color")?.value),
             lineType: lineType,
             note: note,
             printObject: node.attribute("print-object")?.value !== "no",

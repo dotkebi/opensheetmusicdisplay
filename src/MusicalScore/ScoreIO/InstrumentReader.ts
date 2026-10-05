@@ -10,6 +10,7 @@ import {MeasureRepeatInstruction, MeasureRepeatType} from "../VoiceData/Instruct
 import {RhythmInstruction} from "../VoiceData/Instructions/RhythmInstruction";
 import {AbstractNotationInstruction} from "../VoiceData/Instructions/AbstractNotationInstruction";
 import {Fraction} from "../../Common/DataObjects/Fraction";
+import {musicXmlColorToCss} from "../../Common/DataObjects/XmlColor";
 import {IXmlElement} from "../../Common/FileIO/Xml";
 import {ITextTranslation} from "../Interfaces/ITextTranslation";
 import {MusicSheetReadingException} from "../Exceptions";
@@ -700,23 +701,11 @@ export class InstrumentReader {
     return [stemDirectionXml, stemColorXml, noteheadColorXml];
   }
 
-  /** Parse a color in XML format. Can be #ARGB or #RGB format, colors as byte hex values.
-   *  @return color in Vexflow format #[A]RGB or undefined for invalid xmlColorString
+  /** Parse a color in XML format: #RRGGBB or #AARRGGBB (alpha first).
+   *  @return the color in CSS format (#RRGGBB or #RRGGBBAA), as used by OSMD options and passed to SVG/canvas
    */
   public parseXmlColor(xmlColorString: string): string {
-    return xmlColorString;
-    // previous implementation:
-    // if (!xmlColorString) {
-    //   return undefined;
-    // }
-
-    // if (xmlColorString.length === 7) { // #RGB
-    //   return xmlColorString;
-    // } else if (xmlColorString.length === 9) { // #ARGB
-    //   return "#" + xmlColorString.substr(3); // cut away alpha channel // why?
-    // } else {
-    //   return undefined; // invalid xml color
-    // }
+    return musicXmlColorToCss(xmlColorString);
   }
 
   public doCalculationsAfterDurationHasBeenSet(): void {
