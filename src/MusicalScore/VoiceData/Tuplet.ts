@@ -27,6 +27,10 @@ export class Tuplet {
     public BracketedXmlValue: boolean;
     /** Whether <tuplet show-number="none"> was given in the XML, indicating the tuplet number should not be rendered. */
     public ShowNumberNoneGivenInXml: boolean;
+    /** Whether <tuplet show-number="actual"> (or "both") was given explicitly in the XML: the engraver asked for the
+     * number on this group, so the consecutive-repetition rule (EngravingRules.TupletNumberLimitConsecutiveRepetitions)
+     * must not hide it (EngravingRules.TupletNumberUseShowActualXMLValue). Counterpart of ShowNumberNoneGivenInXml. */
+    public ShowNumberActualGivenInXml: boolean = false;
 
     /** Determines whether the tuplet should be bracketed (arguments are EngravingRules). */
     public shouldBeBracketed(useXmlValue: boolean,

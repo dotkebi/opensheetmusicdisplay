@@ -2012,10 +2012,14 @@ export abstract class MusicSheetCalculator {
                             log.warn("note missing TypeLength");
                             typeLength = firstNote.NoteTuplet.Fractions[0];
                         }
+                        // An explicit show-number="actual"/"both" in the XML asks for the number on this group:
+                        // it is exempt from being hidden, but still counts towards the consecutive repetitions of its neighbours.
+                        const keepNumber: boolean = firstNote.NoteTuplet.ShowNumberActualGivenInXml &&
+                            this.rules.TupletNumberUseShowActualXMLValue;
                         if (firstNote.NoteTuplet !== currentTuplet) {
                             if (disabledPerVoice[voice.VoiceId][firstNote.NoteTuplet.TupletLabelNumber]) {
                                 if (disabledPerVoice[voice.VoiceId][firstNote.NoteTuplet.TupletLabelNumber][typeLength.RealValue]) {
-                                    firstNote.NoteTuplet.RenderTupletNumber = false;
+                                    firstNote.NoteTuplet.RenderTupletNumber = keepNumber;
                                     skipTuplet = firstNote.NoteTuplet;
                                     continue;
                                 }
@@ -2034,7 +2038,7 @@ export abstract class MusicSheetCalculator {
                             firstNote.NoteTuplet.RenderTupletNumber = true; // need to re-activate after re-render when it was set to false
                         }
                         if (consecutiveTupletCount > this.rules.TupletNumberMaxConsecutiveRepetitions) {
-                            firstNote.NoteTuplet.RenderTupletNumber = false;
+                            firstNote.NoteTuplet.RenderTupletNumber = keepNumber;
                             if (this.rules.TupletNumberAlwaysDisableAfterFirstMax) {
                                 if (!disabledPerVoice[voice.VoiceId][currentTupletNumber]) {
                                     disabledPerVoice[voice.VoiceId][currentTupletNumber] = {};

@@ -807,6 +807,7 @@ export class VoiceGenerator {
           }
 
           const showNumberNoneGiven: boolean = this.readShowNumberNoneGiven(tupletNode);
+          const showNumberActualGiven: boolean = this.readShowNumberActualGiven(tupletNode);
 
           const type: Attr = tupletNode.attribute("type");
           if (type && type.value === "start") {
@@ -835,6 +836,7 @@ export class VoiceGenerator {
             tuplet.Ratioed = ratioed;
             tuplet.BracketedXmlValue = bracketedXmlValue;
             tuplet.ShowNumberNoneGivenInXml = showNumberNoneGiven;
+            tuplet.ShowNumberActualGivenInXml = showNumberActualGiven;
             //Default to above
             tuplet.tupletLabelNumberPlacement = PlacementEnum.Above;
             //If we ever encounter a placement attribute for this tuplet, should override.
@@ -923,6 +925,7 @@ export class VoiceGenerator {
         }
         const noTupletNumbering: boolean = isNaN(tupletnumber);
         const showNumberNoneGiven: boolean = this.readShowNumberNoneGiven(n);
+        const showNumberActualGiven: boolean = this.readShowNumberActualGiven(n);
 
         const bracketAttr: Attr = n.attribute("bracket");
         if (bracketAttr && bracketAttr.value === "yes") {
@@ -968,6 +971,7 @@ export class VoiceGenerator {
             tuplet.Ratioed = ratioed;
             tuplet.BracketedXmlValue = bracketedXmlValue;
             tuplet.ShowNumberNoneGivenInXml = showNumberNoneGiven;
+            tuplet.ShowNumberActualGivenInXml = showNumberActualGiven;
             //Default to above
             tuplet.tupletLabelNumberPlacement = PlacementEnum.Above;
           }
@@ -1053,6 +1057,13 @@ export class VoiceGenerator {
       }
     }
     return false;
+  }
+
+  /** `show-number="actual"` or `"both"` written explicitly (the attribute's default is also "actual",
+   * but an absent attribute leaves the decision to the layout rules). */
+  private readShowNumberActualGiven(tupletNode: IXmlElement): boolean {
+    const showNumber: Attr = tupletNode.attribute("show-number");
+    return showNumber?.value === "actual" || showNumber?.value === "both";
   }
 
   /**
