@@ -41,7 +41,18 @@ export declare class ExpressionReader {
     /** Usually called at end of last measure. */
     closeOpenExpressions(sourceMeasure: SourceMeasure, timestamp: Fraction): void;
     addOctaveShift(directionNode: IXmlElement, currentMeasure: SourceMeasure, endTimestamp: Fraction, endVoiceEntryCount?: number): void;
+    /** The last pedal closed by an explicit stop, and where it stopped: a start of a sign pedal at the same place
+     *  turns the pair into a change (`* Ped.` side by side instead of one glyph over the other). */
+    private lastPedalStop;
+    /** A stop read while no pedal was open. A voice written earlier in the measure can carry the stop of a pedal whose
+     *  start is written later (at an earlier time); that start then ends at this stop. */
+    private pendingPedalStop;
     addPedalMarking(directionNode: IXmlElement, currentMeasure: SourceMeasure, endTimestamp: Fraction): void;
+    /** Where a pedal stop releases: the direction's position plus its <offset> (in divisions). Pedals are read with the
+     *  division offset of readExpressionParameters ignored, but an engraver places the release glyph by this offset
+     *  (e.g. after the last note of a measure, or between two notes), so the stop timestamp keeps it. Never before the
+     *  measure start. */
+    private pedalStopTimestamp;
     private endOpenPedal;
     addWavyLine(wavyLineNode: IXmlElement, currentMeasure: SourceMeasure, currentTimestamp: Fraction, previousTimestamp: Fraction): void;
     private initialize;

@@ -181,6 +181,23 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     private findBoundaryNoteEntry;
     /** Finds the last staffline measure with a note that can anchor an expression. */
     protected findLastStafflineMeasure(staffline: StaffLine): GraphicalMeasure;
+    /** The staff entries around a pedal stop that falls between the entries of endMeasure: the release is drawn at the
+     *  time-proportional x between the entry before it and the entry after it (or the measure end). */
+    private findPedalReleaseAnchor;
+    /** VexFlow px from anchorNote (the entry before the time) to the time-proportional point between it and the next
+     *  entry (or the measure end); undefined when the anchor is the entry after the time. */
+    private interpolatedPedalAnchorOffset;
+    /** VexFlow px from the end note to an interpolated release (undefined when the release is at a note), at least a
+     *  depress mark's width right of the pedal's own Ped. in the same segment. */
+    private interpolatedPedalReleaseXOffset;
+    /** The Ped. of a symbol pedal stays a text margin right of the * of the previous pedal on the staff line (an x rule,
+     *  not a skyline one): a release and the next depress close together in time would otherwise be drawn over each
+     *  other. A change already keeps its own gap; a release at the stave end, a hidden release or a release in the
+     *  previous measure needs none. */
+    private keepPedalDepressRightOfPreviousRelease;
+    /** OSMD-unit x where the release mark of a symbol pedal (its *) starts: the interpolated release, the stave end,
+     *  or the end note. */
+    private pedalReleaseStartX;
     /** Finds the first staffline measure with a note that can anchor an expression. */
     protected findFirstStafflineMeasure(staffline: StaffLine): GraphicalMeasure;
     protected calculateSinglePedal(sourceMeasure: SourceMeasure, multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;

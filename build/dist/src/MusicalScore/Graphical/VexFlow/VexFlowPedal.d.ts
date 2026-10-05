@@ -25,6 +25,13 @@ export declare class VexFlowPedal extends GraphicalPedal {
     endMeasure: GraphicalMeasure;
     ChangeBegin: boolean;
     ChangeEnd: boolean;
+    /** VexFlow px from the end note's x to the release when the stop falls between two staff entries (interpolated
+     *  by time); undefined = at the end note. An offset, because the layout computes it before the systems are moved
+     *  to their final x. */
+    ReleaseXOffset: number;
+    /** VexFlow px from the start note's x to the depress when the start falls between two staff entries (interpolated
+     *  by time); undefined = at the start note. */
+    DepressXOffset: number;
     private line;
     EndSymbolPositionAndShape: BoundingBox;
     /**
