@@ -96,6 +96,11 @@ export class PedalMarking extends Element {
     this.EndsStave = false; // VexFlowPatch
     this.ChangeBegin = false;
     this.ChangeEnd = false;
+    // VexFlowPatch: absolute x of the release when it falls between two notes (OSMD interpolates it by time).
+    //   undefined = at the end note.
+    this.ReleaseX = undefined;
+    // VexFlowPatch: absolute x of the depress when it falls between two notes (OSMD interpolates it by time).
+    this.DepressX = undefined;
     this.notes = notes;
     this.style = PedalMarking.TEXT;
     this.line = 0;
@@ -174,6 +179,9 @@ export class PedalMarking extends Element {
         x = note.getNoteHeadBeginX ? note.getNoteHeadBeginX() : note.getAbsoluteX();
         if (this.BeginsStave) {
           x = note.getStave().getNoteStartX();
+        } else if (is_pedal_depressed && this.DepressX !== undefined && this.DepressX !== null) {
+          // the pedal is pressed between two notes: start the bracket there
+          x = this.DepressX;
         }
       } else {
         x = this.endStave.end_x + this.endStaveAddedWidth;
@@ -191,7 +199,10 @@ export class PedalMarking extends Element {
                 x = note.getNoteHeadEndX ? note.getNoteHeadEndX() : note.getAbsoluteX();
               break;
               default:
-                if(this.ChangeEnd){
+                if (this.ReleaseX !== undefined && this.ReleaseX !== null) {
+                  // the pedal lifts between two notes: end the bracket there
+                  x = this.ReleaseX;
+                } else if(this.ChangeEnd){
                   //Start in the middle of the note
                   x = note.getAbsoluteX();
                 } else {
@@ -313,6 +324,9 @@ export class PedalMarking extends Element {
 
   // Draw the text based pedal markings. This defaults to the traditional
   // "Ped" and "*"" symbols if no custom text has been provided.
+  // VexFlowPatch: the end note is the note BEFORE which the pedal is released; the release mark sits at its x,
+  //   between two notes at ReleaseX, or right-aligned before the stave end for EndsStave. A release+depress at one
+  //   note (ChangeEnd/ChangeBegin) keeps CHANGE_GAP on each side of the note x between the two marks.
   drawText() {
     const ctx = this.context;
     let is_pedal_depressed = false;
@@ -320,6 +334,7 @@ export class PedalMarking extends Element {
 
     // The glyph point size
     const point = pedal.render_options.glyph_point_size;
+    const margin = pedal.render_options.text_margin_right;
 
     // Iterate through each note, placing glyphs or custom text accordingly
     this.notes.forEach(note => {
@@ -334,21 +349,56 @@ export class PedalMarking extends Element {
 
       let text_width = 0;
       if (is_pedal_depressed) {
+        const anchor = (this.DepressX !== undefined && this.DepressX !== null && !this.BeginsStave) ? this.DepressX : x;
         if (pedal.custom_depress_text) {
           text_width = ctx.measureText(pedal.custom_depress_text).width;
-          ctx.fillText(pedal.custom_depress_text, x - (text_width / 2), y);
+          const left = this.ChangeBegin ? anchor + PedalMarking.CHANGE_GAP : anchor - (text_width / 2);
+          ctx.fillText(pedal.custom_depress_text, left, y);
         } else {
-          drawPedalGlyph('pedal_depress', ctx, x, y, point);
+          // the glyph is drawn x_shift (-10) left of the given x; a change puts its left edge CHANGE_GAP right of the note
+          const glyphX = this.ChangeBegin ? anchor + PedalMarking.CHANGE_GAP - PedalMarking.GLYPHS.pedal_depress.x_shift : anchor;
+          drawPedalGlyph('pedal_depress', ctx, glyphX, y, point);
         }
       } else {
+        const hasReleaseX = this.ReleaseX !== undefined && this.ReleaseX !== null;
         if (pedal.custom_release_text) {
           text_width = ctx.measureText(pedal.custom_release_text).width;
-          ctx.fillText(pedal.custom_release_text, x - (text_width / 2), y);
+          let left = x - (text_width / 2);
+          if (hasReleaseX && !this.EndsStave) {
+            left = this.ReleaseX;
+          } else if (this.EndsStave) {
+            left = stave.getNoteEndX() + (this.endStaveAddedWidth || 0) - margin - text_width;
+          } else if (this.ChangeEnd) {
+            left = x - PedalMarking.CHANGE_GAP - text_width;
+          }
+          ctx.fillText(pedal.custom_release_text, left, y);
         } else {
-          drawPedalGlyph('pedal_release', ctx, x, y, point);
+          // the glyph is drawn x_shift (-2) left of the given x
+          const glyphData = PedalMarking.GLYPHS.pedal_release;
+          let glyphX = x;
+          if (hasReleaseX && !this.EndsStave) {
+            glyphX = this.ReleaseX;
+          } else if (this.EndsStave) {
+            glyphX = stave.getNoteEndX() + (this.endStaveAddedWidth || 0) - margin - PedalMarking.releaseGlyphWidth(point) - glyphData.x_shift;
+          } else if (this.ChangeEnd) {
+            glyphX = x - PedalMarking.CHANGE_GAP - PedalMarking.releaseGlyphWidth(point) - glyphData.x_shift;
+          }
+          drawPedalGlyph('pedal_release', ctx, glyphX, y, point);
         }
       }
     });
+  }
+
+  // VexFlowPatch: horizontal gap kept between a release glyph and the depress glyph of a change at the same note.
+  static get CHANGE_GAP() { return 3; }
+
+  // VexFlowPatch: drawn width of the default release glyph (*) at the given point size.
+  static releaseGlyphWidth(point) {
+    const code = PedalMarking.GLYPHS.pedal_release.code;
+    if (typeof Glyph.cachedWidth === 'function') {
+      return Glyph.cachedWidth(code, point);
+    }
+    return new Glyph(code, point).getMetrics().width;
   }
 
   // Render the pedal marking in position on the rendering context

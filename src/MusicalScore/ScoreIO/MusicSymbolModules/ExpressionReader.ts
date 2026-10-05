@@ -460,6 +460,13 @@ export class ExpressionReader {
             }
         }
     }
+    /** The last pedal closed by an explicit stop, and where it stopped: a start of a sign pedal at the same place
+     *  turns the pair into a change (`* Ped.` side by side instead of one glyph over the other). */
+    private lastPedalStop: { pedal: Pedal, measure: SourceMeasure, timestamp: Fraction };
+    /** A stop read while no pedal was open. A voice written earlier in the measure can carry the stop of a pedal whose
+     *  start is written later (at an earlier time); that start then ends at this stop. */
+    private pendingPedalStop: { measure: SourceMeasure, timestamp: Fraction };
+
     public addPedalMarking(directionNode: IXmlElement, currentMeasure: SourceMeasure, endTimestamp: Fraction): void {
         const directionTypeNodes: IXmlElement[] = directionNode.elements("direction-type");
         for (const directionTypeNode of directionTypeNodes) {
@@ -482,29 +489,60 @@ export class ExpressionReader {
                         line = true;
                     }
                     switch (pedalNode.attribute("type").value) {
-                        case "start":
+                        case "start": {
                             //ignore duplicate tags (causes issues when pedals aren't terminated)
                             // if (!this.openPedal || !this.openPedal.ParentStartMultiExpression.AbsoluteTimestamp.Equals(endTimestamp)) {
                             //     this.createNewMultiExpressionIfNeeded(currentMeasure, -1);
                             // }
                             // instead, just end open pedal if there already was one, and create new one
-                            if (this.openPedal && this.openPedal.IsLine) {
-                                // if we don't check IsLine, the Ped. at the end of Dichterliebe overlaps with a *
-                                this.endOpenPedal(currentMeasure);
+                            if (this.openPedal) {
+                                const openStart: MultiExpression = this.openPedal.ParentStartMultiExpression;
+                                const startsHere: boolean = openStart?.SourceMeasureParent === currentMeasure &&
+                                    openStart.Timestamp.Equals(this.directionTimestamp);
+                                if (this.openPedal.IsLine || !startsHere) {
+                                    // A sign pedal without a stop is released by the next Ped.: end it here. Its release glyph is
+                                    //   not drawn (calculateSinglePedal sees the next start in its end expression), as engraved —
+                                    //   this is what used to make the Ped. at the end of Dichterliebe overlap with a *.
+                                    // A duplicate sign start at the same place replaces the open pedal, as before.
+                                    this.endOpenPedal(currentMeasure);
+                                }
                             }
                             this.createNewMultiExpressionIfNeeded(currentMeasure, -1);
                             this.openPedal = new Pedal(line, sign);
+                            const stop: { pedal: Pedal, measure: SourceMeasure, timestamp: Fraction } = this.lastPedalStop;
+                            if (stop && !line && !stop.pedal.IsLine && stop.measure === currentMeasure &&
+                                stop.timestamp.Equals(this.directionTimestamp)) {
+                                // explicit stop and start at one time: a pedal change
+                                stop.pedal.ChangeEnd = true;
+                                this.openPedal.ChangeBegin = true;
+                            }
+                            this.lastPedalStop = undefined;
                             this.getMultiExpression.PedalStart = this.openPedal;
                             this.openPedal.ParentStartMultiExpression = this.getMultiExpression;
-                        break;
-                        case "stop":
-                            if (this.openPedal) {
-                                this.endOpenPedal(currentMeasure, endTimestamp);
+                            const pending: { measure: SourceMeasure, timestamp: Fraction } = this.pendingPedalStop;
+                            this.pendingPedalStop = undefined;
+                            if (pending && pending.measure === currentMeasure && pending.timestamp.gt(this.directionTimestamp)) {
+                                // the stop of this pedal was written before it (other voice)
+                                const started: Pedal = this.openPedal;
+                                this.endOpenPedal(currentMeasure, pending.timestamp);
+                                this.lastPedalStop = { pedal: started, measure: currentMeasure, timestamp: pending.timestamp };
                             }
-                        break;
+                            break;
+                        }
+                        case "stop": {
+                            const stopTimestamp: Fraction = this.pedalStopTimestamp(directionNode, endTimestamp);
+                            if (this.openPedal) {
+                                const stopped: Pedal = this.openPedal;
+                                this.endOpenPedal(currentMeasure, stopTimestamp);
+                                this.lastPedalStop = { pedal: stopped, measure: currentMeasure, timestamp: stopTimestamp };
+                            } else {
+                                this.pendingPedalStop = { measure: currentMeasure, timestamp: stopTimestamp };
+                            }
+                            break;
+                        }
                         case "change":
-                            //Ignore non-line pedals
-                            if (this.openPedal && this.openPedal.IsLine) {
+                            // sign pedals too (`* Ped.` at one note)
+                            if (this.openPedal) {
                                 this.openPedal.ChangeEnd = true;
                                 this.createNewMultiExpressionIfNeeded(currentMeasure, -1);
                                 this.getMultiExpression.PedalEnd = this.openPedal;
@@ -515,6 +553,7 @@ export class ExpressionReader {
                                 this.openPedal.ChangeBegin = true;
                                 this.getMultiExpression.PedalStart = this.openPedal;
                                 this.openPedal.ParentStartMultiExpression = this.getMultiExpression;
+                                this.lastPedalStop = undefined;
                             }
                         break;
                         case "continue":
@@ -529,6 +568,21 @@ export class ExpressionReader {
                 }
             }
         }
+    }
+    /** Where a pedal stop releases: the direction's position plus its <offset> (in divisions). Pedals are read with the
+     *  division offset of readExpressionParameters ignored, but an engraver places the release glyph by this offset
+     *  (e.g. after the last note of a measure, or between two notes), so the stop timestamp keeps it. Never before the
+     *  measure start. */
+    private pedalStopTimestamp(directionNode: IXmlElement, cursor: Fraction): Fraction {
+        const offsetNode: IXmlElement = directionNode.element("offset");
+        const offset: number = offsetNode ? (parseInt(offsetNode.value.trim(), 10) || 0) : 0;
+        if (offset === 0) {
+            return cursor;
+        }
+        const divisionsPerQuarter: number = this.divisions > 0 ? this.divisions : 1;
+        const offsetFraction: Fraction = new Fraction(Math.abs(offset), divisionsPerQuarter * 4);
+        const result: Fraction = offset > 0 ? Fraction.plus(cursor, offsetFraction) : Fraction.minus(cursor, offsetFraction);
+        return result.RealValue < 0 ? new Fraction(0, 1) : result;
     }
     private endOpenPedal(currentMeasure: SourceMeasure, endTimeStamp?: Fraction): void {
         this.createNewMultiExpressionIfNeeded(currentMeasure, -1, endTimeStamp);

@@ -27,6 +27,13 @@ export class VexFlowPedal extends GraphicalPedal {
     public endMeasure: GraphicalMeasure;
     public ChangeBegin: boolean = false;
     public ChangeEnd: boolean = false;
+    /** VexFlow px from the end note's x to the release when the stop falls between two staff entries (interpolated
+     *  by time); undefined = at the end note. An offset, because the layout computes it before the systems are moved
+     *  to their final x. */
+    public ReleaseXOffset: number = undefined;
+    /** VexFlow px from the start note's x to the depress when the start falls between two staff entries (interpolated
+     *  by time); undefined = at the start note. */
+    public DepressXOffset: number = undefined;
     private line: number = -3;
 
     public EndSymbolPositionAndShape: BoundingBox = undefined;
@@ -146,6 +153,10 @@ export class VexFlowPedal extends GraphicalPedal {
         }
         (pedalMarking as any).ChangeBegin = this.ChangeBegin;
         (pedalMarking as any).ChangeEnd = this.ChangeEnd;
+        (pedalMarking as any).ReleaseX = this.ReleaseXOffset !== undefined && this.endNote ?
+            this.endNote.getAbsoluteX() + this.ReleaseXOffset : undefined;
+        (pedalMarking as any).DepressX = this.DepressXOffset !== undefined && this.startNote ?
+            this.startNote.getAbsoluteX() + this.DepressXOffset : undefined;
         return pedalMarking;
     }
 
