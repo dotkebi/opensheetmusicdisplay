@@ -2813,25 +2813,53 @@ export abstract class MusicSheetCalculator {
     /** Whether two metronome marks print the same: note equations by their notes rather than their playback tempo,
      *  other marks by beat unit and bpm. */
 
+    /** Whether another tempo expression at the moment of multiTempoExpression is written for a staff above staffIndex
+     *  or without a placement (which could be any staff), see ownStaffIndexOfTempoExpression(). */
+    private static hasTempoExpressionAboveAt(multiTempoExpression: MultiTempoExpression, staffIndex: number): boolean {
+        for (const other of multiTempoExpression.SourceMeasureParent.TempoExpressions) {
+            if (other === multiTempoExpression || !other.Timestamp.Equals(multiTempoExpression.Timestamp)) {
+                continue;
+            }
+            for (const entry of other.EntriesList) {
+                const otherStaffIndex: number = entry.Expression?.placementStaffIndex;
+                if (otherStaffIndex === undefined || otherStaffIndex < staffIndex) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /** The MeasureList staff index of a tempo change (e.g. "rit.", "a tempo", "accel.") placed at a lower staff
      *  (<staff> 2 or higher) of its instrument, placed below its first staff (placement="below", as "rit." under
      *  a solo part), or placed above the first staff of an instrument below the top visible staff topStaffIndex (a
      *  piano's "ritard." in a song, printed above the piano and not above the voice). Undefined if the tempo change
      *  stays above the system: when its direction gives no placement (the default, below for multi-staff instruments,
      *  would often contradict the print), or when it is written above the top instrument anyway. Main tempo marks
-     *  ("Allegro") also stay above the system even when an exporter attaches them to a lower staff or instrument or
-     *  puts them below. */
+     *  ("Allegro", a whole word of the tempo lists, see InstantaneousTempoExpression.isWholeWordInstantaneousTempo)
+     *  stay above the system even when an exporter attaches them to a lower staff or puts them below, unless only an
+     *  instrument below the top one writes them above its first staff (a piano's "Adagio" in a song, with nothing at
+     *  that moment above the voice); a word that only contains one ("Gravement", "Etwas langsamer.") is placed like a
+     *  tempo change. osmd-dart places them by the same rule. */
     private static ownStaffIndexOfTempoExpression(multiTempoExpression: MultiTempoExpression, topStaffIndex: number): number {
         const expression: AbstractTempoExpression = multiTempoExpression.EntriesList[0]?.Expression;
         if (!expression) {
             return undefined;
         }
-        if (expression instanceof InstantaneousTempoExpression &&
-            (expression.TempoType === TempoType.inst || expression.TempoType === TempoType.metronomeMark)) {
-            return undefined;
-        }
         // undefined when the direction gives no placement (attribute or default-y)
         const ownStaffIndex: number = expression.placementStaffIndex;
+        if (expression instanceof InstantaneousTempoExpression && expression.TempoType === TempoType.metronomeMark) {
+            return undefined;
+        }
+        if (expression instanceof InstantaneousTempoExpression && expression.TempoType === TempoType.inst &&
+            InstantaneousTempoExpression.isWholeWordInstantaneousTempo(expression.Label)) {
+            if (ownStaffIndex !== undefined && ownStaffIndex > topStaffIndex && expression.StaffNumber === 1 &&
+                expression.Placement !== PlacementEnum.Below &&
+                !MusicSheetCalculator.hasTempoExpressionAboveAt(multiTempoExpression, ownStaffIndex)) {
+                return ownStaffIndex;
+            }
+            return undefined;
+        }
         if (ownStaffIndex === undefined) {
             return undefined;
         }

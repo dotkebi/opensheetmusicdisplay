@@ -10,7 +10,9 @@ import { TestUtils } from "../../Util/TestUtils";
  * - the words keep the font of their XML font-style/font-weight (bold only when the XML gives nothing),
  * - words written for a lower staff of an instrument (<staff>2</staff>) with a placement are drawn at that staff,
  * - so are words written above an instrument below the top one (Schumann, Myrthen Op. 25: the piano's "ritard." under the
- *   voice), while a piano score alone, words without a placement and main tempo marks stay above the system.
+ *   voice), while a piano score alone and words without a placement stay above the system; main tempo marks too, unless
+ *   only the piano writes them at that moment (Myrthen 11 m47 "Adagio."). A word that only contains a main tempo mark
+ *   ("Etwas langsamer.") is placed like a tempo change (InstantaneousTempoExpression.isWholeWordInstantaneousTempo).
  */
 describe("Tempo words: font and staff", () => {
     const attributes: string = `<attributes><divisions>4</divisions><time><beats>6</beats><beat-type>8</beat-type></time>
@@ -238,14 +240,50 @@ describe("Tempo words: font and staff", () => {
             expect(tempoLabels(lines[0])[0].Label.PositionAndShape.RelativePosition.y).to.be.lessThan(0);
         });
 
-        it("keeps a main tempo mark or words without a placement in the piano above the system", async () => {
-            for (const direction of [words("Allegro"), words("Allegro", " placement=\"above\"", ""), words("ritard.", "")]) {
+        it("keeps words without a placement in the piano above the system", async () => {
+            const osmd: OpenSheetMusicDisplay = await render(songScore("", words("ritard.", "")));
+            const lines: StaffLine[] = staffLines(osmd);
+            expect(tempoTexts(lines[0])).to.deep.equal(["ritard."]);
+            expect(tempoTexts(lines[1])).to.deep.equal([]);
+            expect(tempoTexts(lines[2])).to.deep.equal([]);
+        });
+
+        it("draws a main tempo mark written only by the piano above the piano (Myrthen 11 m47 \"Adagio.\")", async () => {
+            for (const direction of [words("Adagio"), words("Allegro"), words("Allegro", " placement=\"above\"", "")]) {
                 const osmd: OpenSheetMusicDisplay = await render(songScore("", direction));
                 const lines: StaffLine[] = staffLines(osmd);
-                expect(tempoTexts(lines[0]).length, direction).to.equal(1);
-                expect(tempoTexts(lines[1]), direction).to.deep.equal([]);
+                expect(tempoTexts(lines[0]), direction).to.deep.equal([]);
+                expect(tempoTexts(lines[1]).length, direction).to.equal(1);
                 expect(tempoTexts(lines[2]), direction).to.deep.equal([]);
             }
+        });
+
+        it("keeps a main tempo mark of the piano above the system when the voice writes a tempo at that moment, " +
+            "or when it is below or for the left hand", async () => {
+            const voice: (text: string) => string = (text: string) => words(text, " placement=\"above\"", "");
+            for (const [canto, piano] of [
+                [voice("Allegro"), words("Allegro")],
+                [voice("Allegro"), words("Adagio")],
+                [voice("ritard."), words("Adagio")],
+                ["", words("Adagio", " placement=\"below\"")],
+                ["", words("Adagio", " placement=\"above\"", "<staff>2</staff>")],
+            ]) {
+                const osmd: OpenSheetMusicDisplay = await render(songScore(canto, piano));
+                const lines: StaffLine[] = staffLines(osmd);
+                expect(tempoTexts(lines[0]).length, canto + piano).to.be.greaterThan(0);
+                expect(tempoTexts(lines[1]), canto + piano).to.deep.equal([]);
+                expect(tempoTexts(lines[2]), canto + piano).to.deep.equal([]);
+            }
+        });
+
+        it("draws a tempo word that only contains a main tempo mark like a tempo change, above each part " +
+            "(Myrthen 6 m12 \"Etwas langsamer.\")", async () => {
+            const osmd: OpenSheetMusicDisplay = await render(songScore(words("Etwas langsamer.", " placement=\"above\"", ""),
+                                                                       words("Etwas langsamer.")));
+            const lines: StaffLine[] = staffLines(osmd);
+            expect(tempoTexts(lines[0])).to.deep.equal(["Etwas langsamer."]);
+            expect(tempoTexts(lines[1])).to.deep.equal(["Etwas langsamer."]);
+            expect(tempoTexts(lines[2])).to.deep.equal([]);
         });
 
         it("draws the dashes of the piano's \"ritard.\" above the piano", async () => {

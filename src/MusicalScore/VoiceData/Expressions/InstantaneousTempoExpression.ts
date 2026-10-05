@@ -305,6 +305,39 @@ export class InstantaneousTempoExpression extends AbstractTempoExpression {
         }
         return length;
     }
+    /** Whether inputString names an instantaneous tempo with a whole word (or words) of the tempo lists, matched
+     *  case-sensitively and not inside a longer word, e.g. "Allegro con brio" or "Adagio.". isInputStringInstantaneousTempo
+     *  also reads "Etwas langsamer." (" langsam") or "Broadly" (any case) as a tempo, which sets the playback tempo, but
+     *  they are no main tempo marks for placement: see MusicSheetCalculator.ownStaffIndexOfTempoExpression.
+     *  Same rule as osmd-dart's InstantaneousTempoExpression.isWholeWordInstantaneousTempo. */
+    public static isWholeWordInstantaneousTempo(inputString: string): boolean {
+        if (!inputString) { return false; }
+        const isLetter: (character: string) => boolean = (character: string) => character !== undefined && /\p{L}/u.test(character);
+        const lists: string[][] = [
+            InstantaneousTempoExpression.listInstantaneousTempoLarghissimo, InstantaneousTempoExpression.listInstantaneousTempoGrave,
+            InstantaneousTempoExpression.listInstantaneousTempoLento, InstantaneousTempoExpression.listInstantaneousTempoLargo,
+            InstantaneousTempoExpression.listInstantaneousTempoLarghetto, InstantaneousTempoExpression.listInstantaneousTempoAdagio,
+            InstantaneousTempoExpression.listInstantaneousTempoAdagietto, InstantaneousTempoExpression.listInstantaneousTempoAndanteModerato,
+            InstantaneousTempoExpression.listInstantaneousTempoAndante, InstantaneousTempoExpression.listInstantaneousTempoAndantino,
+            InstantaneousTempoExpression.listInstantaneousTempoModerato, InstantaneousTempoExpression.listInstantaneousTempoAllegretto,
+            InstantaneousTempoExpression.listInstantaneousTempoAllegroModerato, InstantaneousTempoExpression.listInstantaneousTempoAllegro,
+            InstantaneousTempoExpression.listInstantaneousTempoVivace, InstantaneousTempoExpression.listInstantaneousTempoVivacissimo,
+            InstantaneousTempoExpression.listInstantaneousTempoAllegrissimo, InstantaneousTempoExpression.listInstantaneousTempoPresto,
+            InstantaneousTempoExpression.listInstantaneousTempoPrestissimo, InstantaneousTempoExpression.listInstantaneousTempoChangesGeneral,
+        ];
+        for (const list of lists) {
+            for (const word of list) {
+                // no regular expression lookbehind (older Safari): check the characters around each occurrence
+                for (let index: number = inputString.indexOf(word); index !== -1; index = inputString.indexOf(word, index + 1)) {
+                    if (!isLetter(inputString[index - 1]) && !isLetter(inputString[index + word.length])) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     public static isInputStringInstantaneousTempo(inputString: string): boolean {
         if (!inputString) { return false; }
         return (
