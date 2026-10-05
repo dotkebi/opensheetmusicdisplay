@@ -9,8 +9,8 @@ import { VexFlowVoiceEntry } from "../../../src/MusicalScore/Graphical/VexFlow/V
  * The rest of another voice that is the upper one by its stems and its notes was put below the other voice's note,
  * under its stem (Couperin, Concerts royaux II, Prelude m1-2: the quarter rest of voice 6, far below the left hand's D3).
  *
- * Sample: bass clef, voice 1 D3 dotted half (stem down), voice 2 quarter rest and F#3 half (stem up),
- * voice 3 hidden half rest and A3 quarter (stem up).
+ * Synthetic sample: bass clef, voice 1 E3 dotted half (stem down), voice 2 quarter rest and G3 half (stem up),
+ * voice 3 hidden half rest and B3 quarter (stem up).
  */
 describe("Rest on the side of its voice", () => {
     let container: HTMLElement;
@@ -29,11 +29,11 @@ describe("Rest on the side of its voice", () => {
     it("puts the rest of the upper voice above the other voice's note", () => {
         const measure: GraphicalMeasure = osmd.GraphicSheet.MeasureList[0][0];
         const entries: VexFlowVoiceEntry[] = measure.staffEntries[0].graphicalVoiceEntries as VexFlowVoiceEntry[];
-        const d3: any = entries.find(gve => !gve.notes[0].sourceNote.isRest()).vfStaveNote;
+        const lowerNote: any = entries.find(gve => !gve.notes[0].sourceNote.isRest()).vfStaveNote;
         const rest: any = entries.find(gve => gve.notes[0].sourceNote.isRest() && gve.notes[0].sourceNote.PrintObject).vfStaveNote;
         const restLine: number = rest.getKeyProps()[0].line;
-        const d3Line: number = d3.getKeyProps()[0].line;
-        // a quarter rest reaches about 1.5 lines below its line: it's above the D3's notehead, not below its stem
-        expect(restLine, `rest line ${restLine}, D3 line ${d3Line}`).to.be.greaterThan(d3Line + 2);
+        const lowerLine: number = lowerNote.getKeyProps()[0].line;
+        // a quarter rest reaches about 1.5 lines below its line: it's above the lower notehead, not below its stem
+        expect(restLine, `rest line ${restLine}, lower note line ${lowerLine}`).to.be.greaterThan(lowerLine + 2);
     });
 });
