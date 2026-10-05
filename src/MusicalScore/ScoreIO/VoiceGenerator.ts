@@ -34,6 +34,13 @@ import { PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
 import { ReaderPluginManager } from "./ReaderPluginManager";
 import { Instrument } from "../Instrument";
 
+/** An open tie found by VoiceGenerator.findOpenTie(): the dictionary it is in (this or another staff's), its key there, and the tie. */
+interface OpenTie {
+  dict: { [_: number]: Tie };
+  key: number;
+  tie: Tie;
+}
+
 export class VoiceGenerator {
   constructor(pluginManager: ReaderPluginManager, staff: Staff, voiceId: number, slurReader: SlurReader, mainVoice: Voice = undefined) {
     this.staff = staff;
@@ -1162,7 +1169,7 @@ export class VoiceGenerator {
           const type: string = tieNode.attribute("type").value;
           try {
             if (type === "start") {
-              const num: number = this.findCurrentNoteInTieDict(this.currentNote);
+              const num: number = this.findCurrentNoteInTieDict(this.openTieDict, this.currentNote);
               if (num < 0) {
                 delete this.openTieDict[num];
               }
@@ -1172,11 +1179,10 @@ export class VoiceGenerator {
               tie.TieNumber = newTieNumber;
               tie.TieDirection = tieDirection;
             } else if (type === "stop") {
-              const tieNumber: number = this.findCurrentNoteInTieDict(this.currentNote);
-              const tie: Tie = this.openTieDict[tieNumber];
-              if (tie) {
-                tie.AddNote(this.currentNote);
-                delete this.openTieDict[tieNumber];
+              const openTie: OpenTie = this.findOpenTie(this.currentNote);
+              if (openTie) {
+                openTie.tie.AddNote(this.currentNote);
+                delete openTie.dict[openTie.key];
               }
             }
           } catch (err) {
@@ -1186,9 +1192,9 @@ export class VoiceGenerator {
 
         }
       } else if (tieNodeList.length === 2) { // stop+start
-        const tieNumber: number = this.findCurrentNoteInTieDict(this.currentNote);
-        if (tieNumber >= 0) {
-          const tie: Tie = this.openTieDict[tieNumber];
+        const openTie: OpenTie = this.findOpenTie(this.currentNote);
+        if (openTie) {
+          const tie: Tie = openTie.tie;
           tie.AddNote(this.currentNote);
           for (const tieNode of tieNodeList) {
             const type: string = tieNode.attribute("type").value;
@@ -1251,13 +1257,38 @@ export class VoiceGenerator {
   }
 
   /**
+   * The open tie that candidateNote stops: in this voice's staff first, then in the other staves of the instrument.
+   * A tie can start in one staff and end in the other (Schumann, Myrthen, Aus den hebräischen Gesängen m79-80:
+   * right-hand C4 half tied to the left-hand C4 whole, different voices); each staff keeps its own openTieDict,
+   * so the stop used to find nothing and both notes were drawn without a tie. The caller removes the tie from the
+   * dictionary it was found in (a stop+start pair that continues the tie keeps it).
+   */
+  private findOpenTie(candidateNote: Note): OpenTie {
+    const ownKey: number = this.findCurrentNoteInTieDict(this.openTieDict, candidateNote);
+    if (ownKey >= 0) {
+      return { dict: this.openTieDict, key: ownKey, tie: this.openTieDict[ownKey] };
+    }
+    for (const otherStaff of this.instrument.Staves) {
+      if (otherStaff === this.staff) {
+        continue;
+      }
+      const dict: { [_: number]: Tie } = otherStaff.openTieDict;
+      const key: number = this.findCurrentNoteInTieDict(dict, candidateNote);
+      if (key >= 0) {
+        return { dict, key, tie: dict[key] };
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Search the tieDictionary for the corresponding candidateNote to the currentNote.
    * Prefer the existing spelling/string match, then fall back to sounding pitch for enharmonic ties.
+   * @param openTieDict the open ties of a staff (this voice's, or another staff's of the instrument)
    * @param candidateNote
    * @returns {number}
    */
-  private findCurrentNoteInTieDict(candidateNote: Note): number {
-    const openTieDict: { [_: number]: Tie } = this.openTieDict;
+  private findCurrentNoteInTieDict(openTieDict: { [_: number]: Tie }, candidateNote: Note): number {
     for (const key in openTieDict) {
       if (openTieDict.hasOwnProperty(key)) {
         const tie: Tie = openTieDict[key];

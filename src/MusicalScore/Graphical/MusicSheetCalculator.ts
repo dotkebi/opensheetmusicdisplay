@@ -4410,9 +4410,12 @@ export abstract class MusicSheetCalculator {
                         for (const graphicalTie of staffEntry.GraphicalTies) {
                             if (graphicalTie.StartNote !== undefined && graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry === staffEntry) {
                                 // (a tie without an end note, see tieContinuesAfterRepeat(), is drawn to the end of its staff)
+                                // A tie is split into two stubs only at a system break. A tie from one staff of the instrument
+                                //   to the other in the same system (Schumann, Myrthen, Die Hochländer-Wittwe m72-73) is one
+                                //   curve between its two notes, like any other tie.
                                 const tieIsAtSystemBreak: boolean = graphicalTie.EndNote !== undefined && (
-                                    graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine !==
-                                    graphicalTie.EndNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine
+                                    graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine?.ParentMusicSystem !==
+                                    graphicalTie.EndNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine?.ParentMusicSystem
                                 );
                                 this.layoutGraphicalTie(graphicalTie, tieIsAtSystemBreak, measure.ParentStaff.isTab);
                             }
