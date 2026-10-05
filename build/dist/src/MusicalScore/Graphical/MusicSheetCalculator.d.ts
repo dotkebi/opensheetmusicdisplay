@@ -231,6 +231,10 @@ export declare abstract class MusicSheetCalculator {
      *  the last measure) have no following staff entry to interpolate to. Anchor them at the measure's last staff entry
      *  instead of falling back to the start of the system. */
     private trailingExpressionX;
+    /** Words at a time where their own staff has no note, but another staff of the same instrument has one in the same
+     *  measure (e.g. "Fin" on the right hand on a beat only the left hand plays), are anchored at that note instead of
+     *  being interpolated between their own staff's notes, which can put them next to the following measure's first note. */
+    private otherStaffSameTimeX;
     /** Calculates one words label of the given entries of multiExpression (see getEntryGroupsByPlacement()). */
     private calculateMoodAndUnknownExpressionEntries;
     /**
