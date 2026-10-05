@@ -269,6 +269,21 @@ export class RepetitionInstructionReader {
     }
   }
 
+  /**
+   * The backward repeat a segno after another one is the renvoi of: written at the end of a measure that ends with
+   * that repeat (Couperin, Concerts royaux I Gigue m31, below the first ending, sending back to the segno of the
+   * Reprise). It is not a D.S. at the end of the measure before (that broke the repeat); the sign is drawn at its place.
+   */
+  private repeatOfRenvoi(segno: RepetitionInstruction): RepetitionInstruction {
+    const measure: SourceMeasure = this.musicSheet.SourceMeasures[segno.measureIndex];
+    if (!measure || segno.SymbolPlacements.length === 0 ||
+        !segno.SymbolPlacements.every(placement => placement.timestamp.gte(measure.Duration))) {
+      return undefined;
+    }
+    return this.repetitionInstructions.find(other =>
+      other.measureIndex === segno.measureIndex && other.type === RepetitionInstructionEnum.BackJumpLine);
+  }
+
   public removeRedundantInstructions(): void {
     let segnoCount: number = 0;
     let codaCount: number = 0;
@@ -294,6 +309,15 @@ export class RepetitionInstructionReader {
         case RepetitionInstructionEnum.Segno:
           // Two segnos in a row: the second one is taken for a D.S. back to the first (e.g. a renvoi sign),
           //   unless the MusicXML marks it as a D.S. target itself (a segno that a later D.S. jumps to).
+          const repeatOfRenvoi: RepetitionInstruction =
+            segnoCount - dalSegnaCount > 0 && !instruction.MarkedAsTarget ? this.repeatOfRenvoi(instruction) : undefined;
+          if (repeatOfRenvoi) {
+            // the backward repeat of its measure plays the return; the sign is drawn with the repeat, where the
+            //   MusicXML puts it. (A segno left in the measure made the playback take the first ending again.)
+            repeatOfRenvoi.SymbolPlacements.push(...instruction.SymbolPlacements);
+            instruction.type = RepetitionInstructionEnum.None;
+            break;
+          }
           if (segnoCount - dalSegnaCount > 0 && !instruction.MarkedAsTarget) {
             let foundInstruction: boolean = false;
             for (let idx: number = 0, len: number = this.repetitionInstructions.length; idx < len; ++idx) {
