@@ -246,7 +246,11 @@ export declare abstract class MusicSheetCalculator {
      */
     protected addExpressionDashes(expression: AbstractExpression, label: GraphicalLabel, placement: PlacementEnum, staffLine: StaffLine, staffIndex: number, measureIndex: number): void;
     /** Where the dashed line after an expression's text ends on staffLine (its end, or the end of staffLine if it
-     *  continues on a later system), or undefined if the expression has no dashed line. */
+     *  continues on a later system), or undefined if the expression has no dashed line.
+     *  A stop at the end of the end measure (MusicXML: after its last note) is the time of the next measure's first note.
+     *  When the next measure starts a later system, that note's x belongs to the later system, which ended the line
+     *  near the start of staffLine and dropped it as too short (Myrthen 17 m29-31 "ritard. - - -", m31 the last
+     *  measure of its system): the line ends at the end of staffLine then. */
     private expressionDashesEndX;
     /** Copies the sky- and bottomlines before expressions are placed (see calculateExpressionDashes()). */
     protected saveSkyBottomLinesBeforeExpressions(): void;
