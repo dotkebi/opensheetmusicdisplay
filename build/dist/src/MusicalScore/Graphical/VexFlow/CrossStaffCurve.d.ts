@@ -133,7 +133,8 @@ export declare class CrossStaffCurve {
     private placementOf;
     /** The slur's end at the note: at its stem's end (atStem) or beside its notehead on the slur's side. */
     private static endPointOf;
-    /** The notes of the slur's voices (its start note's and end note's) strictly between its two notes. */
+    /** The notes of the slur's voices (its start note's and end note's) strictly between its two notes: in its measures
+     *  on both staves. */
     private voiceNotesBetween;
     /** A note's ink on the slur's side: its notehead, and its stem's end when the stem points that way. */
     private static noteObstacles;
@@ -159,6 +160,9 @@ export declare class CrossStaffCurve {
     private hullCurve;
     /** The line without the corners closer than tolerance to the line between their neighbours (Douglas-Peucker). */
     private static simplify;
+    /** The height of hullCurve()'s highest corner over the line from p0 to p3: the highest obstacle (with its
+     *  clearance), or the least bow. */
+    private static hullHeight;
     private static bow;
     private static distance;
     /** How far the curve reaches from the line between p0 and p3. */
