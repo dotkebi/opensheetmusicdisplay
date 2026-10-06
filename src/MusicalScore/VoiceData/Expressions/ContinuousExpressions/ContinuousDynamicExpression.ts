@@ -27,6 +27,10 @@ export class ContinuousDynamicExpression extends AbstractExpression {
     public NumberXml: number;
     private startMultiExpression: MultiExpression;
     private endMultiExpression: MultiExpression;
+    /** The <offset> of the wedge's stop (in whole notes): the drawn end is moved by it from the note after EndMultiExpression.
+     *  Kept on the wedge, not on the end MultiExpression, which a stop shares with the start of the next wedge at the same time
+     *  and with other stops ending there (Schumann, Myrthen 18 m31: the second crescendo's stop offset lengthened the first). */
+    public EndOffsetFraction: Fraction;
     private startVolume: number;
     private endVolume: number;
     private staffNumber: number;

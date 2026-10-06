@@ -180,7 +180,7 @@ describe("ExpressionReader", () => {
         });
 
         it("keeps the direction's offset for a wedge stop after words", () => {
-            expect(wedges[2].EndMultiExpression.EndOffsetFraction.RealValue, "offset 1 = a quarter").to.equal(0.25);
+            expect(wedges[2].EndOffsetFraction.RealValue, "offset 1 = a quarter").to.equal(0.25);
         });
     });
 

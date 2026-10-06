@@ -76,8 +76,9 @@ ${above("<wedge type=\"stop\" number=\"1\"/>")}
         expect(Math.min(...diminuendo.Lines.map(l => l.End.x))).to.be.greaterThan(crescendoRight - 0.01);
     });
 
-    /** 21 m34-35: a crescendo from the last eighth of a system to the first note of the next, which starts with a short
-     *  crescendo into pp, so the split second half is aligned with the pp */
+    /** 21 m34-35 (the stop moved after the first note of the next system: a stop at the measure start ends the wedge at the
+     *  barline, see WedgeOffset_Test.ts): a crescendo from the last eighth of a system over the first note of the next,
+     *  which continues with a short crescendo into pp, so the split second half is aligned with the pp */
     const splitCrescendoBeforePp: string = `<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">${pianoPart}<part id="P1">
 <measure number="1"><attributes><divisions>2</divisions><time><beats>3</beats><beat-type>4</beat-type></time>
@@ -88,8 +89,8 @@ ${above("<wedge type=\"stop\" number=\"1\"/>")}
 <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
 </measure>
 <measure number="2"><print new-system="yes"/>
-<direction placement="below"><direction-type><wedge type="stop" number="3"/></direction-type></direction>
 <note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+<direction placement="below"><direction-type><wedge type="stop" number="3"/></direction-type></direction>
 <direction placement="below"><direction-type><wedge type="crescendo" number="7"/></direction-type></direction>
 <note><rest/><duration>1</duration><voice>1</voice><type>eighth</type></note>
 <direction placement="below"><direction-type><dynamics><pp/></dynamics></direction-type></direction>

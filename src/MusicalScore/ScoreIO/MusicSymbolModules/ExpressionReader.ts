@@ -95,19 +95,12 @@ export class ExpressionReader {
                 this.offsetDivisions = 0;
             }
         }
+        // The direction's time is its position plus its <offset> (in divisions), as read() takes it for the tempo marks.
+        // This multiplied the offset by the length of the previous note, so a wedge with <offset>-1 eighth</offset> after a
+        // quarter started 1/32 before its position instead of an eighth (Schumann, Myrthen 16 m43).
         this.directionTimestamp = Fraction.createFromFraction(inSourceMeasureCurrentFraction);
-        let offsetFraction: Fraction = new Fraction(Math.abs(this.offsetDivisions), divisions * 4);
-
-        if (this.offsetDivisions > 0) {
-            if (inSourceMeasureCurrentFraction.RealValue > 0) {
-                offsetFraction = Fraction.multiply(Fraction.minus(inSourceMeasureCurrentFraction, inSourceMeasureFormerFraction), offsetFraction);
-                this.directionTimestamp = Fraction.plus(offsetFraction, inSourceMeasureCurrentFraction);
-            } else { this.directionTimestamp = Fraction.createFromFraction(offsetFraction); }
-        } else if (this.offsetDivisions < 0) {
-            if (inSourceMeasureCurrentFraction.RealValue > 0) {
-                offsetFraction = Fraction.multiply(Fraction.minus(inSourceMeasureCurrentFraction, inSourceMeasureFormerFraction), offsetFraction);
-                this.directionTimestamp = Fraction.minus(inSourceMeasureCurrentFraction, offsetFraction);
-            } else { this.directionTimestamp = Fraction.createFromFraction(offsetFraction); }
+        if (this.offsetDivisions) {
+            this.directionTimestamp = Fraction.plus(this.directionTimestamp, new Fraction(this.offsetDivisions, divisions * 4));
         }
 
         const directionTypeNodes: IXmlElement[] = xmlNode.elements("direction-type");
@@ -193,8 +186,7 @@ export class ExpressionReader {
           const offsetValue: number = Number.parseInt(offsetNode.value, 10);
           timestampFraction.Add(new Fraction(offsetValue, 4 * this.divisions));
         }
-        // this.directionTimestamp = timestampFraction.clone();
-        //   this could be correct, but leads to odd differences with Musescore for elements like dim. and wedges.
+        // this.directionTimestamp is the same time (current + offset), see readExpressionParameters().
 
         const n: IXmlElement = directionNode.element("sound");
         if (n) {
@@ -984,14 +976,52 @@ export class ExpressionReader {
         //Ending needs to use previous fraction, not current.
         //If current is used, when there is a system break it will mess up
         if (typeAttributeString === "stop") {
+            const endOffset: Fraction = new Fraction(this.offsetDivisions, this.divisions * 4);
+            const previousEnd: {measure: SourceMeasure, timestamp: Fraction} =
+                this.wedgeStopAtPreviousMeasureEnd(currentMeasure, wedgeNumberXml, stopReadAt);
+            if (previousEnd) {
+                this.addWedge(wedgeNode, previousEnd.measure, previousEnd.timestamp, endOffset);
+                return;
+            }
             inSourceMeasureCurrentFraction = this.wedgeStopTimestamp(currentMeasure, stopReadAt, inSourceMeasureCurrentFraction);
             this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml, inSourceMeasureCurrentFraction);
-            this.getMultiExpression.EndOffsetFraction = new Fraction(this.offsetDivisions, this.divisions * 4);
-        } else {
-            this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml);
+            this.addWedge(wedgeNode, currentMeasure, inSourceMeasureCurrentFraction, endOffset);
+            return;
         }
+        this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml);
         this.addWedge(wedgeNode, currentMeasure, inSourceMeasureCurrentFraction);
         // Keep the outer <direction> context for later <direction-type> siblings.
+    }
+    /** Where a wedge stop read at the very start of a measure (`readAt` 0, no later <offset>) ends: at the last staff entry of
+     *  this staff in the previous measure, if the wedge started before this measure. Such a stop closes the wedge at the barline
+     *  (music21 writes the stop of a hairpin over a whole measure there; MuseScore writes it after the last note of that measure);
+     *  ending it under the first note of this measure drew it into this measure, and into the next system at a system break
+     *  (Schumann, Myrthen 19 m5-6). The drawn end is then the previous measure's end, as for a stop after its last note. */
+    private wedgeStopAtPreviousMeasureEnd(currentMeasure: SourceMeasure, numberXml: number, readAt: Fraction
+    ): {measure: SourceMeasure, timestamp: Fraction} {
+        if (!readAt || readAt.RealValue !== 0 || this.offsetDivisions > 0) {
+            return undefined;
+        }
+        const open: ContinuousDynamicExpression = this.openContinuousDynamicExpressions.find(dyn => dyn.NumberXml === numberXml);
+        const start: MultiExpression = open?.StartMultiExpression;
+        if (!start || start.SourceMeasureParent === currentMeasure) {
+            return undefined;
+        }
+        const measures: SourceMeasure[] = this.musicSheet.SourceMeasures;
+        const previous: SourceMeasure = measures[measures.length - 1];
+        if (!previous || previous === currentMeasure) {
+            return undefined;
+        }
+        let latest: Fraction = undefined;
+        for (const container of previous.VerticalSourceStaffEntryContainers) {
+            if (container.StaffEntries[this.globalStaffIndex] && (!latest || latest.lt(container.Timestamp))) {
+                latest = container.Timestamp;
+            }
+        }
+        if (!latest || start.SourceMeasureParent === previous && latest.lt(start.Timestamp)) {
+            return undefined;
+        }
+        return {measure: previous, timestamp: latest.clone()};
     }
     /** The timestamp of a wedge stop read at `readAt`: the last staff entry of this staff starting before it, i.e. the note
      *  the wedge ends under. The start of the last note read (`previousFraction`) is that note only while the voices are
@@ -1079,7 +1109,8 @@ export class ExpressionReader {
             currentMeasure.TempoExpressions.push(this.currentMultiTempoExpression);
         }
     }
-    private addWedge(wedgeNode: IXmlElement, currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction): void {
+    private addWedge(wedgeNode: IXmlElement, currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction,
+                     endOffset: Fraction = undefined): void {
         if (wedgeNode !== undefined && wedgeNode.hasAttributes) {
             const numberXml: number = this.readNumber(wedgeNode);
             const type: string = wedgeNode.attribute("type").value.toLowerCase();
@@ -1109,6 +1140,7 @@ export class ExpressionReader {
                     for (const openCont of this.openContinuousDynamicExpressions) {
                         if (openCont.NumberXml === numberXml) {
                             // if (openCont.NumberXml === numberXml) { // was there supposed to be another check here? someone wrote the same check twice.
+                            openCont.EndOffsetFraction = endOffset;
                             this.closeOpenContinuousDynamic(openCont, currentMeasure, inSourceMeasureCurrentFraction);
                         }
                     }
