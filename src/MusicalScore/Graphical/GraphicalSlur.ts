@@ -37,6 +37,9 @@ export class GraphicalSlur extends GraphicalCurve {
      *  (see VexFlowMusicSheetCalculator.crossStaffSlurIsSplit()): its start piece ends at the end of the start note's
      *  measure, its end piece starts at the start of the following measure, instead of at the staff line's ends. */
     public isCrossStaffPiece: boolean = false;
+    /** A piece of a slur into a second ending, split where the endings part (see
+     *  VexFlowMusicSheetCalculator.splitSlursIntoVoltas()): the end without its note is at its measure's barline. */
+    public isVoltaPiece: boolean = false;
     private rules: EngravingRules;
     public SVGElement: Node;
 
@@ -954,9 +957,10 @@ export class GraphicalSlur extends GraphicalCurve {
      *  over the repeat dots, but not up to the barline.
      */
     /** Start x (relative to the staff line) of a cross-staff piece without its start note: after the begin
-     *  instructions of its first measure. Undefined for other slurs (the staff line's start). */
+     *  instructions of its first measure (also a volta piece, see isVoltaPiece). Undefined for other slurs (the staff
+     *  line's start). */
     private pieceStartX(): number | undefined {
-        if (!this.isCrossStaffPiece) {
+        if (!this.isCrossStaffPiece && !this.isVoltaPiece) {
             return undefined;
         }
         const measure: GraphicalMeasure = this.staffEntries[0].parentMeasure;
@@ -965,7 +969,7 @@ export class GraphicalSlur extends GraphicalCurve {
 
     /** End x of a cross-staff piece without its end note: the end of its last measure (see [[pieceStartX]]). */
     private pieceEndX(): number | undefined {
-        if (!this.isCrossStaffPiece) {
+        if (!this.isCrossStaffPiece && !this.isVoltaPiece) {
             return undefined;
         }
         const measure: GraphicalMeasure = this.staffEntries[this.staffEntries.length - 1].parentMeasure;

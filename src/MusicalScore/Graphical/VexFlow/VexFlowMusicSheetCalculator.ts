@@ -16,7 +16,7 @@ import { Tie } from "../../VoiceData/Tie";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { SourceStaffEntry } from "../../VoiceData/SourceStaffEntry";
 import { MultiExpression } from "../../VoiceData/Expressions/MultiExpression";
-import { RepetitionInstruction, RepetitionInstructionEnum } from "../../VoiceData/Instructions/RepetitionInstruction";
+import { AlignmentType, RepetitionInstruction, RepetitionInstructionEnum } from "../../VoiceData/Instructions/RepetitionInstruction";
 import { Beam } from "../../VoiceData/Beam";
 import { ClefInstruction } from "../../VoiceData/Instructions/ClefInstruction";
 import { OctaveEnum, OctaveShift } from "../../VoiceData/Expressions/ContinuousExpressions/OctaveShift";
@@ -3770,6 +3770,86 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     return onStartStaff > onEndStaff ? Math.max(startIndex, endIndex - 1) : startIndex;
   }
 
+  /**
+   * The volta (ending) of each measure, by measure index: the index of the volta's first measure and its ending numbers
+   * (as calculateWordRepetitionInstructions() tracks them). Undefined for a measure outside a volta.
+   */
+  private voltaOfMeasures(): ({ start: number, endings: number[] } | undefined)[] {
+    const result: ({ start: number, endings: number[] } | undefined)[] = [];
+    const active: { start: number, endings: number[] }[] = [];
+    const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+    for (let i: number = 0; i < sourceMeasures.length; i++) {
+      for (const instruction of sourceMeasures[i].FirstRepetitionInstructions) {
+        if (instruction.type === RepetitionInstructionEnum.Ending && instruction.alignment === AlignmentType.Begin) {
+          active.push({ start: i, endings: instruction.endingIndices ?? [] });
+        }
+      }
+      result.push(active[active.length - 1]);
+      for (const instruction of sourceMeasures[i].LastRepetitionInstructions) {
+        if (instruction.type === RepetitionInstructionEnum.Ending && active.length > 0 &&
+            (instruction.alignment === AlignmentType.End || instruction.alignment === AlignmentType.Discontinue)) {
+          active.pop();
+          break;
+        }
+      }
+    }
+    return result;
+  }
+
+  /**
+   * A slur from before the endings of a repeat to a note in a second (or later) ending is played from its start into
+   * that ending, but drawn as one curve it runs over the first ending to the note in the second: a long arch over the
+   * first ending (Schumann, Myrthen 18 m31-33, slur 6 from m31 to the second ending m33, recheck M18-D05). The source
+   * (Breitkopf) breaks it where the endings part: the part over the first ending ends at the end of the first ending, and
+   * the second ending starts with a short piece from its barline to the end note. When the
+   * score writes the first ending's slur separately, from the same start (an alternative slur: Myrthen 18 slur 1 from m31
+   * to the first ending m32), the part over the first ending is that slur and is left out here; only the second ending's
+   * piece is drawn, as in the source. Pieces end and start at their measures' barlines (GraphicalSlur.isVoltaPiece).
+   */
+  private splitSlursIntoVoltas(): void {
+    const voltas: ({ start: number, endings: number[] } | undefined)[] = this.voltaOfMeasures();
+    if (!voltas.some(volta => volta)) {
+      return;
+    }
+    const indexOf: (note: Note) => number = (note: Note): number => note.SourceMeasure.measureListIndex;
+    for (const musicSystem of this.musicSystems) {
+      for (const staffLine of musicSystem.StaffLines) {
+        for (const gSlur of staffLine.GraphicalSlurs.slice()) {
+          const slur: Slur = gSlur.slur;
+          if (!slur.StartNote || !slur.EndNote || slur.isCrossed() || gSlur.staffEntries.length === 0) {
+            continue;
+          }
+          const startIndex: number = indexOf(slur.StartNote);
+          const volta: { start: number, endings: number[] } = voltas[indexOf(slur.EndNote)];
+          if (!volta || volta.endings.length === 0 || Math.min(...volta.endings) < 2 || startIndex >= volta.start ||
+              !voltas[volta.start - 1] || voltas[volta.start - 1] === volta) {
+            continue; // not into a later ending past an earlier one
+          }
+          const alternative: boolean = slur.StartNote.ParentVoiceEntry.Notes.some(note => note.NoteSlurs.some(other =>
+            other !== slur && other.StartNote?.ParentVoiceEntry === slur.StartNote.ParentVoiceEntry && other.EndNote &&
+            indexOf(other.EndNote) >= startIndex && indexOf(other.EndNote) < volta.start));
+          const before: GraphicalStaffEntry[] = gSlur.staffEntries.filter(entry =>
+            entry.parentMeasure.parentSourceMeasure?.measureListIndex < volta.start);
+          const after: GraphicalStaffEntry[] = gSlur.staffEntries.filter(entry => before.indexOf(entry) < 0);
+          if (after.length > 0) {
+            gSlur.staffEntries = after;
+            gSlur.isVoltaPiece = true;
+          }
+          if (before.length > 0 && !alternative) {
+            const piece: GraphicalSlur = after.length > 0 ? new GraphicalSlur(slur, this.rules) : gSlur;
+            piece.staffEntries = before;
+            piece.isVoltaPiece = true;
+            if (piece !== gSlur) {
+              staffLine.addSlurToStaffline(piece);
+            }
+          } else if (after.length === 0) {
+            staffLine.GraphicalSlurs.splice(staffLine.GraphicalSlurs.indexOf(gSlur), 1);
+          }
+        }
+      }
+    }
+  }
+
   protected calculateSlurs(): void {
     const openSlursDict: { [staffId: number]: GraphicalSlur[] } = {};
     for (const graphicalMeasure of this.graphicalMusicSheet.MeasureList[0]) { //let i: number = 0; i < this.graphicalMusicSheet.MeasureList[0].length; i++) {
@@ -3970,6 +4050,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         // Attach vfSlur array to the vfStaffline to be drawn
         //vfStaffLine.SlursInVFStaffLine = vfSlurs;
       } // loop over MusicSystems
+
+    this.splitSlursIntoVoltas();
 
     // order slurs that were saved to the Staffline
     for (const musicSystem of this.musicSystems) {
