@@ -243,6 +243,14 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      *  (Vexflow would draw a slash through each of them), and not a hidden one (Vexflow would draw its slash anyway). */
     private hasGraceSlash;
     graphicalMeasureCreatedCalculations(): void;
+    /**
+     * An in-staff clef that follows the grace notes of its note (ClefInstruction.AfterGraceNotes) is drawn between them
+     * and the note (Schumann, Myrthen 24 m17: a grace chord in the G clef, then the F clef, then the chords). VexFlow
+     * formats a note's grace notes next to it and a note subgroup (the clef) left of them, but draws both from the
+     * leftmost modifier position: they overlapped. The clef is moved right of the room reserved for the grace notes
+     * (GraceNoteGroup.format: their width and spacing); the grace notes stay leftmost.
+     */
+    private static drawClefAfterGraceNotes;
     /** Share modifier spacing with the note's accidentals, and keep clef/key order explicit. */
     private attachInStaffKeys;
     protected createInStaffInstructionVoice(): void;

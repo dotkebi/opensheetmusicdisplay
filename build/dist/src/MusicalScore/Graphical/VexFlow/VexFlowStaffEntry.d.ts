@@ -7,6 +7,8 @@ import { VexFlowKeySignatureNote } from "./VexFlowKeySignatureNote";
 export declare class VexFlowStaffEntry extends GraphicalStaffEntry {
     constructor(measure: VexFlowMeasure, sourceStaffEntry: SourceStaffEntry, staffEntryParent: VexFlowStaffEntry);
     vfClefBefore: VF.ClefNote;
+    /** vfClefBefore follows the grace notes of the entry (ClefInstruction.AfterGraceNotes), see VexFlowMeasure */
+    vfClefAfterGraceNotes: boolean;
     vfKeys: VexFlowKeySignatureNote[];
     vfInStaffInstructionNote: VF.GhostNote;
     /**

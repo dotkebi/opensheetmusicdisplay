@@ -10,6 +10,10 @@ export declare class ClefInstruction extends AbstractNotationInstruction {
     private octaveOffset;
     private clefPitch;
     private referenceCyPosition;
+    /** The clef follows the grace notes of its staff entry (a `<clef>` read after them at their time): they are in the
+     *  previous clef, and it is drawn between them and the main note (Schumann, Myrthen 24 m17: a grace chord in the
+     *  G clef, then the F clef). Not part of Equals(). */
+    AfterGraceNotes: boolean;
     static getDefaultClefFromMidiInstrument(instrument: MidiInstrument): ClefInstruction;
     static getAllPossibleClefs(): ClefInstruction[];
     static isSupportedClef(clef: ClefEnum): boolean;
