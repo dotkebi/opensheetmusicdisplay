@@ -3761,6 +3761,12 @@ export abstract class MusicSheetCalculator {
                 //   TODO could be more precise but also more complex by checking lower notes, other notes, etc.
                 if (voiceId === 2 || voiceId === 6) {
                     tie.TieDirection = PlacementEnum.Below;
+                } else if ((voiceId === 1 || voiceId === 5) && MusicSheetCalculator.otherVoiceSounds(staffEntry, tie.Notes[0])) {
+                    // and of the first voice above when another voice plays in the measure: VexFlow's own choice from the
+                    //   stem put an upper voice's tie below, into the lower voice (Schumann, Myrthen 3 m64-65: the G4 half
+                    //   notes over the sixteenths; the source ties them above). The arch by length makes such a tie reach
+                    //   further into the other voice.
+                    tie.TieDirection = PlacementEnum.Above;
                 }
             }
         }
@@ -3782,6 +3788,13 @@ export abstract class MusicSheetCalculator {
                 }
             }
         }
+    }
+
+    /** Whether a voice other than the note's has a visible note in the note's measure on the note's staff. */
+    private static otherVoiceSounds(staffEntry: GraphicalStaffEntry, note: Note): boolean {
+        const voice: Voice = note.ParentVoiceEntry.ParentVoice;
+        return staffEntry.parentMeasure.staffEntries.some(entry => entry.graphicalVoiceEntries.some(gve =>
+            gve.parentVoiceEntry.ParentVoice !== voice && gve.parentVoiceEntry.Notes.some(other => !other.isRest() && other.PrintObject)));
     }
 
     private createAccidentalCalculators(): AccidentalCalculator[] {
