@@ -119,6 +119,16 @@ describe("Cross-staff beams", () => {
         }
     });
 
+    it("leaves a beam over the barline at a system break as before (the reader closes it)", async () => {
+        await render(true);
+        expect(osmd.GraphicSheet.MusicPages[0].MusicSystems.length).to.be.greaterThan(1);
+        for (const index of [4, 5]) {
+            for (const staff of [0, 1]) {
+                expect(measureAt(index, staff).crossStaffBeams.length).to.equal(0);
+            }
+        }
+    });
+
     it("draws two cross-staff beams in one measure", async () => {
         await render(true);
         const beams: CrossStaffBeam[] = measureAt(6, 1).crossStaffBeams;
@@ -127,5 +137,26 @@ describe("Cross-staff beams", () => {
             expectBetweenStaves(beam, 6);
             expectStemsReachBeam(beam);
         }
+    });
+
+    it("is drawn the same by renderAsync (system by system), each beam once", async () => {
+        const beamPaths: (div: HTMLElement) => string[] = (div: HTMLElement) =>
+            Array.from(div.querySelectorAll("g.vf-beam path")).map(path => path.getAttribute("d"));
+        await render(true);
+        const sync: string[] = beamPaths(container);
+        const crossBeams: number = osmd.GraphicSheet.MeasureList
+            .map(column => (column[1] as VexFlowMeasure).crossStaffBeams.length).reduce((a, b) => a + b, 0);
+        expect(crossBeams).to.equal(7);
+        osmd.clear();
+        container.remove();
+        container = TestUtils.getDivElement(document);
+        osmd = TestUtils.createOpenSheetMusicDisplay(container);
+        osmd.EngravingRules.NewSystemAtXMLNewSystemAttribute = true;
+        await osmd.load(TestUtils.getScore("test_cross_staff_beams.musicxml"));
+        await osmd.renderAsync();
+        expect(beamPaths(container).length).to.be.greaterThan(0);
+        expect(beamPaths(container)).to.deep.equal(sync);
+        // no path drawn twice (a beam drawn with each of its two measures would be)
+        expect(new Set(sync).size).to.equal(sync.length);
     });
 });
