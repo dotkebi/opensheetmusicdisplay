@@ -878,9 +878,11 @@ export class GraphicalSlur extends GraphicalCurve {
         }
 
         // if GraphicalSlur breaks over System, then the end/start of the curve is at the corresponding height with the known start/end
+        //   (a middle piece, with neither note in this staff line, on the slur's side of the staff: a slur below at -1.5
+        //   started in the staff lines at the clef and crossed the staff, Schumann, Myrthen 11 m36)
         if (!slurStartNote && !slurEndNote) {
-            startY = -1.5;
-            endY = -1.5;
+            startY = this.placement === PlacementEnum.Below ? staffLine.StaffHeight + 1.5 : -1.5;
+            endY = startY;
         }
         if (!slurStartNote) {
             if (this.placement === PlacementEnum.Above) {

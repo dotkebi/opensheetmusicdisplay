@@ -1395,12 +1395,22 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     }
 
     if (tieIsAtSystemBreak) {
-      // split tie into two ties:
+      // split tie into two ties, both in the tie's direction (the XML's placement/orientation), as a whole tie:
+      //   VexFlow's own choice from the stem put the halves of an "above" tie below (Schumann, Myrthen 2 m18-19)
+      const tieDirection: PlacementEnum = tie.Tie.getTieDirection(startNote?.sourceNote);
+      const setTieDirection: (vfTie: any) => void = (vfTie: any): void => { // setDirection is missing in the VexFlow typings
+        if (tieDirection === PlacementEnum.Below) {
+          vfTie.setDirection(1); // + is down in vexflow
+        } else if (tieDirection === PlacementEnum.Above) {
+          vfTie.setDirection(-1);
+        }
+      };
       if (vfStartNote) { // first_note or last_note must be not null in Vexflow
         const vfTie1: VF.StaveTie = new VF.StaveTie({
           first_indices: [startNoteIndexInTie],
           first_note: vfStartNote
         });
+        setTieDirection(vfTie1);
         const measure1: VexFlowMeasure = (startNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure);
         measure1.addStaveTie(vfTie1, tie);
       }
@@ -1410,6 +1420,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           last_indices: [endNoteIndexInTie],
           last_note: vfEndNote
         });
+        setTieDirection(vfTie2);
         const measure2: VexFlowMeasure = (endNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure);
         measure2.addStaveTie(vfTie2, tie);
       }
