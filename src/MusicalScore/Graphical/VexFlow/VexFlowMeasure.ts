@@ -41,6 +41,7 @@ import { Arpeggio } from "../../VoiceData/Arpeggio";
 import { GraphicalTie } from "../GraphicalTie";
 import { Note } from "../../VoiceData/Note";
 import { TabNote } from "../../VoiceData/TabNote";
+import { CrossStaffBeam } from "./CrossStaffBeam";
 
 // type StemmableNote = VF.StemmableNote;
 
@@ -103,6 +104,11 @@ export class VexFlowMeasure extends GraphicalMeasure {
     private autoTupletVfBeams: VF.Beam[] = [];
     /** VexFlow Beams */
     private vfbeams: { [voiceID: number]: VF.Beam[] } = {};
+    /** The beams over the notes of this measure and of the measures of the part's other staves (CrossStaffBeam): built
+     *  by the measure of the beam's lowest staff, listed in every measure of its notes, formatted and drawn by the drawer
+     *  (VexFlowMusicSheetDrawer), not by draw(). */
+    public crossStaffBeams: CrossStaffBeam[] = [];
+    private ownedCrossStaffBeams: CrossStaffBeam[] = [];
     /** Intermediate object to construct tuplets */
     protected tuplets: { [voiceID: number]: [Tuplet, VexFlowVoiceEntry[]][] } = {};
     /** VexFlow Tuplets */
@@ -734,6 +740,9 @@ export class VexFlowMeasure extends GraphicalMeasure {
                 beam.setContext(ctx).draw();
             }
         }
+        if (this.drawingForSkyline) {
+            this.reserveCrossStaffBeamStems(ctx);
+        }
         if (!this.isTabMeasure || this.rules.TupletNumbersInTabs) {
             if (this.autoTupletVfBeams) {
                 for (const beam of this.autoTupletVfBeams) {
@@ -1167,6 +1176,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
         // created them brand new. Is this needed? And more importantly,
         // should the old beams be removed manually by the notes?
         this.vfbeams = {};
+        this.releaseOwnedCrossStaffBeams();
         if (this.isTabMeasure && !this.rules.TabBeamsRendered) {
             return; // fixes tab beams rendered in test_slide_glissando when TabBeamsRendered = false
         }
@@ -1196,6 +1206,20 @@ export class VexFlowMeasure extends GraphicalMeasure {
                     const notes: VF.StaveNote[] = [];
                     const psBeam: Beam = beam[0];
                     const voiceEntries: VexFlowVoiceEntry[] = beam[1];
+
+                    // A segment of the beam on more than one staff is not beamed here (CrossStaffBeam): the measure of
+                    //   its lowest staff beams all its notes.
+                    const segment: Note[] = voiceEntries.length > 0 && voiceEntries[0].notes.length > 0 ?
+                        CrossStaffBeam.segmentOf(voiceEntries[0].notes[0].sourceNote) : [];
+                    if (CrossStaffBeam.isCrossStaffSegment(segment)) {
+                        for (const entry of voiceEntries) {
+                            if (entry.vfStaveNote) {
+                                beamedNotes.push(entry.vfStaveNote as StaveNote);
+                            }
+                        }
+                        this.buildCrossStaffBeam(psBeam, segment);
+                        continue;
+                    }
 
                     let autoStemBeam: boolean = true;
                     for (const gve of voiceEntries) {
@@ -1259,6 +1283,105 @@ export class VexFlowMeasure extends GraphicalMeasure {
         }
         if (this.rules.AutoBeamNotes) {
             this.autoBeamNotes(beamedNotes); // try to autobeam notes except those that are already beamed (beamedNotes).
+        }
+    }
+
+    /** This measure's staff index in its instrument (0 = top). */
+    private get staffIndexInInstrument(): number {
+        return this.ParentStaff.ParentInstrument.Staves.indexOf(this.ParentStaff);
+    }
+
+    /** Builds the beam of a cross-staff segment when this measure is the one of its lowest staff (measures are created
+     *  staff by staff, so the VexFlow notes of the upper staves exist by then). */
+    private buildCrossStaffBeam(sourceBeam: Beam, segment: Note[]): void {
+        const lowestStaff: number = Math.max(...segment.map(n => CrossStaffBeam.staffIndexOf(n)));
+        if (lowestStaff !== this.staffIndexInInstrument) {
+            return;
+        }
+        const quarter: number = new Fraction(1, 4).RealValue;
+        for (const note of sourceBeam.Notes) {
+            if (note.Length.RealValue >= quarter && (!note.TypeLength || note.TypeLength.RealValue > 0.125)) {
+                return; // a tremolo between two notes, see finalizeBeams()
+            }
+        }
+        const notes: VF.StemmableNote[] = [];
+        const directions: number[] = [];
+        const staffIndices: number[] = [];
+        const measures: Set<VexFlowMeasure> = new Set<VexFlowMeasure>();
+        for (const note of segment) {
+            if (note.isRest() || !(note.PrintObject || note.sharesNoteheadWithVisibleUnisonNote())) {
+                continue;
+            }
+            const graphicalNote: VexFlowGraphicalNote = this.rules.GNote(note) as VexFlowGraphicalNote;
+            const entry: VexFlowVoiceEntry = graphicalNote?.parentVoiceEntry as VexFlowVoiceEntry;
+            const vfNote: VF.StemmableNote = entry?.vfStaveNote;
+            const measure: VexFlowMeasure = entry?.parentStaffEntry?.parentMeasure as VexFlowMeasure;
+            if (!vfNote || !measure) {
+                return;
+            }
+            if (!notes.includes(vfNote)) {
+                notes.push(vfNote);
+                const wanted: StemDirectionType = entry.parentVoiceEntry.WantedStemDirection;
+                directions.push(wanted === StemDirectionType.Up ? VF.Stem.UP : wanted === StemDirectionType.Down ? VF.Stem.DOWN : undefined);
+                staffIndices.push(CrossStaffBeam.staffIndexOf(note));
+            }
+            measures.add(measure);
+        }
+        if (measures.size < 2 || !this.canCreateVexFlowBeam(notes)) {
+            return;
+        }
+        const beam: CrossStaffBeam = new CrossStaffBeam(notes, sourceBeam, directions, staffIndices);
+        if (sourceBeam.SecondaryBreakIndices?.length > 0) {
+            beam.breakSecondaryAt(sourceBeam.SecondaryBreakIndices);
+        }
+        if (this.rules.FlatBeams && !beam.isMixed) {
+            (<any>beam).render_options.flat_beams = true;
+            (<any>beam).render_options.flat_beam_offset = this.rules.FlatBeamOffset;
+            (<any>beam).render_options.flat_beam_offset_per_beam = this.rules.FlatBeamOffsetPerBeam;
+        }
+        beam.participants = Array.from(measures);
+        this.ownedCrossStaffBeams.push(beam);
+        for (const measure of measures) {
+            measure.crossStaffBeams.push(beam);
+        }
+    }
+
+    private releaseOwnedCrossStaffBeams(): void {
+        for (const beam of this.ownedCrossStaffBeams) {
+            for (const measure of beam.participants as VexFlowMeasure[]) {
+                const index: number = measure.crossStaffBeams.indexOf(beam);
+                if (index >= 0) {
+                    measure.crossStaffBeams.splice(index, 1);
+                }
+            }
+        }
+        this.ownedCrossStaffBeams = [];
+    }
+
+    /** The sky/bottom line of a measure is measured before the staves of its system are placed, so a cross-staff beam
+     *  (drawn by the drawer between the placed staves) cannot be measured. Its notes on this staff reserve a stem
+     *  towards the other staff instead (CrossStaffBeam.reservedStemLength): the notes the beam is placed from the length
+     *  they would have on one staff (the beam lies at its end), the other notes a short clear stem — so the staves keep
+     *  about their distance and nothing is placed where the beam goes. */
+    private reserveCrossStaffBeamStems(ctx: Vex.IRenderContext): void {
+        for (const beam of this.crossStaffBeams) {
+            for (const note of (beam as any).notes as VF.StemmableNote[]) {
+                if (note.getStave() !== this.stave || !note.getStem()) {
+                    continue;
+                }
+                const ys: number[] = note.getYs();
+                if (!ys?.length) {
+                    continue;
+                }
+                const top: number = Math.min(...ys);
+                const bottom: number = Math.max(...ys);
+                const length: number = beam.reservedStemLength(note);
+                const x: number = note.getStemX();
+                const up: boolean = beam.stemDirectionOf(note) === VF.Stem.UP;
+                const y0: number = up ? top - length : top;
+                const y1: number = up ? bottom : bottom + length;
+                ctx.fillRect(x - (VF.Stem as any).WIDTH / 2, y0, (VF.Stem as any).WIDTH, y1 - y0);
+            }
         }
     }
 

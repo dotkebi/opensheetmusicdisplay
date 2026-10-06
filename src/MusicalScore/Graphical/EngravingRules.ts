@@ -114,6 +114,14 @@ export class EngravingRules {
     public StemMaxLength: number;
     public BeamSlopeMaxAngle: number;
     public StemMinAllowedDistanceBetweenNoteHeadAndBeamLine: number;
+    /** A beam over two staves of a part (CrossStaffBeam) whose notes all have the same XML <stem> (all down, or all up)
+     *  is centred anyway — notes of the upper staff down, of the lower staff up, the beam between the staves — as when
+     *  the XML gives no stems. A beam whose XML stems differ keeps them. Default true: the Myrthen engraving (Breitkopf
+     *  RS 120) beams 61 of its 63 cross-staff measures between the staves although its MusicXML (music21) stems every
+     *  note of the voice one way; corpus wave 1 has one such uniform beam among 77. False follows the XML stems (the
+     *  beam above or below the notes of both staves, as MuseScore 3 exports such a beam). Layout only.
+     *  Same as osmd-dart. */
+    public CrossStaffBeamsCenterUniformXmlStems: boolean;
     public SetWantedStemDirectionByXml: boolean;
     public GraceNoteScalingFactor: number;
     public GraceNoteXOffset: number;
@@ -805,6 +813,7 @@ export class EngravingRules {
         this.BeamSlopeMaxAngle = 10.0;
         this.StemMinAllowedDistanceBetweenNoteHeadAndBeamLine = 1.0;
         this.SetWantedStemDirectionByXml = true;
+        this.CrossStaffBeamsCenterUniformXmlStems = true;
         // also see stemwidth further below
 
         // GraceNote Variables

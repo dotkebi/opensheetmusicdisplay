@@ -3,6 +3,7 @@ import VF = Vex.Flow;
 import { MusicSheetDrawer } from "../MusicSheetDrawer";
 import { RectangleF2D } from "../../../Common/DataObjects/RectangleF2D";
 import { VexFlowMeasure } from "./VexFlowMeasure";
+import { CrossStaffBeam } from "./CrossStaffBeam";
 import { PointF2D } from "../../../Common/DataObjects/PointF2D";
 import { GraphicalLabel } from "../GraphicalLabel";
 import { VexFlowTextMeasurer } from "./VexFlowTextMeasurer";
@@ -92,6 +93,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
 
         this.pageIdx = 0;
         this.backend = this.backends[0];
+        this.drawnCrossStaffBeams.clear();
         super.drawSheet(graphicalMusicSheet);
     }
 
@@ -142,6 +144,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
 
         this.pageIdx = 0;
         this.backend = this.backends[0];
+        this.drawnCrossStaffBeams.clear();
         await super.drawSheetAsync(graphicalMusicSheet, yielder, onSystemDrawn, maxPageCount);
     }
 
@@ -345,6 +348,55 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         graphicalSlur.SVGElement = this.backend.renderCurve(curvePointsInPixels, true, startNote);
     }
 
+    /** The cross-staff beams drawn in this drawing (drawSheet / drawSheetAsync). */
+    private drawnCrossStaffBeams: Set<CrossStaffBeam> = new Set<CrossStaffBeam>();
+
+    /** Formats the cross-staff beams of the measure before the first of their measures is drawn (a note's modifiers are
+     *  placed from its extended stem as it is drawn): the other staves' measures get the stave position their own draw
+     *  will give them, the notes' y values are refreshed against it, and the beam is post-formatted anew (the staves
+     *  moved since the skyline pass). Same as osmd-dart. */
+    private prepareCrossStaffBeams(measure: VexFlowMeasure): void {
+        for (const beam of measure.crossStaffBeams) {
+            if (this.drawnCrossStaffBeams.has(beam)) {
+                continue;
+            }
+            for (const participant of beam.participants as VexFlowMeasure[]) {
+                const position: PointF2D = participant.PositionAndShape.AbsolutePosition;
+                participant.setAbsoluteCoordinates(position.x * unitInPixels, position.y * unitInPixels);
+            }
+            for (const note of (beam as any).notes as VF.StemmableNote[]) {
+                if (note.getStave()) {
+                    (note as any).setStave(note.getStave());
+                }
+            }
+            (beam as any).postFormatted = false;
+            try {
+                beam.postFormat();
+            } catch (ex) {
+                log.warn("VexFlowMusicSheetDrawer.prepareCrossStaffBeams", ex);
+            }
+        }
+    }
+
+    /** Draws the cross-staff beams of the measure (stems and beam lines) after the first of their measures was drawn,
+     *  once per drawing. */
+    private drawCrossStaffBeams(measure: VexFlowMeasure): void {
+        for (const beam of measure.crossStaffBeams) {
+            if (this.drawnCrossStaffBeams.has(beam)) {
+                continue;
+            }
+            this.drawnCrossStaffBeams.add(beam);
+            const ctx: Vex.IRenderContext = this.backend.getContext();
+            ctx.openGroup("beam");
+            try {
+                beam.setContext(ctx).draw();
+            } catch (ex) {
+                log.warn("VexFlowMusicSheetDrawer.drawCrossStaffBeams", ex);
+            }
+            ctx.closeGroup();
+        }
+    }
+
     protected drawMeasure(measure: VexFlowMeasure): void {
         if (!this.lazyDrawsObject(measure.PositionAndShape)) {
             return; // lazy horizontal: this measure is outside the batch's draw x-window
@@ -354,7 +406,9 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             measure.PositionAndShape.AbsolutePosition.y * unitInPixels
         );
         try {
+            this.prepareCrossStaffBeams(measure);
             measure.draw(this.backend.getContext());
+            this.drawCrossStaffBeams(measure);
             // Vexflow errors can happen here. If we don't catch errors, rendering will stop after this measure.
         } catch (ex) {
             log.warn("VexFlowMusicSheetDrawer.drawMeasure", ex);

@@ -10,6 +10,7 @@ import { ColoringModes } from "../../../Common/Enums/ColoringModes";
 import { GraphicalNote } from "../GraphicalNote";
 import { EngravingRules } from "../EngravingRules";
 import { NoteHeadShape } from "../../VoiceData/Notehead";
+import { CrossStaffBeam } from "./CrossStaffBeam";
 
 export class VexFlowVoiceEntry extends GraphicalVoiceEntry {
     private mVexFlowStaveNote: VF.StemmableNote;
@@ -22,6 +23,31 @@ export class VexFlowVoiceEntry extends GraphicalVoiceEntry {
         super(parentVoiceEntry, parentStaffEntry, rules);
     }
 
+    /** The y and height (px) of a note of a cross-staff beam for the layout: its noteheads and the stem the sky/bottom
+     *  line reserves for it (CrossStaffBeam.reservedStemLength), not the stem it is drawn with, which reaches the beam
+     *  between the staves (as osmd-dart, whose borders are read again after a progressive draw). Undefined: not in a
+     *  cross-staff beam. */
+    private static crossStaffBeamNoteBox(note: any): [number, number] {
+        const beam: any = note.beam;
+        if (!(beam instanceof CrossStaffBeam) || !note.getStem()) {
+            return undefined;
+        }
+        const ys: number[] = note.getYs();
+        if (!ys?.length) {
+            return undefined;
+        }
+        const halfHead: number = 5;
+        let top: number = Math.min(...ys) - halfHead;
+        let bottom: number = Math.max(...ys) + halfHead;
+        const length: number = beam.reservedStemLength(note);
+        if (beam.stemDirectionOf(note) === VF.Stem.UP) {
+            top -= length - halfHead;
+        } else {
+            bottom += length - halfHead;
+        }
+        return [top, bottom - top];
+    }
+
     public applyBordersFromVexflow(): void {
         const staveNote: any = (this.vfStaveNote as any);
         if (!staveNote.getNoteHeadBeginX) {
@@ -29,10 +55,16 @@ export class VexFlowVoiceEntry extends GraphicalVoiceEntry {
         }
         const boundingBox: any = staveNote.getBoundingBox();
         const modifierWidth: number = staveNote.getNoteHeadBeginX() - boundingBox.x;
+        let boxY: number = boundingBox.y;
+        let boxH: number = boundingBox.h;
+        const crossStaffBox: [number, number] = VexFlowVoiceEntry.crossStaffBeamNoteBox(staveNote);
+        if (crossStaffBox) {
+            [boxY, boxH] = crossStaffBox;
+        }
 
-        this.PositionAndShape.RelativePosition.y = boundingBox.y / unitInPixels;
+        this.PositionAndShape.RelativePosition.y = boxY / unitInPixels;
         this.PositionAndShape.BorderTop = 0;
-        this.PositionAndShape.BorderBottom = boundingBox.h / unitInPixels;
+        this.PositionAndShape.BorderBottom = boxH / unitInPixels;
         const halfStavenoteWidth: number = (staveNote.width - ((staveNote as any).paddingRight ?? 0)) / 2;
         this.PositionAndShape.BorderLeft = -(modifierWidth + halfStavenoteWidth) / unitInPixels; // Left of our X origin is the modifier
         this.PositionAndShape.BorderRight = (boundingBox.w - modifierWidth) / unitInPixels; // Right of x origin is the note
