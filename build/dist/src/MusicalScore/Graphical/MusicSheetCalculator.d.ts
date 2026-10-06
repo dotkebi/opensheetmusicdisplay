@@ -505,6 +505,10 @@ export declare abstract class MusicSheetCalculator {
      * syllable instead, up to EngravingRules.LyricExtendMinimumLength, but never into its label.
      * Lines that are already long enough are returned unchanged.
      */
+    /** The x a lyric extend line in the staff line must end before: the left of the next syllable's label, if it is in the
+     *  staff line (else the staff line's end). The last note of a melisma can sit under that label when the measure is
+     *  narrow, so the line ended inside it (Schumann, Myrthen 10 m14 in the app: "weh!" into the E of "Ein"). */
+    private lyricLineLimitBeforeNextSyllable;
     private extendLyricLineToMinimumLength;
     private calculateSingleLyricWordWithUnderscore;
     /**

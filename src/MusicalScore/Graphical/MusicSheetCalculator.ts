@@ -4725,7 +4725,7 @@ export abstract class MusicSheetCalculator {
         // find endstaffEntry and staffLine
         let endStaffEntry: GraphicalStaffEntry = undefined;
         let endStaffLine: StaffLine = undefined;
-        const nextLyricStaffEntry: GraphicalStaffEntry = undefined; // the staff entry of the following syllable, if any
+        let nextLyricStaffEntry: GraphicalStaffEntry = undefined; // the staff entry of the following syllable, if any
         const staffIndex: number = startStaffEntry.parentMeasure.ParentStaff.idInMusicSheet;
         if (!startStaffEntry.parentVerticalContainer) {
             // shouldn't happen since calculateVerticalContainersList covers all measure.staffEntries,
@@ -4740,6 +4740,7 @@ export abstract class MusicSheetCalculator {
         // where the extend would end at the next syllable of any verse, in case its own verse isn't sung again
         let anyVerseEndStaffEntry: GraphicalStaffEntry = undefined;
         let anyVerseEndStaffLine: StaffLine = undefined;
+        let anyVerseNextStaffEntry: GraphicalStaffEntry = undefined;
         let foundAnyVerseSyllable: boolean = false;
         let foundOwnVerseSyllable: boolean = false;
         let measure: GraphicalMeasure = startStaffEntry.parentMeasure;
@@ -4763,12 +4764,14 @@ export abstract class MusicSheetCalculator {
             }
             if (this.hasLyricsOfVerse(gse, verseNumber)) {
                 foundOwnVerseSyllable = true;
+                nextLyricStaffEntry = gse;
                 break;
             }
             if (!foundAnyVerseSyllable && gse.LyricsEntries.length > 0) {
                 foundAnyVerseSyllable = true;
                 anyVerseEndStaffEntry = endStaffEntry;
                 anyVerseEndStaffLine = endStaffLine;
+                anyVerseNextStaffEntry = gse;
             }
             endStaffEntry = gse;
             endStaffLine = endStaffEntry.parentMeasure.ParentStaffLine;
@@ -4781,6 +4784,7 @@ export abstract class MusicSheetCalculator {
         if (!foundOwnVerseSyllable && foundAnyVerseSyllable && !this.isVerseSungFrom(index, staffIndex, verseNumber)) {
             endStaffEntry = anyVerseEndStaffEntry;
             endStaffLine = anyVerseEndStaffLine;
+            nextLyricStaffEntry = anyVerseNextStaffEntry;
         }
         if (!endStaffEntry || !endStaffLine) {
             return;
@@ -4801,6 +4805,7 @@ export abstract class MusicSheetCalculator {
                 endStaffEntry.PositionAndShape.BorderMarginRight;
             // + endStaffLine.PositionAndShape.AbsolutePosition.x; // doesn't work, done in drawer
             endX = this.extendLyricLineToMinimumLength(startX, endX, nextLyricStaffEntry, startStaffLine);
+            endX = Math.min(endX, this.lyricLineLimitBeforeNextSyllable(nextLyricStaffEntry, startStaffLine));
             if (endX <= startX) {
                 return; // no room at all: a zero-length line would only draw a dot
             }
@@ -4823,17 +4828,21 @@ export abstract class MusicSheetCalculator {
             if (!endStaffEntry) {
                 return;
             }
-            // second Underscore in the endStaffLine until endStaffEntry (if endStaffEntry isn't the first StaffEntry of the StaffLine))
+            // second Underscore in the endStaffLine until endStaffEntry, also when the melisma ends on the first note
+            //   of the new system: the line continues under it (Schumann, Myrthen 11 m25-26: "er." over a system break).
             if (endStaffEntry.parentMeasure.ParentStaffLine && endStaffEntry.parentMeasure.staffEntries &&
                 // the end staffline's first measure can be missing when it isn't laid out (e.g. a lazy/incremental render batch)
-                endStaffLine.Measures[0]?.staffEntries[0] &&
-                !(endStaffEntry === endStaffEntry.parentMeasure.staffEntries[0] &&
-                endStaffEntry.parentMeasure === endStaffEntry.parentMeasure.ParentStaffLine.Measures[0])) {
-                const secondStartX: number = endStaffLine.Measures[0].staffEntries[0].PositionAndShape.RelativePosition.x;
-                const secondEndX: number = endStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
+                endStaffLine.Measures[0]?.staffEntries[0]) {
+                const firstEntry: GraphicalStaffEntry = endStaffLine.Measures[0].staffEntries[0];
+                const secondStartX: number = endStaffLine.Measures[0].PositionAndShape.RelativePosition.x +
+                    firstEntry.PositionAndShape.RelativePosition.x + firstEntry.PositionAndShape.BorderMarginLeft;
+                let secondEndX: number = endStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
                     endStaffEntry.PositionAndShape.RelativePosition.x +
                     endStaffEntry.PositionAndShape.BorderMarginRight;
-                this.calculateSingleLyricWordWithUnderscore(endStaffLine, secondStartX, secondEndX, startY);
+                secondEndX = Math.min(secondEndX, this.lyricLineLimitBeforeNextSyllable(nextLyricStaffEntry, endStaffLine));
+                if (secondEndX > secondStartX) {
+                    this.calculateSingleLyricWordWithUnderscore(endStaffLine, secondStartX, secondEndX, startY);
+                }
             }
         }
     }
@@ -4883,6 +4892,22 @@ export abstract class MusicSheetCalculator {
      * syllable instead, up to EngravingRules.LyricExtendMinimumLength, but never into its label.
      * Lines that are already long enough are returned unchanged.
      */
+    /** The x a lyric extend line in the staff line must end before: the left of the next syllable's label, if it is in the
+     *  staff line (else the staff line's end). The last note of a melisma can sit under that label when the measure is
+     *  narrow, so the line ended inside it (Schumann, Myrthen 10 m14 in the app: "weh!" into the E of "Ein"). */
+    private lyricLineLimitBeforeNextSyllable(nextLyricStaffEntry: GraphicalStaffEntry, staffLine: StaffLine): number {
+        if (nextLyricStaffEntry?.parentMeasure.ParentStaffLine !== staffLine || nextLyricStaffEntry.LyricsEntries.length === 0) {
+            return Number.MAX_VALUE;
+        }
+        let nextLabelLeft: number = Number.MAX_VALUE;
+        for (const nextEntry of nextLyricStaffEntry.LyricsEntries) {
+            const nextBox: BoundingBox = nextEntry.GraphicalLabel.PositionAndShape;
+            nextLabelLeft = Math.min(nextLabelLeft, nextBox.RelativePosition.x + nextBox.BorderMarginLeft);
+        }
+        return nextLyricStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
+            nextLyricStaffEntry.PositionAndShape.RelativePosition.x +
+            nextLabelLeft - this.rules.HorizontalBetweenLyricsDistance;
+    }
     private extendLyricLineToMinimumLength(startX: number, endX: number, nextLyricStaffEntry: GraphicalStaffEntry, staffLine: StaffLine): number {
         const minimumLength: number = this.rules.LyricExtendMinimumLength;
         if (!(minimumLength > 0) || endX - startX >= minimumLength) {
