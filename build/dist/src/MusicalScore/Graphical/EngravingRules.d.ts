@@ -263,6 +263,11 @@ export declare class EngravingRules {
     LyricsHeight: number;
     LyricsYOffsetToStaffHeight: number;
     LyricsYMarginToBottomLine: number;
+    /** Draw the verse number ("1.", "2.", …) at the left of the first syllable of every numbered verse
+     * when the instrument sings more than one verse. Layout only. */
+    RenderLyricVerseNumbers: boolean;
+    /** Gap between the verse number and its first syllable (staff units). */
+    LyricVerseNumberXMargin: number;
     /** Extra x-shift (to the right) for short lyrics to be better vertically aligned.
      * Also see ChordSymbolExtraXShiftForShortChordSymbols, same principle, same default value.
      */

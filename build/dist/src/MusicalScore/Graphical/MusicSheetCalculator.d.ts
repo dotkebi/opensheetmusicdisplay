@@ -72,6 +72,12 @@ export declare abstract class MusicSheetCalculator {
     protected staffEntriesWithOrnaments: GraphicalStaffEntry[];
     protected staffEntriesWithChordSymbols: GraphicalStaffEntry[];
     protected staffLinesWithLyricWords: StaffLine[];
+    /** The first syllable of every numbered verse of each instrument that sings more than one verse:
+     * a verse number label ("2.") is drawn at its left. Found in the source model, so the answer does not depend on the layout pass. */
+    private lyricVerseNumberFirstEntries;
+    /** "1. ", "2)", a bare "1" or "3 In": the number is already in the text. */
+    private static readonly embeddedVerseNumberPrefix;
+    private static readonly integerVerseNumber;
     protected graphicalLyricWords: GraphicalLyricWord[];
     protected graphicalMusicSheet: GraphicalMusicSheet;
     protected rules: EngravingRules;
@@ -189,6 +195,22 @@ export declare abstract class MusicSheetCalculator {
      * calculates the dashes of lyric words and the extending underscore lines of syllables sung on more than one note.
      * @param lyricsStaffEntries
      */
+    /**
+     * Places the verse number ("1.", "2.", …) right-aligned at the left of the first syllable of its verse, on the
+     * syllable's baseline, so the numbers of all verses line up in one column. The label never goes left of the
+     * staff line start: it is clamped there and the syllable is not moved, so measure widths and system breaks are
+     * unchanged. Its width is reserved in the bottom line.
+     */
+    private addLyricVerseNumberLabel;
+    /** The verse numbers of one staff entry share the leftmost x (a short first syllable is shifted right by
+     * LyricsExtraXShiftForShortLyrics, which would break the column), then their widths are reserved in the bottom line. */
+    private alignLyricVerseNumberLabels;
+    /**
+     * Collects lyricVerseNumberFirstEntries: per instrument with two or more verse lines, the first syllable (in time)
+     * of each verse whose number is an integer string. Chorus/translation lines get no label, and neither does a verse
+     * whose first syllable already starts with "N.", "N)" or a bare number (Finale and Sibelius exports embed the number in the text).
+     */
+    private collectLyricVerseNumberFirstEntries;
     protected calculateLyricsExtendsAndDashes(lyricsStaffEntries: GraphicalStaffEntry[]): void;
     /**
      * Calculate a single OctaveShift for a [[MultiExpression]].
