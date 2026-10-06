@@ -20,6 +20,7 @@ import { VexFlowVoiceEntry } from "./VexFlowVoiceEntry";
 import { Voice } from "../../VoiceData/Voice";
 import { EngravingRules } from "../EngravingRules";
 import { GraphicalTie } from "../GraphicalTie";
+import { CrossStaffBeam } from "./CrossStaffBeam";
 /** A format of the voices of a vertical measure (see VexFlowMeasure.format()). */
 export interface IVerticalMeasureFormat {
     /** The format function, shared by the measures of the vertical measure (see VexFlowMeasure.formatVoices). */
@@ -60,6 +61,11 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
     private autoTupletVfBeams;
     /** VexFlow Beams */
     private vfbeams;
+    /** The beams over the notes of this measure and of the measures of the part's other staves (CrossStaffBeam): built
+     *  by the measure of the beam's lowest staff, listed in every measure of its notes, formatted and drawn by the drawer
+     *  (VexFlowMusicSheetDrawer), not by draw(). */
+    crossStaffBeams: CrossStaffBeam[];
+    private ownedCrossStaffBeams;
     /** Intermediate object to construct tuplets */
     protected tuplets: {
         [voiceID: number]: [Tuplet, VexFlowVoiceEntry[]][];
@@ -227,6 +233,18 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      * Complete the creation of VexFlow Beams in this measure
      */
     finalizeBeams(): void;
+    /** This measure's staff index in its instrument (0 = top). */
+    private get staffIndexInInstrument();
+    /** Builds the beam of a cross-staff segment when this measure is the one of its lowest staff (measures are created
+     *  staff by staff, so the VexFlow notes of the upper staves exist by then). */
+    private buildCrossStaffBeam;
+    private releaseOwnedCrossStaffBeams;
+    /** The sky/bottom line of a measure is measured before the staves of its system are placed, so a cross-staff beam
+     *  (drawn by the drawer between the placed staves) cannot be measured. Its notes on this staff reserve a stem
+     *  towards the other staff instead (CrossStaffBeam.reservedStemLength): the notes the beam is placed from the length
+     *  they would have on one staff (the beam lies at its end), the other notes a short clear stem — so the staves keep
+     *  about their distance and nothing is placed where the beam goes. */
+    private reserveCrossStaffBeamStems;
     /** VexFlow rejects a beam when even one formatted endpoint is quarter-note length or longer. */
     private canCreateVexFlowBeam;
     /** Automatically creates beams for notes except beamedNotes, using Vexflow's Beam.generateBeams().

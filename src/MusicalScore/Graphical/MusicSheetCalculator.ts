@@ -1,3 +1,4 @@
+import { CrossStaffBeam } from "./VexFlow/CrossStaffBeam";
 import { GraphicalStaffEntry } from "./GraphicalStaffEntry";
 import { StaffLine } from "./StaffLine";
 import { GraphicalMusicSheet } from "./GraphicalMusicSheet";
@@ -3079,9 +3080,18 @@ export abstract class MusicSheetCalculator {
         if (voiceEntry.StemDirectionXml !== StemDirectionType.Undefined &&
             this.rules.SetWantedStemDirectionByXml &&
             voiceEntry.StemDirectionXml !== undefined) {
-                voiceEntry.WantedStemDirection = voiceEntry.StemDirectionXml;
+                const centered: StemDirectionType = this.rules.CrossStaffBeamsCenterUniformXmlStems ?
+                    CrossStaffBeam.centerStemDirection(voiceEntry, true) : undefined;
+                voiceEntry.WantedStemDirection = centered ?? voiceEntry.StemDirectionXml;
         } else {
-            this.calculateStemDirectionFromVoices(voiceEntry);
+            // Without an XML stem, a note beamed across the staves is stemmed towards the other staff: the beam lies
+            //   between them (CrossStaffBeam).
+            const centered: StemDirectionType = CrossStaffBeam.centerStemDirection(voiceEntry);
+            if (centered !== undefined) {
+                voiceEntry.WantedStemDirection = centered;
+            } else {
+                this.calculateStemDirectionFromVoices(voiceEntry);
+            }
         }
         // if GraphicalStaffEntry has been created earlier (because of Tie), then the GraphicalNotesLists have also been created
         const gve: GraphicalVoiceEntry = graphicalStaffEntry.findOrCreateGraphicalVoiceEntry(voiceEntry);
