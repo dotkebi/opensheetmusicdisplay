@@ -1309,7 +1309,14 @@ export class InstrumentReader {
       if (value instanceof ClefInstruction) {
         const clefInstruction: ClefInstruction = <ClefInstruction>value;
         if (this.currentXmlMeasureIndex === 0 || (key <= this.activeClefs.length && clefInstruction !== this.activeClefs[key - 1])) {
-          if (!beginOfMeasure && this.currentStaffEntry !== undefined && !this.currentStaffEntry.hasNotes() &&
+          // A clef read after the grace notes of the staff entry it is at (and before its main note) follows them: an in-staff
+          //   clef between the grace notes and the main note, also at the measure's start (Schumann, Myrthen 24 m17). It was
+          //   taken as the clef of the measure's start (drawn at the end of the previous measure, the grace notes in it).
+          const afterGraceNotes: boolean = this.currentStaffEntry !== undefined && this.currentStaffEntry.hasNotes() &&
+            this.currentStaffEntry.VoiceEntries.every(voiceEntry =>
+              voiceEntry.Notes.length === 0 || voiceEntry.IsGrace && !voiceEntry.GraceAfterMainNote);
+          if ((!beginOfMeasure || afterGraceNotes) && this.currentStaffEntry !== undefined &&
+            (!this.currentStaffEntry.hasNotes() || afterGraceNotes) &&
             key - 1 === this.instrument.Staves.indexOf(this.currentStaffEntry.ParentStaff)) {
             const newClefInstruction: ClefInstruction = clefInstruction;
             const staffEntry: SourceStaffEntry = this.currentStaffEntry;
@@ -1318,6 +1325,7 @@ export class InstrumentReader {
             if (instructionTimestamp && Math.abs(instructionTimestamp.RealValue - staffEntry.Timestamp.RealValue) > 0.01) {
               continue; // this instruction should be at a different staffentry/timestamp.
             }
+            newClefInstruction.AfterGraceNotes = afterGraceNotes;
             newClefInstruction.Parent = staffEntry;
             staffEntry.removeFirstInstructionOfTypeClefInstruction();
             staffEntry.Instructions.push(newClefInstruction);

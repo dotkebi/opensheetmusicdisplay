@@ -3978,9 +3978,14 @@ export abstract class MusicSheetCalculator {
             if (sourceStaffEntry) {
                 // a SourceStaffEntry exists
                 // is there an inStaff ClefInstruction? -> update activeClef
+                // (the clef of the grace notes before a clef that follows them, see ClefInstruction.AfterGraceNotes)
+                let graceNotesClef: ClefInstruction = undefined;
                 for (let idx: number = 0, len: number = sourceStaffEntry.Instructions.length; idx < len; ++idx) {
                     const abstractNotationInstruction: AbstractNotationInstruction = sourceStaffEntry.Instructions[idx];
                     if (abstractNotationInstruction instanceof ClefInstruction && activeClefs[staffIndex]?.ClefType !== ClefEnum.TAB) {
+                        if (abstractNotationInstruction.AfterGraceNotes) {
+                            graceNotesClef = activeClefs[staffIndex];
+                        }
                         // if activeClef is TAB, changing it can make the current/next tab measure look like a classical measure. See #1592
                         activeClefs[staffIndex] = <ClefInstruction>abstractNotationInstruction;
                     }
@@ -4030,7 +4035,7 @@ export abstract class MusicSheetCalculator {
                     octaveShiftValue = this.handleVoiceEntry(
                         voiceEntry, graphicalStaffEntry,
                         accidentalCalculator, openLyricWords,
-                        activeClefs[staffIndex], openTuplets,
+                        graceNotesClef && voiceEntry.IsGrace ? graceNotesClef : activeClefs[staffIndex], openTuplets,
                         openBeams, octaveShiftValue, staffIndex,
                         linkedNotes, sourceStaffEntry
                     );

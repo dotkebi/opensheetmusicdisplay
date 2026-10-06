@@ -1733,6 +1733,9 @@ export class VexFlowMeasure extends GraphicalMeasure {
                     }
                     // add clef as NoteSubGroup so that we get modifier layouting
                     const clefModifier: NoteSubGroup = new NoteSubGroup( [vfse.vfClefBefore] );
+                    if (vfse.vfClefAfterGraceNotes) {
+                        VexFlowMeasure.drawClefAfterGraceNotes(clefModifier);
+                    }
                     const vfStaveNote: any = vexFlowVoiceEntry.vfStaveNote;
                     if (vfStaveNote && typeof vfStaveNote.addModifier === "function") {
                         vfStaveNote.addModifier(0, clefModifier);
@@ -1777,6 +1780,28 @@ export class VexFlowMeasure extends GraphicalMeasure {
         }
         this.createArticulations();
         this.createOrnaments();
+    }
+
+    /**
+     * An in-staff clef that follows the grace notes of its note (ClefInstruction.AfterGraceNotes) is drawn between them
+     * and the note (Schumann, Myrthen 24 m17: a grace chord in the G clef, then the F clef, then the chords). VexFlow
+     * formats a note's grace notes next to it and a note subgroup (the clef) left of them, but draws both from the
+     * leftmost modifier position: they overlapped. The clef is moved right of the room reserved for the grace notes
+     * (GraceNoteGroup.format: their width and spacing); the grace notes stay leftmost.
+     */
+    private static drawClefAfterGraceNotes(clefGroup: NoteSubGroup): void {
+        const group: any = clefGroup;
+        const draw: () => void = group.draw;
+        group.draw = function (): void {
+            let graceRoom: number = 0;
+            for (const modifier of this.getNote().getModifiers()) {
+                if (modifier.getCategory?.() === "gracenotegroups" && modifier.getPosition?.() !== VF.Modifier.Position.RIGHT) {
+                    graceRoom = Math.max(graceRoom, modifier.getWidth() + (modifier.spacing ?? 0));
+                }
+            }
+            this.setSpacingFromNextModifier(graceRoom);
+            draw.call(this);
+        };
     }
 
     /** Share modifier spacing with the note's accidentals, and keep clef/key order explicit. */

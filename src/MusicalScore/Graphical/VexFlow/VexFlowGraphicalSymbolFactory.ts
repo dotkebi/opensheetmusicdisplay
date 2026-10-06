@@ -176,6 +176,7 @@ export class VexFlowGraphicalSymbolFactory implements IGraphicalSymbolFactory {
         const se: VexFlowStaffEntry = graphicalStaffEntry as VexFlowStaffEntry;
         const vfClefParams: { type: string, size: string, annotation: string } = VexFlowConverter.Clef(clefInstruction, "small");
         se.vfClefBefore = new VF.ClefNote(vfClefParams.type, vfClefParams.size, vfClefParams.annotation);
+        se.vfClefAfterGraceNotes = clefInstruction.AfterGraceNotes;
         return;
     }
 
