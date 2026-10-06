@@ -80,6 +80,12 @@ export declare class ExpressionReader {
     private static firstTextLine;
     private readNumber;
     private interpretWedge;
+    /** Where a wedge stop read at the very start of a measure (`readAt` 0, no later <offset>) ends: at the last staff entry of
+     *  this staff in the previous measure, if the wedge started before this measure. Such a stop closes the wedge at the barline
+     *  (music21 writes the stop of a hairpin over a whole measure there; MuseScore writes it after the last note of that measure);
+     *  ending it under the first note of this measure drew it into this measure, and into the next system at a system break
+     *  (Schumann, Myrthen 19 m5-6). The drawn end is then the previous measure's end, as for a stop after its last note. */
+    private wedgeStopAtPreviousMeasureEnd;
     /** The timestamp of a wedge stop read at `readAt`: the last staff entry of this staff starting before it, i.e. the note
      *  the wedge ends under. The start of the last note read (`previousFraction`) is that note only while the voices are
      *  read in time order: after a <backup> it belongs to another voice, e.g. a stop at the end of the measure after a held
