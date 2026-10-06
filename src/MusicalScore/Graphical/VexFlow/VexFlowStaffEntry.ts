@@ -20,6 +20,8 @@ export class VexFlowStaffEntry extends GraphicalStaffEntry {
     // if there is a in-measure clef given before this staffEntry,
     // it will be converted to a VF.ClefNote and assigned to this variable:
     public vfClefBefore: VF.ClefNote;
+    /** vfClefBefore follows the grace notes of the entry (ClefInstruction.AfterGraceNotes), see VexFlowMeasure */
+    public vfClefAfterGraceNotes: boolean = false;
     public vfKeys: VexFlowKeySignatureNote[] = [];
     public vfInStaffInstructionNote: VF.GhostNote;
 

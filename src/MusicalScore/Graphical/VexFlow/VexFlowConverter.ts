@@ -37,6 +37,7 @@ import { GraphicalLyricEntry } from "../GraphicalLyricEntry";
 import { GraphicalMeasure } from "../GraphicalMeasure";
 import { Staff } from "../../VoiceData/Staff";
 import { VexFlowStaffEntry } from "./VexFlowStaffEntry";
+import { VexFlowVoiceEntry } from "./VexFlowVoiceEntry";
 
 /**
  * Helper class, which contains static methods which actually convert
@@ -290,6 +291,7 @@ export class VexFlowConverter {
      * and its notes was put below, under the other voice's stems (Couperin, Concerts royaux II, Prelude m1-2: the quarter rest
      * of voice 6, far below the left hand's D3). Both are required: voices cross, and stems can be the other way round
      * (e.g. Concerts royaux IV, Courante françoise m6: a rest of the voice with downward stems above the other voice).
+     * A voice without any stems in the measure goes by its notes alone.
      * @param rest the rest's voice entry
      * @param highestOther the highest halftone of the other voices' notes at the rest's time
      * @param lowestOther the lowest halftone of the other voices' notes at the rest's time
@@ -302,6 +304,7 @@ export class VexFlowConverter {
         let nearest: VoiceEntry = undefined;
         let nearestDistance: number = Infinity;
         let stemSide: number = undefined;
+        let stemless: boolean = false;
         for (const entry of rest.ParentVoice.VoiceEntries) {
             if (entry === rest || entry.IsGrace || entry.Notes.length === 0 || entry.Notes[0].isRest() || !entry.Notes[0].Pitch ||
                 entry.ParentSourceStaffEntry?.VerticalContainerParent?.ParentMeasure !== measure) {
@@ -309,10 +312,16 @@ export class VexFlowConverter {
             }
             const side: number = entry.StemDirectionXml === StemDirectionType.Up ? 1 :
                 entry.StemDirectionXml === StemDirectionType.Down ? -1 : undefined;
-            if (side === undefined || stemSide !== undefined && side !== stemSide) {
-                return undefined; // no stems or both directions in the measure
+            if (side === undefined) {
+                stemless = true;
+            } else if (stemSide !== undefined && side !== stemSide) {
+                return undefined; // both directions in the measure
+            } else {
+                stemSide = side;
             }
-            stemSide = side;
+            if (stemless && stemSide !== undefined) {
+                return undefined; // notes with and without stems
+            }
             const distance: number = Math.abs(entry.Timestamp.RealValue - rest.Timestamp.RealValue);
             // (the note after the rest when two are as near: the one the rest leads to)
             if (distance < nearestDistance || distance === nearestDistance && entry.Timestamp.RealValue > rest.Timestamp.RealValue) {
@@ -325,10 +334,17 @@ export class VexFlowConverter {
         }
         const halftones: number[] = nearest.Notes.filter(n => n.Pitch).map(n => n.Pitch.getHalfTone());
         const pitchSide: number = Math.min(...halftones) > highestOther ? 1 : Math.max(...halftones) < lowestOther ? -1 : undefined;
+        // a voice without any stems in the MusicXML (Schumann, Myrthen 12 m28: the left hand's D3 and quarter rest under the
+        //   right hand's voice crossing into the staff) has only its notes to say: their side
+        if (stemless) {
+            return pitchSide;
+        }
         return pitchSide === stemSide ? pitchSide : undefined;
     }
 
     public static StaveNote(gve: GraphicalVoiceEntry): VF.StaveNote {
+        // the side of a rest among other voices' notes: 1 above, -1 below (set below, used by stavenote.js format())
+        let restSideForVexFlow: number = undefined;
         // if (gve.octaveShiftValue !== OctaveEnum.NONE) { // gves with accidentals in octave shift brackets can be unsorted
         gve.sortForVexflow(); // also necessary for some other cases, see test_sorted_notes... sample
         //   sort and reverse replace the array anyways, so we might as well directly sort them reversely for now.
@@ -449,6 +465,10 @@ export class VexFlowConverter {
                         }
                     }
                     const restSide: number = VexFlowConverter.restSideFromVoice(note.parentVoiceEntry.parentVoiceEntry, highestOther, lowestOther);
+                    if (highestOther !== undefined) {
+                        // the side for VexFlow's rest collisions (stavenote.js format()), see below
+                        restSideForVexFlow = restSide ?? (restVoiceId === 1 || restVoiceId === 5 ? 1 : -1);
+                    }
                     let maxHalftone: number;
                     let linesShift: number;
                     for (const staffGve of staffGves) {
@@ -756,6 +776,12 @@ export class VexFlowConverter {
         }
 
         vfnote.x_shift = xShift;
+        if (restSideForVexFlow !== undefined) {
+            // VexFlow's rest collisions took the first of a rest and a note at the same time as the upper voice:
+            //   a lower voice's rest above the upper voice's note was moved further up, onto it (Schumann, Myrthen 6 m11,
+            //   left hand: the 8th rest of voice 5 below voice 6's E3)
+            (vfnote as any).restSide = restSideForVexFlow;
+        }
 
         if (gve.parentVoiceEntry.IsGrace && gve.notes[0].sourceNote.NoteBeam) {
             // Vexflow seems to have issues with wanted stem direction for beamed grace notes,
@@ -915,14 +941,17 @@ export class VexFlowConverter {
                     vfArt = new VF.Articulation("a>");
                     const slurs: Slur[] = gNote.sourceNote.NoteSlurs;
                     for (const slur of slurs) {
-                        if (slur.StartNote === gNote.sourceNote) { // && slur.PlacementXml === articulation.placement
-                            if (slur.PlacementXml === PlacementEnum.Above) {
+                        // the accent moves away from the start of a slur on its own side only: an accent above the note
+                        //   of a slur below it was pushed down into the notes (Schumann, Myrthen 11 m12, left hand)
+                        if (slur.StartNote === gNote.sourceNote) {
+                            if (slur.PlacementXml === PlacementEnum.Above && vfArtPosition === VF.Modifier.Position.ABOVE) {
                                 vfArt.setYShift(-rules.SlurStartArticulationYOffsetOfArticulation * 10);
-                            } else if (slur.PlacementXml === PlacementEnum.Below) {
+                            } else if (slur.PlacementXml === PlacementEnum.Below && vfArtPosition === VF.Modifier.Position.BELOW) {
                                 vfArt.setYShift(rules.SlurStartArticulationYOffsetOfArticulation * 10);
                             }
                         }
                     }
+                    VexFlowConverter.keepArticulationClearOfOtherVoices(vfArt, gNote);
                     (vfArt as any).render_options = {
                         ...(vfArt as any).render_options,
                         extra_left_px: 0,
@@ -1042,6 +1071,91 @@ export class VexFlowConverter {
                 (vfnote as StaveNote).addModifier(0, vfArt);
             }
         }
+    }
+
+    /**
+     * An articulation on the notehead side of its note goes beyond the notes (and stems) of the other voices of the staff
+     * at the same time that are on that side: else it is drawn between them (Schumann, Myrthen 11 m12: the accent of the
+     * left hand's lower voice, F#3 with a down stem, inside the upper voice's chord A3-F#4 above it; the engraving puts it
+     * above that chord's stem). The other voices' notes are formatted only when the measure is drawn, so the shift is
+     * computed then (also for the skyline). It is added to the articulation's own y shift (e.g. at a slur start).
+     */
+    public static keepArticulationClearOfOtherVoices(vfArt: VF.Articulation, gNote: GraphicalNote): void {
+        const ownEntry: GraphicalVoiceEntry = gNote.parentVoiceEntry;
+        const staffEntry: GraphicalStaffEntry = ownEntry?.parentStaffEntry;
+        if (!staffEntry) {
+            return;
+        }
+        const art: any = vfArt;
+        const draw: () => void = art.draw;
+        // the shift added by the last draw: a y shift set by others is kept, and the clearance isn't added twice
+        let appliedShift: number = 0;
+        art.draw = function (): void {
+            const baseShift: number = (this.y_shift ?? 0) - appliedShift;
+            appliedShift = VexFlowConverter.otherVoicesArticulationShift(this, ownEntry, staffEntry, baseShift);
+            this.y_shift = baseShift + appliedShift;
+            draw.call(this);
+        };
+    }
+
+    /** The y shift (px) that puts the articulation beyond the other voices' notes on its side, see keepArticulationClearOfOtherVoices(). */
+    private static otherVoicesArticulationShift(art: any, ownEntry: GraphicalVoiceEntry, staffEntry: GraphicalStaffEntry,
+                                                baseShift: number): number {
+        const note: any = art.getNote();
+        const stave: any = note?.getStave();
+        if (!stave) {
+            return 0;
+        }
+        const space: number = stave.getSpacingBetweenLines();
+        const above: boolean = art.getPosition() === VF.Modifier.Position.ABOVE;
+        const ownYs: number[] = note.getYs();
+        const ownHead: number = above ? Math.min(...ownYs) : Math.max(...ownYs);
+        // where articulation.js draws it (before its y shift and the snapping to the staff spaces)
+        const stemUp: boolean = note.getStemDirection() === VF.Stem.UP;
+        const onStemTip: boolean = note.hasStem() && (above === stemUp);
+        let start: number = ownHead;
+        if (note.hasStem()) {
+            const stemExtents: any = note.getStemExtents();
+            start = onStemTip ? stemExtents.topY : stemExtents.baseY;
+        }
+        const offset: number = ((art.text_line ?? 0) + (onStemTip ? 0.5 : 1)) * space;
+        const natural: number = (above ? start - offset : start + offset) + baseShift;
+        let extreme: number = undefined;
+        for (const entry of staffEntry.graphicalVoiceEntries) {
+            if (entry === ownEntry || entry.parentVoiceEntry?.IsGrace ||
+                !entry.notes.some(n => n.sourceNote.PrintObject && !n.sourceNote.isRest())) {
+                continue;
+            }
+            const other: any = (entry as VexFlowVoiceEntry).vfStaveNote;
+            if (!other || other === note || other.getStave?.() !== stave || !other.getYs) {
+                continue;
+            }
+            // a note's y values are only updated when its voice is drawn (setStave): a voice drawn after this one still has
+            //   those of the last pass (the skyline's). Refresh them against the stave's current position.
+            other.setStave(stave);
+            const ys: number[] = other.getYs();
+            // only the voices whose notes are on the articulation's side of its note
+            if (above ? Math.min(...ys) >= ownHead : Math.max(...ys) <= ownHead) {
+                continue;
+            }
+            let top: number = Math.min(...ys) - space / 2;
+            let bottom: number = Math.max(...ys) + space / 2;
+            if (other.hasStem?.()) {
+                const stemExtents: any = other.getStemExtents();
+                top = Math.min(top, stemExtents.topY, stemExtents.baseY);
+                bottom = Math.max(bottom, stemExtents.topY, stemExtents.baseY);
+            }
+            // the articulation (about a space high, drawn above/below its y) doesn't reach this voice: nothing to avoid
+            if (above ? bottom <= natural - space || top >= natural : top >= natural + space || bottom <= natural) {
+                continue;
+            }
+            extreme = extreme === undefined ? (above ? top : bottom) : above ? Math.min(extreme, top) : Math.max(extreme, bottom);
+        }
+        if (extreme === undefined) {
+            return 0;
+        }
+        const margin: number = space / 2;
+        return above ? Math.min(0, extreme - margin - natural) : Math.max(0, extreme + margin - natural);
     }
 
     public static generateOrnaments(vfnote: VF.StemmableNote, oContainer: OrnamentContainer): void {

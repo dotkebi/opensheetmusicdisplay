@@ -182,6 +182,21 @@ export class StaveNote extends StemmableNote {
       noteL = notesList[0];
     }
 
+    // VexFlowPatch: of a rest and a note, the rest is the upper or the lower voice by the side OSMD gave it
+    //   (VexFlowConverter.StaveNote(): restSide), not by the order of the voices: a lower voice's rest with a smaller voice
+    //   number than the upper voice's note was taken as the upper one and moved up onto the note (Schumann, Myrthen 6 m11)
+    if (voices === 2 && noteU.isrest !== noteL.isrest) {
+      const rest = noteU.isrest ? noteU : noteL;
+      const note = noteU.isrest ? noteL : noteU;
+      if (rest.note.restSide === 1) {
+        noteU = rest;
+        noteL = note;
+      } else if (rest.note.restSide === -1) {
+        noteU = note;
+        noteL = rest;
+      }
+    }
+
     const voiceXShift = Math.max(noteU.voice_shift, noteL.voice_shift);
     let xShift = 0;
     let stemDelta;

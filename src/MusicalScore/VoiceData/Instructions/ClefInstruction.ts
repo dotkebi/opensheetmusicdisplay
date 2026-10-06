@@ -25,6 +25,10 @@ export class ClefInstruction extends AbstractNotationInstruction {
     // note positions but is drawn nowhere (not at the start of its measure, not as a courtesy clef at the end of
     // the previous measure, not as the invisible alignment copy of the other staves). Not part of Equals():
     // hiding doesn't change the clef.
+    /** The clef follows the grace notes of its staff entry (a `<clef>` read after them at their time): they are in the
+     *  previous clef, and it is drawn between them and the main note (Schumann, Myrthen 24 m17: a grace chord in the
+     *  G clef, then the F clef). Not part of Equals(). */
+    public AfterGraceNotes: boolean = false;
 
     public static getDefaultClefFromMidiInstrument(instrument: MidiInstrument): ClefInstruction {
         switch (instrument) {

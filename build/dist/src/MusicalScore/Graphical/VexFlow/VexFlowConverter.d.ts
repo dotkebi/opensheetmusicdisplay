@@ -81,6 +81,7 @@ export declare class VexFlowConverter {
      * and its notes was put below, under the other voice's stems (Couperin, Concerts royaux II, Prelude m1-2: the quarter rest
      * of voice 6, far below the left hand's D3). Both are required: voices cross, and stems can be the other way round
      * (e.g. Concerts royaux IV, Courante françoise m6: a rest of the voice with downward stems above the other voice).
+     * A voice without any stems in the measure goes by its notes alone.
      * @param rest the rest's voice entry
      * @param highestOther the highest halftone of the other voices' notes at the rest's time
      * @param lowestOther the lowest halftone of the other voices' notes at the rest's time
@@ -88,6 +89,16 @@ export declare class VexFlowConverter {
     static restSideFromVoice(rest: VoiceEntry, highestOther: number, lowestOther: number): number;
     static StaveNote(gve: GraphicalVoiceEntry): VF.StaveNote;
     static generateArticulations(vfnote: VF.StemmableNote, gNote: GraphicalNote, rules: EngravingRules): void;
+    /**
+     * An articulation on the notehead side of its note goes beyond the notes (and stems) of the other voices of the staff
+     * at the same time that are on that side: else it is drawn between them (Schumann, Myrthen 11 m12: the accent of the
+     * left hand's lower voice, F#3 with a down stem, inside the upper voice's chord A3-F#4 above it; the engraving puts it
+     * above that chord's stem). The other voices' notes are formatted only when the measure is drawn, so the shift is
+     * computed then (also for the skyline). It is added to the articulation's own y shift (e.g. at a slur start).
+     */
+    static keepArticulationClearOfOtherVoices(vfArt: VF.Articulation, gNote: GraphicalNote): void;
+    /** The y shift (px) that puts the articulation beyond the other voices' notes on its side, see keepArticulationClearOfOtherVoices(). */
+    private static otherVoicesArticulationShift;
     static generateOrnaments(vfnote: VF.StemmableNote, oContainer: OrnamentContainer): void;
     /** The VexFlow accidentals of an ornament's accidental mark, from left to right. As for notes in StaveNote(),
      *  marks without a glyph of their own are drawn as two accidentals, e.g. sharp-sharp as two sharps. */

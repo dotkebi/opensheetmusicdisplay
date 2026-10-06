@@ -25,6 +25,7 @@ import { Slur } from "../../VoiceData/Expressions/ContinuousExpressions/Slur";
 import { GraphicalSlur } from "../GraphicalSlur";
 import { InstantaneousTempoExpression } from "../../VoiceData/Expressions/InstantaneousTempoExpression";
 import { EngravingRules } from "../EngravingRules";
+import { GraphicalMusicPage } from "../GraphicalMusicPage";
 import { CooperativeYielder } from "../../../Util/CooperativeYielder";
 import { GraphicalGlissando } from "../GraphicalGlissando";
 import { Glissando } from "../../VoiceData/Glissando";
@@ -197,6 +198,9 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     private keepPedalDepressRightOfPreviousRelease;
     /** OSMD-unit x where the release mark of a symbol pedal (its *) starts: the interpolated release, the stave end,
      *  or the end note. */
+    /** The x of a box in a staffline (its relative positions up to the staffline), whatever its absolute position was last
+     *  computed from. */
+    private static xInStaffLine;
     private pedalReleaseStartX;
     /** Finds the first staffline measure with a note that can anchor an expression. */
     protected findFirstStafflineMeasure(staffline: StaffLine): GraphicalMeasure;
@@ -230,6 +234,8 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      * @param measure the (uppermost) measure the repetition instruction was added to
      * @param repetition the VexFlow repetition (stave modifier) to place, created by addWordRepetition()
      */
+    /** The repetition instructions in their default place (placeWordRepetitionInSkyline()) reserve no skyline. */
+    protected firstSystemUnreservedSymbolsTop(page: GraphicalMusicPage, left: number, right: number): number;
     protected placeWordRepetitionInSkyline(measure: VexFlowMeasure, repetition: VF.Repetition): void;
     protected calculateSkyBottomLines(): void;
     /** Compute (not reuse) the sky/bottom lines for the given staff lines: geometric, or the batched /

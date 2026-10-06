@@ -3604,6 +3604,7 @@ export abstract class MusicSheetCalculator {
             lyricist.PositionAndShape.RelativePosition = relative;
             page.Labels.push(lyricist);
         }
+        lastSystemAbsoluteBottomMargin += this.keepCreditLabelsClearOfFirstSystemSymbols(page, [composer, lyricist]);
         const copyright: GraphicalLabel = this.graphicalMusicSheet.Copyright;
         if (copyright && this.rules.RenderCopyright) {
             copyright.PositionAndShape.Parent = page.PositionAndShape;
@@ -3636,6 +3637,62 @@ export abstract class MusicSheetCalculator {
     }
 
     /** Subtitle position shared by drawing and first-page credit clearance. */
+    /**
+     * The composer and lyricist labels are placed above the first system's skyline, but symbols above the staff that reserve
+     * no skyline (a segno in its default place, see VexFlowMusicSheetCalculator.placeWordRepetitionInSkyline()) were not
+     * considered: the lyricist label "Aus dem Schenkenbuch ... von W. von Goethe." was drawn over the segno of m2 (Schumann,
+     * Myrthen 5). A label with such a symbol under it is moved up to keep the distance it keeps from the system (1 unit) from
+     * the symbol, but not above the title and subtitle (half a unit below them). The other label (composer or lyricist) stays.
+     */
+    protected keepCreditLabelsClearOfFirstSystemSymbols(page: GraphicalMusicPage, labels: GraphicalLabel[]): number {
+        if (page.MusicSystems.length === 0) {
+            return 0;
+        }
+        const distance: number = 1;
+        let systemsShift: number = 0;
+        for (const label of labels) {
+            if (!label || !page.Labels.includes(label)) {
+                continue;
+            }
+            const box: BoundingBox = label.PositionAndShape;
+            const top: number = this.firstSystemUnreservedSymbolsTop(page, box.RelativePosition.x + box.BorderLeft,
+                                                                     box.RelativePosition.x + box.BorderRight);
+            if (top === undefined) {
+                continue;
+            }
+            // the labels placed before these above this one: the title and subtitle (and credit words)
+            let titlesBottom: number = undefined;
+            for (const title of page.Labels) {
+                const bottom: number = title.PositionAndShape.RelativePosition.y + title.PositionAndShape.BorderBottom;
+                if (labels.includes(title) || bottom > box.RelativePosition.y + box.BorderTop) {
+                    continue;
+                }
+                titlesBottom = titlesBottom === undefined ? bottom : Math.max(titlesBottom, bottom);
+            }
+            let y: number = Math.min(box.RelativePosition.y, top - distance - box.BorderBottom);
+            if (titlesBottom !== undefined) {
+                y = Math.max(y, Math.min(box.RelativePosition.y, titlesBottom + 0.5 - box.BorderTop));
+            }
+            box.RelativePosition = new PointF2D(box.RelativePosition.x, y);
+            systemsShift = Math.max(systemsShift, y + box.BorderBottom + distance - top);
+        }
+        if (systemsShift > 0) {
+            // no room under the title and subtitle: the systems of the page move down
+            for (const system of page.MusicSystems) {
+                const position: PointF2D = system.PositionAndShape.RelativePosition;
+                system.PositionAndShape.RelativePosition = new PointF2D(position.x, position.y + systemsShift);
+            }
+        }
+        return systemsShift;
+    }
+
+
+    /** The top (page y) of the symbols above the first system that reserve no skyline between left and right (page x),
+     *  undefined if there are none. See keepCreditLabelsClearOfFirstSystemSymbols(). */
+    protected firstSystemUnreservedSymbolsTop(page: GraphicalMusicPage, left: number, right: number): number {
+        return undefined;
+    }
+
     private subtitleRelativeY(subtitle: GraphicalLabel): number {
         let y: number = this.rules.TitleTopDistance + this.rules.SheetTitleHeight +
             this.rules.SheetMinimumDistanceBetweenTitleAndSubtitle;
@@ -3991,9 +4048,14 @@ export abstract class MusicSheetCalculator {
             if (sourceStaffEntry) {
                 // a SourceStaffEntry exists
                 // is there an inStaff ClefInstruction? -> update activeClef
+                // (the clef of the grace notes before a clef that follows them, see ClefInstruction.AfterGraceNotes)
+                let graceNotesClef: ClefInstruction = undefined;
                 for (let idx: number = 0, len: number = sourceStaffEntry.Instructions.length; idx < len; ++idx) {
                     const abstractNotationInstruction: AbstractNotationInstruction = sourceStaffEntry.Instructions[idx];
                     if (abstractNotationInstruction instanceof ClefInstruction && activeClefs[staffIndex]?.ClefType !== ClefEnum.TAB) {
+                        if (abstractNotationInstruction.AfterGraceNotes) {
+                            graceNotesClef = activeClefs[staffIndex];
+                        }
                         // if activeClef is TAB, changing it can make the current/next tab measure look like a classical measure. See #1592
                         activeClefs[staffIndex] = <ClefInstruction>abstractNotationInstruction;
                     }
@@ -4043,7 +4105,7 @@ export abstract class MusicSheetCalculator {
                     octaveShiftValue = this.handleVoiceEntry(
                         voiceEntry, graphicalStaffEntry,
                         accidentalCalculator, openLyricWords,
-                        activeClefs[staffIndex], openTuplets,
+                        graceNotesClef && voiceEntry.IsGrace ? graceNotesClef : activeClefs[staffIndex], openTuplets,
                         openBeams, octaveShiftValue, staffIndex,
                         linkedNotes, sourceStaffEntry
                     );

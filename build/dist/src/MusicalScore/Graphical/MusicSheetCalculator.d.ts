@@ -421,6 +421,17 @@ export declare abstract class MusicSheetCalculator {
     protected getRelativeXPositionFromTimestamp(timestamp: Fraction): number;
     protected calculatePageLabels(page: GraphicalMusicPage): void;
     /** Subtitle position shared by drawing and first-page credit clearance. */
+    /**
+     * The composer and lyricist labels are placed above the first system's skyline, but symbols above the staff that reserve
+     * no skyline (a segno in its default place, see VexFlowMusicSheetCalculator.placeWordRepetitionInSkyline()) were not
+     * considered: the lyricist label "Aus dem Schenkenbuch ... von W. von Goethe." was drawn over the segno of m2 (Schumann,
+     * Myrthen 5). A label with such a symbol under it is moved up to keep the distance it keeps from the system (1 unit) from
+     * the symbol, but not above the title and subtitle (half a unit below them). The other label (composer or lyricist) stays.
+     */
+    protected keepCreditLabelsClearOfFirstSystemSymbols(page: GraphicalMusicPage, labels: GraphicalLabel[]): number;
+    /** The top (page y) of the symbols above the first system that reserve no skyline between left and right (page x),
+     *  undefined if there are none. See keepCreditLabelsClearOfFirstSystemSymbols(). */
+    protected firstSystemUnreservedSymbolsTop(page: GraphicalMusicPage, left: number, right: number): number;
     private subtitleRelativeY;
     protected createGraphicalTies(): void;
     private handleTie;
