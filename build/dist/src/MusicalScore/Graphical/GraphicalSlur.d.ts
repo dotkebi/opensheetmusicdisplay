@@ -101,6 +101,27 @@ export declare class GraphicalSlur extends GraphicalCurve {
     private hasOrnamentInMiddle;
     private graceRangeStartX;
     private graceRangeEndX;
+    /** Width of a black notehead, for the end points of a [[isHeadToHeadBetweenVoices]] slur. */
+    private static readonly headToHeadNoteheadWidth;
+    /** Distance of a [[isHeadToHeadBetweenVoices]] slur's end point from the notehead's centre line, besides the
+     *  usual SlurNoteHeadYOffset. */
+    private static readonly headToHeadYOffset;
+    /** Whether the note's stem points to the slur's side. */
+    private stemTowardSlur;
+    /**
+     * A slur from a note of one voice to the next note of another voice on the staff, when a stem of either note
+     * points to the slur's side: it goes from notehead to notehead, inside the stems, not around the stem ends
+     * (Couperin, Concerts royaux III Courante m5: slurs below from an upper-voice quarter to the next eighth of
+     * the lower voice, whose down stems are beamed under the noteheads; they hung under the beam). The 1722 print
+     * draws a short arc between the noteheads. The notes in between, such as the beam, don't bend it.
+     */
+    private isHeadToHeadBetweenVoices;
+    /**
+     * End points of a [[isHeadToHeadBetweenVoices]] slur, relative to the staffline: next to the noteheads on the
+     * slur's side, and beside a stem on that side - the start right of an up stem (slur above), the end left of a
+     * down stem (slur below); otherwise under (over) the notehead's centre.
+     */
+    private calculateHeadToHeadStartAndEnd;
     private calculateStartAndEnd;
     /** Y of a slur-above end point: no lower than 1.5 while the point is within the staff. */
     private static clampEndPointAbove;

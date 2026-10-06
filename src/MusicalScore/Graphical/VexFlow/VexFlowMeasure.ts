@@ -713,9 +713,125 @@ export class VexFlowMeasure extends GraphicalMeasure {
         this.correctNotePositions();
     }
 
+    /**
+     * A rest right after another voice's note that is still sounding, so close to it that the rest is drawn over that
+     * note's head or stem. The collisions of the formatting (VexFlowPatch stavenote.js) only see notes at the rest's own
+     * time. The rest moves right, clear of that note (and a little more), where there is room before the next note of its
+     * staff; else it moves away from the note's head, up or down, until it clears it by a quarter of a space. Same as
+     * osmd-dart (clearRestsOfHeldNotes()), where VexFlow 5's spacing can leave a quarter's distance about a head wide
+     * (Couperin, Concerts royaux IV, Courante françoise m17, m18: voice 5's quarter rest on beat 3 over the head of
+     * voice 6's half note from beat 2). Here the spacing doesn't bring them that close in the corpus.
+     * What the last call did is taken back first, so drawing again doesn't add it up.
+     */
+    private clearRestsOfHeldNotes(): void {
+        const gap: number = 2;
+        for (let i: number = 1; i < this.staffEntries.length; i++) {
+            for (const gve of this.staffEntries[i].graphicalVoiceEntries) {
+                const rest: any = (gve as VexFlowVoiceEntry).vfStaveNote;
+                if (!rest?.isRest?.() || !rest.getKeyProps) {
+                    continue;
+                }
+                const previous: {xShiftBefore: number, xShift: number, lines: number} = rest.osmdHeldNoteMove;
+                if (previous) {
+                    if (rest.getXShift() === previous.xShift) {
+                        rest.setXShift(previous.xShiftBefore);
+                    }
+                    if (previous.lines !== 0) {
+                        rest.setKeyLine(0, rest.getKeyLine(0) - previous.lines);
+                    }
+                    rest.osmdHeldNoteMove = undefined;
+                }
+                if (rest.osmdExplicitRest || rest.osmdInvisible) {
+                    continue;
+                }
+                const time: number = gve.parentVoiceEntry.Timestamp.RealValue;
+                // (VexFlow's bounding boxes leave out the x shifts, with which notes are drawn)
+                const restBox: VF.BoundingBox = rest.getBoundingBox();
+                const restLeft: number = restBox.getX() + rest.getXShift();
+                const restRight: number = restLeft + restBox.getW();
+                const above: number = rest.glyph.line_above;
+                const below: number = rest.glyph.line_below;
+                const start: number = rest.getKeyLine(0);
+                let right: number = -Infinity;
+                const heads: {low: number, high: number}[] = [];
+                for (const other of this.staffEntries[i - 1].graphicalVoiceEntries) {
+                    const note: any = (other as VexFlowVoiceEntry).vfStaveNote;
+                    if (other.parentVoiceEntry.ParentVoice === gve.parentVoiceEntry.ParentVoice ||
+                        !note?.getKeyProps || note.isRest() || note.osmdInvisible || note.getStave() !== rest.getStave()) {
+                        continue;
+                    }
+                    const end: number = other.parentVoiceEntry.Timestamp.RealValue + other.notes[0].sourceNote.Length.RealValue;
+                    // drawn into the rest: the rest begins left of the end of its head (an up stem is at that end),
+                    //   or touches it. The rest goes right of the head and its dots.
+                    const headEnd: number = note.getNoteHeadEndX();
+                    if (end <= time || restLeft >= headEnd + gap) {
+                        continue;
+                    }
+                    const dots: number = (note.getModifiers?.() ?? []).filter((modifier: any) => modifier.getCategory?.() === "dots").length;
+                    const noteRight: number = headEnd + dots * 6;
+                    const lines: number[] = note.getKeyProps().map((props: any) => props.line);
+                    const head: {low: number, high: number} = {low: Math.min(...lines) - 0.5, high: Math.max(...lines) + 0.5};
+                    // the note's lines with its stem
+                    let low: number = head.low;
+                    let high: number = head.high;
+                    if (note.hasStem()) {
+                        const stem: number = note.getStemLength() / 10;
+                        if (note.getStemDirection() === VF.Stem.UP) {
+                            high = head.high - 0.5 + stem;
+                        } else {
+                            low = head.low + 0.5 - stem;
+                        }
+                    }
+                    if (start - below >= high || start + above <= low) {
+                        continue;
+                    }
+                    heads.push(head);
+                    right = Math.max(right, noteRight);
+                }
+                if (heads.length === 0) {
+                    continue;
+                }
+                // room before the next note of the staff (or the measure's end)
+                let nextX: number = Infinity;
+                for (let j: number = i + 1; j < this.staffEntries.length && nextX === Infinity; j++) {
+                    for (const next of this.staffEntries[j].graphicalVoiceEntries) {
+                        const note: any = (next as VexFlowVoiceEntry).vfStaveNote;
+                        if (note?.getBoundingBox && note.getStave?.() === rest.getStave()) {
+                            nextX = Math.min(nextX, note.getBoundingBox().getX() + note.getXShift());
+                        }
+                    }
+                }
+                if (nextX === Infinity) {
+                    nextX = rest.getStave()?.getNoteEndX() ?? Infinity;
+                }
+                const xShiftBefore: number = rest.getXShift();
+                const needed: number = right + gap - restLeft;
+                if (restRight + needed + gap <= nextX) {
+                    rest.setXShift(xShiftBefore + needed);
+                    rest.osmdHeldNoteMove = {xShiftBefore, xShift: rest.getXShift(), lines: 0};
+                    continue;
+                }
+                const collides: (at: number) => boolean = (at: number) => heads.some(head =>
+                    at - below < head.high + 0.25 && at + above > head.low - 0.25);
+                // away from the heads: up if the rest is over their middle
+                const middle: number = (Math.min(...heads.map(head => head.low)) + Math.max(...heads.map(head => head.high))) / 2;
+                const side: number = start >= middle ? 1 : -1;
+                let line: number = start;
+                for (let step: number = 0; step < 12 && collides(line); step++) {
+                    line += 0.5 * side;
+                }
+                if (line !== start) {
+                    rest.setKeyLine(0, line);
+                    rest.osmdHeldNoteMove = {xShiftBefore, xShift: xShiftBefore, lines: line - start};
+                }
+            }
+        }
+    }
+
     /** Draws this measure's note content. */
     private drawNotes(ctx: Vex.IRenderContext): void {
         this.postFormatBeams();
+        this.clearRestsOfHeldNotes();
         // Draw all voices
         for (const voiceID in this.vfVoices) {
             if (this.vfVoices.hasOwnProperty(voiceID)) {
@@ -780,9 +896,78 @@ export class VexFlowMeasure extends GraphicalMeasure {
             if (tie instanceof VF.TabSlide) {
                 continue; // rendered later in VexFlowMusicSheetDrawer.drawGlissandi(), when all staffline measures are rendered
             }
+            VexFlowMeasure.fitShortTieToNoteheads(tie);
             tie.setContext(ctx);
             tie.draw();
         }
+    }
+
+    /** Lets a tie between two close notes run over their note heads.
+     * Vexflow draws a tie from the right side of its first note (after its dots and the room an ornament above it reserves)
+     * to the left side of its last note. When the notes stand close, that gap is a few pixels: the tie shrinks to a dot or a
+     * caret next to the note head and reads as a dot or a staccato (Couperin, Concerts Royaux III/4 m21 here; I/3 m21 and
+     * II/2 m15 in the denser app layout). Accidentals of the last note stand in the gap too and can cover what is left of it
+     * (III/4 m23 in the app, tie from voice 2 into a chord with a sharp).
+     * When the visible part of the gap, from the tie start to the leftmost accidental of the last note's tick, is shorter
+     * than Vexflow's short-tie cutoff (10 px, one staff space), the tie runs from the middle of the first note head to the
+     * middle of the last one. An end stays at the note head's edge where the note's stem is on the tie's side (a stem-up
+     * first note under a tie above, a stem-down last note over a tie below), and the start stays after a dotted first
+     * note's dot. Displaced (second-interval) note heads keep Vexflow's ends.
+     * Sets the tie's first_x_shift/last_x_shift; called before each draw. Same rule as osmd-dart's fitShortTieToNoteheads().
+     */
+    public static fitShortTieToNoteheads(tie: VF.StaveTie): void {
+        if (tie instanceof VF.TabTie) {
+            return;
+        }
+        const anyTie: any = tie as any;
+        const first: any = anyTie.first_note;
+        const last: any = anyTie.last_note;
+        if (!(first instanceof VF.StaveNote) || !(last instanceof VF.StaveNote)) {
+            return;
+        }
+        anyTie.render_options.first_x_shift = 0;
+        anyTie.render_options.last_x_shift = 0;
+        if (first.getExtraLeftPx() !== 0 || first.getExtraRightPx() !== 0 || last.getExtraLeftPx() !== 0 || last.getExtraRightPx() !== 0) {
+            return;
+        }
+        const tieSpacing: number = anyTie.render_options.tie_spacing ?? 0;
+        const firstX: number = first.getTieRightX() + tieSpacing;
+        const lastX: number = last.getTieLeftX() + tieSpacing;
+        const shortTieCutoff: number = 10; // StaveTie.renderTie()
+        if (lastX - VexFlowMeasure.accidentalSpace(last) - firstX >= shortTieCutoff) {
+            return;
+        }
+        const direction: number = anyTie.direction ? anyTie.direction : last.getStemDirection(); // as StaveTie.draw()
+        const firstBegin: number = first.getNoteHeadBeginX();
+        const firstEnd: number = first.getNoteHeadEndX();
+        let start: number = (firstBegin + firstEnd) / 2;
+        if (first.isDotted()) {
+            start = firstX;
+        } else if (direction < 0 && first.hasStem() && first.getStemDirection() === VF.Stem.UP) {
+            start = firstEnd;
+        }
+        const lastBegin: number = last.getNoteHeadBeginX();
+        let end: number = (lastBegin + last.getNoteHeadEndX()) / 2;
+        if (direction > 0 && last.hasStem() && last.getStemDirection() === VF.Stem.DOWN) {
+            end = lastBegin;
+        }
+        if (end - start <= lastX - firstX) {
+            return;
+        }
+        anyTie.render_options.first_x_shift = start - firstX;
+        anyTie.render_options.last_x_shift = end - lastX;
+    }
+
+    /** How far left of the note's heads the accidentals of its tick reach (all voices of the staff share the tick's modifier context). */
+    private static accidentalSpace(note: any): number {
+        const accidentals: any[] = note.modifierContext?.getModifiers("accidentals") ?? [];
+        let space: number = 0;
+        for (const accidental of accidentals) {
+            // drawn left of the note heads with 2 px padding (getModifierStartXY), its right edge shifted left by -x_shift
+            const reach: number = 2 + accidental.getWidth() + Math.abs(accidental.getXShift());
+            space = Math.max(space, reach);
+        }
+        return space;
     }
 
     /** Makes the beams drawn by draw() extend their notes' stems now, before the notes are drawn.

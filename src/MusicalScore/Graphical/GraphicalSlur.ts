@@ -14,7 +14,7 @@ import { GraphicalVoiceEntry } from "./GraphicalVoiceEntry";
 import { GraphicalStaffEntry } from "./GraphicalStaffEntry";
 import { GraphicalMeasure } from "./GraphicalMeasure";
 import { Fraction } from "../../Common/DataObjects/Fraction";
-import { StemDirectionType } from "../VoiceData/VoiceEntry";
+import { StemDirectionType, VoiceEntry } from "../VoiceData/VoiceEntry";
 import { VexFlowGraphicalNote, VexFlowMeasure } from "./VexFlow";
 import Vex from "vexflow";
 import VF = Vex.Flow;
@@ -100,7 +100,9 @@ export class GraphicalSlur extends GraphicalCurve {
         this.calculatePlacement(skyBottomLineCalculator, staffLine);
 
         // the Start- and End Reference Points for the Sky-BottomLine
-        const startEndPoints: {startX: number, startY: number, endX: number, endY: number} =
+        const headToHead: boolean = this.isHeadToHeadBetweenVoices(slurStartNote, slurEndNote);
+        const startEndPoints: {startX: number, startY: number, endX: number, endY: number} = headToHead ?
+            this.calculateHeadToHeadStartAndEnd(slurStartNote, slurEndNote) :
             this.calculateStartAndEnd(slurStartNote, slurEndNote, staffLine, rules, skyBottomLineCalculator);
 
         const startX: number = startEndPoints.startX;
@@ -163,7 +165,7 @@ export class GraphicalSlur extends GraphicalCurve {
             endUpperLeft.x = this.graceRangeEndX(endUpperLeft.x, slurEndNote, startX, endX);
 
             // SkyLinePointsList between firstStaffEntry startUpperRightPoint and lastStaffentry endUpperLeftPoint
-            points = this.calculateTopPoints(startUpperRight, endUpperLeft, staffLine, skyBottomLineCalculator);
+            points = headToHead ? [] : this.calculateTopPoints(startUpperRight, endUpperLeft, staffLine, skyBottomLineCalculator);
 
             if (points.length === 0) {
                 const pointF: PointF2D = new PointF2D((endUpperLeft.x - startUpperRight.x) / 2 + startUpperRight.x,
@@ -342,7 +344,7 @@ export class GraphicalSlur extends GraphicalCurve {
             endLowerLeft.x = this.graceRangeEndX(endLowerLeft.x, slurEndNote, startX, endX);
 
             // BottomLinePointsList between firstStaffEntry startLowerRightPoint and lastStaffentry endLowerLeftPoint
-            points = this.calculateBottomPoints(startLowerRight, endLowerLeft, staffLine, skyBottomLineCalculator);
+            points = headToHead ? [] : this.calculateBottomPoints(startLowerRight, endLowerLeft, staffLine, skyBottomLineCalculator);
 
             if (points.length === 0) {
                 const pointF: PointF2D = new PointF2D((endLowerLeft.x - startLowerRight.x) / 2 + startLowerRight.x,
@@ -716,6 +718,68 @@ export class GraphicalSlur extends GraphicalCurve {
             return rangeEndX;
         }
         return Math.max(rangeEndX, endX - GraphicalSlur.graceRangeMargin);
+    }
+
+    /** Width of a black notehead, for the end points of a [[isHeadToHeadBetweenVoices]] slur. */
+    private static readonly headToHeadNoteheadWidth: number = 1.2;
+    /** Distance of a [[isHeadToHeadBetweenVoices]] slur's end point from the notehead's centre line, besides the
+     *  usual SlurNoteHeadYOffset. */
+    private static readonly headToHeadYOffset: number = 0.25;
+
+    /** Whether the note's stem points to the slur's side. */
+    private stemTowardSlur(note: GraphicalNote): boolean {
+        return note.parentVoiceEntry.parentVoiceEntry.StemDirection ===
+            (this.placement === PlacementEnum.Below ? StemDirectionType.Down : StemDirectionType.Up);
+    }
+
+    /**
+     * A slur from a note of one voice to the next note of another voice on the staff, when a stem of either note
+     * points to the slur's side: it goes from notehead to notehead, inside the stems, not around the stem ends
+     * (Couperin, Concerts royaux III Courante m5: slurs below from an upper-voice quarter to the next eighth of
+     * the lower voice, whose down stems are beamed under the noteheads; they hung under the beam). The 1722 print
+     * draws a short arc between the noteheads. The notes in between, such as the beam, don't bend it.
+     */
+    private isHeadToHeadBetweenVoices(slurStartNote: GraphicalNote, slurEndNote: GraphicalNote): boolean {
+        if (!slurStartNote || !slurEndNote || this.graceStart || this.graceEnd || this.staffEntries.length !== 2 ||
+            this.slur.isCrossed()) {
+            return false;
+        }
+        const startEntry: VoiceEntry = slurStartNote.sourceNote.ParentVoiceEntry;
+        const endEntry: VoiceEntry = slurEndNote.sourceNote.ParentVoiceEntry;
+        if (startEntry.IsGrace || endEntry.IsGrace || startEntry.ParentVoice === endEntry.ParentVoice) {
+            return false;
+        }
+        return this.stemTowardSlur(slurStartNote) || this.stemTowardSlur(slurEndNote);
+    }
+
+    /**
+     * End points of a [[isHeadToHeadBetweenVoices]] slur, relative to the staffline: next to the noteheads on the
+     * slur's side, and beside a stem on that side - the start right of an up stem (slur above), the end left of a
+     * down stem (slur below); otherwise under (over) the notehead's centre.
+     */
+    private calculateHeadToHeadStartAndEnd(slurStartNote: GraphicalNote, slurEndNote: GraphicalNote):
+        {startX: number, startY: number, endX: number, endY: number} {
+        const side: number = this.placement === PlacementEnum.Below ? 1 : -1;
+        const width: number = GraphicalSlur.headToHeadNoteheadWidth;
+        const point: (note: GraphicalNote, isStart: boolean) => PointF2D = (note, isStart) => {
+            const voiceEntry: GraphicalVoiceEntry = note.parentVoiceEntry;
+            const staffEntry: GraphicalStaffEntry = voiceEntry.parentStaffEntry;
+            let x: number = note.PositionAndShape.RelativePosition.x + staffEntry.PositionAndShape.RelativePosition.x +
+                staffEntry.parentMeasure.PositionAndShape.RelativePosition.x + width / 2;
+            if (this.stemTowardSlur(note)) {
+                if (isStart && side < 0) {
+                    x = x + width / 2 + 0.2; // right of the up stem
+                } else if (!isStart && side > 0) {
+                    x = x - width / 2 - 0.2; // left of the down stem
+                }
+            }
+            const y: number = voiceEntry.PositionAndShape.RelativePosition.y + note.PositionAndShape.RelativePosition.y +
+                side * GraphicalSlur.headToHeadYOffset;
+            return new PointF2D(x, y);
+        };
+        const start: PointF2D = point(slurStartNote, true);
+        const end: PointF2D = point(slurEndNote, false);
+        return {startX: start.x, startY: start.y, endX: end.x, endY: end.y};
     }
 
     private calculateStartAndEnd(   slurStartNote: GraphicalNote,

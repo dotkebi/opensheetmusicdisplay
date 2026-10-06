@@ -20,7 +20,7 @@ import { Tuplet } from "../VoiceData/Tuplet";
 import { MusicSystem } from "./MusicSystem";
 import { GraphicalTie } from "./GraphicalTie";
 import { RepetitionInstruction } from "../VoiceData/Instructions/RepetitionInstruction";
-import { MultiExpression } from "../VoiceData/Expressions/MultiExpression";
+import { MultiExpression, MultiExpressionEntry } from "../VoiceData/Expressions/MultiExpression";
 import { StaffEntryLink } from "../VoiceData/StaffEntryLink";
 import { MultiTempoExpression } from "../VoiceData/Expressions/MultiTempoExpression";
 import { Repetition } from "../MusicSource/Repetition";
@@ -28,6 +28,7 @@ import { PointF2D } from "../../Common/DataObjects/PointF2D";
 import { SourceStaffEntry } from "../VoiceData/SourceStaffEntry";
 import { BoundingBox } from "./BoundingBox";
 import { GraphicalLabel } from "./GraphicalLabel";
+import { SystemLinesEnum } from "./SystemLinesEnum";
 import { TextAlignmentEnum } from "../../Common/Enums/TextAlignment";
 import { TechnicalInstruction } from "../VoiceData/Instructions/TechnicalInstruction";
 import { IGraphicalSymbolFactory } from "../Interfaces/IGraphicalSymbolFactory";
@@ -179,6 +180,14 @@ export declare abstract class MusicSheetCalculator {
     protected calculateMeasureNumberPlacement(musicSystem: MusicSystem): void;
     private calculateSingleMeasureNumberPlacement;
     private calculateMeasureNumberSkyline;
+    /** Space between a measure number and a slur under it. */
+    private static readonly measureNumberSlurClearance;
+    /**
+     * Measure numbers are placed before the slurs (calculateMeasureNumberPlacement), from the sky line of the notes:
+     * a slur above the staff over the barline ran through the number (Couperin, Concerts royaux IV Rigaudon m5, m30).
+     * Raise the number over the slurs above the staff under it, by [[measureNumberSlurClearance]] over the slur's ink.
+     */
+    private raiseMeasureNumberOverSlurs;
     /**
      * Calculate the shape (Bézier curve) for this tie.
      * @param tie
@@ -249,6 +258,25 @@ export declare abstract class MusicSheetCalculator {
      * @param staffIndex
      */
     protected calculateMoodAndUnknownExpression(multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
+    /** Whether a measure ending in style (double, final, repeat barline) keeps its words before that barline
+     *  (see keepWordsBeforeStrongBarline()). */
+    static isStrongBarline(style: SystemLinesEnum): boolean;
+    /** The barline measure ends with (a backward repeat without a bar-style is drawn as dots, thin and thick line). */
+    static endingBarline(measure: SourceMeasure): SystemLinesEnum;
+    /** Distance (units) from the end of a measure ending in style where its words end: the barline's width and half a unit. */
+    static wordsBarlineMargin(style: SystemLinesEnum): number;
+    /** The text of a words label made of entries (see MultiExpression.getEntryGroupsByPlacement()). */
+    static combinedWordsText(entries: MultiExpressionEntry[]): string;
+    /** Visible left and right edge of a words label relative to its anchor x, aligned as calculateLabel() aligns it
+     *  (below: from the anchor, above: centered on it). */
+    wordsLabelExtent(text: string, fontStyle: FontStyles, placement: PlacementEnum, fontHeight: number): [number, number];
+    /** Words in a measure that ends the staff line or ends with a double, final or repeat barline end
+     *  wordsBarlineMargin() before its end (Couperin, Concerts royaux II Échos m16 "fin." at the last beat, before the
+     *  repeat sign; IV Forlane m60 "au Rondeau pour finir." at the final barline). They are moved left, but not left of
+     *  the measure's notes. Words after the last note (e.g. at the time of a key change drawn after it) start at that
+     *  note: the measure is wide enough for them from there (VexFlowMusicSheetCalculator.trailingWordsMinimumWidth()).
+     *  Same rule as osmd-dart. */
+    private keepWordsBeforeStrongBarline;
     /** Words after the last note of the piece (e.g. "Fin" written after the final notes or with an offset to the end of
      *  the last measure) have no following staff entry to interpolate to. Anchor them at the measure's last staff entry
      *  instead of falling back to the start of the system. */
@@ -554,6 +582,13 @@ export declare abstract class MusicSheetCalculator {
      * @param voiceEntry the voiceEntry for which the stem direction has to be calculated
      */
     private calculateStemDirectionFromVoices;
+    /**
+     * A grace note with no stem in the XML, whose slur to its main note the XML places above (below), gets a down (up)
+     * stem, opposite the slur: with the up stem OSMD otherwise gives it (as the main voice next to the main note's voice
+     * entry), the arc over the notes ran through the grace notes' stems and flags (Couperin, Concerts royaux II Air
+     * tendre m37). The 1722 print, like the grace notes there that have a stem in the XML, draws the stem opposite the slur.
+     */
+    private setGraceStemAwayFromSlur;
     /** Sets a voiceEntry's stem direction to one already set in other notes in its beam, if it has one. */
     private setBeamNotesWantedStemDirections;
 }

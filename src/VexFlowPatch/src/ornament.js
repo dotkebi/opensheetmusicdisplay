@@ -200,6 +200,25 @@ export class Ornament extends Modifier {
       }
       glyphY = Math.max(stave.getYForBottomText(this.text_line), noteBottom + bottomSpacing) + height;
     }
+    if (this.position === Modifier.Position.ABOVE && !this.delayed) {
+      // VexFlowPatch: keep the ornament over another voice's up stem that runs through it on this staff at this time.
+      // Two voices on one pitch share a notehead; the other voice's stem then crosses an ornament written over the
+      // down-stem voice, and a tremblement with a stroke through it reads as a pincé (Couperin III Prélude m8).
+      const tickContext = this.note.getTickContext();
+      const centre = glyphX + this.x_shift;
+      const half = this.glyph.getMetrics().width / 2 + spacing * 0.2;
+      for (const other of tickContext ? tickContext.getTickables() : []) {
+        if (other === this.note || !(other instanceof StaveNote) || other.getStave() !== stave ||
+            !other.hasStem() || other.getStemDirection() !== StaveNote.STEM_UP ||
+            Math.abs(other.getStemX() - centre) > half) {
+          continue;
+        }
+        // The other voice may not be drawn yet, so its ys can still be those of a stave position before the system
+        // was placed: take its stem relative to its first notehead and put that head on this stave.
+        const tip = other.getStem().getExtents().topY - other.getYs()[0] + stave.getYForNote(other.getKeyProps()[0].line);
+        glyphY = Math.min(glyphY, tip - spacing * 0.4);
+      }
+    }
     glyphY += this.y_shift;
     // VexFlowPatch: the ink without the slur clearance shift, relative to the stave's left edge and top line
     const inkGlyphY = glyphY;

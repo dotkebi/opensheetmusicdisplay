@@ -96,6 +96,69 @@ function mergeableUnison(a, b, staggerSameWholeNotes) {
   return true;
 }
 
+// VexFlowPatch (OSMD): the line of a rest among the notes of other voices at its time, after the collisions of format()
+//   below, which move a rest by one line only, and the other way when they take the rest for the other voice (Couperin,
+//   Concerts royaux III, Prelude m5: voice 6's 8th rest, which OSMD put above voice 5's G#3, was moved down onto it).
+//   The same rules as osmd-dart (VoiceUnisonFormatter):
+//   1. The rest clears the noteheads and stems of the other voices' notes by a quarter of a space, moving to its side
+//      (above or below those notes, where OSMD put it) in half lines, by at most six lines.
+//   2. It is at most two lines out of the staff (line 7 above, -1 below), unless the noteheads need it further: a stem
+//      that goes up (or down) through its side isn't cleared beyond that. OSMD put the rest of the voice above another
+//      voice's note with an upward stem seven lines over that note, between the staves, where it read as a rest of
+//      the other staff (Couperin, Concerts royaux IV, Courante françoise m15, m16, m21).
+//   Not for a rest the MusicXML puts on a line (display-step), and invisible notes (print-object="no") don't count. OSMD
+//   sets osmdExplicitRest and osmdInvisible (VexFlowConverter). The line follows from the line the rest has, so formatting
+//   again (OSMD formats a measure more than once, and freezes the collisions' shifts on a re-render) keeps it.
+const OSMD_REST_MARGIN = 0.25;
+const OSMD_REST_LINE_MAX = 7;
+const OSMD_REST_LINE_MIN = -1;
+function osmdPlaceRests(notes, startLines) {
+  notes.forEach((rest, index) => {
+    if (!rest.isRest() || rest.osmdExplicitRest || rest.osmdInvisible) return;
+    const others = notes.filter(note => note !== rest && !note.isRest() && !note.osmdInvisible &&
+      note.getStave() === rest.getStave());
+    if (others.length === 0) return;
+    const heads = others.map(note => {
+      const lines = note.getKeyProps().map(props => props.line);
+      return { low: Math.min(...lines) - 0.5, high: Math.max(...lines) + 0.5 };
+    });
+    const spans = others.map((note, i) => {
+      let { low, high } = heads[i];
+      if (note.hasStem()) {
+        // a stem's default length, one line more for a beam (beamed stems are usually longer)
+        const stem = note.getStemLength() / 10 + (note.beam ? 1 : 0);
+        if (note.getStemDirection() === Stem.UP) {
+          high = Math.max(high, heads[i].high - 0.5 + stem);
+        } else {
+          low = Math.min(low, heads[i].low + 0.5 - stem);
+        }
+      }
+      return { low, high };
+    });
+    const middle = (Math.min(...heads.map(head => head.low)) + Math.max(...heads.map(head => head.high))) / 2;
+    const side = startLines[index] >= middle ? 1 : -1;
+    const above = rest.glyph.line_above;
+    const below = rest.glyph.line_below;
+    const collides = (line, boxes) => boxes.some(box =>
+      line - below < box.high + OSMD_REST_MARGIN && line + above > box.low - OSMD_REST_MARGIN);
+    let line = rest.getKeyLine(0);
+    for (let step = 0; step < 12 && collides(line, spans); step++) {
+      line += 0.5 * side;
+    }
+    const limit = side === 1 ? OSMD_REST_LINE_MAX : OSMD_REST_LINE_MIN;
+    if ((line - limit) * side > 0) {
+      let near = limit;
+      for (let step = 0; step < 12 && collides(near, heads); step++) {
+        near += 0.5 * side;
+      }
+      line = side === 1 ? Math.min(line, near) : Math.max(line, near);
+    }
+    if (line !== rest.getKeyLine(0)) {
+      rest.setKeyLine(0, line);
+    }
+  });
+}
+
 export class StaveNote extends StemmableNote {
   static get CATEGORY() { return 'stavenotes'; }
   static get STEM_UP() { return Stem.UP; }
@@ -106,6 +169,16 @@ export class StaveNote extends StemmableNote {
   //
   // Format notes inside a ModifierContext.
   static format(notes, state) {
+    // VexFlowPatch: then the lines of rests among other voices' notes (osmdPlaceRests())
+    const startLines = (notes || []).map(note => note.getKeyProps()[0].line);
+    const formatted = StaveNote.formatCollisions(notes, state);
+    if (notes && notes.length >= 2) {
+      osmdPlaceRests(notes, startLines);
+    }
+    return formatted;
+  }
+
+  static formatCollisions(notes, state) {
     if (!notes || notes.length < 2) return false;
 
     // FIXME: VexFlow will soon require that a stave be set before formatting.

@@ -151,8 +151,35 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      * @param ctx
      */
     draw(ctx: Vex.IRenderContext): void;
+    /**
+     * A rest right after another voice's note that is still sounding, so close to it that the rest is drawn over that
+     * note's head or stem. The collisions of the formatting (VexFlowPatch stavenote.js) only see notes at the rest's own
+     * time. The rest moves right, clear of that note (and a little more), where there is room before the next note of its
+     * staff; else it moves away from the note's head, up or down, until it clears it by a quarter of a space. Same as
+     * osmd-dart (clearRestsOfHeldNotes()), where VexFlow 5's spacing can leave a quarter's distance about a head wide
+     * (Couperin, Concerts royaux IV, Courante françoise m17, m18: voice 5's quarter rest on beat 3 over the head of
+     * voice 6's half note from beat 2). Here the spacing doesn't bring them that close in the corpus.
+     * What the last call did is taken back first, so drawing again doesn't add it up.
+     */
+    private clearRestsOfHeldNotes;
     /** Draws this measure's note content. */
     private drawNotes;
+    /** Lets a tie between two close notes run over their note heads.
+     * Vexflow draws a tie from the right side of its first note (after its dots and the room an ornament above it reserves)
+     * to the left side of its last note. When the notes stand close, that gap is a few pixels: the tie shrinks to a dot or a
+     * caret next to the note head and reads as a dot or a staccato (Couperin, Concerts Royaux III/4 m21 here; I/3 m21 and
+     * II/2 m15 in the denser app layout). Accidentals of the last note stand in the gap too and can cover what is left of it
+     * (III/4 m23 in the app, tie from voice 2 into a chord with a sharp).
+     * When the visible part of the gap, from the tie start to the leftmost accidental of the last note's tick, is shorter
+     * than Vexflow's short-tie cutoff (10 px, one staff space), the tie runs from the middle of the first note head to the
+     * middle of the last one. An end stays at the note head's edge where the note's stem is on the tie's side (a stem-up
+     * first note under a tie above, a stem-down last note over a tie below), and the start stays after a dotted first
+     * note's dot. Displaced (second-interval) note heads keep Vexflow's ends.
+     * Sets the tie's first_x_shift/last_x_shift; called before each draw. Same rule as osmd-dart's fitShortTieToNoteheads().
+     */
+    static fitShortTieToNoteheads(tie: VF.StaveTie): void;
+    /** How far left of the note's heads the accidentals of its tick reach (all voices of the staff share the tick's modifier context). */
+    private static accidentalSpace;
     /** Makes the beams drawn by draw() extend their notes' stems now, before the notes are drawn.
      * A Vexflow beam extends its notes' stems to reach it in Beam.postFormat(), which Beam.draw() calls, i.e. after the notes
      * were drawn. But a note's modifiers are placed from its stem as the note is drawn, e.g. an ornament above a stem-up note

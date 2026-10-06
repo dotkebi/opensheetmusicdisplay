@@ -71,6 +71,11 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      * @param measures
      * @returns the minimum required x width of the source measure (=list of staff measures)
      */
+    /** Minimum staff entries width (units) of a measure ending in a double, final or repeat barline that leaves room
+     *  after its last note for the words written after it, which are anchored at that note (Couperin, Concerts royaux
+     *  IV Forlane m60: "au Rondeau pour finir." after the one quarter note of the last measure ran left over its
+     *  barline). The label ends MusicSheetCalculator.wordsBarlineMargin() before the barline. Same rule as osmd-dart. */
+    private trailingWordsMinimumWidth;
     protected calculateMeasureXLayout(measures: GraphicalMeasure[]): number;
     private calculateElongationFactor;
     /**
