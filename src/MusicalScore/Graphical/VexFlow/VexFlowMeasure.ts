@@ -780,9 +780,78 @@ export class VexFlowMeasure extends GraphicalMeasure {
             if (tie instanceof VF.TabSlide) {
                 continue; // rendered later in VexFlowMusicSheetDrawer.drawGlissandi(), when all staffline measures are rendered
             }
+            VexFlowMeasure.fitShortTieToNoteheads(tie);
             tie.setContext(ctx);
             tie.draw();
         }
+    }
+
+    /** Lets a tie between two close notes run over their note heads.
+     * Vexflow draws a tie from the right side of its first note (after its dots and the room an ornament above it reserves)
+     * to the left side of its last note. When the notes stand close, that gap is a few pixels: the tie shrinks to a dot or a
+     * caret next to the note head and reads as a dot or a staccato (Couperin, Concerts Royaux III/4 m21 here; I/3 m21 and
+     * II/2 m15 in the denser app layout). Accidentals of the last note stand in the gap too and can cover what is left of it
+     * (III/4 m23 in the app, tie from voice 2 into a chord with a sharp).
+     * When the visible part of the gap, from the tie start to the leftmost accidental of the last note's tick, is shorter
+     * than Vexflow's short-tie cutoff (10 px, one staff space), the tie runs from the middle of the first note head to the
+     * middle of the last one. An end stays at the note head's edge where the note's stem is on the tie's side (a stem-up
+     * first note under a tie above, a stem-down last note over a tie below), and the start stays after a dotted first
+     * note's dot. Displaced (second-interval) note heads keep Vexflow's ends.
+     * Sets the tie's first_x_shift/last_x_shift; called before each draw. Same rule as osmd-dart's fitShortTieToNoteheads().
+     */
+    public static fitShortTieToNoteheads(tie: VF.StaveTie): void {
+        if (tie instanceof VF.TabTie) {
+            return;
+        }
+        const anyTie: any = tie as any;
+        const first: any = anyTie.first_note;
+        const last: any = anyTie.last_note;
+        if (!(first instanceof VF.StaveNote) || !(last instanceof VF.StaveNote)) {
+            return;
+        }
+        anyTie.render_options.first_x_shift = 0;
+        anyTie.render_options.last_x_shift = 0;
+        if (first.getExtraLeftPx() !== 0 || first.getExtraRightPx() !== 0 || last.getExtraLeftPx() !== 0 || last.getExtraRightPx() !== 0) {
+            return;
+        }
+        const tieSpacing: number = anyTie.render_options.tie_spacing ?? 0;
+        const firstX: number = first.getTieRightX() + tieSpacing;
+        const lastX: number = last.getTieLeftX() + tieSpacing;
+        const shortTieCutoff: number = 10; // StaveTie.renderTie()
+        if (lastX - VexFlowMeasure.accidentalSpace(last) - firstX >= shortTieCutoff) {
+            return;
+        }
+        const direction: number = anyTie.direction ? anyTie.direction : last.getStemDirection(); // as StaveTie.draw()
+        const firstBegin: number = first.getNoteHeadBeginX();
+        const firstEnd: number = first.getNoteHeadEndX();
+        let start: number = (firstBegin + firstEnd) / 2;
+        if (first.isDotted()) {
+            start = firstX;
+        } else if (direction < 0 && first.hasStem() && first.getStemDirection() === VF.Stem.UP) {
+            start = firstEnd;
+        }
+        const lastBegin: number = last.getNoteHeadBeginX();
+        let end: number = (lastBegin + last.getNoteHeadEndX()) / 2;
+        if (direction > 0 && last.hasStem() && last.getStemDirection() === VF.Stem.DOWN) {
+            end = lastBegin;
+        }
+        if (end - start <= lastX - firstX) {
+            return;
+        }
+        anyTie.render_options.first_x_shift = start - firstX;
+        anyTie.render_options.last_x_shift = end - lastX;
+    }
+
+    /** How far left of the note's heads the accidentals of its tick reach (all voices of the staff share the tick's modifier context). */
+    private static accidentalSpace(note: any): number {
+        const accidentals: any[] = note.modifierContext?.getModifiers("accidentals") ?? [];
+        let space: number = 0;
+        for (const accidental of accidentals) {
+            // drawn left of the note heads with 2 px padding (getModifierStartXY), its right edge shifted left by -x_shift
+            const reach: number = 2 + accidental.getWidth() + Math.abs(accidental.getXShift());
+            space = Math.max(space, reach);
+        }
+        return space;
     }
 
     /** Makes the beams drawn by draw() extend their notes' stems now, before the notes are drawn.
