@@ -207,7 +207,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             if (!this.lazyDrawsSlur(graphicalSlur)) {
                 continue;
             }
-            if (graphicalSlur.slur.isCrossed()) {
+            if (graphicalSlur.slur.isCrossed() && !graphicalSlur.isCrossStaffPiece) {
                 if (!this.rules.RenderSlursAcrossStaves) {
                     continue; // cross-staff slurs disabled (supplementary to RenderSlurs)
                 }
