@@ -106,6 +106,12 @@ export abstract class MusicSheetCalculator {
     protected staffEntriesWithOrnaments: GraphicalStaffEntry[] = [];
     protected staffEntriesWithChordSymbols: GraphicalStaffEntry[] = [];
     protected staffLinesWithLyricWords: StaffLine[] = [];
+    /** The first syllable of every numbered verse of each instrument that sings more than one verse:
+     * a verse number label ("2.") is drawn at its left. Found in the source model, so the answer does not depend on the layout pass. */
+    private lyricVerseNumberFirstEntries: Set<LyricsEntry> = new Set<LyricsEntry>();
+    /** "1. ", "2)", a bare "1" or "3 In": the number is already in the text. */
+    private static readonly embeddedVerseNumberPrefix: RegExp = /^\s*\d+(?:[.)]|\s|$)/;
+    private static readonly integerVerseNumber: RegExp = /^\d+$/;
 
     protected graphicalLyricWords: GraphicalLyricWord[] = [];
 
@@ -842,6 +848,7 @@ export abstract class MusicSheetCalculator {
             }
 
             // set LyricEntryLabel RelativePosition
+            const verseNumberLabels: GraphicalLabel[] = [];
             for (let i: number = 0; i < staffEntry.LyricsEntries.length; i++) {
                 const lyricEntry: GraphicalLyricEntry = staffEntry.LyricsEntries[i];
                 const lyricsEntryLabel: GraphicalLabel = lyricEntry.GraphicalLabel;
@@ -863,7 +870,11 @@ export abstract class MusicSheetCalculator {
                 lyricsEntryLabel.PositionAndShape.RelativePosition = new PointF2D(previousRelativeX, position);
                 lyricsEntryLabel.Label.fontStyle = lyricEntry.LyricsEntry.FontStyle;
                 maxPosition = Math.max(maxPosition, position);
+                if (this.lyricVerseNumberFirstEntries.has(lyricEntry.LyricsEntry)) {
+                    verseNumberLabels.push(this.addLyricVerseNumberLabel(staffLine, staffEntry, lyricEntry, position));
+                }
             }
+            this.alignLyricVerseNumberLabels(staffLine, verseNumberLabels);
         }
 
         // update BottomLine (on the whole StaffLine's length)
@@ -882,6 +893,97 @@ export abstract class MusicSheetCalculator {
      * calculates the dashes of lyric words and the extending underscore lines of syllables sung on more than one note.
      * @param lyricsStaffEntries
      */
+    /**
+     * Places the verse number ("1.", "2.", …) right-aligned at the left of the first syllable of its verse, on the
+     * syllable's baseline, so the numbers of all verses line up in one column. The label never goes left of the
+     * staff line start: it is clamped there and the syllable is not moved, so measure widths and system breaks are
+     * unchanged. Its width is reserved in the bottom line.
+     */
+    private addLyricVerseNumberLabel(staffLine: StaffLine, staffEntry: GraphicalStaffEntry, lyricEntry: GraphicalLyricEntry, y: number): GraphicalLabel {
+        const syllable: GraphicalLabel = lyricEntry.GraphicalLabel;
+        const syllableLeft: number = staffEntry.PositionAndShape.RelativePosition.x +
+            staffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
+            syllable.PositionAndShape.RelativePosition.x + syllable.PositionAndShape.BorderMarginLeft;
+        const label: Label = new Label(lyricEntry.LyricsEntry.VerseNumber + ".");
+        label.colorDefault = this.rules.DefaultColorLyrics;
+        const graphicalLabel: GraphicalLabel = new GraphicalLabel(label, this.rules.LyricsHeight, TextAlignmentEnum.RightBottom, this.rules);
+        graphicalLabel.setLabelPositionAndShapeBorders();
+        graphicalLabel.PositionAndShape.Parent = staffLine.PositionAndShape;
+        const shape: BoundingBox = graphicalLabel.PositionAndShape;
+        let x: number = syllableLeft - this.rules.LyricVerseNumberXMargin;
+        const leftOverflow: number = x + shape.BorderMarginLeft;
+        if (leftOverflow < 0) {
+            x -= leftOverflow;
+        }
+        shape.RelativePosition = new PointF2D(x, y);
+        staffLine.LyricVerseNumberLabels.push(graphicalLabel);
+        return graphicalLabel;
+    }
+
+    /** The verse numbers of one staff entry share the leftmost x (a short first syllable is shifted right by
+     * LyricsExtraXShiftForShortLyrics, which would break the column), then their widths are reserved in the bottom line. */
+    private alignLyricVerseNumberLabels(staffLine: StaffLine, labels: GraphicalLabel[]): void {
+        if (labels.length === 0) {
+            return;
+        }
+        const x: number = Math.min(...labels.map(label => label.PositionAndShape.RelativePosition.x));
+        for (const label of labels) {
+            const shape: BoundingBox = label.PositionAndShape;
+            shape.RelativePosition = new PointF2D(x, shape.RelativePosition.y);
+            staffLine.SkyBottomLineCalculator.updateBottomLineInRange(x + shape.BorderMarginLeft, x + shape.BorderMarginRight, shape.RelativePosition.y);
+        }
+    }
+
+    /**
+     * Collects lyricVerseNumberFirstEntries: per instrument with two or more verse lines, the first syllable (in time)
+     * of each verse whose number is an integer string. Chorus/translation lines get no label, and neither does a verse
+     * whose first syllable already starts with "N.", "N)" or a bare number (Finale and Sibelius exports embed the number in the text).
+     */
+    private collectLyricVerseNumberFirstEntries(): void {
+        this.lyricVerseNumberFirstEntries.clear();
+        if (!this.rules.RenderLyricVerseNumbers || !this.rules.RenderLyrics) {
+            return;
+        }
+        const sheet: MusicSheet = this.graphicalMusicSheet.ParentMusicSheet;
+        const multiVerse: Set<Instrument> = new Set<Instrument>();
+        for (const instrument of sheet.Instruments) {
+            if (instrument.HasLyrics && instrument.LyricVersesNumbers.length >= 2) {
+                multiVerse.add(instrument);
+            }
+        }
+        if (multiVerse.size === 0) {
+            return;
+        }
+        const seenVerses: Map<Instrument, Set<string>> = new Map<Instrument, Set<string>>();
+        for (const measure of sheet.SourceMeasures) {
+            for (const container of measure.VerticalSourceStaffEntryContainers) {
+                for (const staffEntry of container.StaffEntries) {
+                    const instrument: Instrument = staffEntry?.ParentStaff?.ParentInstrument;
+                    if (!instrument || !multiVerse.has(instrument)) {
+                        continue;
+                    }
+                    if (!seenVerses.has(instrument)) {
+                        seenVerses.set(instrument, new Set<string>());
+                    }
+                    const seen: Set<string> = seenVerses.get(instrument);
+                    for (const voiceEntry of staffEntry.VoiceEntries) {
+                        for (const entry of voiceEntry.LyricsEntries.values()) {
+                            if (seen.has(entry.VerseNumber)) {
+                                continue;
+                            }
+                            seen.add(entry.VerseNumber);
+                            if (MusicSheetCalculator.integerVerseNumber.test(entry.VerseNumber) &&
+                                !entry.IsChorus && !entry.IsTranslation &&
+                                !MusicSheetCalculator.embeddedVerseNumberPrefix.test(entry.Text)) {
+                                this.lyricVerseNumberFirstEntries.add(entry);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     protected calculateLyricsExtendsAndDashes(lyricsStaffEntries: GraphicalStaffEntry[]): void {
         // iterate again to create now the extend lines and dashes for words
         for (let idx: number = 0, len: number = lyricsStaffEntries.length; idx < len; ++idx) {
@@ -4439,6 +4541,7 @@ export abstract class MusicSheetCalculator {
                 instrument.LyricVersesNumbers.sort();
             }
         }
+        this.collectLyricVerseNumberFirstEntries();
         // first calc lyrics text positions
         for (let idx2: number = 0, len2: number = this.musicSystems.length; idx2 < len2; ++idx2) {
             const musicSystem: MusicSystem = this.musicSystems[idx2];

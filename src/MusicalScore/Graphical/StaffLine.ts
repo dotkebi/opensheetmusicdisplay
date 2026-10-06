@@ -31,6 +31,8 @@ export abstract class StaffLine extends GraphicalObject {
     protected skyBottomLine: SkyBottomLineCalculator;
     protected lyricLines: GraphicalLine[] = [];
     protected lyricsDashes: GraphicalLabel[] = [];
+    /** Verse numbers ("1.", "2.", …) at the left of the first syllable of each verse; drawn with the lyrics, kept apart from the dashes. */
+    protected lyricVerseNumberLabels: GraphicalLabel[] = [];
     protected abstractExpressions: AbstractGraphicalExpression[] = [];
     /** Dashed lines after text expressions (MusicXML <dashes>) on this staffline. */
     public ExpressionDashes: GraphicalExpressionDashes[] = [];
@@ -138,6 +140,14 @@ export abstract class StaffLine extends GraphicalObject {
 
     public set LyricsDashes(value: GraphicalLabel[]) {
         this.lyricsDashes = value;
+    }
+
+    public get LyricVerseNumberLabels(): GraphicalLabel[] {
+        return this.lyricVerseNumberLabels;
+    }
+
+    public set LyricVerseNumberLabels(value: GraphicalLabel[]) {
+        this.lyricVerseNumberLabels = value;
     }
 
     public get ParentMusicSystem(): MusicSystem {
