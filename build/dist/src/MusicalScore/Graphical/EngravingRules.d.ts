@@ -204,6 +204,9 @@ export declare class EngravingRules {
     TupletNumberAlwaysDisableAfterFirstMax: boolean;
     /** Whether to use the <tuplet show-number="value"> value or to ignore it. */
     TupletNumberUseShowNoneXMLValue: boolean;
+    /** Whether an explicit <tuplet show-number="actual"> (or "both") keeps the number where
+     * TupletNumberLimitConsecutiveRepetitions would hide it. */
+    TupletNumberUseShowActualXMLValue: boolean;
     LabelMarginBorderFactor: number;
     TupletVerticalLineLength: number;
     /** Whether to show tuplet numbers (and brackets) in tabs. Brackets can be disabled via TabTupletsBracketed. */

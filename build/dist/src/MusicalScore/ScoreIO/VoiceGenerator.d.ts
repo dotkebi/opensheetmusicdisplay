@@ -117,6 +117,9 @@ export declare class VoiceGenerator {
      */
     private addTuplet;
     private readShowNumberNoneGiven;
+    /** `show-number="actual"` or `"both"` written explicitly (the attribute's default is also "actual",
+     * but an absent attribute leaves the decision to the layout rules). */
+    private readShowNumberActualGiven;
     /**
      * This method handles the time-modification IXmlElement for the Tuplet case (tupletNotes not at begin/end of Tuplet).
      * @param noteNode
