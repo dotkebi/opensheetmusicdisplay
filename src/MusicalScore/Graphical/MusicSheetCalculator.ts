@@ -3194,6 +3194,7 @@ export abstract class MusicSheetCalculator {
                 voiceEntry.WantedStemDirection = centered;
             } else {
                 this.calculateStemDirectionFromVoices(voiceEntry);
+                this.setGraceStemAwayFromSlur(voiceEntry);
             }
         }
         // if GraphicalStaffEntry has been created earlier (because of Tie), then the GraphicalNotesLists have also been created
@@ -5477,6 +5478,29 @@ export abstract class MusicSheetCalculator {
             }
         }
         // setBeamNotesWantedStemDirections() will be called at end of measure (createGraphicalMeasure)
+    }
+
+    /**
+     * A grace note with no stem in the XML, whose slur to its main note the XML places above (below), gets a down (up)
+     * stem, opposite the slur: with the up stem OSMD otherwise gives it (as the main voice next to the main note's voice
+     * entry), the arc over the notes ran through the grace notes' stems and flags (Couperin, Concerts royaux II Air
+     * tendre m37). The 1722 print, like the grace notes there that have a stem in the XML, draws the stem opposite the slur.
+     */
+    private setGraceStemAwayFromSlur(voiceEntry: VoiceEntry): void {
+        if (!voiceEntry.IsGrace || !this.rules.SlurPlacementFromXML) {
+            return;
+        }
+        // beamed grace notes follow the beam's first note, where the slur starts
+        const beam: Beam = voiceEntry.Notes[0]?.NoteBeam;
+        const source: VoiceEntry = beam?.Notes.length > 0 ? beam.Notes[0].ParentVoiceEntry : voiceEntry;
+        if (!source.IsGrace || !source.GraceSlur) {
+            return;
+        }
+        if (source.GraceSlurPlacement === PlacementEnum.Above) {
+            voiceEntry.WantedStemDirection = StemDirectionType.Down;
+        } else if (source.GraceSlurPlacement === PlacementEnum.Below) {
+            voiceEntry.WantedStemDirection = StemDirectionType.Up;
+        }
     }
 
     /** Sets a voiceEntry's stem direction to one already set in other notes in its beam, if it has one. */

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Couperin, Concerts royaux II Air tendre m37 (1722 review R01): grace notes with no stem in the XML, slurred to their
+     main notes above. Their stems go down, opposite the slur, as in the 1722 print (an up stem ran through the arc).
+     The third grace note's slur is below (stem up); the fourth has an up stem in the XML, kept. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>2</divisions><key><fifths>-1</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><grace slash="no"/><pitch><step>E</step><octave>5</octave></pitch><voice>1</voice><type>16th</type><beam number="1">begin</beam><beam number="2">begin</beam><notations><slur type="start" number="1" placement="above"/></notations></note>
+      <note><grace slash="no"/><pitch><step>F</step><octave>5</octave></pitch><voice>1</voice><type>16th</type><beam number="1">end</beam><beam number="2">end</beam></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><notations><slur type="stop" number="1"/></notations></note>
+      <note><grace slash="no"/><pitch><step>D</step><octave>5</octave></pitch><voice>1</voice><type>eighth</type><notations><slur type="start" number="1" placement="above"/></notations></note>
+      <note><pitch><step>C</step><alter>1</alter><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><accidental>sharp</accidental><notations><slur type="stop" number="1"/></notations></note>
+      <note><grace slash="no"/><pitch><step>B</step><octave>4</octave></pitch><voice>1</voice><type>eighth</type><notations><slur type="start" number="1" placement="below"/></notations></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><notations><slur type="stop" number="1"/></notations></note>
+      <note><grace slash="no"/><pitch><step>B</step><octave>4</octave></pitch><voice>1</voice><type>eighth</type><stem>up</stem><notations><slur type="start" number="1" placement="above"/></notations></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><notations><slur type="stop" number="1"/></notations></note>
+    </measure>
+  </part>
+</score-partwise>
