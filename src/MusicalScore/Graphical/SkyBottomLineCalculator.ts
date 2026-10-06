@@ -370,19 +370,9 @@ export class SkyBottomLineCalculator {
         if (!next?.vfTies) {
             return;
         }
-        // A tie from this staff into the other staff of the instrument is held by the other staff line's next measure.
-        const nextTies: any[] = [...next.vfTies];
-        for (const otherLine of this.StaffLineParent.ParentMusicSystem?.StaffLines ?? []) {
-            if (otherLine === this.StaffLineParent) {
-                continue;
-            }
-            for (const otherMeasure of otherLine.Measures as VexFlowMeasure[]) {
-                if (otherMeasure.parentSourceMeasure === next.parentSourceMeasure && otherMeasure.vfTies) {
-                    nextTies.push(...otherMeasure.vfTies);
-                }
-            }
-        }
-        for (const tie of nextTies) {
+        // (A tie into the other staff of the instrument is split into two stubs, the start one held by this measure:
+        //   see MusicSheetCalculator.calculateTieCurves().)
+        for (const tie of next.vfTies as any[]) {
             if (tie instanceof VF.TabSlide) {
                 continue;
             }

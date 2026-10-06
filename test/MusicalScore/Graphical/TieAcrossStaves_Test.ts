@@ -7,9 +7,11 @@ import { Note } from "../../../src/MusicalScore/VoiceData/Note";
 /**
  * Ties between the two staves of a piano part (Schumann, Myrthen).
  *
- * B1 (layout): a tie from one staff to the other in the same system used to be treated as a system-break tie
- * (the two notes' staff lines differ) and split into two stubs (Die Hochländer-Wittwe m72-73, same voice).
- * It is one curve now; only a system break splits it.
+ * B1 (layout): a tie from one staff to the other in the same system is split into two stubs, each at its own note,
+ * as at a system break (Die Hochländer-Wittwe m72-73, same voice). One curve between the two notes (the 10-06 rule)
+ * ran nearly straight across both staves and the beams between them (10-07 recheck R-10-1); the 10-07 decision is
+ * two stubs on web and app alike, until ties and slurs between staves are drawn in system coordinates with the
+ * cross-staff beams (PLAN-cross-staff-beam).
  * B2 (reader): a tie whose stop is in another voice on the other staff found no open tie, since each staff keeps
  * its own open-tie dictionary (Aus den hebräischen Gesängen m79-80: RH C4 half -> LH C4 whole). The stop now looks
  * in the other staves of the instrument.
@@ -68,13 +70,21 @@ describe("Tie across staves", () => {
         throw new Error(`no note of voice ${voiceId} in m${measureIndex + 1} staff ${staff}`);
     }
 
-    it("(a) same voice, staff 1 -> staff 2 in one system: one full tie", () => {
-        const ties: Ties = tiesIn(1); // the measure of the tie's end note
-        expect(ties.full.length, "one curve between the notes").to.equal(1);
-        expect(ties.stubs.length, "no system-break stubs").to.equal(0);
-        expect(tiesIn(0).stubs.length, "no outgoing stub in the start measure either").to.equal(0);
-        const tie: any = ties.full[0];
-        expect(tie.first_note.getStave(), "the curve connects notes on two different staves").to.not.equal(tie.last_note.getStave());
+    it("(a) same voice, staff 1 -> staff 2 in one system: a stub at each note", () => {
+        const startLine: any = osmd.GraphicSheet.MeasureList[0][0].ParentStaffLine;
+        const endLine: any = osmd.GraphicSheet.MeasureList[1][1].ParentStaffLine;
+        expect(startLine.ParentMusicSystem, "m1 and m2 in one system").to.equal(endLine.ParentMusicSystem);
+        const outgoing: Ties = tiesIn(0);
+        const incoming: Ties = tiesIn(1); // the measure of the tie's end note
+        expect(outgoing.full.length).to.equal(0);
+        expect(incoming.full.length, "no curve across the two staves").to.equal(0);
+        expect(outgoing.stubs.length, "stub from B3 on staff 1").to.equal(1);
+        expect(incoming.stubs.length, "stub into B3 on staff 2").to.equal(1);
+        const start: any = outgoing.stubs[0];
+        const end: any = incoming.stubs[0];
+        expect(!!start.first_note && !start.last_note, "start stub: first note only").to.equal(true);
+        expect(!end.first_note && !!end.last_note, "end stub: last note only").to.equal(true);
+        expect(start.first_note.getStave()).to.not.equal(end.last_note.getStave());
     });
 
     it("(b) different voices on different staves: the reader connects the tie", () => {
@@ -83,9 +93,9 @@ describe("Tie across staves", () => {
         expect(start.NoteTie, "tie of the RH C4").to.not.equal(undefined);
         expect(start.NoteTie.Notes).to.deep.equal([start, stop]);
         expect(stop.NoteTie).to.equal(start.NoteTie);
-        const ties: Ties = tiesIn(3);
-        expect(ties.full.length).to.equal(1);
-        expect(ties.stubs.length).to.equal(0);
+        expect(tiesIn(3).full.length).to.equal(0);
+        expect(tiesIn(3).stubs.length).to.equal(1);
+        expect(tiesIn(2).stubs.length).to.equal(1);
     });
 
     it("(c) staff 1 -> staff 2 across a system break: two stubs as before", () => {
