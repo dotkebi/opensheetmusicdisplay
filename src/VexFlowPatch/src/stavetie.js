@@ -35,11 +35,29 @@ export class StaveTie extends Element {
       last_x_shift: 0,
       y_shift: 7,
       tie_spacing: 0,
+      curve_by_length: true, // control points from the tie's length (StaveTie.curveControlPoints) instead of cp1/cp2
       font: { family: 'Arial', size: 10, style: '' },
     };
 
     this.font = this.render_options.font;
     this.setNotes(notes);
+  }
+
+  /**
+   * Control points (cp1 inner, cp2 outer, in px from the line between the tie's ends; 10 px = 1 staff space) for a
+   * tie of the given length (px). A quadratic curve bulges by half its control point offset, so the outer edge of
+   * the tie rises by h = 0.36 + 0.082 x length staff spaces, between 0.4 and 1.5: a least-squares fit of ties measured
+   * in Schumann, Myrthen Op. 25 (Breitkopf, RS 120 — lengths 1.5 to 23 spaces, heights 0.55 to 2.3). The tie keeps
+   * VexFlow's thickness in the middle (cp2 - cp1 = 4 px, 0.2 spaces). The cap 1.5 lies above every measured tie up to
+   * 11 spaces (fit 1.26) and keeps long held notes of an orchestral score from spreading its staves (the osmd-dart
+   * Beethoven 5/IV golden grows 0.9 % in system height at 1.0, 2.0 % at 1.5, 2.8 % at 2.0).
+   * Same formula as vexflow-dart StaveTie.curveControlPoints.
+   */
+  static curveControlPoints(length_px) {
+    const height = Math.min(StaveTie.CURVE_MAX_HEIGHT, Math.max(StaveTie.CURVE_MIN_HEIGHT,
+      StaveTie.CURVE_BASE_HEIGHT + StaveTie.CURVE_HEIGHT_PER_LENGTH * length_px));
+    const cp2 = 2 * height;
+    return [cp2 - 4, cp2];
   }
 
   setFont(font) { this.font = font; return this; }
@@ -88,7 +106,12 @@ export class StaveTie extends Element {
     let cp1 = this.render_options.cp1;
     let cp2 = this.render_options.cp2;
 
-    if (Math.abs(params.last_x_px - params.first_x_px) < 10) {
+    if (this.render_options.curve_by_length && this.getAttribute('type') === 'StaveTie') {
+      // The fixed control points (8 and 12, from VexFlow) make every tie bulge by about 0.6 staff spaces: a long
+      // tie is almost a straight line on the staff (Schumann, Myrthen 3 m53), a short one hugs the noteheads
+      // (Myrthen 24 m15). Arch it by its length, as in the engraved source (see StaveTie.curveControlPoints).
+      [cp1, cp2] = StaveTie.curveControlPoints(Math.abs(params.last_x_px - params.first_x_px));
+    } else if (Math.abs(params.last_x_px - params.first_x_px) < 10) {
       cp1 = 2; cp2 = 8;
     }
 
@@ -185,3 +208,9 @@ export class StaveTie extends Element {
     return true;
   }
 }
+
+// Tie arch by length (px; 10 px = 1 staff space), see StaveTie.curveControlPoints.
+StaveTie.CURVE_BASE_HEIGHT = 3.6;
+StaveTie.CURVE_HEIGHT_PER_LENGTH = 0.082;
+StaveTie.CURVE_MIN_HEIGHT = 4;
+StaveTie.CURVE_MAX_HEIGHT = 15;
