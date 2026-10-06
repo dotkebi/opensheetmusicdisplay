@@ -304,6 +304,14 @@ export declare abstract class MusicSheetCalculator {
     private expressionDashesEndX;
     /** Copies the sky- and bottomlines before expressions are placed (see calculateExpressionDashes()). */
     protected saveSkyBottomLinesBeforeExpressions(): void;
+    /** Reserves the outer sides of the curves between staves in the sky and bottom lines, after the notes' lines are
+     *  saved (see VexFlowMusicSheetCalculator). */
+    protected reserveCrossStaffCurves(): void;
+    /** Forgets the curves between staves of the last layout (see VexFlowMusicSheetCalculator). */
+    protected clearCrossStaffCurves(): void;
+    /** Lays out a tie from one staff of an instrument to another staff of it in the same system: one curve between the
+     *  placed staves (see VexFlowMusicSheetCalculator). */
+    protected layoutCrossStaffTie(tie: GraphicalTie): void;
     /**
      * Calculates the dashed lines that follow the texts of expressions up to where their MusicXML <dashes> stop
      * (e.g. "rit. - - - -"), after all expressions are placed: one GraphicalExpressionDashes per staffline a line crosses.

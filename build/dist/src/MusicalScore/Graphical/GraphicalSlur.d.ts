@@ -3,6 +3,7 @@ import { Slur } from "../VoiceData/Expressions/ContinuousExpressions/Slur";
 import { PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
 import { EngravingRules } from "./EngravingRules";
 import { GraphicalStaffEntry } from "./GraphicalStaffEntry";
+import { CrossStaffCurve } from "./VexFlow/CrossStaffCurve";
 export declare class GraphicalSlur extends GraphicalCurve {
     constructor(slur: Slur, rules: EngravingRules);
     slur: Slur;
@@ -14,6 +15,9 @@ export declare class GraphicalSlur extends GraphicalCurve {
      *  (see VexFlowMusicSheetCalculator.crossStaffSlurIsSplit()): its start piece ends at the end of the start note's
      *  measure, its end piece starts at the start of the following measure, instead of at the staff line's ends. */
     isCrossStaffPiece: boolean;
+    /** The one curve of a slur between two staves of one system (drawn by the drawer with its measures, not with this
+     *  slur's staff line). */
+    crossStaffCurve: CrossStaffCurve;
     /** A piece of a slur into a second ending, split where the endings part (see
      *  VexFlowMusicSheetCalculator.splitSlursIntoVoltas()): the end without its note is at its measure's barline. */
     isVoltaPiece: boolean;
@@ -30,23 +34,6 @@ export declare class GraphicalSlur extends GraphicalCurve {
      * @param rules
      */
     calculateCurve(rules: EngravingRules): void;
-    /**
-     * Calculates the bezier curve for a slur that crosses between two staves (e.g. left hand to right hand),
-     * where the start and end notes lie on different stafflines that are stacked vertically within the same
-     * MusicSystem. Unlike [[calculateCurve]], this runs at draw time, because it needs the final vertical
-     * positions of both stafflines, which aren't fixed until the system Y-layout (after calculateSlurs()).
-     *
-     * The resulting bezier points are stored relative to the start note's staffline, so the regular drawSlur()
-     * (which adds that staffline's absolute position) renders them at the correct absolute location.
-     * @returns true if the curve was calculated and can be drawn, false otherwise (e.g. missing notes, or the
-     * two staves are not in the same MusicSystem - a cross-staff plus cross-system slur is not supported).
-     */
-    calculateCurveCrossStaff(rules: EngravingRules): boolean;
-    /**
-     * Sums the relative positions from box up to (but not including) the given ancestor box, giving box's
-     * position in the ancestor's coordinate system.
-     */
-    private positionRelativeToBox;
     /**
      * This method calculates the Start and End Positions of the Slur Curve.
      * @param slurStartNote

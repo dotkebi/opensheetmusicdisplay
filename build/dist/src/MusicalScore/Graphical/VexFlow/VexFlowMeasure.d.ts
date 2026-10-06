@@ -21,6 +21,7 @@ import { Voice } from "../../VoiceData/Voice";
 import { EngravingRules } from "../EngravingRules";
 import { GraphicalTie } from "../GraphicalTie";
 import { CrossStaffBeam } from "./CrossStaffBeam";
+import { CrossStaffCurve } from "./CrossStaffCurve";
 /** A format of the voices of a vertical measure (see VexFlowMeasure.format()). */
 export interface IVerticalMeasureFormat {
     /** The format function, shared by the measures of the vertical measure (see VexFlowMeasure.formatVoices). */
@@ -66,6 +67,10 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      *  (VexFlowMusicSheetDrawer), not by draw(). */
     crossStaffBeams: CrossStaffBeam[];
     private ownedCrossStaffBeams;
+    /** The slurs and ties from a note of this measure, or of a measure between, to a note on another staff of the part
+     *  in the same system (CrossStaffCurve): listed in every measure they span on both staves, calculated and drawn by
+     *  the drawer. Built by the tie and slur layout (VexFlowMusicSheetCalculator). */
+    crossStaffCurves: CrossStaffCurve[];
     /** Intermediate object to construct tuplets */
     protected tuplets: {
         [voiceID: number]: [Tuplet, VexFlowVoiceEntry[]][];

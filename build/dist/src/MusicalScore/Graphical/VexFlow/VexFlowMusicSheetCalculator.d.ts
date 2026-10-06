@@ -329,14 +329,28 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     private measureRepeatHidesNote;
     /**
      * Whether a slur from one staff of an instrument to the other is drawn as two pieces, one on each staff, instead of
-     * one curve in system coordinates (GraphicalSlur.calculateCurveCrossStaff()): when its notes are in different
-     * systems (that curve can't be drawn, the slur was left out: Schumann, Myrthen 14 m12-14 on the web, 15 m5-7 and
-     * m41-43 on both) or more than a barline apart (the curve, a bow between the two notes, cuts through the notes of the
-     * measures between: Myrthen 14 m12-14 in the app). A slur to the other staff in the same or the next measure (most of
-     * them: Myrthen 1, 3, 25) stays one curve. Decision 10-07, until slurs between staves are drawn in system coordinates
-     * with the cross-staff beams (00docs/plans/PLAN-cross-staff-beam.md). Same as osmd-dart.
+     * one curve between the placed staves (CrossStaffCurve): when its notes are in different systems (Schumann, Myrthen 15
+     * m5-7 in both platforms' layouts; the curve between two staves can't be drawn across a system break). In one system
+     * the slur is one curve however far its notes are (Myrthen 14 m12-14, 15 m41-43: the curve clears the notes between
+     * them, decision Q1 10-08). Same as osmd-dart.
      */
     private crossStaffSlurIsSplit;
+    /**
+     * The CrossStaffCurve of a slur from the start entry's note to a note on another staff of the same system, held by
+     * the measures it spans on both staves; undefined when its end note is not placed in this system.
+     */
+    private crossStaffCurveOf;
+    /** Forgets the curves between staves of the last layout: the measures are kept from one layout to the next. */
+    protected clearCrossStaffCurves(): void;
+    /** A tie from one staff of an instrument to another staff of it in the same system: one curve between the placed
+     *  staves (CrossStaffCurve), not a VexFlow StaveTie (it can't arch between two staves' notes: it ran nearly straight
+     *  across both and the beams between them, Schumann, Myrthen 10 m72-73) nor two stubs (10-07). Held by the start and
+     *  the end note's measures. Same as osmd-dart VexFlowMeasure._buildTies. */
+    protected layoutCrossStaffTie(tie: GraphicalTie): void;
+    /** A slur's curve between two staves is calculated with the staves' preliminary distance to reserve its outer sides
+     *  (over the upper staff, under the lower one) before the expressions are placed; the drawer calculates it again
+     *  between the placed staves (CrossStaffCurve). */
+    protected reserveCrossStaffCurves(): void;
     /**
      * The measure index after which a slur drawn as two pieces (see crossStaffSlurIsSplit()) changes staff: the start piece
      * goes from the start note to the end of that measure on the start note's staff, the end piece from the start of the
