@@ -11,6 +11,11 @@ export declare class VexFlowVoiceEntry extends GraphicalVoiceEntry {
      *  tickable of the voice. Unlike a grace note after its main note (VoiceEntry.GraceAfterMainNote), it keeps its timestamp. */
     isStandAloneGrace: boolean;
     constructor(parentVoiceEntry: VoiceEntry, parentStaffEntry: GraphicalStaffEntry, rules?: EngravingRules);
+    /** The y and height (px) of a note of a cross-staff beam for the layout: its noteheads and the stem the sky/bottom
+     *  line reserves for it (CrossStaffBeam.reservedStemLength), not the stem it is drawn with, which reaches the beam
+     *  between the staves (as osmd-dart, whose borders are read again after a progressive draw). Undefined: not in a
+     *  cross-staff beam. */
+    private static crossStaffBeamNoteBox;
     applyBordersFromVexflow(): void;
     set vfStaveNote(value: VF.StemmableNote);
     get vfStaveNote(): VF.StemmableNote;

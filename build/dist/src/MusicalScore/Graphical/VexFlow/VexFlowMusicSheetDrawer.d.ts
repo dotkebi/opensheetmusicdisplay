@@ -60,6 +60,16 @@ export declare class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
      *  Their lines are calculated here, at draw time, when both stafflines of a guide have their final positions. */
     protected drawVoiceLeadingGuides(musicSystem: MusicSystem): void;
     private drawSlur;
+    /** The cross-staff beams drawn in this drawing (drawSheet / drawSheetAsync). */
+    private drawnCrossStaffBeams;
+    /** Formats the cross-staff beams of the measure before the first of their measures is drawn (a note's modifiers are
+     *  placed from its extended stem as it is drawn): the other staves' measures get the stave position their own draw
+     *  will give them, the notes' y values are refreshed against it, and the beam is post-formatted anew (the staves
+     *  moved since the skyline pass). Same as osmd-dart. */
+    private prepareCrossStaffBeams;
+    /** Draws the cross-staff beams of the measure (stems and beam lines) after the first of their measures was drawn,
+     *  once per drawing. */
+    private drawCrossStaffBeams;
     protected drawMeasure(measure: VexFlowMeasure): void;
     protected drawBuzzRolls(staffEntry: GraphicalStaffEntry, newBuzzRollId: any): number;
     /** Draws the strokes ("tremolo beams") of tremolos between two notes in this measure,
