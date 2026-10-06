@@ -137,6 +137,10 @@ export declare class GraphicalContinuousDynamicExpression extends AbstractGraphi
      * @param shift Number to shift
      */
     shiftYPosition(shift: number): void;
+    /** The distinct end points of the wedge lines. A whole wedge's lines share their tip (addWedgeLines), the halves of a
+     *  wedge split at a system break don't (addDoubleLines): moving only lines[0] and the end of lines[1] left the second
+     *  line's start behind and crossed the lines into an X (Schumann, Myrthen 21 m35). */
+    private linePoints;
     squeeze(value: number): void;
     /**
      * Create lines from points and add them to the memory

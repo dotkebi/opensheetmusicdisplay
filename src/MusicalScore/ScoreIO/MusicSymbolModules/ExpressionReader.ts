@@ -332,7 +332,8 @@ export class ExpressionReader {
 
             dirContentNode = dirNode.element("wedge");
             if (dirContentNode) {
-                this.interpretWedge(directionNode, dirContentNode, currentMeasure, inSourceMeasurePreviousFraction, currentMeasure.MeasureNumber);
+                this.interpretWedge(directionNode, dirContentNode, currentMeasure, inSourceMeasurePreviousFraction, currentMeasure.MeasureNumber,
+                                    inSourceMeasureCurrentFraction);
                 continue;
             }
 
@@ -958,7 +959,8 @@ export class ExpressionReader {
         return numberXml;
     }
     private interpretWedge(directionNode: IXmlElement, wedgeNode: IXmlElement,
-        currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction, currentMeasureIndex: number): void {
+        currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction, currentMeasureIndex: number,
+        stopReadAt: Fraction = undefined): void {
         if (wedgeNode !== undefined && wedgeNode.hasAttributes && wedgeNode.attribute("default-x")) {
             this.directionTimestamp = Fraction.createFromFraction(inSourceMeasureCurrentFraction);
         }
@@ -982,6 +984,7 @@ export class ExpressionReader {
         //Ending needs to use previous fraction, not current.
         //If current is used, when there is a system break it will mess up
         if (typeAttributeString === "stop") {
+            inSourceMeasureCurrentFraction = this.wedgeStopTimestamp(currentMeasure, stopReadAt, inSourceMeasureCurrentFraction);
             this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml, inSourceMeasureCurrentFraction);
             this.getMultiExpression.EndOffsetFraction = new Fraction(this.offsetDivisions, this.divisions * 4);
         } else {
@@ -989,6 +992,25 @@ export class ExpressionReader {
         }
         this.addWedge(wedgeNode, currentMeasure, inSourceMeasureCurrentFraction);
         // Keep the outer <direction> context for later <direction-type> siblings.
+    }
+    /** The timestamp of a wedge stop read at `readAt`: the last staff entry of this staff starting before it, i.e. the note
+     *  the wedge ends under. The start of the last note read (`previousFraction`) is that note only while the voices are
+     *  read in time order: after a <backup> it belongs to another voice, e.g. a stop at the end of the measure after a held
+     *  half note in the second voice would end a diminuendo over the second beat at the measure start (Schumann, Myrthen 17 m34). */
+    private wedgeStopTimestamp(currentMeasure: SourceMeasure, readAt: Fraction, previousFraction: Fraction): Fraction {
+        if (!readAt) {
+            return previousFraction;
+        }
+        let latest: Fraction = undefined;
+        for (const container of currentMeasure.VerticalSourceStaffEntryContainers) {
+            if (!container.StaffEntries[this.globalStaffIndex] || !container.Timestamp.lt(readAt)) {
+                continue;
+            }
+            if (!latest || latest.lt(container.Timestamp)) {
+                latest = container.Timestamp;
+            }
+        }
+        return latest ? latest.clone() : previousFraction;
     }
     private interpretRehearsalMark(
         rehearsalNode: IXmlElement, currentMeasure: SourceMeasure,

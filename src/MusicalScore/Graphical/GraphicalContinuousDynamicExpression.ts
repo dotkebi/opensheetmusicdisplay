@@ -351,10 +351,25 @@ export class GraphicalContinuousDynamicExpression extends AbstractGraphicalExpre
             this.PositionAndShape.RelativePosition.y += shift;
             this.PositionAndShape.calculateBoundingBox();
         } else {
-            this.lines[0].Start.y += shift;
-            this.lines[0].End.y += shift;
-            this.lines[1].End.y += shift;
+            for (const point of this.linePoints()) {
+                point.y += shift;
+            }
         }
+    }
+
+    /** The distinct end points of the wedge lines. A whole wedge's lines share their tip (addWedgeLines), the halves of a
+     *  wedge split at a system break don't (addDoubleLines): moving only lines[0] and the end of lines[1] left the second
+     *  line's start behind and crossed the lines into an X (Schumann, Myrthen 21 m35). */
+    private linePoints(): PointF2D[] {
+        const points: PointF2D[] = [];
+        for (const line of this.lines) {
+            for (const point of [line.Start, line.End]) {
+                if (!points.includes(point)) {
+                    points.push(point);
+                }
+            }
+        }
+        return points;
     }
 
     public squeeze(value: number): void {
@@ -366,19 +381,14 @@ export class GraphicalContinuousDynamicExpression extends AbstractGraphicalExpre
         if (width < Math.abs(value)) {
             return;
         }
-        if (this.ContinuousDynamic.DynamicType === ContDynamicEnum.crescendo) {
-            if (value > 0) {
-                this.lines[0].Start.x += value;
-            } else {
-                this.lines[0].End.x += value;
-                this.lines[1].End.x += value;
-            }
-        } else {
-            if (value < 0) {
-                this.lines[0].Start.x += value;
-            } else {
-                this.lines[0].End.x += value;
-                this.lines[1].End.x += value;
+        // Move the side that overlaps: the left end (value > 0) or the right end (value < 0), every line point on it,
+        // so that split halves with separate start points keep their shape (see linePoints()).
+        const points: PointF2D[] = this.linePoints();
+        const xs: number[] = points.map(point => point.x);
+        const sideX: number = value > 0 ? Math.min(...xs) : Math.max(...xs);
+        for (const point of points) {
+            if (Math.abs(point.x - sideX) < 0.0001) {
+                point.x += value;
             }
         }
         this.calcPsi();
