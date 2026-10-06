@@ -1391,6 +1391,12 @@ export abstract class MusicSheetCalculator {
         // implemented by VexFlowMusicSheetCalculator
     }
 
+    /** Lays out a tie from one staff of an instrument to another staff of it in the same system: one curve between the
+     *  placed staves (see VexFlowMusicSheetCalculator). */
+    protected layoutCrossStaffTie(tie: GraphicalTie): void {
+        // implemented by VexFlowMusicSheetCalculator
+    }
+
     /**
      * Calculates the dashed lines that follow the texts of expressions up to where their MusicXML <dashes> stop
      * (e.g. "rit. - - - -"), after all expressions are placed: one GraphicalExpressionDashes per staffline a line crosses.
@@ -4766,14 +4772,16 @@ export abstract class MusicSheetCalculator {
                         for (const graphicalTie of staffEntry.GraphicalTies) {
                             if (graphicalTie.StartNote !== undefined && graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry === staffEntry) {
                                 // (a tie without an end note, see tieContinuesAfterRepeat(), is drawn to the end of its staff)
-                                // A tie is split into two stubs at a system break and between the two staves of an instrument:
-                                //   one curve from a note on one staff to a note on the other runs nearly straight across both
-                                //   staves and the beams between them (Schumann, Myrthen, Die Hochländer-Wittwe m72-73). Each
-                                //   staff gets the half at its own note, as at a system break.
-                                const tieIsAtSystemBreak: boolean = graphicalTie.EndNote !== undefined && (
-                                    graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine !==
-                                    graphicalTie.EndNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine
-                                );
+                                // A tie is split into two stubs at a system break, each staff line getting the half at its own
+                                //   note. A tie to another staff of the instrument in the same system is one curve between the
+                                //   placed staves (CrossStaffCurve, layoutCrossStaffTie()).
+                                const startLine: StaffLine = graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine;
+                                const endLine: StaffLine = graphicalTie.EndNote?.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine;
+                                const tieIsAtSystemBreak: boolean = graphicalTie.EndNote !== undefined && startLine !== endLine;
+                                if (tieIsAtSystemBreak && endLine && startLine.ParentMusicSystem === endLine.ParentMusicSystem) {
+                                    this.layoutCrossStaffTie(graphicalTie);
+                                    continue;
+                                }
                                 this.layoutGraphicalTie(graphicalTie, tieIsAtSystemBreak, measure.ParentStaff.isTab);
                             }
                         }

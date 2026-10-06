@@ -3,15 +3,15 @@ import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
 import { Note } from "../../../src/MusicalScore/VoiceData/Note";
+import { CrossStaffCurve } from "../../../src/MusicalScore/Graphical/VexFlow/CrossStaffCurve";
 
 /**
  * Ties between the two staves of a piano part (Schumann, Myrthen).
  *
- * B1 (layout): a tie from one staff to the other in the same system is split into two stubs, each at its own note,
- * as at a system break (Die Hochländer-Wittwe m72-73, same voice). One curve between the two notes (the 10-06 rule)
- * ran nearly straight across both staves and the beams between them (10-07 recheck R-10-1); the 10-07 decision is
- * two stubs on web and app alike, until ties and slurs between staves are drawn in system coordinates with the
- * cross-staff beams (PLAN-cross-staff-beam).
+ * B1 (layout): a tie from one staff to the other in the same system is one curve between the placed staves, drawn by
+ * the drawer (CrossStaffCurve, PLAN-cross-staff-beam (4), 10-08), not a VexFlow StaveTie (it can't arch between two
+ * staves' notes: the 10-06 rule ran nearly straight across both staves and the beams, 10-07 recheck R-10-1) nor two
+ * stubs (the 10-07 rule). At a system break it stays two stubs.
  * B2 (reader): a tie whose stop is in another voice on the other staff found no open tie, since each staff keeps
  * its own open-tie dictionary (Aus den hebräischen Gesängen m79-80: RH C4 half -> LH C4 whole). The stop now looks
  * in the other staves of the instrument.
@@ -70,21 +70,33 @@ describe("Tie across staves", () => {
         throw new Error(`no note of voice ${voiceId} in m${measureIndex + 1} staff ${staff}`);
     }
 
-    it("(a) same voice, staff 1 -> staff 2 in one system: a stub at each note", () => {
+    /** the curves between staves held by the measures (both staves) at the index */
+    function curvesIn(measureIndex: number): CrossStaffCurve[] {
+        const curves: CrossStaffCurve[] = [];
+        for (let staff: number = 0; staff < 2; staff++) {
+            for (const curve of (osmd.GraphicSheet.MeasureList[measureIndex][staff] as VexFlowMeasure).crossStaffCurves) {
+                if (curves.indexOf(curve) < 0) {
+                    curves.push(curve);
+                }
+            }
+        }
+        return curves;
+    }
+
+    it("(a) same voice, staff 1 -> staff 2 in one system: one curve", () => {
         const startLine: any = osmd.GraphicSheet.MeasureList[0][0].ParentStaffLine;
         const endLine: any = osmd.GraphicSheet.MeasureList[1][1].ParentStaffLine;
         expect(startLine.ParentMusicSystem, "m1 and m2 in one system").to.equal(endLine.ParentMusicSystem);
-        const outgoing: Ties = tiesIn(0);
-        const incoming: Ties = tiesIn(1); // the measure of the tie's end note
-        expect(outgoing.full.length).to.equal(0);
-        expect(incoming.full.length, "no curve across the two staves").to.equal(0);
-        expect(outgoing.stubs.length, "stub from B3 on staff 1").to.equal(1);
-        expect(incoming.stubs.length, "stub into B3 on staff 2").to.equal(1);
-        const start: any = outgoing.stubs[0];
-        const end: any = incoming.stubs[0];
-        expect(!!start.first_note && !start.last_note, "start stub: first note only").to.equal(true);
-        expect(!end.first_note && !!end.last_note, "end stub: last note only").to.equal(true);
-        expect(start.first_note.getStave()).to.not.equal(end.last_note.getStave());
+        expect(tiesIn(0).full.length + tiesIn(0).stubs.length, "no stub from B3").to.equal(0);
+        expect(tiesIn(1).full.length + tiesIn(1).stubs.length, "no stub into B3").to.equal(0);
+        const curves: CrossStaffCurve[] = curvesIn(1).filter(c => c.isTie);
+        expect(curves.length).to.equal(1);
+        expect(curves[0].startNote.sourceNote).to.equal(note(0, 0, 1));
+        expect(curves[0].endNote.sourceNote).to.equal(note(1, 1, 1));
+        expect(curvesIn(0)).to.include(curves[0]);
+        expect(curves[0].segments.length).to.equal(1);
+        expect(curves[0].endPoint.y).to.be.greaterThan(endLine.PositionAndShape.AbsolutePosition.y - 2);
+        expect(curves[0].endPoint.x).to.be.greaterThan(curves[0].startPoint.x);
     });
 
     it("(b) different voices on different staves: the reader connects the tie", () => {
@@ -94,8 +106,12 @@ describe("Tie across staves", () => {
         expect(start.NoteTie.Notes).to.deep.equal([start, stop]);
         expect(stop.NoteTie).to.equal(start.NoteTie);
         expect(tiesIn(3).full.length).to.equal(0);
-        expect(tiesIn(3).stubs.length).to.equal(1);
-        expect(tiesIn(2).stubs.length).to.equal(1);
+        expect(tiesIn(3).stubs.length).to.equal(0);
+        expect(tiesIn(2).stubs.length).to.equal(0);
+        const curves: CrossStaffCurve[] = curvesIn(3).filter(c => c.isTie);
+        expect(curves.length).to.equal(1);
+        expect(curves[0].startNote.sourceNote).to.equal(start);
+        expect(curves[0].endNote.sourceNote).to.equal(stop);
     });
 
     it("(c) staff 1 -> staff 2 across a system break: two stubs as before", () => {

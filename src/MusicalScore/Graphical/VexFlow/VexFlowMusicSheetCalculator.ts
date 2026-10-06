@@ -3872,6 +3872,23 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     }
   }
 
+  /** A tie from one staff of an instrument to another staff of it in the same system: one curve between the placed
+   *  staves (CrossStaffCurve), not a VexFlow StaveTie (it can't arch between two staves' notes: it ran nearly straight
+   *  across both and the beams between them, Schumann, Myrthen 10 m72-73) nor two stubs (10-07). Held by the start and
+   *  the end note's measures. Same as osmd-dart VexFlowMeasure._buildTies. */
+  protected layoutCrossStaffTie(tie: GraphicalTie): void {
+    if (!tie.StartNote || !tie.EndNote) {
+      return;
+    }
+    const startMeasure: GraphicalMeasure = tie.StartNote.parentVoiceEntry.parentStaffEntry.parentMeasure;
+    const endMeasure: GraphicalMeasure = tie.EndNote.parentVoiceEntry.parentStaffEntry.parentMeasure;
+    const curve: CrossStaffCurve = CrossStaffCurve.tie(tie.StartNote, tie.EndNote,
+                                                       tie.Tie.getTieDirection(tie.StartNote.sourceNote), [startMeasure, endMeasure]);
+    for (const measure of curve.participants) {
+      (measure as VexFlowMeasure).crossStaffCurves?.push(curve);
+    }
+  }
+
   /** A slur's curve between two staves is calculated with the staves' preliminary distance to reserve its outer sides
    *  (over the upper staff, under the lower one) before the expressions are placed; the drawer calculates it again
    *  between the placed staves (CrossStaffCurve). */

@@ -54,10 +54,12 @@ describe("Curves between staves", () => {
         return best.y;
     };
 
-    it("is one system, a curve per slur", () => {
+    it("is one system, a curve per slur and tie", () => {
         expect(osmd.GraphicSheet.MusicPages[0].MusicSystems.length).to.equal(1);
         expect(curvesStartingIn(0).length).to.equal(1);
+        expect(curvesStartingIn(1).length).to.equal(1);
         expect(curvesStartingIn(3).length).to.equal(1);
+        expect(curvesStartingIn(1)[0].isTie).to.equal(true);
         // held by both staves' measures it spans
         const slur: CrossStaffCurve = curvesStartingIn(0)[0];
         expect(measureAt(0, 0).crossStaffCurves).to.include(slur);
@@ -87,6 +89,20 @@ describe("Curves between staves", () => {
         expect(maxY, "over the D3 whole note (head top 1.5 under the top line)").to.be.lessThan(lowerTop + 1.5);
     });
 
+    it("a tie from one staff to the other: one arch away from the stem, no stubs", () => {
+        const curve: CrossStaffCurve = curvesStartingIn(1)[0];
+        expect(curve.segments.length).to.equal(1);
+        expect(curve.placement, "B3 stem up").to.equal(PlacementEnum.Below);
+        expect(measureAt(1, 0).vfTies.length, "no stub").to.equal(0);
+        expect(measureAt(2, 1).vfTies.length, "no stub").to.equal(0);
+        const p0: PointF2D = curve.startPoint;
+        const p3: PointF2D = curve.endPoint;
+        const length: number = Math.sqrt((p3.x - p0.x) ** 2 + (p3.y - p0.y) ** 2);
+        const n: PointF2D = curve.outerNormal();
+        const reach: number = Math.max(...curve.sample().map(p => (p.x - p0.x) * n.x + (p.y - p0.y) * n.y));
+        expect(reach).to.be.closeTo(Math.min(1.5, Math.max(0.4, 0.36 + 0.082 * length)), 0.02);
+    });
+
     it("a slur without placement bows away from its notes between", () => {
         const curve: CrossStaffCurve = curvesStartingIn(3)[0];
         expect(curve.placement).to.equal(PlacementEnum.Above);
@@ -97,7 +113,7 @@ describe("Curves between staves", () => {
         const curvePaths: (div: HTMLElement) => string[] = (div: HTMLElement) =>
             Array.from(div.querySelectorAll("g.vf-curve path")).map(path => path.getAttribute("d"));
         const sync: string[] = curvePaths(container);
-        expect(sync.length, "two slurs").to.equal(2);
+        expect(sync.length, "two slurs and a tie").to.equal(3);
         osmd.clear();
         container.remove();
         await load();
