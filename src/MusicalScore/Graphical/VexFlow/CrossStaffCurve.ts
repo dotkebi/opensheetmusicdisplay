@@ -352,7 +352,9 @@ export class CrossStaffCurve {
             for (const endAtStem of CrossStaffCurve.endChoices(end, below)) {
                 const p0: PointF2D = CrossStaffCurve.endPointOf(start, below, gap, true, startAtStem);
                 const p3: PointF2D = CrossStaffCurve.endPointOf(end, below, gap, false, endAtStem);
-                if (p3.x - p0.x < 0.5) {
+                // (a slur between two notes at one time is nearly upright: Myrthen has none, a test of measure repeats
+                //   does)
+                if (CrossStaffCurve.distance(p0, p3) < 0.5) {
                     continue;
                 }
                 const points: PointF2D[] = [...candidates, ...ownStems].filter(point => point.x > p0.x + 0.1 && point.x < p3.x - 0.1);
@@ -560,7 +562,7 @@ export class CrossStaffCurve {
         // (sweep: the direction along which the curve's place doesn't depend on the offsets; offset: the direction the
         //   control points move, one unit of it one unit beyond the line)
         const families: [PointF2D, PointF2D][] = [
-            [new PointF2D(1, 0), new PointF2D(0, side)],
+            ...(dx > 0.5 ? [[new PointF2D(1, 0), new PointF2D(0, side)] as [PointF2D, PointF2D]] : []),
             [ex, n],
         ];
         let result: Segment[] = undefined;
