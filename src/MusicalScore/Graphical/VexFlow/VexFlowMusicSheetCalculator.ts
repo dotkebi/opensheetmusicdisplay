@@ -125,6 +125,14 @@ interface IMetronomePlacement {
 }
 import { Note, TremoloBetweenNotes } from "../../VoiceData/Note";
 
+/** Where a pedal stop between two staff entries is drawn: fraction of the way from entry to after (or to the
+ *  measure end when after is undefined). */
+interface PedalReleaseAnchor {
+  entry: GraphicalStaffEntry;
+  after: GraphicalStaffEntry;
+  fraction: number;
+}
+
 export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   /** space needed for a dash for lyrics spacing, calculated once */
   private dashSpace: number;
@@ -1948,8 +1956,19 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       }
       // calculate RelativePosition and Dashes
       let startStaffEntry: GraphicalStaffEntry = startMeasure.findGraphicalStaffEntryFromTimestamp(startTimeStamp);
+      // The depress between two staff entries (a start at a time only the other staff plays): anchor it at the entry
+      //   before it and interpolate its x by time, instead of jumping to the measure's first entry.
+      let depressAnchor: PedalReleaseAnchor = undefined;
+      if (!startStaffEntry && !startIsClipped && startTimeStamp.RealValue > 0 &&
+          startTimeStamp.lt(startMeasure.parentSourceMeasure.Duration)) {
+        depressAnchor = this.findPedalReleaseAnchor(startMeasure, startTimeStamp);
+        if (depressAnchor) {
+          startStaffEntry = depressAnchor.entry;
+        }
+      }
       if (!this.hasVexFlowNote(startStaffEntry)) { // fix for rendering range set
         startStaffEntry = this.findBoundaryNoteEntry(startNoteMeasures);
+        depressAnchor = undefined;
       }
       let endStaffEntry: GraphicalStaffEntry = endMeasure.findGraphicalStaffEntryFromTimestamp(endTimeStamp);
       if (!this.hasVexFlowNote(endStaffEntry) && endTimeStamp) {
@@ -2089,6 +2108,123 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     return this.findBoundaryNoteEntry(staffline.Measures, true)?.parentMeasure;
   }
 
+  /** The staff entries around a pedal stop that falls between the entries of endMeasure: the release is drawn at the
+   *  time-proportional x between the entry before it and the entry after it (or the measure end). */
+  private findPedalReleaseAnchor(endMeasure: GraphicalMeasure, stop: Fraction): PedalReleaseAnchor {
+    let before: GraphicalStaffEntry = undefined;
+    let after: GraphicalStaffEntry = undefined;
+    for (const entry of endMeasure.staffEntries) {
+      if (!this.hasVexFlowNote(entry) || !entry.relInMeasureTimestamp) {
+        continue;
+      }
+      if (entry.relInMeasureTimestamp.lt(stop)) {
+        before = entry;
+      } else if (entry.relInMeasureTimestamp.gt(stop) && !after) {
+        after = entry;
+      }
+    }
+    if (!before) {
+      // released before the first note of the measure: in front of it
+      return after ? { entry: after, after: undefined, fraction: 0 } : undefined;
+    }
+    const spanEnd: Fraction = after ? after.relInMeasureTimestamp : endMeasure.parentSourceMeasure.Duration;
+    const span: number = Fraction.minus(spanEnd, before.relInMeasureTimestamp).RealValue;
+    const fraction: number = span <= 0 ? 0 : Fraction.minus(stop, before.relInMeasureTimestamp).RealValue / span;
+    return { entry: before, after: after, fraction: Math.min(1, Math.max(0, fraction)) };
+  }
+
+  /** VexFlow px from anchorNote (the entry before the time) to the time-proportional point between it and the next
+   *  entry (or the measure end); undefined when the anchor is the entry after the time. */
+  private interpolatedPedalAnchorOffset(anchorNote: Vex.Flow.StemmableNote, anchor: PedalReleaseAnchor,
+                                        measure: GraphicalMeasure): number {
+    if (!anchor || (!anchor.after && anchor.fraction === 0) || !anchorNote) {
+      return undefined;
+    }
+    const x0: number = anchorNote.getAbsoluteX();
+    let x1: number;
+    if (anchor.after) {
+      const afterNote: Vex.Flow.StemmableNote = (anchor.after.graphicalVoiceEntries
+        .find(gve => (gve as VexFlowVoiceEntry).vfStaveNote) as VexFlowVoiceEntry)?.vfStaveNote;
+      if (!afterNote) {
+        return undefined;
+      }
+      x1 = afterNote.getAbsoluteX();
+    } else {
+      x1 = (measure as VexFlowMeasure).getVFStave().getNoteEndX();
+    }
+    return (x1 - x0) * anchor.fraction;
+  }
+
+  /** VexFlow px from the end note to an interpolated release (undefined when the release is at a note), at least a
+   *  depress mark's width right of the pedal's own Ped. in the same segment. */
+  private interpolatedPedalReleaseXOffset(vfPedal: VexFlowPedal, anchor: PedalReleaseAnchor, endMeasure: GraphicalMeasure,
+                                          sameSegmentAsStart: boolean, endEntry: GraphicalStaffEntry = undefined): number {
+    if (endEntry && anchor && endEntry !== anchor.entry) {
+      return undefined;
+    }
+    const offset: number = this.interpolatedPedalAnchorOffset(vfPedal.endNote, anchor, endMeasure);
+    if (offset === undefined) {
+      return undefined;
+    }
+    const x0: number = vfPedal.endNote.getAbsoluteX();
+    let releaseX: number = x0 + offset;
+    if (sameSegmentAsStart && vfPedal.startNote) {
+      const pedalMarking: any = vfPedal.getPedalMarking();
+      const margin: number = pedalMarking.render_options.text_margin_right;
+      // the default Ped. glyph is about 20px wide at the default point size
+      const minGap: number = vfPedal.pedalSymbol === MusicSymbol.PEDAL_SYMBOL ? 20 + margin : margin;
+      releaseX = Math.max(releaseX, vfPedal.startNote.getAbsoluteX() + (vfPedal.DepressXOffset ?? 0) + minGap);
+    }
+    return releaseX - x0;
+  }
+
+  /** The Ped. of a symbol pedal stays a text margin right of the * of the previous pedal on the staff line (an x rule,
+   *  not a skyline one): a release and the next depress close together in time would otherwise be drawn over each
+   *  other. A change already keeps its own gap; a release at the stave end, a hidden release or a release in the
+   *  previous measure needs none. */
+  private keepPedalDepressRightOfPreviousRelease(vfPedal: VexFlowPedal, staffLine: StaffLine): void {
+    if (vfPedal.pedalSymbol !== MusicSymbol.PEDAL_SYMBOL || vfPedal.ChangeBegin || !vfPedal.startNote) {
+      return;
+    }
+    // only within one measure: a * before the barline and the Ped. of the next measure's first note stay where they
+    //   are, as engraved
+    const startMeasure: GraphicalMeasure = vfPedal.startVfVoiceEntry?.parentStaffEntry?.parentMeasure;
+    let previous: VexFlowPedal = undefined;
+    for (const other of staffLine.Pedals as VexFlowPedal[]) {
+      if (other.pedalSymbol === MusicSymbol.PEDAL_SYMBOL && !other.ReleaseText && !other.getPedal.EndsStave && other.endNote &&
+          other.endVfVoiceEntry?.parentStaffEntry?.parentMeasure === startMeasure) {
+        previous = other;
+      }
+    }
+    if (!previous) {
+      return;
+    }
+    const marking: any = previous.getPedalMarking();
+    const releaseWidth: number = marking.constructor.releaseGlyphWidth ?
+      marking.constructor.releaseGlyphWidth(marking.render_options.glyph_point_size) : 10;
+    const releaseRight: number = previous.endNote.getAbsoluteX() + (previous.ReleaseXOffset ?? 0) + releaseWidth;
+    const startX: number = vfPedal.startNote.getAbsoluteX();
+    // the Ped. glyph is drawn 10px left of its x
+    const depressLeft: number = startX + (vfPedal.DepressXOffset ?? 0) - 10;
+    const minDepressLeft: number = releaseRight + marking.render_options.text_margin_right;
+    if (depressLeft < minDepressLeft) {
+      vfPedal.DepressXOffset = minDepressLeft + 10 - startX;
+    }
+  }
+
+  /** OSMD-unit x where the release mark of a symbol pedal (its *) starts: the interpolated release, the stave end,
+   *  or the end note. */
+  private pedalReleaseStartX(vfPedal: VexFlowPedal, endBbox: BoundingBox, marginXOffset: number): number {
+    if (vfPedal.ReleaseXOffset !== undefined && !vfPedal.getPedal.EndsStave) {
+      return endBbox.AbsolutePosition.x + vfPedal.ReleaseXOffset / unitInPixels - marginXOffset;
+    }
+    if (vfPedal.getPedal.EndsStave && vfPedal.endVfVoiceEntry) {
+      const measureBox: BoundingBox = vfPedal.endVfVoiceEntry.parentStaffEntry.parentMeasure.PositionAndShape;
+      return measureBox.AbsolutePosition.x + measureBox.Size.width - marginXOffset - 1.5;
+    }
+    return endBbox.AbsolutePosition.x - marginXOffset;
+  }
+
   /** Finds the first staffline measure with a note that can anchor an expression. */
   protected findFirstStafflineMeasure(staffline: StaffLine): GraphicalMeasure {
     return this.findBoundaryNoteEntry(staffline.Measures)?.parentMeasure;
@@ -2169,18 +2305,49 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       graphicalPedal.setEndsStave(endMeasure, endTimeStamp); // unfortunately this can't already be checked in ExpressionReader
       // calculate RelativePosition
       let startStaffEntry: GraphicalStaffEntry = startMeasure.findGraphicalStaffEntryFromTimestamp(startTimeStamp);
+      // The depress between two staff entries (a start at a time only the other staff plays): anchor it at the entry
+      //   before it and interpolate its x by time, instead of jumping to the measure's first entry.
+      let depressAnchor: PedalReleaseAnchor = undefined;
+      if (!startStaffEntry && !startIsClipped && startTimeStamp.RealValue > 0 &&
+          startTimeStamp.lt(startMeasure.parentSourceMeasure.Duration)) {
+        depressAnchor = this.findPedalReleaseAnchor(startMeasure, startTimeStamp);
+        if (depressAnchor) {
+          startStaffEntry = depressAnchor.entry;
+        }
+      }
       if (!this.hasVexFlowNote(startStaffEntry)) { // fix for rendering range set
         startStaffEntry = this.findBoundaryNoteEntry(startNoteMeasures);
+        depressAnchor = undefined;
       }
       let endStaffEntry: GraphicalStaffEntry = endMeasure.findGraphicalStaffEntryFromTimestamp(endTimeStamp);
+      // The release between two staff entries (a stop with an offset, or at a time only the other staff plays):
+      //   anchor it at the entry before it and interpolate its x by time, instead of jumping to the measure's last entry.
+      let releaseAnchor: PedalReleaseAnchor = undefined;
+      if (!endStaffEntry && endTimeStamp && !endIsClipped && endTimeStamp.lt(endMeasure.parentSourceMeasure.Duration)) {
+        releaseAnchor = this.findPedalReleaseAnchor(endMeasure, endTimeStamp);
+        if (releaseAnchor) {
+          endStaffEntry = releaseAnchor.entry;
+        }
+      }
       if (!this.hasVexFlowNote(endStaffEntry)) { // fix for rendering range set
         endStaffEntry = this.findBoundaryNoteEntry(endNoteMeasures, true);
         // TODO can be undefined if no notes in end measure
+        releaseAnchor = undefined;
       }
+      // The next pedal starts exactly where this one ends (a sign pedal closed by the next Ped. in the reader):
+      //   the next Ped. is the release, as engraved, so no * is drawn. An explicit stop+start at one time is a
+      //   change (ChangeEnd) and keeps its *.
+      const nextPedalAtEnd: Pedal = pedal.ParentEndMultiExpression?.PedalStart;
+      const hideRelease: boolean = graphicalPedal.pedalSymbol === MusicSymbol.PEDAL_SYMBOL &&
+        nextPedalAtEnd !== undefined && nextPedalAtEnd !== pedal && !pedal.ChangeEnd;
       if (!graphicalPedal.setStartNote(startStaffEntry)){
         return;
       }
       graphicalPedal.setBeginsStave(graphicalPedal.startNote.isRest(), startTimeStamp);
+      if (depressAnchor && depressAnchor.entry === startStaffEntry) {
+        graphicalPedal.DepressXOffset = this.interpolatedPedalAnchorOffset(graphicalPedal.startNote, depressAnchor, startMeasure);
+      }
+      this.keepPedalDepressRightOfPreviousRelease(graphicalPedal, startStaffLine);
 
       if (endStaffLine !== startStaffLine) {
         if(graphicalPedal.pedalSymbol === MusicSymbol.PEDAL_SYMBOL){
@@ -2202,6 +2369,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           }
           nextPedal.setEndNote(endStaffEntry);
           nextPedal.setEndMeasure(endMeasure);
+          nextPedal.ReleaseXOffset = this.interpolatedPedalReleaseXOffset(nextPedal, releaseAnchor, endMeasure, false);
+          if (hideRelease) {
+            nextPedal.ReleaseText = " ";
+          }
           graphicalPedal.setEndMeasure(endMeasure);
           endStaffLine.Pedals.push(nextPedal);
           nextPedal.CalculateBoundingBox();
@@ -2266,6 +2437,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
                 nextPedalLastMeasure = endMeasure;
                 nextPedal.setEndMeasure(endMeasure);
                 lastNote = endStaffEntry;
+                nextPedal.ReleaseXOffset = this.interpolatedPedalReleaseXOffset(nextPedal, releaseAnchor, endMeasure, false, lastNote);
               } else {
                 nextPedal.setEndMeasure(nextPedalLastMeasure);
               }
@@ -2285,6 +2457,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       } else {
         graphicalPedal.setEndNote(endStaffEntry);
         graphicalPedal.setEndMeasure(endMeasure);
+        graphicalPedal.ReleaseXOffset = this.interpolatedPedalReleaseXOffset(graphicalPedal, releaseAnchor, endMeasure, true);
+        if (hideRelease) {
+          graphicalPedal.ReleaseText = " ";
+        }
         graphicalPedal.CalculateBoundingBox();
         this.calculatePedalSkyBottomLine(graphicalPedal.startVfVoiceEntry, graphicalPedal.endVfVoiceEntry, graphicalPedal, startStaffLine);
       }
@@ -2350,8 +2526,19 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       const endNoteMeasures: GraphicalMeasure[] = endIsClipped ? endStaffLine.Measures : [endMeasure];
       // calculate RelativePosition
       let startStaffEntry: GraphicalStaffEntry = startMeasure.findGraphicalStaffEntryFromTimestamp(startTimeStamp);
+      // The depress between two staff entries (a start at a time only the other staff plays): anchor it at the entry
+      //   before it and interpolate its x by time, instead of jumping to the measure's first entry.
+      let depressAnchor: PedalReleaseAnchor = undefined;
+      if (!startStaffEntry && !startIsClipped && startTimeStamp.RealValue > 0 &&
+          startTimeStamp.lt(startMeasure.parentSourceMeasure.Duration)) {
+        depressAnchor = this.findPedalReleaseAnchor(startMeasure, startTimeStamp);
+        if (depressAnchor) {
+          startStaffEntry = depressAnchor.entry;
+        }
+      }
       if (!this.hasVexFlowNote(startStaffEntry)) { // fix for rendering range set
         startStaffEntry = this.findBoundaryNoteEntry(startNoteMeasures);
+        depressAnchor = undefined;
       }
       let endStaffEntry: GraphicalStaffEntry = endMeasure.findGraphicalStaffEntryFromTimestamp(endTimeStamp);
       if (!this.hasVexFlowNote(endStaffEntry)) { // fix for rendering range set
@@ -2518,7 +2705,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       //VF Uses a margin offset for rendering. Take this into account
       const pedalMarkingMarginXOffset: number = pedalMarking.render_options.text_margin_right / 10;
       //TODO: Most of this should be in the bounding box calculation
-      let startX: number = startVfVoiceEntry.PositionAndShape.AbsolutePosition.x - pedalMarkingMarginXOffset;
+      let startX: number = startVfVoiceEntry.PositionAndShape.AbsolutePosition.x +
+        (vfPedal.DepressXOffset ?? 0) / unitInPixels - pedalMarkingMarginXOffset;
 
       if (pedalMarking.style === PEDAL_STYLES_ENUM.MIXED ||
           pedalMarking.style === PEDAL_STYLES_ENUM.MIXED_OPEN_END ||
@@ -2540,7 +2728,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         const symbolHalfHeight: number = pedalMarking.render_options.glyph_point_size / 20;
         //Width of the Ped. symbol
         stopX = startX + 3.4;
-        const startX2: number = endBbox.AbsolutePosition.x - pedalMarkingMarginXOffset;
+        const startX2: number = this.pedalReleaseStartX(vfPedal, endBbox, pedalMarkingMarginXOffset);
         //Width of * symbol
         const stopX2: number = startX2 + 1.5;
 
@@ -2573,7 +2761,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
               stopX = endBbox.AbsolutePosition.x + endBbox.BorderRight - pedalMarkingMarginXOffset;
             break;
             default:
-              stopX = endBbox.AbsolutePosition.x + endBbox.BorderLeft - pedalMarkingMarginXOffset;
+              if (vfPedal.ReleaseXOffset !== undefined) {
+                stopX = endBbox.AbsolutePosition.x + vfPedal.ReleaseXOffset / unitInPixels;
+              } else {
+                stopX = endBbox.AbsolutePosition.x + endBbox.BorderLeft - pedalMarkingMarginXOffset;
+              }
             break;
           }
         }
