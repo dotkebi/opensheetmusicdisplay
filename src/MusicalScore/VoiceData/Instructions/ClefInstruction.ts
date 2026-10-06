@@ -21,6 +21,10 @@ export class ClefInstruction extends AbstractNotationInstruction {
     private octaveOffset: number = 0;
     private clefPitch: Pitch;
     private referenceCyPosition: number;
+    // PrintObject (AbstractNotationInstruction) is false for `<clef print-object="no">`: the clef applies to the
+    // note positions but is drawn nowhere (not at the start of its measure, not as a courtesy clef at the end of
+    // the previous measure, not as the invisible alignment copy of the other staves). Not part of Equals():
+    // hiding doesn't change the clef.
 
     public static getDefaultClefFromMidiInstrument(instrument: MidiInstrument): ClefInstruction {
         switch (instrument) {

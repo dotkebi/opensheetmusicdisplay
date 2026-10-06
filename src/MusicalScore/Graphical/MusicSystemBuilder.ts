@@ -594,11 +594,13 @@ export class MusicSystemBuilder {
         let clefAdded: boolean = false;
         let keyAdded: boolean = false;
         let rhythmAdded: boolean = false;
-        if (currentClef) {
+        if (currentClef && (currentClef.PrintObject || isSystemStartMeasure)) {
+            // a hidden clef (<clef print-object="no">) positions the notes but is not drawn at its change;
+            // at the start of a system the active clef is drawn as always
             measure.addClefAtBegin(currentClef);
             clefAdded = true;
         } else {
-            currentClef = this.activeClefs[visibleStaffIdx];
+            currentClef = currentClef ?? this.activeClefs[visibleStaffIdx];
         }
         if (currentKey) {
             currentKey = this.transposeKeyInstruction(currentKey, measure);
@@ -640,10 +642,15 @@ export class MusicSystemBuilder {
         if (!lastEntry || !lastEntry.Instructions || lastEntry.Instructions.length === 0) {
             return 0;
         }
+        let clefAdded: boolean = false;
         for (let idx: number = 0, len: number = lastEntry.Instructions.length; idx < len; ++idx) {
             const abstractNotationInstruction: AbstractNotationInstruction = lastEntry.Instructions[idx];
             if (abstractNotationInstruction instanceof ClefInstruction) {
                 const activeClef: ClefInstruction = <ClefInstruction>abstractNotationInstruction;
+                if (!activeClef.PrintObject) {
+                    continue; // <clef print-object="no">: drawn nowhere, no width, no alignment copy on the other staves
+                }
+                clefAdded = true;
                 measure.addClefAtEnd(activeClef);
                 for (const otherVerticalMeasure of measures) {
                     if (otherVerticalMeasure !== measure) {
@@ -651,6 +658,9 @@ export class MusicSystemBuilder {
                     }
                 }
             }
+        }
+        if (!clefAdded) {
+            return 0;
         }
         return this.rules.MeasureRightMargin + measure.endInstructionsWidth;
     }
