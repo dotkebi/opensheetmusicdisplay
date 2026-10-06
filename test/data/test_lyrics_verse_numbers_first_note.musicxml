@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <!-- Synthetic fixture for lyric verse number labels ("1." "2." "3."): three verses whose first syllables are on the first note of the piece -->
+  <part-list>
+    <score-part id="P1"><part-name>Canto</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>single</syllabic><text>Wie</text></lyric><lyric number="2"><syllabic>single</syllabic><text>Was</text></lyric><lyric number="3"><syllabic>single</syllabic><text>Er</text></lyric></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>single</syllabic><text>kann</text></lyric><lyric number="2"><syllabic>begin</syllabic><text>küm</text></lyric><lyric number="3"><syllabic>single</syllabic><text>hat</text></lyric></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>single</syllabic><text>ich</text></lyric><lyric number="2"><syllabic>end</syllabic><text>mert</text></lyric><lyric number="3"><syllabic>single</syllabic><text>die</text></lyric></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>single</syllabic><text>froh</text></lyric><lyric number="2"><syllabic>single</syllabic><text>mich</text></lyric><lyric number="3"><syllabic>single</syllabic><text>Hand</text></lyric></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>single</syllabic><text>und</text></lyric><lyric number="2"><syllabic>single</syllabic><text>des</text></lyric><lyric number="3"><syllabic>single</syllabic><text>schuh</text></lyric></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>begin</syllabic><text>mun</text></lyric><lyric number="2"><syllabic>begin</syllabic><text>Win</text></lyric><lyric number="3"><syllabic>single</syllabic><text>mir</text></lyric></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>end</syllabic><text>ter</text></lyric><lyric number="2"><syllabic>end</syllabic><text>ters</text></lyric><lyric number="3"><syllabic>begin</syllabic><text>ge</text></lyric></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>single</syllabic><text>sein</text></lyric><lyric number="2"><syllabic>single</syllabic><text>Frost,</text></lyric><lyric number="3"><syllabic>end</syllabic><text>schenkt,</text></lyric></note>
+    </measure>
+  </part>
+</score-partwise>

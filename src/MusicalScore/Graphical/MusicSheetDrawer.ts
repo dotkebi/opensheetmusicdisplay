@@ -506,6 +506,9 @@ export abstract class MusicSheetDrawer {
                 if (staffLine.LyricsDashes.length > 0) {
                     this.drawDashes(staffLine.LyricsDashes);
                 }
+                if (staffLine.LyricVerseNumberLabels.length > 0) {
+                    this.drawLyricVerseNumberLabels(staffLine.LyricVerseNumberLabels);
+                }
 
                 // draw lyric lines (e.g. LyricExtends: "dich,___")
                 if (staffLine.LyricLines.length > 0) {
@@ -650,6 +653,13 @@ export abstract class MusicSheetDrawer {
         lyricsDashes.forEach(dash => {
             dash.SVGNode = this.drawLabel(dash, <number>GraphicalLayers.Notes);
             (dash.SVGNode as SVGGElement)?.classList.add("dash");
+        });
+    }
+
+    protected drawLyricVerseNumberLabels(labels: GraphicalLabel[]): void {
+        labels.forEach(label => {
+            label.SVGNode = this.drawLabel(label, <number>GraphicalLayers.Notes);
+            (label.SVGNode as SVGGElement)?.classList.add("verse-number");
         });
     }
 

@@ -272,6 +272,11 @@ export class EngravingRules {
     public LyricsHeight: number;
     public LyricsYOffsetToStaffHeight: number;
     public LyricsYMarginToBottomLine: number;
+    /** Draw the verse number ("1.", "2.", …) at the left of the first syllable of every numbered verse
+     * when the instrument sings more than one verse. Layout only. */
+    public RenderLyricVerseNumbers: boolean;
+    /** Gap between the verse number and its first syllable (staff units). */
+    public LyricVerseNumberXMargin: number;
     /** Extra x-shift (to the right) for short lyrics to be better vertically aligned.
      * Also see ChordSymbolExtraXShiftForShortChordSymbols, same principle, same default value.
      */
@@ -974,6 +979,8 @@ export class EngravingRules {
         this.LyricsHeight = 2.0; // actually size of lyrics
         this.LyricsYOffsetToStaffHeight = 0.0; // distance between lyrics and staff. could partly be even lower/dynamic
         this.LyricsYMarginToBottomLine = 0.2;
+        this.RenderLyricVerseNumbers = true;
+        this.LyricVerseNumberXMargin = 0.5;
         this.LyricsExtraXShiftForShortLyrics = 0.5; // also see ChordSymbolExtraXShiftForShortChordSymbols, same principle
         this.LyricsExtraXShiftForShortLyricsWidthThreshold = 1.4; // width of '+': 1.12, 'II': 1.33 (benefits from x-shift), 'III': 1.99 (doesn't benefit)
         this.LyricsUseXPaddingForLongLyrics = true;

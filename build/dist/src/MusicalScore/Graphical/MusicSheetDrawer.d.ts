@@ -144,6 +144,7 @@ export declare abstract class MusicSheetDrawer {
      * @param layer Number of the layer that the lyrics should be drawn in
      */
     protected drawDashes(lyricsDashes: GraphicalLabel[]): void;
+    protected drawLyricVerseNumberLabels(labels: GraphicalLabel[]): void;
     protected drawOctaveShifts(staffLine: StaffLine): void;
     protected drawVoiceLeadingGuides(musicSystem: MusicSystem): void;
     protected abstract drawPedals(staffLine: StaffLine): void;
