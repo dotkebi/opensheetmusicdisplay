@@ -80,6 +80,11 @@ export declare class ExpressionReader {
     private static firstTextLine;
     private readNumber;
     private interpretWedge;
+    /** The timestamp of a wedge stop read at `readAt`: the last staff entry of this staff starting before it, i.e. the note
+     *  the wedge ends under. The start of the last note read (`previousFraction`) is that note only while the voices are
+     *  read in time order: after a <backup> it belongs to another voice, e.g. a stop at the end of the measure after a held
+     *  half note in the second voice would end a diminuendo over the second beat at the measure start (Schumann, Myrthen 17 m34). */
+    private wedgeStopTimestamp;
     private interpretRehearsalMark;
     private createNewMultiExpressionIfNeeded;
     private static isSameMetronomeMark;
