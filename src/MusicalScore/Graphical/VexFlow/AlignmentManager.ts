@@ -84,10 +84,14 @@ export class AlignmentManager {
                     const centerOffset: number = centerYs[exprIdx] - yIdeal;
                     // FIXME: Expressions should not behave differently.
                     // TODO: The 0.8 are because the letters are a bit too far done
-                    const shift: number = this.limitShift(expr, expr instanceof VexFlowContinuousDynamicExpression ? -centerOffset : -centerOffset * 0.8, aes);
-                    if (expr instanceof VexFlowContinuousDynamicExpression) {
-                        (expr as VexFlowContinuousDynamicExpression).shiftYPosition(shift);
-                        (expr as VexFlowContinuousDynamicExpression).calcPsi();
+                    // The halves of a wedge split at a system break after the first one are plain GraphicalContinuousDynamicExpressions
+                    //   (MusicSheetCalculator.calculateGraphicalContinuousDynamic()). Their box position is the first line's start point,
+                    //   so moving it like a label moved only that point and crossed the lines into an X (Schumann, Myrthen 21 m35).
+                    const isContinuous: boolean = expr instanceof GraphicalContinuousDynamicExpression;
+                    const shift: number = this.limitShift(expr, isContinuous ? -centerOffset : -centerOffset * 0.8, aes);
+                    if (isContinuous) {
+                        (expr as GraphicalContinuousDynamicExpression).shiftYPosition(shift);
+                        (expr as GraphicalContinuousDynamicExpression).calcPsi();
                     } else {
                         expr.PositionAndShape.RelativePosition.y += shift;
                         // note: verbal GraphicalContinuousDynamicExpressions have a label, nonverbal ones don't.
