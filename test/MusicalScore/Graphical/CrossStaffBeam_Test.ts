@@ -104,6 +104,21 @@ describe("Cross-staff beams", () => {
         expect(measureAt(0, 1).crossStaffBeams[0].isMixed, "m1 (XML stems mixed) either way").to.equal(true);
     });
 
+    it("beams two levels and a hook back on staff 2", async () => {
+        await render(true);
+        const beams: CrossStaffBeam[] = measureAt(3, 1).crossStaffBeams;
+        expect(beams.length).to.equal(2);
+        expect(notesOf(beams[0]).length).to.equal(4);
+        expect(beams[0].stemDirection, "secondary beam on the side of the staff-1 notes").to.equal(VF.Stem.DOWN);
+        expect(notesOf(beams[1]).length).to.equal(2);
+        for (const beam of beams) {
+            expect(beam.isMixed).to.equal(true);
+            expectBetweenStaves(beam, 3);
+            expectStemsReachBeam(beam);
+            expect((beam as any).rendered).to.equal(true);
+        }
+    });
+
     it("draws two cross-staff beams in one measure", async () => {
         await render(true);
         const beams: CrossStaffBeam[] = measureAt(6, 1).crossStaffBeams;

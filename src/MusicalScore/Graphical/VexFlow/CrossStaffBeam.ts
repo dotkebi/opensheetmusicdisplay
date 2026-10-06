@@ -95,7 +95,13 @@ export class CrossStaffBeam extends VF.Beam {
         if (!this.mixed) {
             return;
         }
-        // (The beam lines grow towards the first note's noteheads, as in VexFlow: stem_direction.)
+        // The side of the secondary beams: towards the noteheads of most notes (Widmung m5: three stems down from the
+        //   upper staff, one up — the 16th hook above the primary beam, towards the upper notes).
+        let weight: number = 0;
+        for (const note of notes) {
+            weight += note.getStemDirection() === VF.Stem.UP ? 1 : -1;
+        }
+        (this as any).stem_direction = weight > 0 ? VF.Stem.UP : weight < 0 ? VF.Stem.DOWN : notes[0].getStemDirection();
         // The anchors: the notes of the top staff stemmed down towards the other staff (else those of the bottom staff
         //   stemmed up). Their stems have their own length and the sky/bottom line reserves them: the beam lies where the
         //   upper staff's bottom line kept room for it, under whatever is placed below that staff (Myrthen 6 m10: an f
@@ -123,9 +129,10 @@ export class CrossStaffBeam extends VF.Beam {
         return (this as any).render_options.beam_width ?? 5;
     }
 
-    /** Height of the beam lines at a note (px): one beam level. */
+    /** Height of a note's own beam lines (px): its beam count lines of the beam width, 1.5 beam widths apart. */
     private stackHeight(note: VF.StemmableNote): number {
-        return this.beamWidth();
+        const count: number = Math.max(1, (note as any).getBeamCount());
+        return this.beamWidth() * (1 + (count - 1) * 1.5);
     }
 
     public postFormat(): VF.Beam {
