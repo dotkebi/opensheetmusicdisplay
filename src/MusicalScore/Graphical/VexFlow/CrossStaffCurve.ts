@@ -325,7 +325,7 @@ export class CrossStaffCurve {
         const upperOrigin: PointF2D = startIsUpper ? startOrigin : endOrigin;
         const lowerOrigin: PointF2D = startIsUpper ? endOrigin : startOrigin;
 
-        const inner: CrossStaffCurveNote[] = this.voiceNotesBetween(rules, geometry);
+        const inner: CrossStaffCurveNote[] = this.voiceNotesBetween(geometry);
         this.placement = this.placementOf(rules, start, end, inner);
         const below: boolean = this.placement === PlacementEnum.Below;
         gSlur.placement = this.placement;
@@ -348,6 +348,8 @@ export class CrossStaffCurve {
         let bestSegments: Segment[] = undefined;
         let bestHull: boolean = false;
         let bestUncleared: number = 0;
+        // (the usual ends come first: one clean arch there can't be beaten)
+        choices:
         for (const startAtStem of CrossStaffCurve.endChoices(start, below)) {
             for (const endAtStem of CrossStaffCurve.endChoices(end, below)) {
                 const p0: PointF2D = CrossStaffCurve.endPointOf(start, below, gap, true, startAtStem);
@@ -359,11 +361,11 @@ export class CrossStaffCurve {
                 }
                 const points: PointF2D[] = [...candidates, ...ownStems].filter(point => point.x > p0.x + 0.1 && point.x < p3.x - 0.1);
                 const arch: Segment[] = this.fitArch(rules, p0, p3, points, below);
-                const archUncleared: number = CrossStaffCurve.uncleared(arch, points, below);
-                const hull: Segment[] = this.hullCurve(rules, p0, p3, points, below);
                 const archReach: number = CrossStaffCurve.reach(arch, p0, p3, below);
-                const hullReach: number = CrossStaffCurve.reach(hull, p0, p3, below);
-                const useArch: boolean = archUncleared === 0 && archReach <= hullReach * 1.25 + 0.5;
+                // (the hull reaches as far as its highest corner: an obstacle, or the least bow)
+                const hullReach: number = CrossStaffCurve.hullHeight(rules, p0, p3, points, below);
+                const useArch: boolean = archReach <= hullReach * 1.25 + 0.5 && CrossStaffCurve.uncleared(arch, points, below) === 0;
+                const hull: Segment[] = useArch ? arch : this.hullCurve(rules, p0, p3, points, below);
                 const usual: boolean = startAtStem === (start.stem === (below ? -1 : 1)) &&
                     endAtStem === (end.stem === (below ? -1 : 1));
                 // one clean arch first, then the usual ends, then the lower curve
@@ -373,6 +375,9 @@ export class CrossStaffCurve {
                     bestSegments = useArch ? arch : hull;
                     bestHull = !useArch;
                     bestUncleared = useArch ? 0 : CrossStaffCurve.uncleared(hull, points, below);
+                }
+                if (best < 100) {
+                    break choices;
                 }
             }
         }
@@ -434,33 +439,34 @@ export class CrossStaffCurve {
         return new PointF2D(headCenterX(note) + (isStart ? 0.2 : -0.2), (below ? headBottom(note) : headTop(note)) + side * gap);
     }
 
-    /** The notes of the slur's voices (its start note's and end note's) strictly between its two notes. */
-    private voiceNotesBetween(rules: EngravingRules, geometry: CrossStaffCurveGeometry): CrossStaffCurveNote[] {
+    /** The notes of the slur's voices (its start note's and end note's) strictly between its two notes: in its measures
+     *  on both staves. */
+    private voiceNotesBetween(geometry: CrossStaffCurveGeometry): CrossStaffCurveNote[] {
         const slur: GraphicalSlur["slur"] = this.graphicalSlur.slur;
         const from: number = slur.StartNote.getAbsoluteTimestamp().RealValue;
         const to: number = slur.EndNote.getAbsoluteTimestamp().RealValue;
-        const voices: Voice[] = [slur.StartNote.ParentVoiceEntry.ParentVoice];
-        if (voices.indexOf(slur.EndNote.ParentVoiceEntry.ParentVoice) < 0) {
-            voices.push(slur.EndNote.ParentVoiceEntry.ParentVoice);
-        }
+        const voices: Voice[] = [slur.StartNote.ParentVoiceEntry.ParentVoice, slur.EndNote.ParentVoiceEntry.ParentVoice];
         const result: CrossStaffCurveNote[] = [];
-        for (const voice of voices) {
-            for (const entry of voice.VoiceEntries as VoiceEntry[]) {
-                if (entry.IsGrace) {
-                    continue;
-                }
-                for (const note of entry.Notes as Note[]) {
-                    if (note.isRest() || !note.PrintObject) {
+        for (const measure of this.participants) {
+            for (const staffEntry of measure.staffEntries) {
+                for (const voiceEntry of staffEntry.graphicalVoiceEntries) {
+                    const entry: VoiceEntry = voiceEntry.parentVoiceEntry;
+                    if (entry.IsGrace || voices.indexOf(entry.ParentVoice) < 0) {
                         continue;
                     }
-                    const time: number = note.getAbsoluteTimestamp().RealValue;
-                    if (time <= from || time >= to) {
-                        continue;
-                    }
-                    const gNote: GraphicalNote = rules.GNote(note);
-                    const noteGeometry: CrossStaffCurveNote = gNote ? geometry.note(gNote) : undefined;
-                    if (noteGeometry) {
-                        result.push(noteGeometry);
+                    for (const gNote of voiceEntry.notes) {
+                        const note: Note = gNote.sourceNote;
+                        if (note.isRest() || !note.PrintObject) {
+                            continue;
+                        }
+                        const time: number = note.getAbsoluteTimestamp().RealValue;
+                        if (time <= from || time >= to) {
+                            continue;
+                        }
+                        const noteGeometry: CrossStaffCurveNote = geometry.note(gNote);
+                        if (noteGeometry) {
+                            result.push(noteGeometry);
+                        }
                     }
                 }
             }
@@ -573,9 +579,21 @@ export class CrossStaffCurve {
             const beyond: (p: PointF2D) => number = (p: PointF2D): number => offset.x === 0
                 ? side * (p.y - p0.y - dy / dx * (p.x - p0.x))
                 : (p.x - p0.x) * n.x + (p.y - p0.y) * n.y;
-            const needs: [number, number][] = points
-                .filter(point => beyond(point) + CrossStaffCurve.ObstacleClearance > 0)
-                .map(point => [along(point), beyond(point) + CrossStaffCurve.ObstacleClearance]);
+            // (the highest need in each quarter staff space along the sweep)
+            const envelope: Map<number, [number, number]> = new Map<number, [number, number]>();
+            for (const point of points) {
+                const need: number = beyond(point) + CrossStaffCurve.ObstacleClearance;
+                if (need <= 0) {
+                    continue;
+                }
+                const w: number = along(point);
+                const bin: number = Math.floor(w * 4);
+                const kept: [number, number] = envelope.get(bin);
+                if (!kept || need > kept[1]) {
+                    envelope.set(bin, [w, need]);
+                }
+            }
+            const needs: [number, number][] = Array.from(envelope.values());
             const end: number = along(p3);
             for (const a of CrossStaffCurve.ControlFractions) {
                 for (const b of CrossStaffCurve.ControlFractions) {
@@ -587,18 +605,25 @@ export class CrossStaffCurve {
                         const mt: number = 1 - t;
                         return 3 * mt * mt * t * w1 + 3 * mt * t * t * w2 + t * t * t * end;
                     };
+                    // the sweep place of t is increasing: invert it from a table
+                    const table: number[] = [];
+                    for (let k: number = 0; k <= 64; k++) {
+                        table.push(wAt(k / 64));
+                    }
                     const tAt: (w: number) => number = (w: number): number => {
                         let lo: number = 0;
-                        let hi: number = 1;
-                        for (let i: number = 0; i < 24; i++) {
-                            const t: number = (lo + hi) / 2;
-                            if (wAt(t) < w) {
-                                lo = t;
+                        let hi: number = 64;
+                        while (hi - lo > 1) {
+                            const mid: number = Math.floor((lo + hi) / 2);
+                            if (table[mid] < w) {
+                                lo = mid;
                             } else {
-                                hi = t;
+                                hi = mid;
                             }
                         }
-                        return (lo + hi) / 2;
+                        const span: number = table[hi] - table[lo];
+                        const f: number = span <= 1e-12 ? 0 : (w - table[lo]) / span;
+                        return (lo + Math.min(1, Math.max(0, f))) / 64;
                     };
                     // B1(t)·hA + B2(t)·hB >= need
                     const constraints: number[][] = [];
@@ -731,6 +756,17 @@ export class CrossStaffCurve {
         const left: PointF2D[] = CrossStaffCurve.simplify(line.slice(0, farthest + 1), tolerance);
         const right: PointF2D[] = CrossStaffCurve.simplify(line.slice(farthest), tolerance);
         return [...left, ...right.slice(1)];
+    }
+
+    /** The height of hullCurve()'s highest corner over the line from p0 to p3: the highest obstacle (with its
+     *  clearance), or the least bow. */
+    private static hullHeight(rules: EngravingRules, p0: PointF2D, p3: PointF2D, points: PointF2D[], below: boolean): number {
+        const n: PointF2D = CrossStaffCurve.normal(p0, p3, below);
+        let height: number = 0.75 * CrossStaffCurve.bow(rules, p0, p3);
+        for (const point of points) {
+            height = Math.max(height, (point.x - p0.x) * n.x + (point.y - p0.y) * n.y + CrossStaffCurve.ObstacleClearance);
+        }
+        return height;
     }
 
     private static bow(rules: EngravingRules, p0: PointF2D, p3: PointF2D): number {
