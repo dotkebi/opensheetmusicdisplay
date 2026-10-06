@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<!-- An ornament over the down-stem voice of two voices sharing a notehead (Couperin, Concerts royaux III Prelude m8,
+     a tremblement over G#3 on the top space of the bass staff, with G#3 in the other voice stemmed up; here F5). m1: the shared notehead; m2: the
+     same ornament with no other voice. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>2</divisions><time><beats>2</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem><beam number="1">begin</beam>
+        <notations><ornaments><trill-mark placement="above"/></ornaments></notations></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem><beam number="1">end</beam></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><stem>down</stem></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>2</duration><voice>2</voice><type>quarter</type><stem>up</stem></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>2</duration><voice>2</voice><type>quarter</type><stem>up</stem></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem><beam number="1">begin</beam>
+        <notations><ornaments><trill-mark placement="above"/></ornaments></notations></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem><beam number="1">end</beam></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><stem>down</stem></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>
