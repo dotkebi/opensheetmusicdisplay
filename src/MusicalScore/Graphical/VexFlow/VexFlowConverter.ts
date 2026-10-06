@@ -729,6 +729,10 @@ export class VexFlowConverter {
         if (lineShift !== 0) {
             vfnote.getKeyProps()[0].line += lineShift;
         }
+        // for the lines of rests among other voices' notes (VexFlowPatch stavenote.js osmdPlaceRests()):
+        //   not a rest the MusicXML puts on a line (display-step), and invisible notes don't count
+        (vfnote as any).osmdExplicitRest = isRest && !!gve.notes[0].sourceNote.Pitch;
+        (vfnote as any).osmdInvisible = gve.notes.every((note: GraphicalNote) => !note.sourceNote.PrintObject);
         // check for slash noteheads (among other noteheads)
         if (notes.length > 1) {
             // for a single note, we can use duration += "s" (see above).
