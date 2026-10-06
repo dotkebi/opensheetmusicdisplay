@@ -31,6 +31,7 @@ import { Repetition } from "../MusicSource/Repetition";
 import { PointF2D } from "../../Common/DataObjects/PointF2D";
 import { SourceStaffEntry } from "../VoiceData/SourceStaffEntry";
 import { BoundingBox } from "./BoundingBox";
+import { GraphicalSlur } from "./GraphicalSlur";
 import { Instrument } from "../Instrument";
 import { GraphicalLabel } from "./GraphicalLabel";
 import { SystemLinesEnum } from "./SystemLinesEnum";
@@ -756,6 +757,7 @@ export abstract class MusicSheetCalculator {
     private calculateMeasureNumberSkyline(musicSystem: MusicSystem): void {
         const staffLine: StaffLine = musicSystem.StaffLines[0];
         for(const measureNumberLabel of musicSystem.MeasureNumberLabels) {
+            this.raiseMeasureNumberOverSlurs(measureNumberLabel, staffLine);
             // and the corresponding SkyLine indices
             let start: number = measureNumberLabel.PositionAndShape.RelativePosition.x;
             let end: number = start - measureNumberLabel.PositionAndShape.BorderLeft + measureNumberLabel.PositionAndShape.BorderRight;
@@ -763,6 +765,49 @@ export abstract class MusicSheetCalculator {
             end -= staffLine.PositionAndShape.RelativePosition.x;
             staffLine.SkyBottomLineCalculator.updateSkyLineInRange(start, end,
                 measureNumberLabel.PositionAndShape.RelativePosition.y + measureNumberLabel.PositionAndShape.BorderMarginTop);
+        }
+    }
+
+    /** Space between a measure number and a slur under it. */
+    private static readonly measureNumberSlurClearance: number = 0.2;
+
+    /**
+     * Measure numbers are placed before the slurs (calculateMeasureNumberPlacement), from the sky line of the notes:
+     * a slur above the staff over the barline ran through the number (Couperin, Concerts royaux IV Rigaudon m5, m30).
+     * Raise the number over the slurs above the staff under it, by [[measureNumberSlurClearance]] over the slur's ink.
+     */
+    private raiseMeasureNumberOverSlurs(label: GraphicalLabel, staffLine: StaffLine): void {
+        const box: BoundingBox = label.PositionAndShape;
+        const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x;
+        const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x;
+        const clearance: number = MusicSheetCalculator.measureNumberSlurClearance;
+        let slurTop: number = Number.POSITIVE_INFINITY;
+        for (const slur of staffLine.GraphicalSlurs) {
+            if (slur.placement !== PlacementEnum.Above || !slur.bezierStartPt || !slur.bezierEndPt ||
+                slur.bezierEndPt.x < left || slur.bezierStartPt.x > right) {
+                continue;
+            }
+            let top: number = Number.POSITIVE_INFINITY;
+            let bottom: number = Number.NEGATIVE_INFINITY;
+            for (let i: number = 0; i <= 64; i++) {
+                const point: PointF2D = slur.calculateCurvePointAtIndex(i / 64);
+                if (point.x >= left && point.x <= right) {
+                    top = Math.min(top, point.y);
+                    bottom = Math.max(bottom, point.y);
+                }
+            }
+            // a number under the slur, clear of it, stays (e.g. under a long slur over the barline)
+            if (top !== Number.POSITIVE_INFINITY && box.RelativePosition.y + box.BorderMarginTop < bottom + clearance) {
+                slurTop = Math.min(slurTop, top);
+            }
+        }
+        if (slurTop === Number.POSITIVE_INFINITY) {
+            return;
+        }
+        const limit: number = slurTop - GraphicalSlur.thickness - clearance;
+        const labelBottom: number = box.RelativePosition.y + box.BorderMarginBottom;
+        if (labelBottom > limit) {
+            box.RelativePosition = new PointF2D(box.RelativePosition.x, box.RelativePosition.y - (labelBottom - limit));
         }
     }
 
