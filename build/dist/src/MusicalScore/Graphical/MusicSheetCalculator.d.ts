@@ -430,6 +430,8 @@ export declare abstract class MusicSheetCalculator {
      */
     static tieContinuesAfterRepeat(tie: Tie): boolean;
     private setTieDirections;
+    /** Whether a voice other than the note's has a visible note in the note's measure on the note's staff. */
+    private static otherVoiceSounds;
     private createAccidentalCalculators;
     private calculateVerticalContainersList;
     private setIndicesToVerticalGraphicalContainers;

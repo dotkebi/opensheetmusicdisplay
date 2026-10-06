@@ -10,6 +10,13 @@ export declare class GraphicalSlur extends GraphicalCurve {
     placement: PlacementEnum;
     graceStart: boolean;
     graceEnd: boolean;
+    /** A piece of a slur between the two staves of an instrument that is drawn as two pieces, one on each staff
+     *  (see VexFlowMusicSheetCalculator.crossStaffSlurIsSplit()): its start piece ends at the end of the start note's
+     *  measure, its end piece starts at the start of the following measure, instead of at the staff line's ends. */
+    isCrossStaffPiece: boolean;
+    /** A piece of a slur into a second ending, split where the endings part (see
+     *  VexFlowMusicSheetCalculator.splitSlursIntoVoltas()): the end without its note is at its measure's barline. */
+    isVoltaPiece: boolean;
     private rules;
     SVGElement: Node;
     /**
@@ -104,6 +111,12 @@ export declare class GraphicalSlur extends GraphicalCurve {
      *  If that's too close to the start note to look like a slur (e.g. before a repeat sign), it reaches a bit past the note,
      *  over the repeat dots, but not up to the barline.
      */
+    /** Start x (relative to the staff line) of a cross-staff piece without its start note: after the begin
+     *  instructions of its first measure (also a volta piece, see isVoltaPiece). Undefined for other slurs (the staff
+     *  line's start). */
+    private pieceStartX;
+    /** End x of a cross-staff piece without its end note: the end of its last measure (see [[pieceStartX]]). */
+    private pieceEndX;
     private getUnattachedEndX;
     /**
      * This method calculates the placement of the Curve.
