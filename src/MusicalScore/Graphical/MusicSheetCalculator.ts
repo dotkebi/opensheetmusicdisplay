@@ -33,6 +33,7 @@ import { SourceStaffEntry } from "../VoiceData/SourceStaffEntry";
 import { BoundingBox } from "./BoundingBox";
 import { Instrument } from "../Instrument";
 import { GraphicalLabel } from "./GraphicalLabel";
+import { SystemLinesEnum } from "./SystemLinesEnum";
 import { TextAlignmentEnum } from "../../Common/Enums/TextAlignment";
 import { VerticalGraphicalStaffEntryContainer } from "./VerticalGraphicalStaffEntryContainer";
 import { KeyInstruction } from "../VoiceData/Instructions/KeyInstruction";
@@ -1062,6 +1063,105 @@ export abstract class MusicSheetCalculator {
         }
     }
 
+    /** Whether a measure ending in style (double, final, repeat barline) keeps its words before that barline
+     *  (see keepWordsBeforeStrongBarline()). */
+    public static isStrongBarline(style: SystemLinesEnum): boolean {
+        switch (style) {
+            case SystemLinesEnum.DoubleThin:
+            case SystemLinesEnum.ThinBold:
+            case SystemLinesEnum.DotsThinBold:
+            case SystemLinesEnum.DotsBoldBoldDots:
+            case SystemLinesEnum.Bold:
+            case SystemLinesEnum.BoldThin:
+            case SystemLinesEnum.DoubleBold:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /** The barline measure ends with (a backward repeat without a bar-style is drawn as dots, thin and thick line). */
+    public static endingBarline(measure: SourceMeasure): SystemLinesEnum {
+        if (!measure) {
+            return undefined;
+        }
+        return measure.endsWithLineRepetition() ? SystemLinesEnum.DotsThinBold : measure.endingBarStyleEnum;
+    }
+
+    /** Distance (units) from the end of a measure ending in style where its words end: the barline's width and half a unit. */
+    public static wordsBarlineMargin(style: SystemLinesEnum): number {
+        switch (style) {
+            case SystemLinesEnum.DotsThinBold:
+            case SystemLinesEnum.DotsBoldBoldDots:
+                return 2.0;
+            case SystemLinesEnum.ThinBold:
+            case SystemLinesEnum.BoldThin:
+            case SystemLinesEnum.DoubleBold:
+                return 1.5;
+            case SystemLinesEnum.DoubleThin:
+            case SystemLinesEnum.Bold:
+                return 1.2;
+            default:
+                return 1.0;
+        }
+    }
+
+    /** The text of a words label made of entries (see MultiExpression.getEntryGroupsByPlacement()). */
+    public static combinedWordsText(entries: MultiExpressionEntry[]): string {
+        let text: string = "";
+        for (const entry of entries) {
+            if (entry.prefix !== "") {
+                text = text === "" ? entry.prefix : text + " " + entry.prefix;
+            }
+            text = text === "" ? entry.label : text + " " + entry.label;
+        }
+        return text;
+    }
+
+    /** Visible left and right edge of a words label relative to its anchor x, aligned as calculateLabel() aligns it
+     *  (below: from the anchor, above: centered on it). */
+    public wordsLabelExtent(text: string, fontStyle: FontStyles, placement: PlacementEnum, fontHeight: number): [number, number] {
+        const label: Label = new Label(text);
+        label.fontStyle = fontStyle;
+        label.fontHeight = fontHeight;
+        const alignment: TextAlignmentEnum = placement === PlacementEnum.Below ? TextAlignmentEnum.LeftTop : TextAlignmentEnum.CenterBottom;
+        const graphLabel: GraphicalLabel = new GraphicalLabel(label, fontHeight, alignment, this.rules);
+        graphLabel.setLabelPositionAndShapeBorders();
+        return [graphLabel.PositionAndShape.BorderLeft, graphLabel.PositionAndShape.BorderRight];
+    }
+
+    /** Words in a measure that ends the staff line or ends with a double, final or repeat barline end
+     *  wordsBarlineMargin() before its end (Couperin, Concerts royaux II Échos m16 "fin." at the last beat, before the
+     *  repeat sign; IV Forlane m60 "au Rondeau pour finir." at the final barline). They are moved left, but not left of
+     *  the measure's notes. Words after the last note (e.g. at the time of a key change drawn after it) start at that
+     *  note: the measure is wide enough for them from there (VexFlowMusicSheetCalculator.trailingWordsMinimumWidth()).
+     *  Same rule as osmd-dart. */
+    private keepWordsBeforeStrongBarline(measure: GraphicalMeasure, staffLine: StaffLine, x: number, timestamp: Fraction,
+                                         text: string, fontStyle: FontStyles, placement: PlacementEnum, fontHeight: number): number {
+        const style: SystemLinesEnum = MusicSheetCalculator.endingBarline(measure.parentSourceMeasure);
+        const strongBarline: boolean = MusicSheetCalculator.isStrongBarline(style);
+        if (!strongBarline && staffLine.Measures[staffLine.Measures.length - 1] !== measure) {
+            return x;
+        }
+        const measureX: number = measure.PositionAndShape.RelativePosition.x;
+        if (strongBarline) {
+            const withNotes: GraphicalStaffEntry[] = measure.staffEntries.filter(
+                entry => entry.graphicalVoiceEntries.some(gve => gve.notes.length > 0));
+            const lastNote: GraphicalStaffEntry = withNotes[withNotes.length - 1];
+            if (lastNote && timestamp.gt(lastNote.relInMeasureTimestamp)) {
+                x = Math.min(x, measureX + lastNote.PositionAndShape.RelativePosition.x);
+            }
+        }
+        const [left, right] = this.wordsLabelExtent(text, fontStyle, placement, fontHeight);
+        const limit: number = measureX + measure.PositionAndShape.Size.width -
+            MusicSheetCalculator.wordsBarlineMargin(strongBarline ? style : undefined);
+        if (x + right <= limit) {
+            return x;
+        }
+        const start: number = measureX + measure.beginInstructionsWidth;
+        return Math.max(limit - right, Math.min(x, start - left));
+    }
+
     /** Words after the last note of the piece (e.g. "Fin" written after the final notes or with an offset to the end of
      *  the last measure) have no following staff entry to interpolate to. Anchor them at the measure's last staff entry
      *  instead of falling back to the start of the system. */
@@ -1144,6 +1244,9 @@ export abstract class MusicSheetCalculator {
 
         const fontHeight: number = this.rules.UnknownTextHeight;
         const placement: PlacementEnum = MultiExpression.getPlacementOfEntry(entries[0]);
+        relative.x = this.keepWordsBeforeStrongBarline(measures[staffIndex], staffLine, relative.x, multiExpression.Timestamp,
+                                                       combinedExprString, MultiExpression.getFontstyleOfEntry(entries[0]),
+                                                       placement, fontHeight);
         const lastEntry: MultiExpressionEntry = entries[entries.length - 1];
         const graphLabel: GraphicalLabel  = this.calculateLabel(staffLine,
                                                                 relative, combinedExprString,

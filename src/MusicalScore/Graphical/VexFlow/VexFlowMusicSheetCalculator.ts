@@ -482,6 +482,60 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
    * @param measures
    * @returns the minimum required x width of the source measure (=list of staff measures)
    */
+  /** Minimum staff entries width (units) of a measure ending in a double, final or repeat barline that leaves room
+   *  after its last note for the words written after it, which are anchored at that note (Couperin, Concerts royaux
+   *  IV Forlane m60: "au Rondeau pour finir." after the one quarter note of the last measure ran left over its
+   *  barline). The label ends MusicSheetCalculator.wordsBarlineMargin() before the barline. Same rule as osmd-dart. */
+  private trailingWordsMinimumWidth(measures: GraphicalMeasure[], formatter: VF.Formatter): number {
+    const style: SystemLinesEnum = MusicSheetCalculator.endingBarline(measures[0]?.parentSourceMeasure);
+    if (!MusicSheetCalculator.isStrongBarline(style)) {
+      return 0;
+    }
+    const contexts: any = (formatter as any).tickContexts;
+    if (!contexts) {
+      return 0;
+    }
+    // the last note: not a ghost note
+    const ticks: number[] = contexts.list.filter((tick: number) =>
+      contexts.map[tick].getTickables().some((t: any) => t instanceof VF.StaveNote));
+    if (ticks.length === 0) {
+      return 0;
+    }
+    const lastTick: number = ticks[ticks.length - 1];
+    let lastX: number = 12; // VexFlow's padding (px) before a measure's first note
+    for (const tick of contexts.list) {
+      if (tick === lastTick) {
+        break;
+      }
+      lastX += contexts.map[tick].getWidth();
+    }
+    const lastXUnits: number = lastX / unitInPixels * this.rules.VoiceSpacingMultiplierVexflow;
+    let required: number = 0;
+    for (const measure of measures) {
+      const sourceMeasure: SourceMeasure = measure.parentSourceMeasure;
+      const staffIndex: number = measure.ParentStaff.idInMusicSheet;
+      if (!sourceMeasure || !(staffIndex >= 0) || staffIndex >= sourceMeasure.StaffLinkedExpressions.length) {
+        continue;
+      }
+      for (const multiExpression of sourceMeasure.StaffLinkedExpressions[staffIndex]) {
+        if (multiExpression.MoodList.length === 0 && multiExpression.UnknownList.length === 0) {
+          continue;
+        }
+        if (multiExpression.Timestamp.RealValue * VF.RESOLUTION <= lastTick + 1e-6) {
+          continue;
+        }
+        for (const entries of multiExpression.getEntryGroupsByPlacement()) {
+          const right: number = this.wordsLabelExtent(MusicSheetCalculator.combinedWordsText(entries),
+                                                      MultiExpression.getFontstyleOfEntry(entries[0]),
+                                                      MultiExpression.getPlacementOfEntry(entries[0]),
+                                                      this.rules.UnknownTextHeight)[1];
+          required = Math.max(required, lastXUnits + right + MusicSheetCalculator.wordsBarlineMargin(style));
+        }
+      }
+    }
+    return required;
+  }
+
   protected calculateMeasureXLayout(measures: GraphicalMeasure[]): number {
     const visibleMeasures: GraphicalMeasure[] = [];
     for (const measure of measures) {
@@ -656,6 +710,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         }
         minStaffEntriesWidth *= this.rules.PickupMeasureWidthMultiplier;
       }
+      minStaffEntriesWidth = Math.max(minStaffEntriesWidth, this.trailingWordsMinimumWidth(measures, formatter));
 
         // TODO this could use some fine-tuning. currently using *1.5 + 1 by default, results in decent spacing.
       // firstMeasure.formatVoices = (w: number) => {
