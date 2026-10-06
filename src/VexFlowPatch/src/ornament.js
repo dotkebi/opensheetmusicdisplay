@@ -55,6 +55,10 @@ function createAccidentalGlyph(accids, scale, spacing) {
 export class Ornament extends Modifier {
   static get CATEGORY() { return 'ornaments'; }
 
+  // VexFlowPatch: between an ornament's ink and a fermata or an aspiration drawn beyond it, in staff spaces: as
+  //   VexFlow leaves between an aspiration and a tremblement over it (see Articulation.stackedOutsideOrnament)
+  static get STACKED_ARTICULATION_GAP() { return 0.75; }
+
   // ## Static Methods
   // Arrange ornaments inside `ModifierContext`
   static format(ornaments, state) {
@@ -261,15 +265,35 @@ export class Ornament extends Modifier {
     // VexFlowPatch: record the ink of an ornament above or below the note (see slurClearanceYShift)
     if (this.position === Modifier.Position.ABOVE || this.position === Modifier.Position.BELOW) {
       const width = this.glyph.getMetrics().width;
-      let top = glyphY - this.slurClearanceYShift;
+      let top = glyphY;
       if (this.accidentalUpper) {
         top -= this.accidentalUpper.getMetrics().height;
       }
+      // VexFlowPatch: a fermata or an aspiration of the note on this side goes beyond the ornament
+      //   (Articulation.stackedOutsideOrnament), and the ornament's ink covers both
+      let ink = { left: glyphX - width / 2, right: glyphX + width / 2, top, bottom: inkGlyphY + this.slurClearanceYShift };
+      if (!this.delayed) {
+        for (const articulation of this.note.getModifiers()) {
+          if (articulation.getCategory() !== 'stackedarticulations' || articulation.getPosition() !== this.position) {
+            continue;
+          }
+          const above = this.position === Modifier.Position.ABOVE;
+          const edge = above ? ink.top - Ornament.STACKED_ARTICULATION_GAP * spacing
+            : ink.bottom + Ornament.STACKED_ARTICULATION_GAP * spacing;
+          const box = articulation.drawAt(ctx, glyphX, edge);
+          ink = {
+            left: Math.min(ink.left, box.left),
+            right: Math.max(ink.right, box.right),
+            top: Math.min(ink.top, box.top),
+            bottom: Math.max(ink.bottom, box.bottom),
+          };
+        }
+      }
       this.layoutInk = {
-        left: glyphX - width / 2 - stave.getX(),
-        right: glyphX + width / 2 - stave.getX(),
-        top: top - stave.getYForLine(0),
-        bottom: inkGlyphY - stave.getYForLine(0),
+        left: ink.left - stave.getX(),
+        right: ink.right - stave.getX(),
+        top: ink.top - this.slurClearanceYShift - stave.getYForLine(0),
+        bottom: ink.bottom - this.slurClearanceYShift - stave.getYForLine(0),
       };
     }
   }

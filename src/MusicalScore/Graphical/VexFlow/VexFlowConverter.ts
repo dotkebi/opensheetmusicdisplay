@@ -988,9 +988,12 @@ export class VexFlowConverter {
                     break;
                 }
                 case ArticulationEnum.fermata: {
-                    vfArt = new VF.Articulation("a@a");
                     vfArtPosition = VF.Modifier.Position.ABOVE;
                     articulation.placement = PlacementEnum.Above;
+                    if (VexFlowConverter.fermataDrawnByOtherVoice(gNote, articulationEnum, vfArtPosition)) {
+                        continue;
+                    }
+                    vfArt = new VF.Articulation("a@a");
                     break;
                 }
                 case ArticulationEnum.marcatodown: {
@@ -1025,9 +1028,12 @@ export class VexFlowConverter {
                         pve.ParentSourceStaffEntry.VoiceEntries.last().Articulations.push(articulation);
                         continue;
                     }
-                    vfArt = new VF.Articulation("a@u");
                     vfArtPosition = VF.Modifier.Position.BELOW;
                     articulation.placement = PlacementEnum.Below;
+                    if (VexFlowConverter.fermataDrawnByOtherVoice(gNote, articulationEnum, vfArtPosition)) {
+                        continue;
+                    }
+                    vfArt = new VF.Articulation("a@u");
                     break;
                 }
                 case ArticulationEnum.lefthandpizzicato: {
@@ -1073,8 +1079,71 @@ export class VexFlowConverter {
             if (vfArt) {
                 vfArt.setPosition(vfArtPosition);
                 (vfnote as StaveNote).addModifier(0, vfArt);
+                if (articulationEnum === ArticulationEnum.fermata || articulationEnum === ArticulationEnum.invertedfermata) {
+                    VexFlowConverter.stackOutsideOrnament(vfArt, gNote);
+                }
             }
         }
+    }
+
+    /**
+     * A fermata or an aspiration on the side of its note where the note has an ornament goes beyond the ornament, not
+     * between it and the note (Couperin, Concerts royaux I Menuet en trio m8-9, IV Rigaudon m22, as in the 1722 print).
+     * VexFlow formats the articulations before the ornaments, so an articulation is always next to its note. This one
+     * takes no text line: the ornament keeps the place it has alone (clear of the staff, the other voices' stems and a
+     * slur) and draws the articulation over its ink, which then covers both (VexFlowPatch articulation.js, ornament.js).
+     * Other articulations (a staccato, an accent) stay next to the note. The aspiration is a host's custom articulation
+     * (Opusis 02front), which calls this for it. As in osmd_dart (VexFlowStackedArticulation).
+     */
+    public static stackOutsideOrnament(vfArt: VF.Articulation, gNote: GraphicalNote): void {
+        const ornament: OrnamentContainer = gNote?.sourceNote?.ParentVoiceEntry?.OrnamentContainer;
+        if (!ornament ||
+            ornament.GetOrnament === OrnamentEnum.DelayedTurn || ornament.GetOrnament === OrnamentEnum.DelayedInvertedTurn) {
+            return;
+        }
+        const ornamentPosition: number = ornament.placement === PlacementEnum.Below ? VF.Modifier.Position.BELOW : VF.Modifier.Position.ABOVE;
+        if (vfArt.getPosition() === ornamentPosition) {
+            (vfArt as any).stackedOutsideOrnament = true;
+        }
+    }
+
+    /**
+     * One fermata at one place: another voice of the note's staff entry (same staff, same time) has the same fermata on
+     * the same side, and its note is further out on that side (or as far, and it comes first). Couperin I Menuet en trio
+     * m8-9: the two upper voices, each with a fermata over it, were drawn as two arcs; the one over the upper voice (beyond
+     * its tremblement) stands for both, as each part's single fermata in the 1722 print. A fermata is always above here
+     * (an inverted one below). As in osmd_dart (VexFlowMeasure._fermataDrawnByOtherVoice).
+     */
+    public static fermataDrawnByOtherVoice(gNote: GraphicalNote, fermata: ArticulationEnum, position: number): boolean {
+        const ownEntry: GraphicalVoiceEntry = gNote.parentVoiceEntry;
+        const staffEntry: GraphicalStaffEntry = ownEntry?.parentStaffEntry;
+        const ownNote: any = (ownEntry as VexFlowVoiceEntry)?.vfStaveNote;
+        if (!staffEntry || !ownNote) {
+            return false;
+        }
+        const above: boolean = position === VF.Modifier.Position.ABOVE;
+        const extreme: (note: any) => number = (note: any): number => {
+            const lines: number[] = note.getKeyProps().map((key: any) => key.line);
+            return above ? Math.max(...lines) : -Math.min(...lines);
+        };
+        const own: number = extreme(ownNote);
+        let before: boolean = true;
+        for (const other of staffEntry.graphicalVoiceEntries) {
+            if (other === ownEntry) {
+                before = false;
+                continue;
+            }
+            const otherNote: any = (other as VexFlowVoiceEntry).vfStaveNote;
+            if (!otherNote || other.parentVoiceEntry.IsGrace ||
+                !other.parentVoiceEntry.Articulations.some(mark => mark.articulationEnum === fermata)) {
+                continue;
+            }
+            const theirs: number = extreme(otherNote);
+            if (theirs > own || theirs === own && before) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

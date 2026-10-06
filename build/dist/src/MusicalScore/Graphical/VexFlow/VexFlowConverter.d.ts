@@ -12,7 +12,7 @@ import { SystemLinesEnum } from "../SystemLinesEnum";
 import { FontStyles } from "../../../Common/Enums/FontStyles";
 import { Fonts } from "../../../Common/Enums/Fonts";
 import { OutlineAndFillStyleEnum } from "../DrawingEnums";
-import { VoiceEntry } from "../../VoiceData/VoiceEntry";
+import { ArticulationEnum, VoiceEntry } from "../../VoiceData/VoiceEntry";
 import { SystemLinePosition } from "../SystemLinePosition";
 import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
 import { OrnamentContainer } from "../../VoiceData/OrnamentContainer";
@@ -89,6 +89,24 @@ export declare class VexFlowConverter {
     static restSideFromVoice(rest: VoiceEntry, highestOther: number, lowestOther: number): number;
     static StaveNote(gve: GraphicalVoiceEntry): VF.StaveNote;
     static generateArticulations(vfnote: VF.StemmableNote, gNote: GraphicalNote, rules: EngravingRules): void;
+    /**
+     * A fermata or an aspiration on the side of its note where the note has an ornament goes beyond the ornament, not
+     * between it and the note (Couperin, Concerts royaux I Menuet en trio m8-9, IV Rigaudon m22, as in the 1722 print).
+     * VexFlow formats the articulations before the ornaments, so an articulation is always next to its note. This one
+     * takes no text line: the ornament keeps the place it has alone (clear of the staff, the other voices' stems and a
+     * slur) and draws the articulation over its ink, which then covers both (VexFlowPatch articulation.js, ornament.js).
+     * Other articulations (a staccato, an accent) stay next to the note. The aspiration is a host's custom articulation
+     * (Opusis 02front), which calls this for it. As in osmd_dart (VexFlowStackedArticulation).
+     */
+    static stackOutsideOrnament(vfArt: VF.Articulation, gNote: GraphicalNote): void;
+    /**
+     * One fermata at one place: another voice of the note's staff entry (same staff, same time) has the same fermata on
+     * the same side, and its note is further out on that side (or as far, and it comes first). Couperin I Menuet en trio
+     * m8-9: the two upper voices, each with a fermata over it, were drawn as two arcs; the one over the upper voice (beyond
+     * its tremblement) stands for both, as each part's single fermata in the 1722 print. A fermata is always above here
+     * (an inverted one below). As in osmd_dart (VexFlowMeasure._fermataDrawnByOtherVoice).
+     */
+    static fermataDrawnByOtherVoice(gNote: GraphicalNote, fermata: ArticulationEnum, position: number): boolean;
     /**
      * An articulation on the notehead side of its note goes beyond the notes (and stems) of the other voices of the staff
      * at the same time that are on that side: else it is drawn between them (Schumann, Myrthen 11 m12: the accent of the
