@@ -135,6 +135,15 @@ export declare class InstrumentReader {
      */
     private saveClefInstructionAtEndOfMeasure;
     /**
+     * Put a clef into the end-instructions slot of a measure (the courtesy clef before the next measure's change).
+     * A visible clef replaces whatever was there (the last one wins, as before). A hidden clef
+     * (`<clef print-object="no">`) must still update the active clef of the following measures, but it must not
+     * remove a visible courtesy clef that is already there (Schumann Myrthen 18 m32: F at the end of the measure for
+     * the repeat, hidden G at the start of m33) — it is appended after it. MusicSystemBuilder draws no hidden clef
+     * and reserves no width for a slot that holds only hidden clefs.
+     */
+    private storeClefAtMeasureEnd;
+    /**
      * Compute a tuplet note's real (sounding) duration.
      *
      * Per the MusicXML spec a note's <duration> already reflects the tuplet ratio, so we normally take it
