@@ -61,6 +61,7 @@ import { VexFlowStaffLine } from "./VexFlowStaffLine";
 import { EngravingRules } from "../EngravingRules";
 import { VexflowStafflineNoteCalculator } from "./VexflowStafflineNoteCalculator";
 import { MusicSystem } from "../MusicSystem";
+import { GraphicalMusicPage } from "../GraphicalMusicPage";
 import { NoteTypeHandler } from "../../VoiceData/NoteType";
 import { VexFlowConverter } from "./VexFlowConverter";
 import { TabNote } from "../../VoiceData/TabNote";
@@ -3067,6 +3068,22 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
    * @param measure the (uppermost) measure the repetition instruction was added to
    * @param repetition the VexFlow repetition (stave modifier) to place, created by addWordRepetition()
    */
+  /** The repetition instructions in their default place (placeWordRepetitionInSkyline()) reserve no skyline. */
+  protected firstSystemUnreservedSymbolsTop(page: GraphicalMusicPage, left: number, right: number): number {
+    const system: MusicSystem = page.MusicSystems[0];
+    let top: number = undefined;
+    for (const staffLine of system.StaffLines) {
+      const x: number = system.PositionAndShape.RelativePosition.x + staffLine.PositionAndShape.RelativePosition.x;
+      const y: number = system.PositionAndShape.RelativePosition.y + staffLine.PositionAndShape.RelativePosition.y;
+      for (const box of this.placedWordRepetitionBoxes.get(staffLine) ?? []) {
+        if (x + box.endX > left && x + box.startX < right) {
+          top = top === undefined ? y + box.top : Math.min(top, y + box.top);
+        }
+      }
+    }
+    return top;
+  }
+
   protected placeWordRepetitionInSkyline(measure: VexFlowMeasure, repetition: VF.Repetition): void {
     const staffLine: StaffLine = measure.ParentStaffLine;
     if (!repetition || !staffLine) {
