@@ -100,6 +100,11 @@ stavevolta.js (merged Vexflow 3.x):
 Fix the length of voltas for first measures in a system
 (whose lengths were wrongly extended by the width of the clef, key signature, etc. (beginInstructions) in Vexflow 1.2.93)
 
+strokes.js (custom addition):
+option span_notes_resolver: the stroke spans the Y range of its note and of the notes the resolver returns
+  (other voices, other stave), starting at the leftmost head; drawn_x/drawn_top_y/drawn_bot_y record the drawn extent.
+  OSMD: arpeggio spread over several voice entries (VexFlowMeasure.createArpeggio).
+
 stem.js (fixed vexflow 4 (or earlier)):
 able to give an id+class to the stem node in SVG
 

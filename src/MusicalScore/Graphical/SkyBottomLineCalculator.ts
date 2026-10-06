@@ -199,12 +199,15 @@ export class SkyBottomLineCalculator {
             vsStaff.setWidth(width);
             measure.format();
             vsStaff.setWidth(oldMeasureWidth);
+            measure.drawingForSkyline = true;
             try {
                 measure.draw(ctx);
                 this.drawTieStubsOfNextMeasure(measure, ctx);
                 // Vexflow errors can happen here, then our complete rendering loop would halt without catching errors.
             } catch (ex) {
                 log.warn("SkyBottomLineCalculator.calculateLines.draw", ex);
+            } finally {
+                measure.drawingForSkyline = false;
             }
 
             // imageData.data is a Uint8ClampedArray representing a one-dimensional array containing the data in the RGBA order
@@ -292,12 +295,15 @@ export class SkyBottomLineCalculator {
             // the lazy skyline reuse can replay these exact side effects without re-measuring extents.
             const width: number = this.prepareMeasureForGeometricSkyline(measure, lastMeasureFormats);
             geometricContext.initialize(width);
+            measure.drawingForSkyline = true;
             try {
                 measure.draw(geometricContext as any);
                 this.drawTieStubsOfNextMeasure(measure, geometricContext as any);
                 // Vexflow errors can happen here, then our complete rendering loop would halt without catching errors.
             } catch (ex) {
                 log.warn("SkyBottomLineCalculator.calculateLinesGeometric.draw", ex);
+            } finally {
+                measure.drawingForSkyline = false;
             }
 
             const measureArrayLength: number = Math.max(Math.ceil(measure.PositionAndShape.Size.width * samplingUnit), 1);
@@ -364,7 +370,19 @@ export class SkyBottomLineCalculator {
         if (!next?.vfTies) {
             return;
         }
-        for (const tie of next.vfTies as any[]) {
+        // A tie from this staff into the other staff of the instrument is held by the other staff line's next measure.
+        const nextTies: any[] = [...next.vfTies];
+        for (const otherLine of this.StaffLineParent.ParentMusicSystem?.StaffLines ?? []) {
+            if (otherLine === this.StaffLineParent) {
+                continue;
+            }
+            for (const otherMeasure of otherLine.Measures as VexFlowMeasure[]) {
+                if (otherMeasure.parentSourceMeasure === next.parentSourceMeasure && otherMeasure.vfTies) {
+                    nextTies.push(...otherMeasure.vfTies);
+                }
+            }
+        }
+        for (const tie of nextTies) {
             if (tie instanceof VF.TabSlide) {
                 continue;
             }

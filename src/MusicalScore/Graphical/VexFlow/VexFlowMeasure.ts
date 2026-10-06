@@ -20,6 +20,7 @@ import StemmableNote = VF.StemmableNote;
 import NoteSubGroup = VF.NoteSubGroup;
 import log from "loglevel";
 import {unitInPixels} from "./VexFlowMusicSheetDrawer";
+import {PointF2D} from "../../../Common/DataObjects/PointF2D";
 import {Tuplet} from "../../VoiceData/Tuplet";
 import {RepetitionInstructionEnum, RepetitionInstruction, AlignmentType} from "../../VoiceData/Instructions/RepetitionInstruction";
 import {SystemLinePosition} from "../SystemLinePosition";
@@ -84,6 +85,8 @@ export class VexFlowMeasure extends GraphicalMeasure {
     public formatVoices?: (width: number, parent: VexFlowMeasure) => void;
     /** The VexFlow Ties in the measure */
     public vfTies: VF.StaveTie[] = [];
+    /** True while SkyBottomLineCalculator draws this measure to measure its skyline and bottom line (not real ink). */
+    public drawingForSkyline: boolean = false;
     /** The repetition instructions given as words or symbols (coda, dal segno..) */
     public vfRepetitionWords: VF.Repetition[] = [];
     /** Whether a metronome mark is drawn on this staff measure (they are drawn on the first visible staff). */
@@ -1830,25 +1833,64 @@ export class VexFlowMeasure extends GraphicalMeasure {
     private createArpeggio(voiceEntry: GraphicalVoiceEntry): void {
         if (voiceEntry.parentVoiceEntry && voiceEntry.parentVoiceEntry.Arpeggio) {
             const arpeggio: Arpeggio = voiceEntry.parentVoiceEntry.Arpeggio;
-            // TODO right now our arpeggio object has all arpeggio notes from arpeggios across all voices.
-            // see VoiceGenerator. Doesn't matter for Vexflow for now though
-            if (voiceEntry.notes && voiceEntry.notes.length > 1) {
+            // The arpeggio holds the notes of all its voices (and, numbered, of both staves of the instrument), see
+            //   VoiceGenerator. It is drawn once, as one stroke on the voice entry it was read with, spanning all of
+            //   its notes: the other participating voice entries get no stroke of their own.
+            if (arpeggio.parentVoiceEntry !== voiceEntry.parentVoiceEntry) {
+                return;
+            }
+            if (arpeggio.notes.length > 1) {
                 const type: VF.Stroke.Type = VexFlowConverter.StrokeTypeFromArpeggioType(arpeggio.type);
-                const stroke: VF.Stroke = new VF.Stroke(type, {
-                    all_voices: this.rules.ArpeggiosGoAcrossVoices
+                const strokeOptions: any = { // VexFlowPatch strokes.js: span_notes_resolver is not in the vexflow typings
+                    all_voices: this.rules.ArpeggiosGoAcrossVoices,
                     // default: false. This causes arpeggios to always go across all voices, which is often unwanted.
                     // also, this can cause infinite height of stroke, see #546
-                });
-                //if (arpeggio.notes.length === vexFlowVoiceEntry.notes.length) { // different workaround for endless y bug
+                    span_notes_resolver: () => this.arpeggioSpanNotes(voiceEntry as VexFlowVoiceEntry, arpeggio)
+                };
+                const stroke: VF.Stroke = new VF.Stroke(type, strokeOptions);
                 if (this.rules.RenderArpeggios) {
                     (voiceEntry as VexFlowVoiceEntry).vfStaveNote.addStroke(0, stroke);
                 }
             } else {
-                log.debug(`[OSMD] arpeggio in measure ${this.MeasureNumber} could not be drawn.
-                voice entry had less than two notes, arpeggio is likely between voice entries, not currently supported in Vexflow.`);
-                // TODO: create new arpeggio with all the arpeggio's notes (arpeggio.notes), perhaps with GhostNotes in a new vfStaveNote. not easy.
+                log.debug(`[OSMD] arpeggio in measure ${this.MeasureNumber} has only one note, not drawn.`);
             }
         }
+    }
+
+    /** The VexFlow notes of the arpeggio's other participating voice entries (the stroke's own note is left out),
+     *  resolved when the stroke is drawn, so that notes of other voices and of the other staff exist and are formatted.
+     *  While the measure is drawn for its skyline/bottom line, notes of other staves are left out: the wavy line's part
+     *  in the other staff is not this staff's ink (it would push this staff's bottom line down to the other staff). */
+    private arpeggioSpanNotes(ownEntry: VexFlowVoiceEntry, arpeggio: Arpeggio): VF.StaveNote[] {
+        const spanNotes: VF.StaveNote[] = [];
+        for (const note of arpeggio.notes) {
+            if (note.ParentVoiceEntry === ownEntry.parentVoiceEntry) {
+                continue;
+            }
+            const graphicalNote: VexFlowGraphicalNote = this.rules.GNote(note) as VexFlowGraphicalNote;
+            const vfNote: VF.StaveNote = graphicalNote?.vfnote?.[0] as VF.StaveNote;
+            if (!vfNote || spanNotes.includes(vfNote)) {
+                continue;
+            }
+            const otherMeasure: VexFlowMeasure = graphicalNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure;
+            if (otherMeasure !== this) {
+                if (this.drawingForSkyline) {
+                    continue;
+                }
+                // The other staff's measure is drawn after this one: give its stave the coordinates the drawer
+                //   (VexFlowMusicSheetDrawer.drawMeasure) will give it, so that the note's y values below are in
+                //   the same frame as this measure's.
+                const position: PointF2D = otherMeasure.PositionAndShape.AbsolutePosition;
+                otherMeasure.setAbsoluteCoordinates(position.x * unitInPixels, position.y * unitInPixels);
+            }
+            // A note's cached y values are only updated when its voice is drawn (setStave); until then they are from
+            //   the last pass (the skyline canvas). Refresh them against the stave's current position.
+            if (vfNote.getStave()) {
+                vfNote.setStave(vfNote.getStave());
+            }
+            spanNotes.push(vfNote);
+        }
+        return spanNotes;
     }
 
     /**

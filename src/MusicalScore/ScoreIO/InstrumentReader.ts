@@ -31,6 +31,7 @@ import {NoteType, NoteTypeHandler} from "../VoiceData/NoteType";
 import { SystemLinesEnumHelper } from "../Graphical/SystemLinesEnum";
 import { ReaderPluginManager } from "./ReaderPluginManager";
 import { TremoloInfo } from "../VoiceData/Note";
+import { Arpeggio } from "../VoiceData/Arpeggio";
 // import {Dictionary} from "typescript-collections";
 
 // FIXME: The following classes are missing
@@ -623,9 +624,51 @@ export class InstrumentReader {
       log.debug("InstrumentReader.readNextXmlMeasure", errorMsg, e);
     }
 
+    this.linkArpeggiosAcrossStaves(this.currentMeasure);
     this.previousMeasure = this.currentMeasure;
     this.currentXmlMeasureIndex += 1;
     return true;
+  }
+
+  /**
+   * <arpeggiate number="n"> on both staves of the instrument at one timestamp: when one of the staves holds a single
+   * note only, which is no arpeggio by itself (Schumann, Myrthen, Lieder der Braut I m47: right-hand F#4 over the
+   * left-hand chord D3-F#3-C4), the two are one wavy line across both staves and are merged into the first staff's
+   * Arpeggio (its notes then span the staves, see VexFlowMeasure.createArpeggio()). Two chords with the same number
+   * (Jemand m10, m20, m21) stay two wavy lines, one per hand, as engraved. Without a number nothing is linked.
+   */
+  private linkArpeggiosAcrossStaves(measure: SourceMeasure): void {
+    if (!measure || this.instrument.Staves.length < 2) {
+      return;
+    }
+    for (const container of measure.VerticalSourceStaffEntryContainers) {
+      const byNumber: Map<string, Arpeggio[]> = new Map<string, Arpeggio[]>();
+      for (const staffEntry of container.StaffEntries) {
+        for (const voiceEntry of staffEntry?.VoiceEntries ?? []) {
+          const arpeggio: Arpeggio = voiceEntry.Arpeggio;
+          if (!arpeggio || arpeggio.XmlNumber === undefined || arpeggio.parentVoiceEntry !== voiceEntry) {
+            continue;
+          }
+          const group: Arpeggio[] = byNumber.get(arpeggio.XmlNumber) ?? [];
+          if (!group.includes(arpeggio)) {
+            group.push(arpeggio);
+          }
+          byNumber.set(arpeggio.XmlNumber, group);
+        }
+      }
+      for (const group of byNumber.values()) {
+        if (group.length < 2 || !group.some((arpeggio) => arpeggio.notes.length < 2)) {
+          continue;
+        }
+        const first: Arpeggio = group[0];
+        for (const other of group.slice(1)) {
+          for (const note of other.notes) {
+            first.addNote(note);
+          }
+          other.parentVoiceEntry.Arpeggio = undefined;
+        }
+      }
+    }
   }
 
   /**
