@@ -316,6 +316,42 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     indexOfGraphicalGlissFromGliss(gGlissandi: GraphicalGlissando[], glissando: Glissando): number;
     /** Returns whether a repeat sign replaces the note's graphical measure. */
     private measureRepeatHidesNote;
+    /**
+     * Whether a slur from one staff of an instrument to the other is drawn as two pieces, one on each staff, instead of
+     * one curve in system coordinates (GraphicalSlur.calculateCurveCrossStaff()): when its notes are in different
+     * systems (that curve can't be drawn, the slur was left out: Schumann, Myrthen 14 m12-14 on the web, 15 m5-7 and
+     * m41-43 on both) or more than a barline apart (the curve, a bow between the two notes, cuts through the notes of the
+     * measures between: Myrthen 14 m12-14 in the app). A slur to the other staff in the same or the next measure (most of
+     * them: Myrthen 1, 3, 25) stays one curve. Decision 10-07, until slurs between staves are drawn in system coordinates
+     * with the cross-staff beams (00docs/plans/PLAN-cross-staff-beam.md). Same as osmd-dart.
+     */
+    private crossStaffSlurIsSplit;
+    /**
+     * The measure index after which a slur drawn as two pieces (see crossStaffSlurIsSplit()) changes staff: the start piece
+     * goes from the start note to the end of that measure on the start note's staff, the end piece from the start of the
+     * next measure to the end note on the end note's staff. The long piece goes on the staff where the start note's voice
+     * has more of its notes between the two: Myrthen 14 m12-14 (voice 5 moves to the left hand: 4 notes on the right, 8 on
+     * the left) changes staff after the start note's measure, the slur running under the left hand; Myrthen 15 m5-7 and
+     * m41-43 (the right hand melody, all its notes on the right) before the end note's measure, the slur running over the
+     * right hand and reaching the left hand's last note in the end measure. Equal counts go to the end staff.
+     */
+    private crossStaffSlurSplitMeasureIndex;
+    /**
+     * The volta (ending) of each measure, by measure index: the index of the volta's first measure and its ending numbers
+     * (as calculateWordRepetitionInstructions() tracks them). Undefined for a measure outside a volta.
+     */
+    private voltaOfMeasures;
+    /**
+     * A slur from before the endings of a repeat to a note in a second (or later) ending is played from its start into
+     * that ending, but drawn as one curve it runs over the first ending to the note in the second: a long arch over the
+     * first ending (Schumann, Myrthen 18 m31-33, slur 6 from m31 to the second ending m33, recheck M18-D05). The source
+     * (Breitkopf) breaks it where the endings part: the part over the first ending ends at the end of the first ending, and
+     * the second ending starts with a short piece from its barline to the end note. When the
+     * score writes the first ending's slur separately, from the same start (an alternative slur: Myrthen 18 slur 1 from m31
+     * to the first ending m32), the part over the first ending is that slur and is left out here; only the second ending's
+     * piece is drawn, as in the source. Pieces end and start at their measures' barlines (GraphicalSlur.isVoltaPiece).
+     */
+    private splitSlursIntoVoltas;
     protected calculateSlurs(): void;
     calculateGlissandi(): void;
 }

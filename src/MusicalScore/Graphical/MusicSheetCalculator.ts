@@ -3761,6 +3761,12 @@ export abstract class MusicSheetCalculator {
                 //   TODO could be more precise but also more complex by checking lower notes, other notes, etc.
                 if (voiceId === 2 || voiceId === 6) {
                     tie.TieDirection = PlacementEnum.Below;
+                } else if ((voiceId === 1 || voiceId === 5) && MusicSheetCalculator.otherVoiceSounds(staffEntry, tie.Notes[0])) {
+                    // and of the first voice above when another voice plays in the measure: VexFlow's own choice from the
+                    //   stem put an upper voice's tie below, into the lower voice (Schumann, Myrthen 3 m64-65: the G4 half
+                    //   notes over the sixteenths; the source ties them above). The arch by length makes such a tie reach
+                    //   further into the other voice.
+                    tie.TieDirection = PlacementEnum.Above;
                 }
             }
         }
@@ -3782,6 +3788,13 @@ export abstract class MusicSheetCalculator {
                 }
             }
         }
+    }
+
+    /** Whether a voice other than the note's has a visible note in the note's measure on the note's staff. */
+    private static otherVoiceSounds(staffEntry: GraphicalStaffEntry, note: Note): boolean {
+        const voice: Voice = note.ParentVoiceEntry.ParentVoice;
+        return staffEntry.parentMeasure.staffEntries.some(entry => entry.graphicalVoiceEntries.some(gve =>
+            gve.parentVoiceEntry.ParentVoice !== voice && gve.parentVoiceEntry.Notes.some(other => !other.isRest() && other.PrintObject)));
     }
 
     private createAccidentalCalculators(): AccidentalCalculator[] {
@@ -4516,12 +4529,13 @@ export abstract class MusicSheetCalculator {
                         for (const graphicalTie of staffEntry.GraphicalTies) {
                             if (graphicalTie.StartNote !== undefined && graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry === staffEntry) {
                                 // (a tie without an end note, see tieContinuesAfterRepeat(), is drawn to the end of its staff)
-                                // A tie is split into two stubs only at a system break. A tie from one staff of the instrument
-                                //   to the other in the same system (Schumann, Myrthen, Die Hochländer-Wittwe m72-73) is one
-                                //   curve between its two notes, like any other tie.
+                                // A tie is split into two stubs at a system break and between the two staves of an instrument:
+                                //   one curve from a note on one staff to a note on the other runs nearly straight across both
+                                //   staves and the beams between them (Schumann, Myrthen, Die Hochländer-Wittwe m72-73). Each
+                                //   staff gets the half at its own note, as at a system break.
                                 const tieIsAtSystemBreak: boolean = graphicalTie.EndNote !== undefined && (
-                                    graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine?.ParentMusicSystem !==
-                                    graphicalTie.EndNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine?.ParentMusicSystem
+                                    graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine !==
+                                    graphicalTie.EndNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine
                                 );
                                 this.layoutGraphicalTie(graphicalTie, tieIsAtSystemBreak, measure.ParentStaff.isTab);
                             }

@@ -16,7 +16,7 @@ import { Tie } from "../../VoiceData/Tie";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { SourceStaffEntry } from "../../VoiceData/SourceStaffEntry";
 import { MultiExpression } from "../../VoiceData/Expressions/MultiExpression";
-import { RepetitionInstruction, RepetitionInstructionEnum } from "../../VoiceData/Instructions/RepetitionInstruction";
+import { AlignmentType, RepetitionInstruction, RepetitionInstructionEnum } from "../../VoiceData/Instructions/RepetitionInstruction";
 import { Beam } from "../../VoiceData/Beam";
 import { ClefInstruction } from "../../VoiceData/Instructions/ClefInstruction";
 import { OctaveEnum, OctaveShift } from "../../VoiceData/Expressions/ContinuousExpressions/OctaveShift";
@@ -3717,10 +3717,169 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     return parentMeasure?.NotesAreAbbreviated === true;
   }
 
+  /**
+   * Whether a slur from one staff of an instrument to the other is drawn as two pieces, one on each staff, instead of
+   * one curve in system coordinates (GraphicalSlur.calculateCurveCrossStaff()): when its notes are in different
+   * systems (that curve can't be drawn, the slur was left out: Schumann, Myrthen 14 m12-14 on the web, 15 m5-7 and
+   * m41-43 on both) or more than a barline apart (the curve, a bow between the two notes, cuts through the notes of the
+   * measures between: Myrthen 14 m12-14 in the app). A slur to the other staff in the same or the next measure (most of
+   * them: Myrthen 1, 3, 25) stays one curve. Decision 10-07, until slurs between staves are drawn in system coordinates
+   * with the cross-staff beams (00docs/plans/PLAN-cross-staff-beam.md). Same as osmd-dart.
+   */
+  private crossStaffSlurIsSplit(slur: Slur): boolean {
+    if (!slur.isCrossed()) {
+      return false;
+    }
+    const startMeasure: GraphicalMeasure = this.rules.GNote(slur.StartNote)?.parentVoiceEntry?.parentStaffEntry?.parentMeasure;
+    const endMeasure: GraphicalMeasure = this.rules.GNote(slur.EndNote)?.parentVoiceEntry?.parentStaffEntry?.parentMeasure;
+    if (!startMeasure?.ParentStaffLine || !endMeasure?.ParentStaffLine) {
+      return false;
+    }
+    return startMeasure.ParentStaffLine.ParentMusicSystem !== endMeasure.ParentStaffLine.ParentMusicSystem ||
+      slur.EndNote.SourceMeasure.measureListIndex > slur.StartNote.SourceMeasure.measureListIndex + 1;
+  }
+
+  /**
+   * The measure index after which a slur drawn as two pieces (see crossStaffSlurIsSplit()) changes staff: the start piece
+   * goes from the start note to the end of that measure on the start note's staff, the end piece from the start of the
+   * next measure to the end note on the end note's staff. The long piece goes on the staff where the start note's voice
+   * has more of its notes between the two: Myrthen 14 m12-14 (voice 5 moves to the left hand: 4 notes on the right, 8 on
+   * the left) changes staff after the start note's measure, the slur running under the left hand; Myrthen 15 m5-7 and
+   * m41-43 (the right hand melody, all its notes on the right) before the end note's measure, the slur running over the
+   * right hand and reaching the left hand's last note in the end measure. Equal counts go to the end staff.
+   */
+  private crossStaffSlurSplitMeasureIndex(slur: Slur): number {
+    const startIndex: number = slur.StartNote.SourceMeasure.measureListIndex;
+    const endIndex: number = slur.EndNote.SourceMeasure.measureListIndex;
+    const from: number = slur.StartNote.getAbsoluteTimestamp().RealValue;
+    const to: number = slur.EndNote.getAbsoluteTimestamp().RealValue;
+    let onStartStaff: number = 0;
+    let onEndStaff: number = 0;
+    for (const voiceEntry of slur.StartNote.ParentVoiceEntry.ParentVoice.VoiceEntries) {
+      const note: Note = voiceEntry.Notes.find(n => !n.isRest());
+      const time: number = note?.getAbsoluteTimestamp().RealValue;
+      if (!note || time <= from || time >= to) {
+        continue;
+      }
+      if (note.ParentStaff === slur.StartNote.ParentStaff) {
+        onStartStaff++;
+      } else if (note.ParentStaff === slur.EndNote.ParentStaff) {
+        onEndStaff++;
+      }
+    }
+    return onStartStaff > onEndStaff ? Math.max(startIndex, endIndex - 1) : startIndex;
+  }
+
+  /**
+   * The volta (ending) of each measure, by measure index: the index of the volta's first measure and its ending numbers
+   * (as calculateWordRepetitionInstructions() tracks them). Undefined for a measure outside a volta.
+   */
+  private voltaOfMeasures(): ({ start: number, endings: number[] } | undefined)[] {
+    const result: ({ start: number, endings: number[] } | undefined)[] = [];
+    const active: { start: number, endings: number[] }[] = [];
+    const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+    for (let i: number = 0; i < sourceMeasures.length; i++) {
+      for (const instruction of sourceMeasures[i].FirstRepetitionInstructions) {
+        if (instruction.type === RepetitionInstructionEnum.Ending && instruction.alignment === AlignmentType.Begin) {
+          active.push({ start: i, endings: instruction.endingIndices ?? [] });
+        }
+      }
+      result.push(active[active.length - 1]);
+      for (const instruction of sourceMeasures[i].LastRepetitionInstructions) {
+        if (instruction.type === RepetitionInstructionEnum.Ending && active.length > 0 &&
+            (instruction.alignment === AlignmentType.End || instruction.alignment === AlignmentType.Discontinue)) {
+          active.pop();
+          break;
+        }
+      }
+    }
+    return result;
+  }
+
+  /**
+   * A slur from before the endings of a repeat to a note in a second (or later) ending is played from its start into
+   * that ending, but drawn as one curve it runs over the first ending to the note in the second: a long arch over the
+   * first ending (Schumann, Myrthen 18 m31-33, slur 6 from m31 to the second ending m33, recheck M18-D05). The source
+   * (Breitkopf) breaks it where the endings part: the part over the first ending ends at the end of the first ending, and
+   * the second ending starts with a short piece from its barline to the end note. When the
+   * score writes the first ending's slur separately, from the same start (an alternative slur: Myrthen 18 slur 1 from m31
+   * to the first ending m32), the part over the first ending is that slur and is left out here; only the second ending's
+   * piece is drawn, as in the source. Pieces end and start at their measures' barlines (GraphicalSlur.isVoltaPiece).
+   */
+  private splitSlursIntoVoltas(): void {
+    const voltas: ({ start: number, endings: number[] } | undefined)[] = this.voltaOfMeasures();
+    if (!voltas.some(volta => volta)) {
+      return;
+    }
+    const indexOf: (note: Note) => number = (note: Note): number => note.SourceMeasure.measureListIndex;
+    for (const musicSystem of this.musicSystems) {
+      for (const staffLine of musicSystem.StaffLines) {
+        for (const gSlur of staffLine.GraphicalSlurs.slice()) {
+          const slur: Slur = gSlur.slur;
+          if (!slur.StartNote || !slur.EndNote || slur.isCrossed() || gSlur.staffEntries.length === 0) {
+            continue;
+          }
+          const startIndex: number = indexOf(slur.StartNote);
+          const volta: { start: number, endings: number[] } = voltas[indexOf(slur.EndNote)];
+          if (!volta || volta.endings.length === 0 || Math.min(...volta.endings) < 2 || startIndex >= volta.start ||
+              !voltas[volta.start - 1] || voltas[volta.start - 1] === volta) {
+            continue; // not into a later ending past an earlier one
+          }
+          const alternative: boolean = slur.StartNote.ParentVoiceEntry.Notes.some(note => note.NoteSlurs.some(other =>
+            other !== slur && other.StartNote?.ParentVoiceEntry === slur.StartNote.ParentVoiceEntry && other.EndNote &&
+            indexOf(other.EndNote) >= startIndex && indexOf(other.EndNote) < volta.start));
+          const before: GraphicalStaffEntry[] = gSlur.staffEntries.filter(entry =>
+            entry.parentMeasure.parentSourceMeasure?.measureListIndex < volta.start);
+          const after: GraphicalStaffEntry[] = gSlur.staffEntries.filter(entry => before.indexOf(entry) < 0);
+          if (after.length > 0) {
+            gSlur.staffEntries = after;
+            gSlur.isVoltaPiece = true;
+          }
+          if (before.length > 0 && !alternative) {
+            const piece: GraphicalSlur = after.length > 0 ? new GraphicalSlur(slur, this.rules) : gSlur;
+            piece.staffEntries = before;
+            piece.isVoltaPiece = true;
+            if (piece !== gSlur) {
+              staffLine.addSlurToStaffline(piece);
+            }
+          } else if (after.length === 0) {
+            staffLine.GraphicalSlurs.splice(staffLine.GraphicalSlurs.indexOf(gSlur), 1);
+          }
+        }
+      }
+    }
+  }
+
   protected calculateSlurs(): void {
     const openSlursDict: { [staffId: number]: GraphicalSlur[] } = {};
     for (const graphicalMeasure of this.graphicalMusicSheet.MeasureList[0]) { //let i: number = 0; i < this.graphicalMusicSheet.MeasureList[0].length; i++) {
       openSlursDict[graphicalMeasure.ParentStaff.idInMusicSheet] = [];
+    }
+    // the end pieces of the slurs between staves drawn as two pieces (see crossStaffSlurIsSplit()), by the staff of their
+    //   end note: they start in the measure after the start note's measure
+    const crossStaffEndPieces: { [staffId: number]: { slur: Slur, fromMeasureIndex: number }[] } = {};
+    // the measure index after which each of these slurs changes staff (see crossStaffSlurSplitMeasureIndex())
+    const crossStaffSplitAfter: Map<Slur, number> = new Map<Slur, number>();
+    for (const musicSystem of this.musicSystems) {
+      for (const staffLine of musicSystem.StaffLines) {
+        for (const graphicalMeasure of staffLine.Measures) {
+          for (const graphicalStaffEntry of graphicalMeasure.staffEntries) {
+            for (const graphicalVoiceEntry of graphicalStaffEntry.graphicalVoiceEntries) {
+              for (const graphicalNote of graphicalVoiceEntry.notes) {
+                for (const slur of graphicalNote.sourceNote.NoteSlurs) {
+                  if (slur.StartNote !== graphicalNote.sourceNote || !slur.EndNote || !this.crossStaffSlurIsSplit(slur)) {
+                    continue;
+                  }
+                  const endStaffId: number = this.rules.GNote(slur.EndNote).parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaff.idInMusicSheet;
+                  const splitAfter: number = this.crossStaffSlurSplitMeasureIndex(slur);
+                  crossStaffSplitAfter.set(slur, splitAfter);
+                  (crossStaffEndPieces[endStaffId] ??= []).push({ slur, fromMeasureIndex: splitAfter + 1 });
+                }
+              }
+            }
+          }
+        }
+      }
     }
 
     /* VexFlow Version - for later use
@@ -3742,6 +3901,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           for (let slurIndex: number = 0; slurIndex < openGraphicalSlurs.length; slurIndex++) {
             const oldGSlur: GraphicalSlur = openGraphicalSlurs[slurIndex];
             const newGSlur: GraphicalSlur = new GraphicalSlur(oldGSlur.slur, this.rules); //Graphicalslur.createFromSlur(oldSlur);
+            newGSlur.isCrossStaffPiece = oldGSlur.isCrossStaffPiece;
             staffLine.addSlurToStaffline(newGSlur); // every VFSlur is added to the array in the VFStaffline!
             openGraphicalSlurs[slurIndex] = newGSlur;
           }
@@ -3760,6 +3920,20 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
 
           // add reference of slur array to the VexFlowStaffline class
           for (const graphicalMeasure of staffLine.Measures) {
+            // the end piece of a slur between staves starts at the first measure after the start note's measure
+            //   (a measure without source measure, e.g. an extra graphical measure, starts none)
+            const measureIndex: number = graphicalMeasure.parentSourceMeasure?.measureListIndex;
+            const endPieces: { slur: Slur, fromMeasureIndex: number }[] = crossStaffEndPieces[staffLine.ParentStaff.idInMusicSheet] ?? [];
+            for (let pieceIndex: number = endPieces.length - 1; pieceIndex >= 0; pieceIndex--) {
+              if (measureIndex === undefined || endPieces[pieceIndex].fromMeasureIndex > measureIndex) {
+                continue;
+              }
+              const endPiece: GraphicalSlur = new GraphicalSlur(endPieces[pieceIndex].slur, this.rules);
+              endPiece.isCrossStaffPiece = true;
+              staffLine.addSlurToStaffline(endPiece);
+              openGraphicalSlurs.push(endPiece);
+              endPieces.splice(pieceIndex, 1);
+            }
             for (const graphicalStaffEntry of graphicalMeasure.staffEntries) {
               // loop over "normal" notes (= no gracenotes)
               for (const graphicalVoiceEntry of graphicalStaffEntry.graphicalVoiceEntries) {
@@ -3793,7 +3967,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
                       // Add a Graphical Slur to the staffline, if the recent note is the Startnote of a slur
                       const gSlur: GraphicalSlur = new GraphicalSlur(slur, this.rules);
                       staffLine.addSlurToStaffline(gSlur);
-                      if (slur.isCrossed()) {
+                      if (crossStaffSplitAfter.has(slur)) {
+                        // the start piece of a slur between staves drawn as two pieces: closed where it changes staff
+                        gSlur.isCrossStaffPiece = true;
+                        openGraphicalSlurs.push(gSlur);
+                      } else if (slur.isCrossed()) {
                         // A cross-staff slur (e.g. left hand to right hand) ends on a different staff, so it
                         // would never be closed by the per-staff open/close mechanism below - which would leave
                         // it open and spawn phantom continuation slurs on every following staffline. Keep it out
@@ -3847,9 +4025,13 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
               }
             } // loop over StaffEntries
 
-            // a slur without end note, drawn from the measure's last note to the barline, ends here (see Slur.HasUnattachedEnd)
+            // a slur without end note, drawn from the measure's last note to the barline, ends here (see Slur.HasUnattachedEnd),
+            //   as the start piece of a slur between staves drawn as two pieces where it changes staff (see crossStaffSlurIsSplit())
             for (let slurIndex: number = openGraphicalSlurs.length - 1; slurIndex >= 0; slurIndex--) {
-              if (!openGraphicalSlurs[slurIndex].slur.EndNote) {
+              const openSlur: GraphicalSlur = openGraphicalSlurs[slurIndex];
+              if (!openSlur.slur.EndNote ||
+                  openSlur.isCrossStaffPiece && staffLine.ParentStaff === openSlur.slur.StartNote.ParentStaff &&
+                  crossStaffSplitAfter.get(openSlur.slur) === graphicalMeasure.parentSourceMeasure?.measureListIndex) {
                 openGraphicalSlurs.splice(slurIndex, 1);
               }
             }
@@ -3869,14 +4051,16 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         //vfStaffLine.SlursInVFStaffLine = vfSlurs;
       } // loop over MusicSystems
 
+    this.splitSlursIntoVoltas();
+
     // order slurs that were saved to the Staffline
     for (const musicSystem of this.musicSystems) {
       for (const staffLine of musicSystem.StaffLines) {
         // Sort all gSlurs in the staffline using the Compare function in class GraphicalSlurSorter
         const sortedGSlurs: GraphicalSlur[] = staffLine.GraphicalSlurs.sort(GraphicalSlur.Compare);
         for (const gSlur of sortedGSlurs) {
-            // crossed slurs will be handled later:
-            if (gSlur.slur.isCrossed()) {
+            // crossed slurs will be handled later (unless drawn as a piece on each staff):
+            if (gSlur.slur.isCrossed() && !gSlur.isCrossStaffPiece) {
                 continue;
             }
             gSlur.calculateCurve(this.rules);

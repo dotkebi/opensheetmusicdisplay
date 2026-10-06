@@ -33,6 +33,13 @@ export class GraphicalSlur extends GraphicalCurve {
     public placement: PlacementEnum;
     public graceStart: boolean;
     public graceEnd: boolean;
+    /** A piece of a slur between the two staves of an instrument that is drawn as two pieces, one on each staff
+     *  (see VexFlowMusicSheetCalculator.crossStaffSlurIsSplit()): its start piece ends at the end of the start note's
+     *  measure, its end piece starts at the start of the following measure, instead of at the staff line's ends. */
+    public isCrossStaffPiece: boolean = false;
+    /** A piece of a slur into a second ending, split where the endings part (see
+     *  VexFlowMusicSheetCalculator.splitSlursIntoVoltas()): the end without its note is at its measure's barline. */
+    public isVoltaPiece: boolean = false;
     private rules: EngravingRules;
     public SVGElement: Node;
 
@@ -126,7 +133,7 @@ export class GraphicalSlur extends GraphicalCurve {
                     startUpperRight.x += this.staffEntries[0].PositionAndShape.BorderRight;
             } else  {
                     // continuing Slur from previous StaffLine - must start after last Instruction of first Measure
-                    startUpperRight.x = this.staffEntries[0].parentMeasure.beginInstructionsWidth;
+                    startUpperRight.x = this.pieceStartX() ?? this.staffEntries[0].parentMeasure.beginInstructionsWidth;
             }
 
             // must also add the GraceStaffEntry's ParentStaffEntry Position
@@ -306,7 +313,7 @@ export class GraphicalSlur extends GraphicalCurve {
                 startLowerRight.x += this.staffEntries[0].PositionAndShape.BorderRight;
             } else {
                 // continuing Slur from previous StaffLine - must start after last Instruction of first Measure
-                startLowerRight.x = this.staffEntries[0].parentMeasure.beginInstructionsWidth;
+                startLowerRight.x = this.pieceStartX() ?? this.staffEntries[0].parentMeasure.beginInstructionsWidth;
             }
 
             // must also add the GraceStaffEntry's ParentStaffEntry Position
@@ -780,7 +787,7 @@ export class GraphicalSlur extends GraphicalCurve {
             //     }
             // }
         } else {
-            startX = 0;
+            startX = this.pieceStartX() ?? 0;
         }
 
         if (slurEndNote) {
@@ -874,7 +881,7 @@ export class GraphicalSlur extends GraphicalCurve {
         } else if (!this.slur.EndNote) {
             endX = this.getUnattachedEndX();
         } else {
-            endX = staffLine.PositionAndShape.Size.width;
+            endX = this.pieceEndX() ?? staffLine.PositionAndShape.Size.width;
         }
 
         // if GraphicalSlur breaks over System, then the end/start of the curve is at the corresponding height with the known start/end
@@ -949,6 +956,26 @@ export class GraphicalSlur extends GraphicalCurve {
      *  If that's too close to the start note to look like a slur (e.g. before a repeat sign), it reaches a bit past the note,
      *  over the repeat dots, but not up to the barline.
      */
+    /** Start x (relative to the staff line) of a cross-staff piece without its start note: after the begin
+     *  instructions of its first measure (also a volta piece, see isVoltaPiece). Undefined for other slurs (the staff
+     *  line's start). */
+    private pieceStartX(): number | undefined {
+        if (!this.isCrossStaffPiece && !this.isVoltaPiece) {
+            return undefined;
+        }
+        const measure: GraphicalMeasure = this.staffEntries[0].parentMeasure;
+        return measure.PositionAndShape.RelativePosition.x + measure.beginInstructionsWidth;
+    }
+
+    /** End x of a cross-staff piece without its end note: the end of its last measure (see [[pieceStartX]]). */
+    private pieceEndX(): number | undefined {
+        if (!this.isCrossStaffPiece && !this.isVoltaPiece) {
+            return undefined;
+        }
+        const measure: GraphicalMeasure = this.staffEntries[this.staffEntries.length - 1].parentMeasure;
+        return measure.PositionAndShape.RelativePosition.x + measure.PositionAndShape.Size.width;
+    }
+
     private getUnattachedEndX(): number {
         const endMeasure: GraphicalMeasure = this.staffEntries[this.staffEntries.length - 1].parentMeasure;
         const measureEndX: number = endMeasure.PositionAndShape.RelativePosition.x + endMeasure.PositionAndShape.Size.width;
