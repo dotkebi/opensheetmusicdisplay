@@ -291,6 +291,7 @@ export class VexFlowConverter {
      * and its notes was put below, under the other voice's stems (Couperin, Concerts royaux II, Prelude m1-2: the quarter rest
      * of voice 6, far below the left hand's D3). Both are required: voices cross, and stems can be the other way round
      * (e.g. Concerts royaux IV, Courante françoise m6: a rest of the voice with downward stems above the other voice).
+     * A voice without any stems in the measure goes by its notes alone.
      * @param rest the rest's voice entry
      * @param highestOther the highest halftone of the other voices' notes at the rest's time
      * @param lowestOther the lowest halftone of the other voices' notes at the rest's time
@@ -303,6 +304,7 @@ export class VexFlowConverter {
         let nearest: VoiceEntry = undefined;
         let nearestDistance: number = Infinity;
         let stemSide: number = undefined;
+        let stemless: boolean = false;
         for (const entry of rest.ParentVoice.VoiceEntries) {
             if (entry === rest || entry.IsGrace || entry.Notes.length === 0 || entry.Notes[0].isRest() || !entry.Notes[0].Pitch ||
                 entry.ParentSourceStaffEntry?.VerticalContainerParent?.ParentMeasure !== measure) {
@@ -310,10 +312,16 @@ export class VexFlowConverter {
             }
             const side: number = entry.StemDirectionXml === StemDirectionType.Up ? 1 :
                 entry.StemDirectionXml === StemDirectionType.Down ? -1 : undefined;
-            if (side === undefined || stemSide !== undefined && side !== stemSide) {
-                return undefined; // no stems or both directions in the measure
+            if (side === undefined) {
+                stemless = true;
+            } else if (stemSide !== undefined && side !== stemSide) {
+                return undefined; // both directions in the measure
+            } else {
+                stemSide = side;
             }
-            stemSide = side;
+            if (stemless && stemSide !== undefined) {
+                return undefined; // notes with and without stems
+            }
             const distance: number = Math.abs(entry.Timestamp.RealValue - rest.Timestamp.RealValue);
             // (the note after the rest when two are as near: the one the rest leads to)
             if (distance < nearestDistance || distance === nearestDistance && entry.Timestamp.RealValue > rest.Timestamp.RealValue) {
@@ -326,10 +334,17 @@ export class VexFlowConverter {
         }
         const halftones: number[] = nearest.Notes.filter(n => n.Pitch).map(n => n.Pitch.getHalfTone());
         const pitchSide: number = Math.min(...halftones) > highestOther ? 1 : Math.max(...halftones) < lowestOther ? -1 : undefined;
+        // a voice without any stems in the MusicXML (Schumann, Myrthen 12 m28: the left hand's D3 and quarter rest under the
+        //   right hand's voice crossing into the staff) has only its notes to say: their side
+        if (stemless) {
+            return pitchSide;
+        }
         return pitchSide === stemSide ? pitchSide : undefined;
     }
 
     public static StaveNote(gve: GraphicalVoiceEntry): VF.StaveNote {
+        // the side of a rest among other voices' notes: 1 above, -1 below (set below, used by stavenote.js format())
+        let restSideForVexFlow: number = undefined;
         // if (gve.octaveShiftValue !== OctaveEnum.NONE) { // gves with accidentals in octave shift brackets can be unsorted
         gve.sortForVexflow(); // also necessary for some other cases, see test_sorted_notes... sample
         //   sort and reverse replace the array anyways, so we might as well directly sort them reversely for now.
@@ -450,6 +465,10 @@ export class VexFlowConverter {
                         }
                     }
                     const restSide: number = VexFlowConverter.restSideFromVoice(note.parentVoiceEntry.parentVoiceEntry, highestOther, lowestOther);
+                    if (highestOther !== undefined) {
+                        // the side for VexFlow's rest collisions (stavenote.js format()), see below
+                        restSideForVexFlow = restSide ?? (restVoiceId === 1 || restVoiceId === 5 ? 1 : -1);
+                    }
                     let maxHalftone: number;
                     let linesShift: number;
                     for (const staffGve of staffGves) {
@@ -757,6 +776,12 @@ export class VexFlowConverter {
         }
 
         vfnote.x_shift = xShift;
+        if (restSideForVexFlow !== undefined) {
+            // VexFlow's rest collisions took the first of a rest and a note at the same time as the upper voice:
+            //   a lower voice's rest above the upper voice's note was moved further up, onto it (Schumann, Myrthen 6 m11,
+            //   left hand: the 8th rest of voice 5 below voice 6's E3)
+            (vfnote as any).restSide = restSideForVexFlow;
+        }
 
         if (gve.parentVoiceEntry.IsGrace && gve.notes[0].sourceNote.NoteBeam) {
             // Vexflow seems to have issues with wanted stem direction for beamed grace notes,
