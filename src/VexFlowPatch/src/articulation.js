@@ -252,7 +252,35 @@ export class Articulation extends Modifier {
     this.setWidth(this.glyph.getMetrics().width);
   }
 
-  getCategory() { return Articulation.CATEGORY; }
+  // VexFlowPatch: a fermata or an aspiration on the side of its note where the note has an ornament goes beyond the
+  //   ornament (Couperin, Concerts royaux I Menuet en trio m8-9, IV Rigaudon m22, as in the 1722 print), see
+  //   VexFlowConverter.stackOutsideOrnament(). It takes no text line (its category isn't formatted by the
+  //   ModifierContext): the ornament keeps the place it has alone and draws it over its ink (ornament.js).
+  getCategory() { return this.stackedOutsideOrnament ? 'stackedarticulations' : Articulation.CATEGORY; }
+
+  // VexFlowPatch: the ornament on this side of the note that draws this articulation (see stackedOutsideOrnament)
+  stackingOrnament() {
+    if (!this.stackedOutsideOrnament || !this.note) return undefined;
+    return this.note.getModifiers().find(modifier => modifier.getCategory() === 'ornaments' &&
+      modifier.getPosition() === this.position && !modifier.delayed);
+  }
+
+  // VexFlowPatch: draws the articulation centred at x, its edge towards the ornament at edge; returns its ink
+  drawAt(ctx, x, edge) {
+    this.setContext(ctx);
+    this.setRendered();
+    const above = this.position === ABOVE;
+    this.glyph.setOrigin(0.5, above ? 1 : 0);
+    this.glyph.render(ctx, x, edge);
+    const { width, height } = this.glyph.getMetrics();
+    this.drawnInk = {
+      left: x - width / 2,
+      top: above ? edge - height : edge,
+      right: x + width / 2,
+      bottom: above ? edge : edge + height,
+    };
+    return this.drawnInk;
+  }
 
   // Render articulation in position next to note.
   draw() {
@@ -268,6 +296,8 @@ export class Articulation extends Modifier {
     if (!note || index == null) {
       throw new Vex.RERR('NoAttachedNote', "Can't draw Articulation without a note and index.");
     }
+    // VexFlowPatch: drawn by the ornament beyond it (see stackedOutsideOrnament)
+    if (this.stackingOrnament()) return;
 
     this.setRendered();
 
@@ -329,6 +359,7 @@ export class Articulation extends Modifier {
         y += this.y_shift;
     }
 
+    let centred = false; // VexFlowPatch: (for drawnInk)
     if (!isTab) {
       const offsetDirection = position === ABOVE ? -1 : +1;
       const noteLine = isTab ? note.positions[index].str : note.getKeyProps()[index].line;
@@ -336,7 +367,10 @@ export class Articulation extends Modifier {
       const articLine = distanceFromNote + noteLine;
       const snappedLine = snapLineToStaff(canSitBetweenLines, articLine, position, offsetDirection);
 
-      if (isWithinLines(snappedLine, position)) glyph.setOrigin(0.5, 0.5);
+      if (isWithinLines(snappedLine, position)) {
+        glyph.setOrigin(0.5, 0.5);
+        centred = true;
+      }
 
       y += Math.abs(snappedLine - articLine) * staffSpace * offsetDirection;
     }
@@ -344,5 +378,9 @@ export class Articulation extends Modifier {
     L(`Rendering articulation at (x: ${x}, y: ${y})`);
 
     glyph.render(ctx, x, y);
+    // VexFlowPatch: where it was drawn (as drawAt() returns it)
+    const { width, height } = glyph.getMetrics();
+    const top = centred ? y - height / 2 : position === ABOVE ? y - height : y;
+    this.drawnInk = { left: x - width / 2, top, right: x + width / 2, bottom: top + height };
   }
 }
