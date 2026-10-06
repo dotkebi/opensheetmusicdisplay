@@ -2257,9 +2257,9 @@ export abstract class MusicSheetCalculator {
 
         const beginOfNextNote: Fraction = Fraction.plus(endAbsoluteTimestamp, maxNoteLength);
         const placementFraction: Fraction = beginOfNextNote.clone();
-        const endOffsetFraction: Fraction = graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.EndOffsetFraction;
+        const endOffsetFraction: Fraction = graphicalContinuousDynamic.ContinuousDynamic.EndOffsetFraction;
         if (endOffsetFraction && this.rules.UseEndOffsetForExpressions) {
-            placementFraction.Add(graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.EndOffsetFraction);
+            placementFraction.Add(endOffsetFraction);
         }
         // TODO for the last note of the piece (wedge ending after last note), this timestamp is incorrect, being after the last note
         //   but there's a workaround in getRelativePositionInStaffLineFromTimestamp() via the variable endAfterRightStaffEntry
