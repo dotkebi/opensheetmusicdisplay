@@ -32,6 +32,7 @@ import VF = Vex.Flow;
 import log from "loglevel";
 import { unitInPixels } from "./VexFlowMusicSheetDrawer";
 import { VexFlowGraphicalNote } from "./VexFlowGraphicalNote";
+import { CrossStaffCurve, CrossStaffCurveLayoutGeometry } from "./CrossStaffCurve";
 import { TechnicalInstruction } from "../../VoiceData/Instructions/TechnicalInstruction";
 import { GraphicalLyricEntry } from "../GraphicalLyricEntry";
 import { GraphicalLabel } from "../GraphicalLabel";
@@ -3810,12 +3811,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
 
   /**
    * Whether a slur from one staff of an instrument to the other is drawn as two pieces, one on each staff, instead of
-   * one curve in system coordinates (GraphicalSlur.calculateCurveCrossStaff()): when its notes are in different
-   * systems (that curve can't be drawn, the slur was left out: Schumann, Myrthen 14 m12-14 on the web, 15 m5-7 and
-   * m41-43 on both) or more than a barline apart (the curve, a bow between the two notes, cuts through the notes of the
-   * measures between: Myrthen 14 m12-14 in the app). A slur to the other staff in the same or the next measure (most of
-   * them: Myrthen 1, 3, 25) stays one curve. Decision 10-07, until slurs between staves are drawn in system coordinates
-   * with the cross-staff beams (00docs/plans/PLAN-cross-staff-beam.md). Same as osmd-dart.
+   * one curve between the placed staves (CrossStaffCurve): when its notes are in different systems (Schumann, Myrthen 15
+   * m5-7 in both platforms' layouts; the curve between two staves can't be drawn across a system break). In one system
+   * the slur is one curve however far its notes are (Myrthen 14 m12-14, 15 m41-43: the curve clears the notes between
+   * them, decision Q1 10-08). Same as osmd-dart.
    */
   private crossStaffSlurIsSplit(slur: Slur): boolean {
     if (!slur.isCrossed()) {
@@ -3826,8 +3825,68 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     if (!startMeasure?.ParentStaffLine || !endMeasure?.ParentStaffLine) {
       return false;
     }
-    return startMeasure.ParentStaffLine.ParentMusicSystem !== endMeasure.ParentStaffLine.ParentMusicSystem ||
-      slur.EndNote.SourceMeasure.measureListIndex > slur.StartNote.SourceMeasure.measureListIndex + 1;
+    return startMeasure.ParentStaffLine.ParentMusicSystem !== endMeasure.ParentStaffLine.ParentMusicSystem;
+  }
+
+  /**
+   * The CrossStaffCurve of a slur from the start entry's note to a note on another staff of the same system, held by
+   * the measures it spans on both staves; undefined when its end note is not placed in this system.
+   */
+  private crossStaffCurveOf(gSlur: GraphicalSlur, startEntry: GraphicalStaffEntry): CrossStaffCurve {
+    const slur: Slur = gSlur.slur;
+    const start: GraphicalNote = this.rules.GNote(slur.StartNote);
+    const end: GraphicalNote = slur.EndNote ? this.rules.GNote(slur.EndNote) : undefined;
+    const startLine: StaffLine = startEntry.parentMeasure.ParentStaffLine;
+    const endLine: StaffLine = end?.parentVoiceEntry?.parentStaffEntry?.parentMeasure?.ParentStaffLine;
+    if (!start || !end || !startLine || !endLine || startLine === endLine ||
+        startLine.ParentMusicSystem !== endLine.ParentMusicSystem) {
+      return undefined;
+    }
+    const from: number = slur.StartNote.SourceMeasure.measureListIndex;
+    const to: number = slur.EndNote.SourceMeasure.measureListIndex;
+    const participants: GraphicalMeasure[] = [];
+    for (const line of [startLine, endLine]) {
+      for (const measure of line.Measures) {
+        const index: number = measure.parentSourceMeasure?.measureListIndex;
+        if (index !== undefined && index >= from && index <= to) {
+          participants.push(measure);
+        }
+      }
+    }
+    const curve: CrossStaffCurve = CrossStaffCurve.slur(gSlur, start, end, participants);
+    for (const measure of participants) {
+      (measure as VexFlowMeasure).crossStaffCurves?.push(curve);
+    }
+    gSlur.crossStaffCurve = curve;
+    return curve;
+  }
+
+  /** Forgets the curves between staves of the last layout: the measures are kept from one layout to the next. */
+  protected clearCrossStaffCurves(): void {
+    for (const measures of this.graphicalMusicSheet.MeasureList) {
+      for (const measure of measures) {
+        if (measure instanceof VexFlowMeasure) {
+          measure.crossStaffCurves = [];
+        }
+      }
+    }
+  }
+
+  /** A slur's curve between two staves is calculated with the staves' preliminary distance to reserve its outer sides
+   *  (over the upper staff, under the lower one) before the expressions are placed; the drawer calculates it again
+   *  between the placed staves (CrossStaffCurve). */
+  protected reserveCrossStaffCurves(): void {
+    for (const musicSystem of this.musicSystems) {
+      const geometry: CrossStaffCurveLayoutGeometry = new CrossStaffCurveLayoutGeometry(musicSystem.PositionAndShape);
+      for (const staffLine of musicSystem.StaffLines) {
+        for (const gSlur of staffLine.GraphicalSlurs) {
+          const curve: CrossStaffCurve = gSlur.crossStaffCurve;
+          if (curve && curve.calculate(this.rules, geometry)) {
+            curve.reserveOuterSides(this.rules, geometry);
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -4067,8 +4126,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
                         // would never be closed by the per-staff open/close mechanism below - which would leave
                         // it open and spawn phantom continuation slurs on every following staffline. Keep it out
                         // of openGraphicalSlurs; its curve is calculated separately at draw time (spanning both
-                        // stafflines). It still needs a staffEntry for GraphicalSlur.Compare's sorting.
+                        // stafflines, CrossStaffCurve). It still needs a staffEntry for GraphicalSlur.Compare's sorting.
                         gSlur.staffEntries = [graphicalStaffEntry];
+                        this.crossStaffCurveOf(gSlur, graphicalStaffEntry);
                       } else {
                         openGraphicalSlurs.push(gSlur);
                       }
@@ -4150,7 +4210,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         // Sort all gSlurs in the staffline using the Compare function in class GraphicalSlurSorter
         const sortedGSlurs: GraphicalSlur[] = staffLine.GraphicalSlurs.sort(GraphicalSlur.Compare);
         for (const gSlur of sortedGSlurs) {
-            // crossed slurs will be handled later (unless drawn as a piece on each staff):
+            // crossed slurs will be handled later (unless drawn as a piece on each staff): see reserveCrossStaffCurves()
             if (gSlur.slur.isCrossed() && !gSlur.isCrossStaffPiece) {
                 continue;
             }

@@ -178,6 +178,12 @@ export abstract class StaffLine extends GraphicalObject {
         return this.skyBottomLine.BottomLine;
     }
 
+    /** The sky and bottom line of the notes, before the expressions (dynamics, words, pedals) were placed: saved by
+     *  MusicSheetCalculator.saveSkyBottomLinesBeforeExpressions() for the curves between staves calculated after the
+     *  layout (CrossStaffCurve), which go over (under) the notes, not the expressions. */
+    public NotesSkyLine: number[];
+    public NotesBottomLine: number[];
+
     public get OctaveShifts(): GraphicalOctaveShift[] {
         return this.octaveShifts;
     }

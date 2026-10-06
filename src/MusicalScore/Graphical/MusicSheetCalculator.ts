@@ -1373,8 +1373,22 @@ export abstract class MusicSheetCalculator {
             for (const staffLine of musicSystem.StaffLines) {
                 const calculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
                 this.skyBottomLinesBeforeExpressions.set(staffLine, [calculator.SkyLine.slice(), calculator.BottomLine.slice()]);
+                staffLine.NotesSkyLine = calculator.SkyLine.slice();
+                staffLine.NotesBottomLine = calculator.BottomLine.slice();
             }
         }
+        this.reserveCrossStaffCurves();
+    }
+
+    /** Reserves the outer sides of the curves between staves in the sky and bottom lines, after the notes' lines are
+     *  saved (see VexFlowMusicSheetCalculator). */
+    protected reserveCrossStaffCurves(): void {
+        // implemented by VexFlowMusicSheetCalculator
+    }
+
+    /** Forgets the curves between staves of the last layout (see VexFlowMusicSheetCalculator). */
+    protected clearCrossStaffCurves(): void {
+        // implemented by VexFlowMusicSheetCalculator
     }
 
     /**
@@ -1618,6 +1632,7 @@ export abstract class MusicSheetCalculator {
             this.optimizeRestPlacement();
             // possible Displacement of RestNotes
             this.calculateStaffEntryArticulationMarks();
+            this.clearCrossStaffCurves();
             if (this.rules.RenderSlurs) { // technically we should separate slurs and ties, but shouldn't be relevant for now
                 // calculate Ties
                 this.calculateTieCurves();
@@ -1908,6 +1923,7 @@ export abstract class MusicSheetCalculator {
         if (!this.leadSheet) {
             await step(() => this.optimizeRestPlacement());
             await step(() => this.calculateStaffEntryArticulationMarks());
+            this.clearCrossStaffCurves();
             if (this.rules.RenderSlurs) {
                 await step(() => this.calculateTieCurves());
             }
