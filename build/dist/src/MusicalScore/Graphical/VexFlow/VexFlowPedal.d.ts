@@ -32,6 +32,9 @@ export declare class VexFlowPedal extends GraphicalPedal {
     /** VexFlow px from the start note's x to the depress when the start falls between two staff entries (interpolated
      *  by time); undefined = at the start note. */
     DepressXOffset: number;
+    /** A release at the stave end drawn at ReleaseXOffset instead of right-aligned before the barline: its Ped. on the
+     *  last notes left no room there. */
+    ReleaseAfterDepress: boolean;
     private line;
     EndSymbolPositionAndShape: BoundingBox;
     /**

@@ -198,9 +198,19 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     private interpolatedPedalReleaseXOffset;
     /** The Ped. of a symbol pedal stays a text margin right of the * of the previous pedal on the staff line (an x rule,
      *  not a skyline one): a release and the next depress close together in time would otherwise be drawn over each
-     *  other. A change already keeps its own gap; a release at the stave end, a hidden release or a release in the
-     *  previous measure needs none. */
+     *  other. Without a drawn * (a hidden release: the next Ped. retakes it, Gluck, Tu lo sai m31), right of the previous
+     *  Ped. in the same measure; after a * moved past the barline (ReleaseAfterDepress), right of its overhang. A change
+     *  already keeps its own gap; a release at the stave end or a release in the previous measure needs none. */
     private keepPedalDepressRightOfPreviousRelease;
+    /** The * of a short pedal stays a text margin right of its own Ped. (an x rule like the one above): the Ped. is drawn
+     *  at the start note and the * at the end note, or right-aligned before the barline for a release at the stave end,
+     *  so a release one note later or a Ped. on the last note was drawn over the Ped. (Schumann, Myrthen 24 m14). Only
+     *  within one measure, as above; a change keeps its own place. Same as osmd-dart. */
+    private keepPedalReleaseRightOfItsDepress;
+    /** Where the Ped. glyph of a symbol pedal starts (drawn 10px left of its x, a change CHANGE_GAP right of it). */
+    private static pedalDepressLeft;
+    private static pedalDepressGlyphWidth;
+    private static pedalReleaseGlyphWidth;
     /** OSMD-unit x where the release mark of a symbol pedal (its *) starts: the interpolated release, the stave end,
      *  or the end note. */
     /** The x of a box in a staffline (its relative positions up to the staffline), whatever its absolute position was last
@@ -212,6 +222,9 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     protected calculateSinglePedal(sourceMeasure: SourceMeasure, multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
     protected calculateSingleWavyLine(sourceMeasure: SourceMeasure, multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
     private calculateWavyLineSkyBottomLine;
+    /** A staff line's bottom line as it was before its first pedal mark, by the bottom line array (a new layout makes a
+     *  new one). */
+    private static bottomLineBeforePedals;
     private calculatePedalSkyBottomLine;
     private calculateOctaveShiftSkyBottomLine;
     /**

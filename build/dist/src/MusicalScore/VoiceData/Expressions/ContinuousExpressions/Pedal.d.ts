@@ -8,6 +8,9 @@ export declare class Pedal {
     ParentEndMultiExpression: MultiExpression;
     ChangeEnd: boolean;
     ChangeBegin: boolean;
+    /** Whether the stop has sign="no": the pedal is released without a release sign (*), e.g. retaken by the next Ped.
+     *  alone */
+    ReleaseHidden: boolean;
     /** Whether the pedal ends at the stave end (and not before the endNote) */
     EndsStave: boolean;
     /** Whether the pedal begins at the stave beginning (and not before the startNote - e.g. for whole measure rest) */
