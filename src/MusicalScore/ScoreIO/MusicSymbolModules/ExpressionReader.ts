@@ -1308,6 +1308,8 @@ export class ExpressionReader {
             this.openContinuousDynamicExpressions.push(continuousDynamicExpression);
             continuousDynamicExpression.StartMultiExpression = this.getMultiExpression;
             this.getMultiExpression.addExpression(continuousDynamicExpression, prefix);
+            // a verbal dynamic is a text too: "cres. - - - -" (Parisotti, Selve amiche m26 "cres. - - assai")
+            this.addWordExpressionForDashes(continuousDynamicExpression, inSourceMeasureCurrentFraction);
             return true;
         }
         if (MoodExpression.isInputStringMood(stringTrimmed)) {
@@ -1427,7 +1429,7 @@ export class ExpressionReader {
             if (dashes.expression) {
                 this.finishDashesIfComplete(dashes);
             } else {
-                this.openDashes.splice(this.openDashes.indexOf(dashes), 1); // e.g. dashes after "cresc."
+                this.openDashes.splice(this.openDashes.indexOf(dashes), 1); // no text before them in their measure
             }
         }
         this.dashesMeasure = measure;
