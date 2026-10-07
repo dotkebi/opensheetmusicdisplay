@@ -1821,10 +1821,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       const bounds: IMetronomeBounds = placement.bounds;
       let offset: number = 0;
       // Moving only upwards allows one bottom-to-top pass, including earlier marks.
-      // Only an actual overlap moves the mark; the padding applies to the resolved position.
+      // A mark that is not completely above a tempo text or an earlier mark beside it moves above it, also when
+      //   it was below it: marks go above the tempo words. The padding applies to the resolved position.
       for (const obstacle of occupied) {
         if (bounds.left < obstacle.right && bounds.right > obstacle.left &&
-            bounds.bottom + offset > obstacle.top && bounds.top + offset < obstacle.bottom) {
+            bounds.bottom + offset > obstacle.top) {
           offset = obstacle.top - padding - bounds.bottom;
         }
       }
@@ -1837,10 +1838,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         insertionIndex++;
       }
       occupied.splice(insertionIndex, 0, bounds);
-      // A mark left at its existing position keeps the existing reservation; others reserve their drawing.
+      // A mark left at its existing position keeps the existing reservation; others reserve their drawing and
+      //   TempoYSpacing above it, so that what is placed above later (e.g. the lyricist) keeps that distance.
       if (!placement.existingPosition || offset !== 0) {
         staffLine.SkyBottomLineCalculator.updateSkyLineInRange(
-          bounds.left / unitInPixels, bounds.right / unitInPixels, bounds.top / unitInPixels);
+          bounds.left / unitInPixels, bounds.right / unitInPixels, bounds.top / unitInPixels - this.rules.TempoYSpacing);
       }
     }
   }

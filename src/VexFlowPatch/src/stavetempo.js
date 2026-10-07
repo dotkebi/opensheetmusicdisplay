@@ -79,7 +79,7 @@ export class StaveTempo extends StaveModifier {
           x += wordSpace;
         }
         const closing = name && i === marks.length - 1 ? ')' : '';
-        x = this.drawSimpleMark(ctx, x, y, scale, marks[i], closing);
+        x = this.drawSimpleMark(ctx, x, y, scale, marks[i], closing, wordSpace);
       }
     }
 
@@ -89,7 +89,7 @@ export class StaveTempo extends StaveModifier {
   }
 
   /** Draw note = bpm and return the x after it. (VexFlowPatch: split out of draw() for following marks) */
-  drawSimpleMark(ctx, x, y, scale, mark, closing) {
+  drawSimpleMark(ctx, x, y, scale, mark, closing, wordSpace) {
     const options = this.render_options;
     const duration = mark.duration;
     const dots = mark.dots;
@@ -132,7 +132,8 @@ export class StaveTempo extends StaveModifier {
     // VexFlowPatch: keep the leading space, which SVG strips by default (only SVG returns a group)
     bpmGroup?.lastChild.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
     ctx.closeGroup();
-    return x + 3 * scale + ctx.measureText(text).width;
+    // The text is drawn with its leading space, which measureText() leaves out in SVG: add the word space instead.
+    return x + 3 * scale + wordSpace + ctx.measureText(text.substring(1)).width;
   }
 
   /**

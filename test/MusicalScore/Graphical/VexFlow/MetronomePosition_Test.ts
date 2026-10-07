@@ -122,8 +122,9 @@ describe("Metronome position rendering", (): void => {
         await osmd.load(score(bpm(80) + bpm(96) + bpm(80, "half") +
             bpm(80, "quarter", "<beat-unit-dot/>") + note("C", 4, "whole")));
         osmd.render();
-        const boxes: DOMRect[] = marks();
-        expect(boxes.length).to.equal(4);
+        const boxes: DOMRect[] = Array.from(div.querySelectorAll<SVGGraphicsElement>(".vf-bpm"))
+            .map((element: SVGGraphicsElement): DOMRect => inkBox(element));
+        expect(boxes.length, "all four printed alternatives retained on one line").to.equal(4);
         for (let i: number = 0; i < boxes.length; i++) {
             for (let j: number = i + 1; j < boxes.length; j++) {
                 expect(separate(boxes[i], boxes[j])).to.equal(true);
