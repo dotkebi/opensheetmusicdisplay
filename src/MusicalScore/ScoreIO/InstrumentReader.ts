@@ -386,7 +386,9 @@ export class InstrumentReader {
             const ornamentsNode: IXmlElement = notationsNode.element("ornaments");
             if (ornamentsNode) {
               tremoloInfo = this.getTremoloInfo(ornamentsNode);
-              this.getWavyLines(ornamentsNode, xmlNode, currentFraction, previousFraction);
+              // a chord note's time is its chord's (currentFraction is already past it): a wavy line started on a
+              //   chord note other than the first (Legrenzi, Che fiero costume m16: the trill's F#5 over D5) starts there
+              this.getWavyLines(ornamentsNode, xmlNode, isChord ? previousFraction : currentFraction, previousFraction);
             }
           }
 
