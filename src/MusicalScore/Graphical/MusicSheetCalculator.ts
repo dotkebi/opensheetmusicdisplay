@@ -2477,10 +2477,14 @@ export abstract class MusicSheetCalculator {
             endAbsoluteTimestamp, staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0,
             useStaffEntryBorderLeft);
 
-        // The drawn end goes towards the stop as written. The end note's start plus the longest note of the staff there is the stop
-        // only in one voice (see ContinuousDynamicExpression.StopTimestamp).
+        // The drawn end goes towards the stop as written, if a note of the staff follows it in the measure. The end note's start plus
+        // the longest note of the staff there is the stop only in one voice (see ContinuousDynamicExpression.StopTimestamp); a stop
+        // after the last note keeps it (the end of the measure), and so does a staff without notes there, whose position at the
+        // stop would be the start of the measure.
         const stopTimestamp: Fraction = graphicalContinuousDynamic.ContinuousDynamic.StopTimestamp;
-        const beginOfNextNote: Fraction = stopTimestamp ?
+        const stopBeforeNote: boolean = stopTimestamp !== undefined &&
+            endMeasure.staffEntries.some(se => !se.relInMeasureTimestamp.lt(stopTimestamp));
+        const beginOfNextNote: Fraction = stopBeforeNote ?
             Fraction.plus(graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.SourceMeasureParent.AbsoluteTimestamp, stopTimestamp) :
             Fraction.plus(endAbsoluteTimestamp, maxNoteLength);
         const placementFraction: Fraction = beginOfNextNote.clone();

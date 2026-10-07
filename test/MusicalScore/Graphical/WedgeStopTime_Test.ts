@@ -17,6 +17,8 @@ import { TestUtils } from "../../Util/TestUtils";
  *   Deh più a me non v'ascondete m4: a dotted half rest in voice 2 drew the crescendo to the end of the measure, and the
  *   diminuendo starting at its stop was stacked below it; m7 without the diminuendo);
  * - a start with a negative <offset> starts between the notes (Legrenzi m12);
+ * - a wedge written for a staff without notes in the measure still ends at the measure's end (Schumann, Myrthen 7 m7: the
+ *   crescendo of the empty right hand over the left-hand chords was drawn 3 spaces long);
  * - a wedge in one measure gets WedgeMinReservedLength from its start to its stop by widening the measure: in a tight measure
  *   the one over a dotted quarter was a short ">" over the accent (Gluck m6).
  * Same as osmd-dart test/wedge_stop_time_test.dart.
@@ -104,14 +106,14 @@ describe("Wedge stops and drawn wedge ends", () => {
 </score-partwise>`;
     /* eslint-enable max-len */
 
-    function render(width: number = 1600, reservedLength: number = undefined): Promise<OpenSheetMusicDisplay> {
+    function render(width: number = 1600, reservedLength: number = undefined, source: string = xml): Promise<OpenSheetMusicDisplay> {
         const div: HTMLElement = TestUtils.getDivElement(document);
         div.style.width = `${width}px`;
         const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
         if (reservedLength !== undefined) {
             osmd.EngravingRules.WedgeMinReservedLength = reservedLength;
         }
-        return osmd.load(xml).then(() => {
+        return osmd.load(source).then(() => {
             osmd.render();
             return osmd;
         });
@@ -229,5 +231,28 @@ describe("Wedge stops and drawn wedge ends", () => {
         expect(length(reserved)).to.be.greaterThan(reservedLength - 0.7);
         const unreserved: OpenSheetMusicDisplay = await render(1000, 0);
         expect(length(unreserved)).to.be.lessThan(length(reserved) - 0.2);
+    });
+
+    it("ends a wedge on a staff without notes at the measure end", async () => {
+        const chord: (staff: number) => string = staff => `<note><pitch><step>C</step><octave>${staff === 1 ? 5 : 3}</octave></pitch>` +
+            `<duration>2</duration><voice>${staff === 1 ? 1 : 5}</voice><type>quarter</type><staff>${staff}</staff></note>`;
+        const rest: (staff: number) => string = staff => "<note><rest measure=\"yes\"/><duration>8</duration>" +
+            `<voice>${staff === 1 ? 1 : 5}</voice><staff>${staff}</staff></note>`;
+        const wedgeXml: (type: string) => string = type =>
+            `<direction placement="below"><direction-type><wedge type="${type}" number="1"/></direction-type><staff>1</staff></direction>`;
+        const source: string = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\"><part-list>" +
+            "<score-part id=\"P1\"><part-name>Piano</part-name></score-part></part-list><part id=\"P1\"><measure number=\"1\">" +
+            "<attributes><divisions>2</divisions><staves>2</staves><time><beats>4</beats><beat-type>4</beat-type></time>" +
+            "<clef number=\"1\"><sign>G</sign><line>2</line></clef><clef number=\"2\"><sign>F</sign><line>4</line></clef></attributes>" +
+            `${chord(1)}${chord(1)}${chord(1)}${chord(1)}<backup><duration>8</duration></backup>${rest(2)}</measure>` +
+            `<measure number="2">${wedgeXml("crescendo")}${chord(2)}${chord(2)}${chord(2)}${wedgeXml("stop")}${chord(2)}</measure>` +
+            `<measure number="3">${chord(2)}${chord(2)}${chord(2)}${chord(2)}</measure>` +
+            `<measure number="4">${rest(1)}<backup><duration>8</duration></backup>${rest(2)}</measure></part></score-partwise>`;
+        const osmd: OpenSheetMusicDisplay = await render(1600, undefined, source);
+        const all: GraphicalContinuousDynamicExpression[] = wedges(osmd);
+        expect(all.length).to.equal(1);
+        const m: GraphicalMeasure = measure(osmd, 2);
+        const measureEnd: number = m.PositionAndShape.RelativePosition.x + m.PositionAndShape.Size.width;
+        expect(right(all[0])).to.be.closeTo(measureEnd - osmd.EngravingRules.WedgeHorizontalMargin, 0.1);
     });
 });
