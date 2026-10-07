@@ -19,6 +19,7 @@ import {OutlineAndFillStyleEnum, OUTLINE_AND_FILL_STYLE_DICT} from "../DrawingEn
 import log from "loglevel";
 import { ArticulationEnum, StemDirectionType, VoiceEntry } from "../../VoiceData/VoiceEntry";
 import { BreathMarkValue } from "../../VoiceData/Articulation";
+import { Voice } from "../../VoiceData/Voice";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { SystemLinePosition } from "../SystemLinePosition";
 import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
@@ -900,6 +901,21 @@ export class VexFlowConverter {
         return vfnote;
     }
 
+    /** Whether another voice has a visible note (or rest) on the note's staff in its measure. */
+    public static hasOtherVoiceInMeasure(gNote: GraphicalNote): boolean {
+        const voice: Voice = gNote.sourceNote.ParentVoiceEntry.ParentVoice;
+        const measure: GraphicalMeasure = gNote.parentVoiceEntry?.parentStaffEntry?.parentMeasure;
+        for (const staffEntry of measure?.staffEntries ?? []) {
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                if (gve.parentVoiceEntry.ParentVoice !== voice && !gve.parentVoiceEntry.IsGrace &&
+                    gve.notes.some((note) => note.sourceNote.PrintObject)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public static generateArticulations(vfnote: VF.StemmableNote, gNote: GraphicalNote,
                                         rules: EngravingRules): void {
         if (!vfnote || vfnote.getAttribute("type") === "GhostNote") {
@@ -931,6 +947,11 @@ export class VexFlowConverter {
                     // this "piano left hand check" could be extended to also match old scores using 1 instrument per hand,
                     //   but this can get complicated especially if there's also e.g. a voice instrument above. (e.g. Schubert An die Musik)
                 }
+            }
+            // two voices on the staff: outside, on the voice's stem side (the upper voice's above, the lower voice's
+            //   below), not on the notehead side between the voices (Caccini, Amarilli, Schirmer, piano m4, m11-12)
+            if (VexFlowConverter.hasOtherVoiceInMeasure(gNote)) {
+                vfArtPosition = vfnote.getStemDirection() === VF.Stem.UP ? VF.Modifier.Position.ABOVE : VF.Modifier.Position.BELOW;
             }
             let vfArt: VF.Articulation = undefined;
             const articulationEnum: ArticulationEnum = articulation.articulationEnum;

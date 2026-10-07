@@ -6,10 +6,11 @@ import Vex from "vexflow";
 import VF = Vex.Flow;
 
 /**
- * The accent of a lower voice is drawn on its notehead side (above a down stem). When another voice's notes are there,
- * it goes above them and their stem (Schumann, Myrthen 11 m12, left hand: the accent of F#3 was drawn inside the upper
- * voice's chord A3-F#4). And the accent at the start of a slur below no longer moves down when it is above the note
- * (it was pushed further into the chord). Same as osmd-dart test/accent_other_voices_test.dart.
+ * The accent of a lower voice placed above (placement="above": without one, two voices put it on its stem side, below,
+ * see ArticulationVoicesOutside_Test). When another voice's notes are there, it goes above them and their stem
+ * (Schumann, Myrthen 11 m12, left hand: the accent of F#3 was drawn inside the upper voice's chord A3-F#4). And the
+ * accent at the start of a slur below no longer moves down when it is above the note (it was pushed further into the
+ * chord). Same as osmd-dart test/accent_other_voices_test.dart.
  */
 describe("Accent clear of the other voices", () => {
     function score(lowerVoice: string, upper: string): string {
@@ -22,7 +23,8 @@ describe("Accent clear of the other voices", () => {
     // 11 m12, left hand: voice 5 F#3 (down stem, accent, slur below to B2), voice 6 the chord A3 B3 D#4 F#4 (up stem)
     const lower: string =
         "<note><pitch><step>F</step><alter>1</alter><octave>3</octave></pitch><duration>3</duration><voice>5</voice><type>quarter</type>" +
-        "<dot/><stem>down</stem><notations><articulations><accent/></articulations><slur type=\"start\" number=\"1\" placement=\"below\"/>" +
+        "<dot/><stem>down</stem><notations><articulations><accent placement=\"above\"/></articulations>" +
+        "<slur type=\"start\" number=\"1\" placement=\"below\"/>" +
         "</notations></note>" +
         "<note><pitch><step>B</step><octave>2</octave></pitch><duration>1</duration><voice>5</voice><type>eighth</type><stem>down</stem>" +
         "<notations><slur type=\"stop\" number=\"1\"/></notations></note>";
