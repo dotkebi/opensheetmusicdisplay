@@ -5,6 +5,8 @@ import { RectangleF2D } from "../../../Common/DataObjects/RectangleF2D";
 import { VexFlowMeasure } from "./VexFlowMeasure";
 import { CrossStaffBeam } from "./CrossStaffBeam";
 import { CrossStaffCurve, CrossStaffCurveDrawGeometry } from "./CrossStaffCurve";
+import { ClearanceBox, CrossStaffExpressionClearance } from "./CrossStaffExpressionClearance";
+import { AbstractGraphicalExpression } from "../AbstractGraphicalExpression";
 import { PointF2D } from "../../../Common/DataObjects/PointF2D";
 import { GraphicalLabel } from "../GraphicalLabel";
 import { VexFlowTextMeasurer } from "./VexFlowTextMeasurer";
@@ -96,6 +98,9 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         this.backend = this.backends[0];
         this.drawnCrossStaffBeams.clear();
         this.drawnCrossStaffCurves.clear();
+        this.calculatedCrossStaffCurves.clear();
+        this.crossStaffClearances.clear();
+        this.crossStaffExpressionOffsets.clear();
         super.drawSheet(graphicalMusicSheet);
     }
 
@@ -148,6 +153,9 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         this.backend = this.backends[0];
         this.drawnCrossStaffBeams.clear();
         this.drawnCrossStaffCurves.clear();
+        this.calculatedCrossStaffCurves.clear();
+        this.crossStaffClearances.clear();
+        this.crossStaffExpressionOffsets.clear();
         await super.drawSheetAsync(graphicalMusicSheet, yielder, onSystemDrawn, maxPageCount);
     }
 
@@ -362,19 +370,208 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             }
             this.drawnCrossStaffCurves.add(curve);
             try {
-                for (const participant of curve.participants as VexFlowMeasure[]) {
-                    if (participant !== measure) {
-                        const position: PointF2D = participant.PositionAndShape.AbsolutePosition;
-                        participant.setAbsoluteCoordinates(position.x * unitInPixels, position.y * unitInPixels);
-                        this.prepareCrossStaffBeams(participant);
-                    }
-                }
-                if (curve.calculate(this.rules, new CrossStaffCurveDrawGeometry(unitInPixels))) {
+                if (this.calculateCrossStaffCurve(curve, measure)) {
                     this.drawCurve(curve);
                 }
             } catch (ex) {
                 log.warn("VexFlowMusicSheetDrawer.drawCrossStaffCurves", ex);
             }
+        }
+    }
+
+    /** The curves between staves calculated in this drawing (true: drawable), once per drawing: when it is drawn, or
+     *  before when a text expression is cleared of it (crossStaffClearanceOf()). */
+    private calculatedCrossStaffCurves: Map<CrossStaffCurve, boolean> = new Map<CrossStaffCurve, boolean>();
+    /** The cross-staff beams' and curves' ink of a system as drawn, built once per drawing for its text expressions
+     *  (undefined: none in the system). */
+    private crossStaffClearances: Map<MusicSystem, CrossStaffExpressionClearance | undefined> =
+        new Map<MusicSystem, CrossStaffExpressionClearance | undefined>();
+    /** The vertical move of a text expression's label off the cross-staff beams and curves, decided once per drawing. */
+    private crossStaffExpressionOffsets: Map<GraphicalLabel, number> = new Map<GraphicalLabel, number>();
+
+    /** The moves of this drawing's text expressions (for tests). */
+    public get CrossStaffExpressionOffsets(): Map<GraphicalLabel, number> {
+        return this.crossStaffExpressionOffsets;
+    }
+
+    /** Calculates the curve between the placed staves once per drawing: its other measures (than the one being drawn)
+     *  at their final positions and their cross-staff beams placed. False: nothing to draw. */
+    private calculateCrossStaffCurve(curve: CrossStaffCurve, measure: VexFlowMeasure | undefined): boolean {
+        const known: boolean | undefined = this.calculatedCrossStaffCurves.get(curve);
+        if (known !== undefined) {
+            return known;
+        }
+        let drawable: boolean = false;
+        try {
+            for (const participant of curve.participants as VexFlowMeasure[]) {
+                if (participant !== measure) {
+                    const position: PointF2D = participant.PositionAndShape.AbsolutePosition;
+                    participant.setAbsoluteCoordinates(position.x * unitInPixels, position.y * unitInPixels);
+                    this.prepareCrossStaffBeams(participant);
+                }
+            }
+            drawable = curve.calculate(this.rules, new CrossStaffCurveDrawGeometry(unitInPixels));
+        } catch (ex) {
+            log.warn("VexFlowMusicSheetDrawer.calculateCrossStaffCurve", ex);
+        }
+        this.calculatedCrossStaffCurves.set(curve, drawable);
+        return drawable;
+    }
+
+    /** The cross-staff beams' and curves' ink of the system as this drawing draws it (the curves not drawn yet are
+     *  calculated now, the beams post-formatted at the staves' final positions), for its text expressions
+     *  (CrossStaffExpressionClearance). Undefined when the system has none. Same as osmd-dart. */
+    private crossStaffClearanceOf(system: MusicSystem): CrossStaffExpressionClearance | undefined {
+        if (this.crossStaffClearances.has(system)) {
+            return this.crossStaffClearances.get(system);
+        }
+        const measures: VexFlowMeasure[] = [];
+        for (const line of system.StaffLines) {
+            for (const measure of line.Measures) {
+                if (measure instanceof VexFlowMeasure) {
+                    measures.push(measure);
+                }
+            }
+        }
+        const curves: Set<CrossStaffCurve> = new Set<CrossStaffCurve>();
+        const beams: Set<CrossStaffBeam> = new Set<CrossStaffBeam>();
+        for (const measure of measures) {
+            (measure.crossStaffCurves ?? []).forEach(curve => curves.add(curve));
+            (measure.crossStaffBeams ?? []).forEach(beam => beams.add(beam));
+        }
+        let clearance: CrossStaffExpressionClearance | undefined;
+        if (curves.size > 0 || beams.size > 0) {
+            try {
+                const drawable: CrossStaffCurve[] = [];
+                for (const curve of curves) {
+                    if ((curve.isTie || this.rules.RenderSlursAcrossStaves) && this.calculateCrossStaffCurve(curve, undefined)) {
+                        drawable.push(curve);
+                    }
+                }
+                for (const measure of measures) {
+                    if (measure.crossStaffBeams?.length > 0) {
+                        this.prepareCrossStaffBeams(measure);
+                    }
+                }
+                clearance = CrossStaffExpressionClearance.build(drawable, beams, system.StaffLines, this.rules.SamplingUnit, unitInPixels);
+                if (clearance.isEmpty) {
+                    clearance = undefined;
+                }
+            } catch (ex) {
+                log.warn("VexFlowMusicSheetDrawer.crossStaffClearanceOf", ex);
+                clearance = undefined;
+            }
+        }
+        this.crossStaffClearances.set(system, clearance);
+        return clearance;
+    }
+
+    /** The box of the label as drawn (its move applied when decided). */
+    private drawnBoxOf(label: GraphicalLabel): ClearanceBox {
+        const box: any = label.PositionAndShape;
+        const dy: number = this.crossStaffExpressionOffsets.get(label) ?? 0;
+        return new ClearanceBox(box.AbsolutePosition.x + box.BorderLeft, box.AbsolutePosition.y + box.BorderTop + dy,
+                                box.AbsolutePosition.x + box.BorderRight, box.AbsolutePosition.y + box.BorderBottom + dy);
+    }
+
+    private static boxOf(box: any): ClearanceBox {
+        return new ClearanceBox(box.AbsolutePosition.x + box.BorderLeft, box.AbsolutePosition.y + box.BorderTop,
+                                box.AbsolutePosition.x + box.BorderRight, box.AbsolutePosition.y + box.BorderBottom);
+    }
+
+    /** The label of a text expression the drawer clears of the cross-staff beams and curves (dynamics, verbal dynamics,
+     *  words, tempo texts; not a text followed by dashes, whose dashes would stay behind), else undefined. */
+    private static clearableLabelOf(e: AbstractGraphicalExpression): GraphicalLabel | undefined {
+        let label: GraphicalLabel | undefined;
+        if (e instanceof GraphicalInstantaneousDynamicExpression) {
+            label = e.Label;
+        } else if (e instanceof GraphicalInstantaneousTempoExpression) {
+            label = e.GraphicalLabel;
+        } else if (e instanceof GraphicalContinuousDynamicExpression) {
+            label = e.IsVerbal ? e.Label : undefined;
+        } else if (e instanceof GraphicalUnknownExpression) {
+            label = e.Label;
+        }
+        if (!label || e.ParentStaffLine.ExpressionDashes.some(dashes => dashes.Expression === e.SourceExpression)) {
+            return undefined;
+        }
+        return label;
+    }
+
+    /** The boxes in the system a moved text must not overlap: the other text expressions (as drawn), the wedges, lyrics,
+     *  pedals and octave shifts. */
+    private otherBoxesOf(system: MusicSystem, self: GraphicalLabel): ClearanceBox[] {
+        const boxes: ClearanceBox[] = [];
+        for (const staffLine of system.StaffLines) {
+            const origin: PointF2D = staffLine.PositionAndShape.AbsolutePosition;
+            for (const e of staffLine.AbstractExpressions) {
+                if (e instanceof GraphicalContinuousDynamicExpression && !e.IsVerbal) {
+                    for (const l of e.Lines) {
+                        boxes.push(new ClearanceBox(origin.x + Math.min(l.Start.x, l.End.x), origin.y + Math.min(l.Start.y, l.End.y) - 0.05,
+                                                    origin.x + Math.max(l.Start.x, l.End.x), origin.y + Math.max(l.Start.y, l.End.y) + 0.05));
+                    }
+                    continue;
+                }
+                const label: GraphicalLabel = e instanceof GraphicalInstantaneousTempoExpression ? e.GraphicalLabel : e.Label;
+                if (!label || label === self || !label.Label?.text?.trim()) {
+                    continue;
+                }
+                boxes.push(this.drawnBoxOf(label));
+            }
+            for (const measure of staffLine.Measures) {
+                for (const staffEntry of measure.staffEntries) {
+                    for (const lyric of staffEntry.LyricsEntries) {
+                        boxes.push(VexFlowMusicSheetDrawer.boxOf(lyric.GraphicalLabel.PositionAndShape));
+                    }
+                }
+            }
+            for (const pedal of staffLine.Pedals ?? []) {
+                boxes.push(VexFlowMusicSheetDrawer.boxOf(pedal.PositionAndShape));
+            }
+            for (const shift of staffLine.OctaveShifts ?? []) {
+                boxes.push(VexFlowMusicSheetDrawer.boxOf(shift.PositionAndShape));
+            }
+        }
+        return boxes;
+    }
+
+    /** The vertical move this drawing gives the expression's label off the cross-staff beams and curves of its system
+     *  (0: none). */
+    private crossStaffOffsetOf(expression: AbstractGraphicalExpression, label: GraphicalLabel): number {
+        const known: number | undefined = this.crossStaffExpressionOffsets.get(label);
+        if (known !== undefined) {
+            return known;
+        }
+        let dy: number = 0;
+        if (this.rules.CrossStaffTextClearance && VexFlowMusicSheetDrawer.clearableLabelOf(expression) === label) {
+            const staffLine: StaffLine = expression.ParentStaffLine;
+            const system: MusicSystem = staffLine.ParentMusicSystem;
+            const clearance: CrossStaffExpressionClearance | undefined = this.crossStaffClearanceOf(system);
+            if (clearance) {
+                const box: ClearanceBox = this.drawnBoxOf(label);
+                const below: boolean = (box.top + box.bottom) / 2 >
+                    staffLine.PositionAndShape.AbsolutePosition.y + staffLine.StaffHeight / 2;
+                dy = clearance.offset(box, below, this.otherBoxesOf(system, label));
+            }
+        }
+        this.crossStaffExpressionOffsets.set(label, dy);
+        return dy;
+    }
+
+    /** Draws the expression's label by draw(), moved off the cross-staff beams and curves when they lie over it
+     *  (CrossStaffExpressionClearance); the label's layout position is kept. */
+    private drawClearOfCrossStaff<T>(expression: AbstractGraphicalExpression, label: GraphicalLabel, draw: () => T): T {
+        const dy: number = this.crossStaffOffsetOf(expression, label);
+        if (dy === 0) {
+            return draw();
+        }
+        const box: any = label.PositionAndShape;
+        const saved: PointF2D = box.AbsolutePosition;
+        box.AbsolutePosition = new PointF2D(saved.x, saved.y + dy);
+        try {
+            return draw();
+        } finally {
+            box.AbsolutePosition = saved;
         }
     }
 
@@ -1022,7 +1219,8 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         for (const abstractGraphicalExpression of staffline.AbstractExpressions) {
             // Draw InstantaneousDynamics
             if (abstractGraphicalExpression instanceof GraphicalInstantaneousDynamicExpression) {
-                this.drawInstantaneousDynamic((abstractGraphicalExpression as VexFlowInstantaneousDynamicExpression));
+                this.drawClearOfCrossStaff(abstractGraphicalExpression, abstractGraphicalExpression.Label,
+                                           () => this.drawInstantaneousDynamic((abstractGraphicalExpression as VexFlowInstantaneousDynamicExpression)));
                 // Draw InstantaneousTempo
             } else if (abstractGraphicalExpression instanceof GraphicalInstantaneousTempoExpression) {
                 if (abstractGraphicalExpression.SourceExpression.parentMeasure?.MeasureNumber <= 1 &&
@@ -1031,10 +1229,15 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                     continue;
                 }
                 const label: GraphicalLabel = (abstractGraphicalExpression as GraphicalInstantaneousTempoExpression).GraphicalLabel;
-                label.SVGNode = this.drawLabel(label, GraphicalLayers.Notes);
+                label.SVGNode = this.drawClearOfCrossStaff(abstractGraphicalExpression, label, () => this.drawLabel(label, GraphicalLayers.Notes));
                 // Draw ContinuousDynamics
             } else if (abstractGraphicalExpression instanceof GraphicalContinuousDynamicExpression) {
-                this.drawContinuousDynamic((abstractGraphicalExpression as VexFlowContinuousDynamicExpression));
+                if (abstractGraphicalExpression.IsVerbal) {
+                    this.drawClearOfCrossStaff(abstractGraphicalExpression, abstractGraphicalExpression.Label,
+                                               () => this.drawContinuousDynamic((abstractGraphicalExpression as VexFlowContinuousDynamicExpression)));
+                } else {
+                    this.drawContinuousDynamic((abstractGraphicalExpression as VexFlowContinuousDynamicExpression));
+                }
                 // Draw ContinuousTempo
                 // } else if (abstractGraphicalExpression instanceof GraphicalContinuousTempoExpression) {
                 //     this.drawLabel((abstractGraphicalExpression as GraphicalContinuousTempoExpression).GraphicalLabel, GraphicalLayers.Notes);
@@ -1045,7 +1248,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             // Draw Unknown
             } else if (abstractGraphicalExpression instanceof GraphicalUnknownExpression) {
                 const label: GraphicalLabel = abstractGraphicalExpression.Label;
-                label.SVGNode = this.drawLabel(label, <number>GraphicalLayers.Notes);
+                label.SVGNode = this.drawClearOfCrossStaff(abstractGraphicalExpression, label, () => this.drawLabel(label, <number>GraphicalLayers.Notes));
             } else {
                 log.warn("Unkown type of expression!");
             }
