@@ -1043,6 +1043,11 @@ export abstract class MusicSheetCalculator {
                     lyricEntry.ParentLyricWord.GraphicalLyricsEntries[lyricEntry.ParentLyricWord.GraphicalLyricsEntries.length - 1] !== lyricEntry) {
                     this.calculateSingleLyricWord(lyricEntry);
                 }
+                // and of the word begun by the second syllable of its elision ("ve a-mi-che": the dash to "mi")
+                if (lyricEntry.NextLyricWord &&
+                    lyricEntry.NextLyricWord.GraphicalLyricsEntries[lyricEntry.NextLyricWord.GraphicalLyricsEntries.length - 1] !== lyricEntry) {
+                    this.calculateSingleLyricWord(lyricEntry, lyricEntry.NextLyricWord);
+                }
                 // calculate the underscore line extend if needed
                 if (lyricEntry.LyricsEntry.extend) {
                     this.calculateLyricExtend(lyricEntry);
@@ -4971,9 +4976,8 @@ export abstract class MusicSheetCalculator {
      * This method calculates the dashes within the syllables of a LyricWord
      * @param lyricEntry
      */
-    private calculateSingleLyricWord(lyricEntry: GraphicalLyricEntry): void {
+    private calculateSingleLyricWord(lyricEntry: GraphicalLyricEntry, graphicalLyricWord: GraphicalLyricWord = lyricEntry.ParentLyricWord): void {
         // const skyBottomLineCalculator: SkyBottomLineCalculator = new SkyBottomLineCalculator (this.rules);
-        const graphicalLyricWord: GraphicalLyricWord = lyricEntry.ParentLyricWord;
         const index: number = graphicalLyricWord.GraphicalLyricsEntries.indexOf(lyricEntry);
         let nextLyricEntry: GraphicalLyricEntry = undefined;
         if (index >= 0) {

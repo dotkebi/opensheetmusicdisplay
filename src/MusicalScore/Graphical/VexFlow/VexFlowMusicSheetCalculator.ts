@@ -3798,32 +3798,37 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       graphicalLabel.setLabelPositionAndShapeBorders();
 
       if (lyricsEntry.Word) {
-        const lyricsEntryIndex: number = lyricsEntry.Word.Syllables.indexOf(lyricsEntry);
-        let index: number = lyricWords.indexOf(lyricsEntry.Word);
-        if (index === -1) {
-          lyricWords.push(lyricsEntry.Word);
-          index = lyricWords.indexOf(lyricsEntry.Word);
-        }
-
-        if (this.graphicalLyricWords.length === 0 || index > this.graphicalLyricWords.length - 1) {
-          const graphicalLyricWord: GraphicalLyricWord = new GraphicalLyricWord(lyricsEntry.Word);
-
-          graphicalLyricEntry.ParentLyricWord = graphicalLyricWord;
-          graphicalLyricWord.GraphicalLyricsEntries[lyricsEntryIndex] = graphicalLyricEntry;
-          this.graphicalLyricWords.push(graphicalLyricWord);
-        } else {
-          const graphicalLyricWord: GraphicalLyricWord = this.graphicalLyricWords[index];
-
-          graphicalLyricEntry.ParentLyricWord = graphicalLyricWord;
-          graphicalLyricWord.GraphicalLyricsEntries[lyricsEntryIndex] = graphicalLyricEntry;
-
-          if (graphicalLyricWord.isFilled()) {
-            lyricWords.splice(index, 1);
-            this.graphicalLyricWords.splice(this.graphicalLyricWords.indexOf(graphicalLyricWord), 1);
-          }
-        }
+        graphicalLyricEntry.ParentLyricWord = this.registerGraphicalLyricWord(lyricsEntry.Word, graphicalLyricEntry, lyricWords);
+      }
+      if (lyricsEntry.NextWord) { // the word begun by the second syllable of the entry's elision
+        graphicalLyricEntry.NextLyricWord = this.registerGraphicalLyricWord(lyricsEntry.NextWord, graphicalLyricEntry, lyricWords);
       }
     });
+  }
+
+  /** Enters graphicalLyricEntry into the GraphicalLyricWord of word (created when word is new), which is kept in
+   *  this.graphicalLyricWords, in step with the open lyricWords, until every syllable has its graphical entry. */
+  private registerGraphicalLyricWord(word: LyricWord, graphicalLyricEntry: GraphicalLyricEntry, lyricWords: LyricWord[]): GraphicalLyricWord {
+    const lyricsEntryIndex: number = word.Syllables.indexOf(graphicalLyricEntry.LyricsEntry);
+    let index: number = lyricWords.indexOf(word);
+    if (index === -1) {
+      lyricWords.push(word);
+      index = lyricWords.indexOf(word);
+    }
+    let graphicalLyricWord: GraphicalLyricWord;
+    if (this.graphicalLyricWords.length === 0 || index > this.graphicalLyricWords.length - 1) {
+      graphicalLyricWord = new GraphicalLyricWord(word);
+      graphicalLyricWord.GraphicalLyricsEntries[lyricsEntryIndex] = graphicalLyricEntry;
+      this.graphicalLyricWords.push(graphicalLyricWord);
+    } else {
+      graphicalLyricWord = this.graphicalLyricWords[index];
+      graphicalLyricWord.GraphicalLyricsEntries[lyricsEntryIndex] = graphicalLyricEntry;
+      if (graphicalLyricWord.isFilled()) {
+        lyricWords.splice(index, 1);
+        this.graphicalLyricWords.splice(this.graphicalLyricWords.indexOf(graphicalLyricWord), 1);
+      }
+    }
+    return graphicalLyricWord;
   }
 
   protected handleVoiceEntryOrnaments(ornamentContainer: OrnamentContainer, voiceEntry: VoiceEntry, graphicalStaffEntry: GraphicalStaffEntry): void {
