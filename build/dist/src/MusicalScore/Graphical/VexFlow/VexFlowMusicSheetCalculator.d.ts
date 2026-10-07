@@ -120,6 +120,10 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     private expressionSlots;
     /** Dynamic pairs on one side of a staff that start at different timestamps, with the distance the later one must keep from the earlier one. */
     private expressionPairs;
+    /** Each wedge that starts and stops before the last staff entry of the measure, from its start (after a dynamic there, else
+     *  the left border of its note) to its stop (the left border of the note there for a diminuendo, as drawn), with the distance
+     *  WedgeMinReservedLength and the end margin it is drawn with. */
+    private wedgeLengthPairs;
     /** The x of timestamp (relative to its measure) between the measure's staff entries,
      *  as getRelativePositionInStaffLineFromTimestamp() interpolates it. */
     private xAtTimestamp;

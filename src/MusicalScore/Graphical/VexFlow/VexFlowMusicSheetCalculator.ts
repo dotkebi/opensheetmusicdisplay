@@ -52,7 +52,7 @@ import { PointF2D } from "../../../Common/DataObjects/PointF2D";
 import { TextAlignmentEnum, TextAlignment } from "../../../Common/Enums/TextAlignment";
 import { GraphicalSlur } from "../GraphicalSlur";
 import { BoundingBox } from "../BoundingBox";
-import { ContinuousDynamicExpression } from "../../VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
+import { ContDynamicEnum, ContinuousDynamicExpression } from "../../VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
 import { VexFlowContinuousDynamicExpression } from "./VexFlowContinuousDynamicExpression";
 import { GraphicalInstantaneousDynamicExpression } from "../GraphicalInstantaneousDynamicExpression";
 import { GraphicalContinuousDynamicExpression } from "../GraphicalContinuousDynamicExpression";
@@ -94,6 +94,10 @@ import { GraphicalInstantaneousTempoExpression } from "../GraphicalInstantaneous
 interface ExpressionSlot {
   timestamp: number;
   endTimestamp: number;
+  /** a wedge's stop as written (ContinuousDynamicExpression.StopTimestamp) */
+  stopTimestamp?: number;
+  /** a diminuendo ends at the left border of the note after its stop */
+  diminuendo?: boolean;
   below: boolean;
   isLabel: boolean;
   /** label borders relative to the x of timestamp */
@@ -1217,6 +1221,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       return candidateWidth;
     }
     const pairs: ExpressionPair[] = [];
+    const wedgePairs: ExpressionPair[] = [];
     for (let staffIndex: number = 0; staffIndex < measures.length; staffIndex++) {
       const measure: GraphicalMeasure = measures[staffIndex];
       if (!(measure instanceof VexFlowMeasure) || !measure.isVisible() || measure.staffEntries.length === 0) {
@@ -1226,8 +1231,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (slots.filter(slot => slot.isLabel).length > 1) {
         pairs.push(...this.expressionPairs(measure, slots));
       }
+      wedgePairs.push(...this.wedgeLengthPairs(measure, slots));
     }
-    if (pairs.length === 0) {
+    if (pairs.length === 0 && wedgePairs.length === 0) {
       return candidateWidth;
     }
     const pairGrowth: (pair: ExpressionPair) => number = (pair: ExpressionPair): number => {
@@ -1239,7 +1245,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     };
     // The current positions are the tighter ones of calculateMeasureXLayout(): if the dynamics fit there,
     // they fit at candidateWidth, without formatting again.
-    if (pairs.every(pair => pairGrowth(pair) <= 1.0001)) {
+    const fits: (list: ExpressionPair[]) => boolean = (list: ExpressionPair[]): boolean => list.every(pair => pairGrowth(pair) <= 1.0001);
+    if (fits(pairs) && fits(wedgePairs)) {
       return candidateWidth;
     }
     const visible: VexFlowMeasure[] = measures.filter(m => m instanceof VexFlowMeasure && m.isVisible()) as VexFlowMeasure[];
@@ -1257,7 +1264,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     };
     try {
       formatAt(candidateWidth);
-      for (let pass: number = 0; pass < 8; pass++) {
+      for (let pass: number = 0; pass < 8 && pairs.length > 0; pass++) {
         const factor: number = pairs.reduce((growth, pair) => Math.max(growth, pairGrowth(pair)), 1);
         if (factor <= 1.0001) {
           break;
@@ -1270,6 +1277,28 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         }
         candidateWidth = next;
         formatAt(candidateWidth);
+      }
+      // The wedges get the least width they fit in: the note gaps grow faster than the measure, so growing it by the gap's
+      // deficit factor, as for the dynamics above, widened a measure with one short wedge by half.
+      if (!fits(wedgePairs)) {
+        let tight: number = candidateWidth;
+        let wide: number = maxWidth;
+        formatAt(wide);
+        if (fits(wedgePairs)) {
+          for (let pass: number = 0; pass < 8 && wide - tight > 0.05; pass++) {
+            const middle: number = (tight + wide) / 2;
+            formatAt(middle);
+            if (fits(wedgePairs)) {
+              wide = middle;
+            } else {
+              tight = middle;
+            }
+          }
+        } else {
+          log.debug(`measure ${visible[0].MeasureNumber}: wedges still shorter than WedgeMinReservedLength at ${wide.toFixed(2)} ` +
+            "(MaximumDynamicsElongationFactor)");
+        }
+        candidateWidth = wide;
       }
     } finally {
       for (let i: number = 0; i < visible.length; i++) {
@@ -1311,7 +1340,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         } else {
           const end: MultiExpression = continuous.EndMultiExpression;
           if (end && end.SourceMeasureParent === source) {
-            slots.push({ below, endTimestamp: end.Timestamp.RealValue, isLabel: false, left: 0, right: 0, text: "wedge", timestamp });
+            slots.push({ below, diminuendo: continuous.DynamicType === ContDynamicEnum.diminuendo, endTimestamp: end.Timestamp.RealValue,
+              isLabel: false, left: 0, right: 0, stopTimestamp: continuous.StopTimestamp?.RealValue, text: "wedge", timestamp });
           }
         }
       }
@@ -1348,6 +1378,37 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           pairs.push({ earlier, later, measure, need });
         }
       }
+    }
+    return pairs;
+  }
+
+  /** Each wedge that starts and stops before the last staff entry of the measure, from its start (after a dynamic there, else
+   *  the left border of its note) to its stop (the left border of the note there for a diminuendo, as drawn), with the distance
+   *  WedgeMinReservedLength and the end margin it is drawn with. */
+  private wedgeLengthPairs(measure: VexFlowMeasure, slots: ExpressionSlot[]): ExpressionPair[] {
+    const margin: number = this.rules.WedgeHorizontalMargin;
+    const need: number = this.rules.WedgeMinReservedLength + margin;
+    const lastEntry: number = measure.staffEntries.length === 0 ? 0 :
+      measure.staffEntries[measure.staffEntries.length - 1].relInMeasureTimestamp.RealValue;
+    const pairs: ExpressionPair[] = [];
+    for (const wedge of slots.filter(s => !s.isLabel)) {
+      const stop: number = wedge.stopTimestamp;
+      if (stop === undefined || stop <= wedge.timestamp || stop > lastEntry) {
+        continue;
+      }
+      const borderLeftAt: (timestamp: number) => number = (timestamp: number): number =>
+        measure.staffEntries.find(se => se.relInMeasureTimestamp.RealValue === timestamp)?.PositionAndShape.BorderLeft ?? 0;
+      // the wedge starts after a dynamic at its start (startCollideBox)
+      const labels: ExpressionSlot[] = slots.filter(s => s.isLabel && s.below === wedge.below && s.timestamp === wedge.timestamp);
+      const startRight: number = labels.length === 0 ? borderLeftAt(wedge.timestamp) :
+        labels.reduce((r, s) => Math.max(r, s.right + margin), 0);
+      const stopLeft: number = wedge.diminuendo ? borderLeftAt(stop) : 0;
+      pairs.push({
+        earlier: { below: wedge.below, endTimestamp: wedge.timestamp, isLabel: true, left: 0, right: startRight, text: "",
+                   timestamp: wedge.timestamp },
+        later: { below: wedge.below, endTimestamp: stop, isLabel: true, left: stopLeft, right: 0, text: "", timestamp: stop },
+        measure, need,
+      });
     }
     return pairs;
   }

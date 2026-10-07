@@ -152,6 +152,11 @@ export class EngravingRules {
     public WedgeVerticalMargin: number;
     public DistanceOffsetBetweenTwoHorizontallyCrossedWedges: number;
     public WedgeMinLength: number;
+    /** The length a wedge whose start and stop lie in one measure is given by widening the measure (up to
+     *  MaximumDynamicsElongationFactor), from its start (after a dynamic there) to its stop: a wedge over one note in a tight
+     *  measure was drawn as a short ">" like an accent (Gluck, O del mio dolce ardor m6). WedgeMinLength only lengthens the
+     *  drawn wedge. */
+    public WedgeMinReservedLength: number;
     public WedgeEndDistanceBetweenTimestampsFactor: number;
     /** Whether an accent should by default be placed above the note if its note stem is above. Default false (below).
      * Applies to accents (>/^), staccato (.), pizzicato (+), mainly (in our samples)
@@ -864,6 +869,7 @@ export class EngravingRules {
         this.WedgeVerticalMargin = 0.5;
         this.DistanceOffsetBetweenTwoHorizontallyCrossedWedges = 0.3;
         this.WedgeMinLength = 2.0;
+        this.WedgeMinReservedLength = 5.0;
         this.WedgeEndDistanceBetweenTimestampsFactor = 1.75;
         this.ArticulationAboveNoteForStemUp = false;
         this.SoftAccentWedgePadding = 0.4;

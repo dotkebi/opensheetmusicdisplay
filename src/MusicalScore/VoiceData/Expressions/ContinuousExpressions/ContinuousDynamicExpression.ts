@@ -31,6 +31,12 @@ export class ContinuousDynamicExpression extends AbstractExpression {
      *  Kept on the wedge, not on the end MultiExpression, which a stop shares with the start of the next wedge at the same time
      *  and with other stops ending there (Schumann, Myrthen 18 m31: the second crescendo's stop offset lengthened the first). */
     public EndOffsetFraction: Fraction;
+    /** Where the wedge's stop was written (before its <offset>), in the measure of EndMultiExpression; undefined if the wedge
+     *  was closed otherwise. EndMultiExpression is the last note the wedge ends under; the drawn end goes towards this time.
+     *  Without it the drawing took the end note's start plus the longest note of its staff there, which is the stop only while
+     *  one voice sounds: over a dotted half rest in a second voice a crescendo stopping on the third beat ran to the end of the
+     *  measure, under the diminuendo starting there (Bononcini, Deh più a me non v'ascondete, piano m4). */
+    public StopTimestamp: Fraction;
     private startVolume: number;
     private endVolume: number;
     private staffNumber: number;
