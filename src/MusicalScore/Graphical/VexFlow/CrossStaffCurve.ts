@@ -350,7 +350,7 @@ export class CrossStaffCurve {
         //   cross the left hand's other voice)
         if (best && (CrossStaffCurve.isSteep(start, end) ||
                      CrossStaffCurve.besideStem(start, end, true) && !this.placedByXml(rules)) &&
-            CrossStaffCurve.climbsPast(best, start, end)) {
+            CrossStaffCurve.climbsPast(best, start, end, !this.placedByXml(rules) && inner.length === 0)) {
             const steepBelow: boolean = CrossStaffCurve.besideStem(start, end, true) ? end.headY < start.headY : below;
             const steep: SlurFit = fit(steepBelow, true);
             const others: CrossStaffCurveNote[] = steep ? this.notesUnder(geometry, steep.segments) : [];
@@ -450,10 +450,16 @@ export class CrossStaffCurve {
 
     /** Whether the fit climbs past one of its notes: ends at the end of a stem pointing away from the other note (an
      *  upper note's up stem, a lower note's down stem), runs through its notehead (a tenth of a space in), or ends
-     *  beyond its notehead's centre line, away from the other note, after passing beside the notehead (within
-     *  ObstacleClearance of it) on the other note's side (Myrthen 17 m3: up along the down stem of the right hand's
-     *  lower voice to the top of its notehead). */
-    private static climbsPast(fit: SlurFit, start: CrossStaffCurveNote, end: CrossStaffCurveNote): boolean {
+     *  beyond its notehead's centre line, away from the other note, after passing beside the notehead on the other
+     *  note's side (Myrthen 17 m3: up along the down stem of the right hand's lower voice to the top of its notehead).
+     *  Beside: within ObstacleClearance of it, or — wide — within the notehead's height (Myrthen 17 m2, m34 in the app
+     *  at some widths and zooms: 0.3 to 0.65 beside the right hand's lower-voice D4, up to the top of its notehead).
+     *  Wide for a slur whose side the XML does not give, no note of its voices between its ends: a side the XML gives
+     *  is kept but for a curve that clearly climbs (the corpus samples' placed slurs, 0.35 to 0.9 beside their notes
+     *  to their far sides), and over notes between it stays as it is (Myrthen 3: from the left hand's arpeggio up to
+     *  the right hand, from 0.3 beside its note). */
+    private static climbsPast(fit: SlurFit, start: CrossStaffCurveNote, end: CrossStaffCurveNote,
+                              wide: boolean): boolean {
         const away: (note: CrossStaffCurveNote, other: CrossStaffCurveNote) => boolean =
             (note: CrossStaffCurveNote, other: CrossStaffCurveNote) => note.stem === (note.headY < other.headY ? 1 : -1);
         if (fit.startAtStem && away(start, end) || fit.endAtStem && away(end, start)) {
@@ -475,7 +481,7 @@ export class CrossStaffCurve {
             if (upper ? p.y >= note.headY : p.y <= note.headY) {
                 continue;
             }
-            const clearance: number = CrossStaffCurve.ObstacleClearance;
+            const clearance: number = wide ? headBottom(note) - headTop(note) : CrossStaffCurve.ObstacleClearance;
             if (samples.some(q => (upper ? q.y > note.headY : q.y < note.headY) &&
                                   q.x > note.headLeft - clearance && q.x < note.headRight + clearance)) {
                 return true;
