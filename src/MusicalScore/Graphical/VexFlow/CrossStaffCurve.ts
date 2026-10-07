@@ -339,9 +339,10 @@ export class CrossStaffCurve {
         const fit: (below: boolean, steep: boolean) => SlurFit = (side: boolean, steep: boolean) =>
             this.fitSlur(rules, geometry, upper, lower, upperOrigin, lowerOrigin, start, end, inner, side, steep);
         let best: SlurFit = fit(below, false);
-        // a steep slur whose curve climbs past one of its notes — through its notehead, or along a stem pointing away
-        //   from the other note to its end (Myrthen 17: placed above, from the left hand's last sixteenth up past the
-        //   right hand's next note): from the notes' facing sides, bowing away from the start's stem beside it (there
+        // a steep slur whose curve climbs past one of its notes — through its notehead, along a stem pointing away
+        //   from the other note to its end, or beside the notehead to its far side (Myrthen 17: placed above, from the
+        //   left hand's last sixteenth up past the right hand's next note; m3: up along the down stem of the right
+        //   hand's lower voice over its notehead): from the notes' facing sides, bowing away from the start's stem beside it (there
         //   right, as in the source — to the left it would run back through the left hand's beam), when no other note
         //   stands between its ends and it is clear of the notes across it on both staves, their stems and beams
         //   (Myrthen 3, 15 m16: from the first of the left hand's beamed notes it would bend under the others; 15 m57:
@@ -445,19 +446,36 @@ export class CrossStaffCurve {
     }
 
     /** Whether the fit climbs past one of its notes: ends at the end of a stem pointing away from the other note (an
-     *  upper note's up stem, a lower note's down stem), or runs through its notehead (a tenth of a space in). */
+     *  upper note's up stem, a lower note's down stem), runs through its notehead (a tenth of a space in), or ends
+     *  beyond its notehead's centre line, away from the other note, after passing beside the notehead (within
+     *  ObstacleClearance of it) on the other note's side (Myrthen 17 m3: up along the down stem of the right hand's
+     *  lower voice to the top of its notehead). */
     private static climbsPast(fit: SlurFit, start: CrossStaffCurveNote, end: CrossStaffCurveNote): boolean {
         const away: (note: CrossStaffCurveNote, other: CrossStaffCurveNote) => boolean =
             (note: CrossStaffCurveNote, other: CrossStaffCurveNote) => note.stem === (note.headY < other.headY ? 1 : -1);
         if (fit.startAtStem && away(start, end) || fit.endAtStem && away(end, start)) {
             return true;
         }
-        for (const p of CrossStaffCurve.sampleOf(fit.segments, 32)) {
+        const samples: PointF2D[] = CrossStaffCurve.sampleOf(fit.segments, 32);
+        for (const p of samples) {
             for (const note of [start, end]) {
                 if (p.x > note.headLeft + 0.1 && p.x < note.headRight - 0.1 &&
                     p.y > headTop(note) + 0.1 && p.y < headBottom(note) - 0.1) {
                     return true;
                 }
+            }
+        }
+        const ends: [CrossStaffCurveNote, CrossStaffCurveNote, PointF2D][] =
+            [[start, end, samples[0]], [end, start, samples[samples.length - 1]]];
+        for (const [note, other, p] of ends) {
+            const upper: boolean = note.headY < other.headY;
+            if (upper ? p.y >= note.headY : p.y <= note.headY) {
+                continue;
+            }
+            const clearance: number = CrossStaffCurve.ObstacleClearance;
+            if (samples.some(q => (upper ? q.y > note.headY : q.y < note.headY) &&
+                                  q.x > note.headLeft - clearance && q.x < note.headRight + clearance)) {
+                return true;
             }
         }
         return false;
