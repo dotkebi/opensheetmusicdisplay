@@ -18,7 +18,8 @@ import { SourceMeasure } from "../../../src/MusicalScore/VoiceData/SourceMeasure
  * (2) m4->m5 voices 1 and 2 of staff 1 tie A4, read in the opposite orders; (3) m6 voice 2 D5 beat 3 -> voice 1 D5
  * beat 4, voice 1 read first (Du bist wie eine Blume m19); (4) m7->m8 C5 start, C5 start (stop left out), C5 stop;
  * (5) m9->m10 voice 2 F4 -> voice 1 F4 stop+start (read first) -> F4; (6) m11 B4 tied through two chords, the second
- * chord's Bb4 tied from the first (Basie, Straight Ahead m87).
+ * chord's Bb4 tied from the first (Basie, Straight Ahead m87); (7) m12 a whole E5 tied to the grace E5 after it (an
+ * after-grace, at the same timestamp in the model).
  */
 describe("Tie pairing, voice first", () => {
     let container: HTMLElement;
@@ -104,5 +105,21 @@ describe("Tie pairing, voice first", () => {
         const bb4: Note[] = [note(11, 1, 0.25), note(11, 1, 0.5)];
         expect(ids(b4[0].NoteTie?.Notes)).to.deep.equal(ids(b4));
         expect(ids(bb4[0].NoteTie?.Notes)).to.deep.equal(ids(bb4));
+    });
+
+    it("(7) a main note is tied to the grace note after it", () => {
+        const notes: Note[] = [];
+        for (const verticalContainer of osmd.Sheet.SourceMeasures[11].VerticalSourceStaffEntryContainers) {
+            for (const staffEntry of verticalContainer.StaffEntries) {
+                for (const entry of staffEntry?.VoiceEntries ?? []) {
+                    if (entry.ParentVoice.VoiceId === 1) {
+                        notes.push(...entry.Notes);
+                    }
+                }
+            }
+        }
+        const main: Note = notes.find(n => !n.ParentVoiceEntry.IsGrace);
+        const grace: Note = notes.find(n => n.ParentVoiceEntry.IsGrace);
+        expect(ids(main.NoteTie?.Notes)).to.deep.equal(ids([main, grace]));
     });
 });
