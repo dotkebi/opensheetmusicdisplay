@@ -1023,12 +1023,36 @@ export class VexFlowMeasure extends GraphicalMeasure {
      * (SkyBottomLineCalculator.applyGeometricSkylineSideEffectsOnly()), which skips the draw of the skyline calculation:
      * the beams would extend the stems when the measure is drawn instead, at the stave's final position rather than the
      * skyline calculation's, so a few stems and beams would end a few trillionths of a pixel off where render() draws them.
+     * Also what drawNotes() does to the notes of this fork: the rests of held notes move clear of them (clearRestsOfHeldNotes()),
+     * and the notes of cross-staff beams follow the stave (refreshCrossStaffBeamNoteYs()).
      */
     public applyDrawSideEffects(): void {
         if (!this.MeasureRepeat) { // draw() draws the repeat sign instead of the notes then, see drawNotes()
             this.postFormatBeams();
+            this.clearRestsOfHeldNotes();
+            this.refreshCrossStaffBeamNoteYs();
         }
         this.correctNotePositions();
+    }
+
+    /**
+     * Gives the notes of this measure's cross-staff beams their y values on the stave where it is now, as drawing the voices
+     * does (Voice.draw() sets each note's stave). The cross-staff beams are not among the beams of postFormatBeams(): the drawer
+     * post-formats them between the placed staves (VexFlowMusicSheetDrawer.prepareCrossStaffBeams()). But the voice entry of
+     * such a note gets its vertical borders from its y values (VexFlowVoiceEntry.crossStaffBeamNoteBox(), via
+     * correctNotePositions()), so without the draw of the skyline calculation they stayed those of the stave's earlier position,
+     * 100 pixels above the skyline calculation's (see SkyBottomLineCalculator.prepareMeasureForGeometricSkyline()): the curves
+     * between the staves reserved their outer sides from the wrong stem tips, and a renderNext() batch reusing the sky and
+     * bottom lines spaced the staves of the system differently from render() (Dichterliebe01, the piano's cross-staff slurs).
+     */
+    private refreshCrossStaffBeamNoteYs(): void {
+        for (const beam of this.crossStaffBeams) {
+            for (const note of (beam as any).notes as VF.StemmableNote[]) {
+                if (note.getStave() === this.stave) {
+                    note.setStave(this.stave);
+                }
+            }
+        }
     }
 
     /**
