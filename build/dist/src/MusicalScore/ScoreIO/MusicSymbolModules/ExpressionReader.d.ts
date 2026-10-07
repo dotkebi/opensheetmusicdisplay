@@ -4,6 +4,7 @@ import { Instrument } from "../../Instrument";
 import { MultiExpression } from "../../VoiceData/Expressions/MultiExpression";
 import { IXmlElement } from "../../../Common/FileIO/Xml";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
+import { WavyLine } from "../../VoiceData/Expressions/ContinuousExpressions/WavyLine";
 export declare class ExpressionReader {
     private musicSheet;
     private placement;
@@ -55,7 +56,10 @@ export declare class ExpressionReader {
      *  measure start. */
     private pedalStopTimestamp;
     private endOpenPedal;
-    addWavyLine(wavyLineNode: IXmlElement, currentMeasure: SourceMeasure, currentTimestamp: Fraction, previousTimestamp: Fraction): void;
+    /** Reads a `<wavy-line>` start or stop.
+     *  @returns the wavy line that this stops, if it is a stop of an open wavy line
+     */
+    addWavyLine(wavyLineNode: IXmlElement, currentMeasure: SourceMeasure, currentTimestamp: Fraction, previousTimestamp: Fraction): WavyLine;
     private initialize;
     private readPlacement;
     private readExpressionPlacement;

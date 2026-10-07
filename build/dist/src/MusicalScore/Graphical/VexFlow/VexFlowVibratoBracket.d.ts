@@ -29,6 +29,13 @@ export declare class VexFlowVibratoBracket extends GraphicalWavyLine {
      * @param graphicalStaffEntry the staff entry that holds the end note
      */
     setEndNote(graphicalStaffEntry: GraphicalStaffEntry): boolean;
+    /** Whether the bracket ends at the grace note that its wavy line stops at (see WavyLine.EndGraceVoiceEntry). */
+    get EndsAtGraceNote(): boolean;
+    /**
+     * Finds the voice entry of the grace note that the wavy line stops at (WavyLine.EndGraceVoiceEntry) in a staff entry.
+     * @param graphicalStaffEntry the staff entry that holds the end note
+     */
+    private findEndGraceVoiceEntry;
     /**
      * Lets the bracket cover the whole duration of its end note: it ends in front of the next note in the end note's voice,
      * or at the end of the measure if the end note is the last one of its voice there.

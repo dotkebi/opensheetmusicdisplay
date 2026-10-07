@@ -192,6 +192,9 @@ export declare class InstrumentReader {
     private getNoteHeadColorXml;
     private getNoteColorXml;
     private getTremoloInfo;
+    /** Reads the note's `<wavy-line>`s.
+     *  @returns the wavy lines that the note stops
+     */
     private getWavyLines;
     private getNoteStaff;
 }
