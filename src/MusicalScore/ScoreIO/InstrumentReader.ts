@@ -1268,7 +1268,10 @@ export class InstrumentReader {
         newRhythmInstruction.PrintObject = timePrintObject;
         this.abstractInstructions.push([1, newRhythmInstruction, currentFraction]);
       } else {
-        this.abstractInstructions.push([1, new RhythmInstruction(new Fraction(4, 4, 0, false), RhythmSymbolEnum.NONE), currentFraction]);
+        // senza-misura: no time signature is drawn, the beats stay 4/4
+        const senzaMisuraRhythm: RhythmInstruction = new RhythmInstruction(new Fraction(4, 4, 0, false), RhythmSymbolEnum.NONE);
+        senzaMisuraRhythm.PrintObject = false;
+        this.abstractInstructions.push([1, senzaMisuraRhythm, currentFraction]);
       }
     }
   }
