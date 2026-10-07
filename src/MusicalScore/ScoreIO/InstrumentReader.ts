@@ -521,8 +521,10 @@ export class InstrumentReader {
                expressionReader.addOctaveShift(xmlNode, this.currentMeasure, endFraction, endVoiceEntryCount);
              }
              if (directionTypeNodes.some(dt => dt.element("pedal"))) {
+              // the Ped. is at its position plus its <offset>, as the stop (pedalStopTimestamp) and osmd-dart read it (Gluck,
+              //   Intorno all'idol mio m16: Ped. on beat 3 drawn at beat 1)
               expressionReader.readExpressionParameters(
-                xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, true
+                xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, false
               );
               expressionReader.addPedalMarking(xmlNode, this.currentMeasure, currentFraction.clone());
               // pedal end in OSMD and Vexflow means end BEFORE timestamp, so currentFraction instead of previousFraction needs to be used.

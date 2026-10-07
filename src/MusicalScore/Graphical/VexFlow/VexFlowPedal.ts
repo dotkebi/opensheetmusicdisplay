@@ -34,6 +34,9 @@ export class VexFlowPedal extends GraphicalPedal {
     /** VexFlow px from the start note's x to the depress when the start falls between two staff entries (interpolated
      *  by time); undefined = at the start note. */
     public DepressXOffset: number = undefined;
+    /** A release at the stave end drawn at ReleaseXOffset instead of right-aligned before the barline: its Ped. on the
+     *  last notes left no room there. */
+    public ReleaseAfterDepress: boolean = false;
     private line: number = -3;
 
     public EndSymbolPositionAndShape: BoundingBox = undefined;
@@ -141,7 +144,7 @@ export class VexFlowPedal extends GraphicalPedal {
         pedalMarking.setCustomText(this.DepressText, this.ReleaseText);
         //If our end note is at the end of a stave, set that value
         if(!this.endVfVoiceEntry ||
-            this.getPedal.EndsStave
+            this.getPedal.EndsStave && !this.ReleaseAfterDepress
             //|| this.endVfVoiceEntry?.parentStaffEntry === this.endVfVoiceEntry?.parentStaffEntry?.parentMeasure?.staffEntries.last()
             //   the above condition prevents the ability to stop BEFORE the last staff entry.
             //   see test_pedal_stop_before_last_staffentry and OSMD Function test - Color, compare with Beethoven - Geliebte (pedal symbols vs lines)
