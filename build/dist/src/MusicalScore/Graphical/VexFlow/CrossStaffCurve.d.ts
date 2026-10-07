@@ -129,7 +129,10 @@ export declare class CrossStaffCurve {
      *  facing sides (facingEnd()). */
     private fitSlur;
     /** Whether the fit climbs past one of its notes: ends at the end of a stem pointing away from the other note (an
-     *  upper note's up stem, a lower note's down stem), or runs through its notehead (a tenth of a space in). */
+     *  upper note's up stem, a lower note's down stem), runs through its notehead (a tenth of a space in), or ends
+     *  beyond its notehead's centre line, away from the other note, after passing beside the notehead (within
+     *  ObstacleClearance of it) on the other note's side (Myrthen 17 m3: up along the down stem of the right hand's
+     *  lower voice to the top of its notehead). */
     private static climbsPast;
     /** Whether the curve runs through or along one of the notes — through its notehead (a tenth of a space in) or
      *  within 0.2 of its stem — away from the curve's own ends (0.6). */
