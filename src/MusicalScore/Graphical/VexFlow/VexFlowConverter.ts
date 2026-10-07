@@ -907,19 +907,26 @@ export class VexFlowConverter {
     /** Whether another voice has a visible note (or rest) on the note's staff sounding at the same time as it (Schumann,
      *  Myrthen 2 m19: the left hand's chords after the first beat are alone, their staccatos stay above). */
     public static hasOtherVoiceAtTime(gNote: GraphicalNote): boolean {
+        // (the times of the graphical staff entries: a voice entry's Timestamp can be unset here, Couperin's ornaments)
         const voiceEntry: VoiceEntry = gNote.sourceNote.ParentVoiceEntry;
-        const start: number = voiceEntry.Timestamp.RealValue;
+        const ownEntry: GraphicalStaffEntry = gNote.parentVoiceEntry?.parentStaffEntry;
+        if (!ownEntry?.relInMeasureTimestamp) {
+            return false;
+        }
+        const start: number = ownEntry.relInMeasureTimestamp.RealValue;
         const end: number = start + gNote.sourceNote.Length.RealValue;
-        const measure: GraphicalMeasure = gNote.parentVoiceEntry?.parentStaffEntry?.parentMeasure;
-        for (const staffEntry of measure?.staffEntries ?? []) {
+        for (const staffEntry of ownEntry.parentMeasure?.staffEntries ?? []) {
+            const noteStart: number = staffEntry.relInMeasureTimestamp?.RealValue;
+            if (noteStart === undefined || noteStart >= end) {
+                continue;
+            }
             for (const gve of staffEntry.graphicalVoiceEntries) {
                 const other: VoiceEntry = gve.parentVoiceEntry;
                 if (other.ParentVoice === voiceEntry.ParentVoice || other.IsGrace) {
                     continue;
                 }
                 for (const note of gve.notes) {
-                    const noteStart: number = other.Timestamp.RealValue;
-                    if (note.sourceNote.PrintObject && noteStart < end && noteStart + note.sourceNote.Length.RealValue > start) {
+                    if (note.sourceNote.PrintObject && noteStart + note.sourceNote.Length.RealValue > start) {
                         return true;
                     }
                 }
