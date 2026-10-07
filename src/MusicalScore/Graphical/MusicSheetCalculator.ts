@@ -985,6 +985,12 @@ export abstract class MusicSheetCalculator {
      * Collects lyricVerseNumberFirstEntries: per instrument with two or more verse lines, the first syllable (in time)
      * of each verse whose number is an integer string. Chorus/translation lines get no label, and neither does a verse
      * whose first syllable already starts with "N.", "N)" or a bare number (Finale and Sibelius exports embed the number in the text).
+     *
+     * Lines in different languages are language lines, not verses (Schirmer's Italian text with its English singing
+     * translation, both number="1"/"2"): when every verse line of the instrument has a language (LyricsEntry.language:
+     * the xml:lang of its syllables, else the sheet's lyric-language default) and the lines do not all share one,
+     * the instrument gets no label. A line's language is the most frequent one among its syllables; a line without
+     * any language leaves the labels as they are.
      */
     private collectLyricVerseNumberFirstEntries(): void {
         this.lyricVerseNumberFirstEntries.clear();
@@ -1002,6 +1008,9 @@ export abstract class MusicSheetCalculator {
             return;
         }
         const seenVerses: Map<Instrument, Set<string>> = new Map<Instrument, Set<string>>();
+        const firstEntries: Map<Instrument, LyricsEntry[]> = new Map<Instrument, LyricsEntry[]>();
+        // instrument -> verse number -> language -> syllable count
+        const lineLanguages: Map<Instrument, Map<string, Map<string, number>>> = new Map<Instrument, Map<string, Map<string, number>>>();
         for (const measure of sheet.SourceMeasures) {
             for (const container of measure.VerticalSourceStaffEntryContainers) {
                 for (const staffEntry of container.StaffEntries) {
@@ -1011,24 +1020,67 @@ export abstract class MusicSheetCalculator {
                     }
                     if (!seenVerses.has(instrument)) {
                         seenVerses.set(instrument, new Set<string>());
+                        firstEntries.set(instrument, []);
+                        lineLanguages.set(instrument, new Map<string, Map<string, number>>());
                     }
                     const seen: Set<string> = seenVerses.get(instrument);
+                    const lines: Map<string, Map<string, number>> = lineLanguages.get(instrument);
                     for (const voiceEntry of staffEntry.VoiceEntries) {
                         for (const entry of voiceEntry.LyricsEntries.values()) {
+                            const isVerse: boolean = MusicSheetCalculator.integerVerseNumber.test(entry.VerseNumber) &&
+                                !entry.IsChorus && !entry.IsTranslation;
+                            if (isVerse) {
+                                if (!lines.has(entry.VerseNumber)) {
+                                    lines.set(entry.VerseNumber, new Map<string, number>());
+                                }
+                                if (entry.language) {
+                                    const counts: Map<string, number> = lines.get(entry.VerseNumber);
+                                    counts.set(entry.language, (counts.get(entry.language) ?? 0) + 1);
+                                }
+                            }
                             if (seen.has(entry.VerseNumber)) {
                                 continue;
                             }
                             seen.add(entry.VerseNumber);
-                            if (MusicSheetCalculator.integerVerseNumber.test(entry.VerseNumber) &&
-                                !entry.IsChorus && !entry.IsTranslation &&
-                                !MusicSheetCalculator.embeddedVerseNumberPrefix.test(entry.Text)) {
-                                this.lyricVerseNumberFirstEntries.add(entry);
+                            if (isVerse && !MusicSheetCalculator.embeddedVerseNumberPrefix.test(entry.Text)) {
+                                firstEntries.get(instrument).push(entry);
                             }
                         }
                     }
                 }
             }
         }
+        for (const [instrument, entries] of firstEntries) {
+            if (MusicSheetCalculator.verseLinesAreLanguageLines(lineLanguages.get(instrument))) {
+                continue;
+            }
+            for (const entry of entries) {
+                this.lyricVerseNumberFirstEntries.add(entry);
+            }
+        }
+    }
+
+    /** True when every verse line has a language and the lines do not all share one. lines: verse number -> language -> syllable count. */
+    private static verseLinesAreLanguageLines(lines: Map<string, Map<string, number>>): boolean {
+        if (lines.size < 2) {
+            return false;
+        }
+        const languages: Set<string> = new Set<string>();
+        for (const counts of lines.values()) {
+            let best: string = undefined;
+            let bestCount: number = 0;
+            for (const [language, count] of counts) {
+                if (count > bestCount) {
+                    best = language;
+                    bestCount = count;
+                }
+            }
+            if (best === undefined) {
+                return false;
+            }
+            languages.add(best);
+        }
+        return languages.size > 1;
     }
 
     protected calculateLyricsExtendsAndDashes(lyricsStaffEntries: GraphicalStaffEntry[]): void {
@@ -2509,7 +2561,16 @@ export abstract class MusicSheetCalculator {
             endAbsoluteTimestamp, staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0,
             useStaffEntryBorderLeft);
 
-        const beginOfNextNote: Fraction = Fraction.plus(endAbsoluteTimestamp, maxNoteLength);
+        // The drawn end goes towards the stop as written, if a note of the staff follows it in the measure. The end note's start plus
+        // the longest note of the staff there is the stop only in one voice (see ContinuousDynamicExpression.StopTimestamp); a stop
+        // after the last note keeps it (the end of the measure), and so does a staff without notes there, whose position at the
+        // stop would be the start of the measure.
+        const stopTimestamp: Fraction = graphicalContinuousDynamic.ContinuousDynamic.StopTimestamp;
+        const stopBeforeNote: boolean = stopTimestamp !== undefined &&
+            endMeasure.staffEntries.some(se => !se.relInMeasureTimestamp.lt(stopTimestamp));
+        const beginOfNextNote: Fraction = stopBeforeNote ?
+            Fraction.plus(graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.SourceMeasureParent.AbsoluteTimestamp, stopTimestamp) :
+            Fraction.plus(endAbsoluteTimestamp, maxNoteLength);
         const placementFraction: Fraction = beginOfNextNote.clone();
         const endOffsetFraction: Fraction = graphicalContinuousDynamic.ContinuousDynamic.EndOffsetFraction;
         if (endOffsetFraction && this.rules.UseEndOffsetForExpressions) {
@@ -2525,12 +2586,22 @@ export abstract class MusicSheetCalculator {
         const sizeFactor: number = this.rules.SoftAccentSizeFactor;
         //const standardWidth: number = 2;
 
+        // A wedge that starts and ends on one note (its stop before the next note, or a start with a negative offset after
+        // its end note) reaches the next note: 1/WedgeEndDistanceBetweenTimestampsFactor of the way drew a short ">" over the
+        // note (Gluck, O del mio dolce ardor m6; Monteverdi, Lasciatemi morire m19). Same as osmd-dart.
+        const startAbsoluteTimestamp: Fraction = graphicalContinuousDynamic.ContinuousDynamic.StartMultiExpression?.AbsoluteTimestamp;
+        const endBeforeStart: boolean = startAbsoluteTimestamp !== undefined && sameStaffLine &&
+            endAbsoluteTimestamp.RealValue <= startAbsoluteTimestamp.RealValue;
+
         //If the next note position is not on the next staffline
         //extend close to the next note
         if (isSoftAccent) {
             //startPosInStaffline.x -= 1;
             startPosInStaffline.x -= staffEntryWidth / 2 * sizeFactor + wedgePadding;
             endPosInStaffLine.x = startPosInStaffline.x + staffEntryWidth / 2 * sizeFactor;
+        } else if (endBeforeStart && nextNotePosInStaffLine.x > startPosInStaffline.x) {
+            endPosInStaffLine.x = (nextNotePosInStaffLine.x < endOfMeasure ? nextNotePosInStaffLine.x : endOfMeasure) -
+                this.rules.WedgeHorizontalMargin;
         } else if (nextNotePosInStaffLine.x > endPosInStaffLine.x && nextNotePosInStaffLine.x < endOfMeasure) {
             endPosInStaffLine.x += (nextNotePosInStaffLine.x - endPosInStaffLine.x) / this.rules.WedgeEndDistanceBetweenTimestampsFactor;
         } else { //Otherwise extend to the end of the measure

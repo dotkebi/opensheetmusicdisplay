@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <!-- Synthetic fixture for lyric verse number labels: two lyric lines in two languages (Italian text with its English singing translation, Schirmer style), both lines xml:lang-tagged; the first syllables are in measure 2, measure 3 starts a new system. No "1." "2." is expected. -->
+  <part-list>
+    <score-part id="P1"><part-name>Voice</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><rest/><duration>4</duration><voice>1</voice><type>whole</type></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>single</syllabic><text xml:lang="it">Tu</text></lyric><lyric number="2"><syllabic>single</syllabic><text xml:lang="en">Ask</text></lyric></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>single</syllabic><text xml:lang="it">lo</text></lyric><lyric number="2"><syllabic>single</syllabic><text xml:lang="en">thy</text></lyric></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>single</syllabic><text xml:lang="it">sai</text></lyric><lyric number="2"><syllabic>single</syllabic><text xml:lang="en">heart</text></lyric></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>begin</syllabic><text xml:lang="it">quan</text></lyric><lyric number="2"><syllabic>single</syllabic><text xml:lang="en">how</text></lyric></note>
+    </measure>
+    <measure number="3">
+      <print new-system="yes"/>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>end</syllabic><text xml:lang="it">to</text></lyric><lyric number="2"><syllabic>single</syllabic><text xml:lang="en">I</text></lyric></note>
+      <note><pitch><step>D</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>begin</syllabic><text xml:lang="it">t’a</text></lyric><lyric number="2"><syllabic>begin</syllabic><text xml:lang="en">a</text></lyric></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>end</syllabic><text xml:lang="it">mai,</text></lyric><lyric number="2"><syllabic>end</syllabic><text xml:lang="en">dore</text></lyric></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><lyric number="1"><syllabic>single</syllabic><text xml:lang="it">tu</text></lyric><lyric number="2"><syllabic>single</syllabic><text xml:lang="en">thee,</text></lyric></note>
+    </measure>
+  </part>
+</score-partwise>

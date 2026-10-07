@@ -219,8 +219,16 @@ export declare abstract class MusicSheetCalculator {
      * Collects lyricVerseNumberFirstEntries: per instrument with two or more verse lines, the first syllable (in time)
      * of each verse whose number is an integer string. Chorus/translation lines get no label, and neither does a verse
      * whose first syllable already starts with "N.", "N)" or a bare number (Finale and Sibelius exports embed the number in the text).
+     *
+     * Lines in different languages are language lines, not verses (Schirmer's Italian text with its English singing
+     * translation, both number="1"/"2"): when every verse line of the instrument has a language (LyricsEntry.language:
+     * the xml:lang of its syllables, else the sheet's lyric-language default) and the lines do not all share one,
+     * the instrument gets no label. A line's language is the most frequent one among its syllables; a line without
+     * any language leaves the labels as they are.
      */
     private collectLyricVerseNumberFirstEntries;
+    /** True when every verse line has a language and the lines do not all share one. lines: verse number -> language -> syllable count. */
+    private static verseLinesAreLanguageLines;
     protected calculateLyricsExtendsAndDashes(lyricsStaffEntries: GraphicalStaffEntry[]): void;
     /**
      * Calculate a single OctaveShift for a [[MultiExpression]].

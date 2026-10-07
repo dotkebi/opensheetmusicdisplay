@@ -180,6 +180,69 @@ describe("Lyric verse number labels", () => {
         expect(allLabels()).to.have.lengthOf(0);
     });
 
+    describe("language lines (G14)", () => {
+        // Two lyric lines in two languages (Italian + English singing translation, xml:lang-tagged) are language
+        // lines, not verses: no "1." "2." (Schirmer 24 Italian Songs: Tu lo sai, O del mio dolce ardor; Sarti Lungi dal caro bene).
+        const twoLanguages: string = "test_lyrics_verse_numbers_languages.musicxml";
+
+        it("(L-a) two lines in two languages (xml:lang on every syllable) get no label", async () => {
+            await render(xml(twoLanguages));
+            expect(allLabels()).to.have.lengthOf(0);
+            const syllables: GraphicalLyricEntry[] = staffLine(0).Measures[1].staffEntries[0].LyricsEntries;
+            expect(syllables.map(entry => entry.GraphicalLabel.Label.text)).to.deep.equal(["Tu", "Ask"]);
+        });
+
+        it("(L-a2) the languages may come from <defaults><lyric-language> instead", async () => {
+            const score: string = xml(twoLanguages)
+                .replace(/ xml:lang="(it|en)"/g, "")
+                .replace("<part-list>",
+                         "<defaults><lyric-language number=\"1\" xml:lang=\"it\"/><lyric-language number=\"2\" xml:lang=\"en\"/></defaults><part-list>");
+            expect(score).to.not.contain("<text xml:lang");
+            await render(score);
+            expect(allLabels()).to.have.lengthOf(0);
+        });
+
+        it("(L-a3) a line is judged by the most frequent language of its syllables", async () => {
+            // one stray English tag inside the Italian line does not make the lines equal
+            const score: string = xml(twoLanguages).replace("<text xml:lang=\"it\">lo</text>", "<text xml:lang=\"en\">lo</text>");
+            await render(score);
+            expect(allLabels()).to.have.lengthOf(0);
+        });
+
+        it("(L-b) three verses without any language keep 1. 2. 3.", async () => {
+            const score: string = xml(threeVerses);
+            expect(score).to.not.contain("xml:lang");
+            await render(score);
+            expect(texts(allLabels())).to.deep.equal(["1.", "2.", "3."]);
+        });
+
+        it("(L-c) two verses in the same language keep 1. 2.", async () => {
+            const score: string = xml(threeVerses)
+                .replace(/<lyric number="3">.*?<\/lyric>/g, "")
+                .replace(/<text>/g, "<text xml:lang=\"de\">");
+            await render(score);
+            expect(texts(allLabels())).to.deep.equal(["1.", "2."]);
+        });
+
+        it("(L-d) a line whose language is unknown keeps the current labels", async () => {
+            // only the Italian line is tagged: no judgement about the English one
+            const score: string = xml(twoLanguages).replace(/ xml:lang="en"/g, "");
+            await render(score);
+            expect(texts(allLabels())).to.deep.equal(["1.", "2."]);
+        });
+
+        it("(L-e) a translation line does not take the labels off same-language verses", async () => {
+            const score: string = xml(threeVerses)
+                .replace(/<lyric number="3">.*?<\/lyric>/g, "")
+                .replace(/<text>/g, "<text xml:lang=\"de\">")
+                .replace(/(<lyric number="2">.*?<\/lyric>)/g,
+                         "$1<lyric number=\"1translation\"><syllabic>single</syllabic><text xml:lang=\"en\">la</text></lyric>");
+            expect(score).to.contain("number=\"1translation\"");
+            await render(score);
+            expect(texts(allLabels())).to.deep.equal(["1.", "2."]);
+        });
+    });
+
     it("draws the labels into the SVG with the lyrics", async () => {
         await render(xml(threeVerses));
         const nodes: NodeListOf<Element> = container.querySelectorAll("g.verse-number");
