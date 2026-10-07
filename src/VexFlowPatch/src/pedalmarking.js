@@ -393,6 +393,15 @@ export class PedalMarking extends Element {
   static get CHANGE_GAP() { return 3; }
 
   // VexFlowPatch: drawn width of the default release glyph (*) at the given point size.
+  // VexFlowPatch: drawn width of the default depress glyph (Ped.) at the given point size.
+  static depressGlyphWidth(point) {
+    const code = PedalMarking.GLYPHS.pedal_depress.code;
+    if (typeof Glyph.cachedWidth === 'function') {
+      return Glyph.cachedWidth(code, point);
+    }
+    return new Glyph(code, point).getMetrics().width;
+  }
+
   static releaseGlyphWidth(point) {
     const code = PedalMarking.GLYPHS.pedal_release.code;
     if (typeof Glyph.cachedWidth === 'function') {

@@ -2238,8 +2238,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     if (sameSegmentAsStart && vfPedal.startNote) {
       const pedalMarking: any = vfPedal.getPedalMarking();
       const margin: number = pedalMarking.render_options.text_margin_right;
-      // the default Ped. glyph is about 20px wide at the default point size
-      const minGap: number = vfPedal.pedalSymbol === MusicSymbol.PEDAL_SYMBOL ? 20 + margin : margin;
+      // the Ped. glyph is drawn 10px left of its x, the * 2px left of its x
+      const minGap: number = vfPedal.pedalSymbol === MusicSymbol.PEDAL_SYMBOL ?
+        VexFlowMusicSheetCalculator.pedalDepressGlyphWidth(pedalMarking) - 10 + margin + 2 : margin;
       releaseX = Math.max(releaseX, vfPedal.startNote.getAbsoluteX() + (vfPedal.DepressXOffset ?? 0) + minGap);
     }
     return releaseX - x0;
@@ -2247,8 +2248,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
 
   /** The Ped. of a symbol pedal stays a text margin right of the * of the previous pedal on the staff line (an x rule,
    *  not a skyline one): a release and the next depress close together in time would otherwise be drawn over each
-   *  other. A change already keeps its own gap; a release at the stave end, a hidden release or a release in the
-   *  previous measure needs none. */
+   *  other. Without a drawn * (a hidden release: the next Ped. retakes it, Gluck, Tu lo sai m31), right of the previous
+   *  Ped. in the same measure; after a * moved past the barline (ReleaseAfterDepress), right of its overhang. A change
+   *  already keeps its own gap; a release at the stave end or a release in the previous measure needs none. */
   private keepPedalDepressRightOfPreviousRelease(vfPedal: VexFlowPedal, staffLine: StaffLine): void {
     if (vfPedal.pedalSymbol !== MusicSymbol.PEDAL_SYMBOL || vfPedal.ChangeBegin || !vfPedal.startNote) {
       return;
@@ -2256,27 +2258,99 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     // only within one measure: a * before the barline and the Ped. of the next measure's first note stay where they
     //   are, as engraved
     const startMeasure: GraphicalMeasure = vfPedal.startVfVoiceEntry?.parentStaffEntry?.parentMeasure;
-    let previous: VexFlowPedal = undefined;
+    let previousRight: number = undefined;
+    let margin: number = 0;
     for (const other of staffLine.Pedals as VexFlowPedal[]) {
-      if (other.pedalSymbol === MusicSymbol.PEDAL_SYMBOL && !other.ReleaseText && !other.getPedal.EndsStave && other.endNote &&
-          other.endVfVoiceEntry?.parentStaffEntry?.parentMeasure === startMeasure) {
-        previous = other;
+      if (other.pedalSymbol !== MusicSymbol.PEDAL_SYMBOL || other.getPedal.EndsStave || !other.endNote ||
+          other.endVfVoiceEntry?.parentStaffEntry?.parentMeasure !== startMeasure) {
+        continue;
+      }
+      const marking: any = other.getPedalMarking();
+      if (!other.ReleaseText) {
+        previousRight = other.endNote.getAbsoluteX() + (other.ReleaseXOffset ?? 0) +
+          VexFlowMusicSheetCalculator.pedalReleaseGlyphWidth(marking);
+      } else if (!other.DepressText && other.startNote &&
+          other.startVfVoiceEntry?.parentStaffEntry?.parentMeasure === startMeasure) {
+        previousRight = VexFlowMusicSheetCalculator.pedalDepressLeft(other) + VexFlowMusicSheetCalculator.pedalDepressGlyphWidth(marking);
+      } else {
+        continue;
+      }
+      margin = marking.render_options.text_margin_right;
+    }
+    // a * moved past the barline after the Ped. on the last notes of the previous measure: its overhang into this
+    //   measure, from the stave ends (x across measures is not final yet)
+    const measureIndex: number = staffLine.Measures.indexOf(startMeasure);
+    const previousMeasure: GraphicalMeasure = measureIndex > 0 ? staffLine.Measures[measureIndex - 1] : undefined;
+    if (previousRight === undefined && previousMeasure instanceof VexFlowMeasure && startMeasure instanceof VexFlowMeasure) {
+      for (const other of staffLine.Pedals as VexFlowPedal[]) {
+        if (!other.ReleaseAfterDepress || !other.endNote ||
+            other.endVfVoiceEntry?.parentStaffEntry?.parentMeasure !== previousMeasure) {
+          continue;
+        }
+        const marking: any = other.getPedalMarking();
+        const previousStave: any = previousMeasure.getVFStave();
+        const overhang: number = other.endNote.getAbsoluteX() + other.ReleaseXOffset - 2 +
+          VexFlowMusicSheetCalculator.pedalReleaseGlyphWidth(marking) - (previousStave.getX() + previousStave.getWidth());
+        if (overhang > 0) {
+          previousRight = (startMeasure.getVFStave() as any).getX() + overhang;
+          margin = marking.render_options.text_margin_right;
+        }
       }
     }
-    if (!previous) {
+    if (previousRight === undefined) {
       return;
     }
-    const marking: any = previous.getPedalMarking();
-    const releaseWidth: number = marking.constructor.releaseGlyphWidth ?
-      marking.constructor.releaseGlyphWidth(marking.render_options.glyph_point_size) : 10;
-    const releaseRight: number = previous.endNote.getAbsoluteX() + (previous.ReleaseXOffset ?? 0) + releaseWidth;
     const startX: number = vfPedal.startNote.getAbsoluteX();
     // the Ped. glyph is drawn 10px left of its x
     const depressLeft: number = startX + (vfPedal.DepressXOffset ?? 0) - 10;
-    const minDepressLeft: number = releaseRight + marking.render_options.text_margin_right;
+    const minDepressLeft: number = previousRight + margin;
     if (depressLeft < minDepressLeft) {
       vfPedal.DepressXOffset = minDepressLeft + 10 - startX;
     }
+  }
+
+  /** The * of a short pedal stays a text margin right of its own Ped. (an x rule like the one above): the Ped. is drawn
+   *  at the start note and the * at the end note, or right-aligned before the barline for a release at the stave end,
+   *  so a release one note later or a Ped. on the last note was drawn over the Ped. (Schumann, Myrthen 24 m14). Only
+   *  within one measure, as above; a change keeps its own place. Same as osmd-dart. */
+  private keepPedalReleaseRightOfItsDepress(vfPedal: VexFlowPedal): void {
+    if (vfPedal.pedalSymbol !== MusicSymbol.PEDAL_SYMBOL || vfPedal.ChangeEnd || !vfPedal.startNote || !vfPedal.endNote ||
+        vfPedal.startVfVoiceEntry?.parentStaffEntry?.parentMeasure !== vfPedal.endVfVoiceEntry?.parentStaffEntry?.parentMeasure) {
+      return;
+    }
+    const marking: any = vfPedal.getPedalMarking();
+    const margin: number = marking.render_options.text_margin_right;
+    const minReleaseLeft: number = VexFlowMusicSheetCalculator.pedalDepressLeft(vfPedal) +
+      VexFlowMusicSheetCalculator.pedalDepressGlyphWidth(marking) + margin;
+    const endX: number = vfPedal.endNote.getAbsoluteX();
+    // the * glyph is drawn 2px left of its x
+    if (vfPedal.getPedal.EndsStave) {
+      // where drawText right-aligns it before the stave end
+      const atStaveEnd: number = (vfPedal.endNote.getStave() as any).getNoteEndX() + (marking.endStaveAddedWidth || 0) -
+        margin - VexFlowMusicSheetCalculator.pedalReleaseGlyphWidth(marking);
+      if (atStaveEnd < minReleaseLeft) {
+        vfPedal.ReleaseXOffset = minReleaseLeft + 2 - endX;
+        vfPedal.ReleaseAfterDepress = true;
+      }
+      return;
+    }
+    if (endX + (vfPedal.ReleaseXOffset ?? 0) - 2 < minReleaseLeft) {
+      vfPedal.ReleaseXOffset = minReleaseLeft + 2 - endX;
+    }
+  }
+
+  /** Where the Ped. glyph of a symbol pedal starts (drawn 10px left of its x, a change CHANGE_GAP right of it). */
+  private static pedalDepressLeft(vfPedal: VexFlowPedal): number {
+    const anchor: number = vfPedal.startNote.getAbsoluteX() + (vfPedal.DepressXOffset ?? 0);
+    return vfPedal.ChangeBegin ? anchor + 3 : anchor - 10;
+  }
+
+  private static pedalDepressGlyphWidth(marking: any): number {
+    return marking.constructor.depressGlyphWidth ? marking.constructor.depressGlyphWidth(marking.render_options.glyph_point_size) : 20;
+  }
+
+  private static pedalReleaseGlyphWidth(marking: any): number {
+    return marking.constructor.releaseGlyphWidth ? marking.constructor.releaseGlyphWidth(marking.render_options.glyph_point_size) : 10;
   }
 
   /** OSMD-unit x where the release mark of a symbol pedal (its *) starts: the interpolated release, the stave end,
@@ -2292,7 +2366,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   }
 
   private pedalReleaseStartX(vfPedal: VexFlowPedal, endBbox: BoundingBox, marginXOffset: number, staffLine: StaffLine): number {
-    if (vfPedal.ReleaseXOffset !== undefined && !vfPedal.getPedal.EndsStave) {
+    if (vfPedal.ReleaseXOffset !== undefined && (!vfPedal.getPedal.EndsStave || vfPedal.ReleaseAfterDepress)) {
       return VexFlowMusicSheetCalculator.xInStaffLine(endBbox, staffLine) + vfPedal.ReleaseXOffset / unitInPixels - marginXOffset;
     }
     if (vfPedal.getPedal.EndsStave && vfPedal.endVfVoiceEntry) {
@@ -2537,6 +2611,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         graphicalPedal.ReleaseXOffset = this.interpolatedPedalReleaseXOffset(graphicalPedal, releaseAnchor, endMeasure, true);
         if (hideRelease) {
           graphicalPedal.ReleaseText = " ";
+        } else {
+          this.keepPedalReleaseRightOfItsDepress(graphicalPedal);
         }
         graphicalPedal.CalculateBoundingBox();
         this.calculatePedalSkyBottomLine(graphicalPedal.startVfVoiceEntry, graphicalPedal.endVfVoiceEntry, graphicalPedal, startStaffLine);
