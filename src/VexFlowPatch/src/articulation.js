@@ -240,8 +240,9 @@ export class Articulation extends Modifier {
     //VexFlowPatch
     this.breathMarkDistance = 0.8; // % distance to next note or end of stave (0.8 = 80%)
     this.articulation = Flow.articulationCodes(this.type);
-    if (this.type === 'abr') { // breath mark. we could put this in tables.js:articulationCodes()
-      this.articulation = { code: 'v6c', between_lines: false }; // v6c: breathmarkcomma
+    if (this.isBreathMark()) { // breath mark. we could put this in tables.js:articulationCodes()
+      // v6c: breathmarkcomma; 'abr|': the upbow breath mark (<breath-mark>upbow), the up-bow glyph v75
+      this.articulation = { code: this.type === 'abr|' ? 'v75' : 'v6c', between_lines: false };
     }
     if (!this.articulation) {
       throw new Vex.RERR('ArgumentError', `Articulation not found: ${this.type}`);
@@ -251,6 +252,9 @@ export class Articulation extends Modifier {
 
     this.setWidth(this.glyph.getMetrics().width);
   }
+
+  // VexFlowPatch: breath marks, 'abr' (comma) and 'abr|' (upbow)
+  isBreathMark() { return this.type === 'abr' || this.type === 'abr|'; }
 
   // VexFlowPatch: a fermata or an aspiration on the side of its note where the note has an ornament goes beyond the
   //   ornament (Couperin, Concerts royaux I Menuet en trio m8-9, IV Rigaudon m22, as in the 1722 print), see
@@ -308,7 +312,7 @@ export class Articulation extends Modifier {
     // Articulations are centered over/under the note head.
     let { x } = note.getModifierStartXY(position, index);
     // VexFlowPatch: breath mark support
-    if (this.type === 'abr') { // breath mark
+    if (this.isBreathMark()) { // breath mark
       let delayXShift = 0;
       // delay code similar to ornament.js delayed variable handling
       const noteTickContext = note.getTickContext();

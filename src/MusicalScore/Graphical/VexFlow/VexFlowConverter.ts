@@ -18,6 +18,7 @@ import {Fonts} from "../../../Common/Enums/Fonts";
 import {OutlineAndFillStyleEnum, OUTLINE_AND_FILL_STYLE_DICT} from "../DrawingEnums";
 import log from "loglevel";
 import { ArticulationEnum, StemDirectionType, VoiceEntry } from "../../VoiceData/VoiceEntry";
+import { BreathMarkValue } from "../../VoiceData/Articulation";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { SystemLinePosition } from "../SystemLinePosition";
 import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
@@ -972,7 +973,9 @@ export class VexFlowConverter {
                     break;
                 }
                 case ArticulationEnum.breathmark: {
-                    vfArt = new VF.Articulation("abr");
+                    // "abr|": the upbow breath mark (VexFlowPatch articulation.js). This font has no tick or
+                    // salzedo breath mark glyph, they stay commas.
+                    vfArt = new VF.Articulation(articulation.breathMark === BreathMarkValue.upbow ? "abr|" : "abr");
                     if (articulation.placement === PlacementEnum.Above) {
                         vfArtPosition = VF.Modifier.Position.ABOVE;
                     }
