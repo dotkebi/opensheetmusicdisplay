@@ -121,6 +121,10 @@ export declare class EngravingRules {
      *  beam above or below the notes of both staves, as MuseScore 3 exports such a beam). Layout only.
      *  Same as osmd-dart. */
     CrossStaffBeamsCenterUniformXmlStems: boolean;
+    /** The drawer moves a text expression (a dynamic, a verbal dynamic, words, a tempo text) that the cross-staff beams
+     *  or curves come to lie over, up or down within 1.5 staff spaces, to a free place (CrossStaffExpressionClearance;
+     *  the layout is not changed). Default true. Drawing only. Same as osmd-dart. */
+    CrossStaffTextClearance: boolean;
     SetWantedStemDirectionByXml: boolean;
     /** Whether a secondary voice (any voice after the first one on a staff, e.g. MusicXML voice 2) that is the only
      *  voice with entries in a measure gets pitch-based (automatic) stem directions instead of the stems-down that

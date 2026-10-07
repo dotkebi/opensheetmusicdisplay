@@ -74,6 +74,38 @@ export declare class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
      *  and their cross-staff beams are placed. Lazy horizontal rendering draws it in the batch of its right end (as
      *  drawSlurs()). Same as osmd-dart. */
     private drawCrossStaffCurves;
+    /** The curves between staves calculated in this drawing (true: drawable), once per drawing: when it is drawn, or
+     *  before when a text expression is cleared of it (crossStaffClearanceOf()). */
+    private calculatedCrossStaffCurves;
+    /** The cross-staff beams' and curves' ink of a system as drawn, built once per drawing for its text expressions
+     *  (undefined: none in the system). */
+    private crossStaffClearances;
+    /** The vertical move of a text expression's label off the cross-staff beams and curves, decided once per drawing. */
+    private crossStaffExpressionOffsets;
+    /** The moves of this drawing's text expressions (for tests). */
+    get CrossStaffExpressionOffsets(): Map<GraphicalLabel, number>;
+    /** Calculates the curve between the placed staves once per drawing: its other measures (than the one being drawn)
+     *  at their final positions and their cross-staff beams placed. False: nothing to draw. */
+    private calculateCrossStaffCurve;
+    /** The cross-staff beams' and curves' ink of the system as this drawing draws it (the curves not drawn yet are
+     *  calculated now, the beams post-formatted at the staves' final positions), for its text expressions
+     *  (CrossStaffExpressionClearance). Undefined when the system has none. Same as osmd-dart. */
+    private crossStaffClearanceOf;
+    /** The box of the label as drawn (its move applied when decided). */
+    private drawnBoxOf;
+    private static boxOf;
+    /** The label of a text expression the drawer clears of the cross-staff beams and curves (dynamics, verbal dynamics,
+     *  words, tempo texts; not a text followed by dashes, whose dashes would stay behind), else undefined. */
+    private static clearableLabelOf;
+    /** The boxes in the system a moved text must not overlap: the other text expressions (as drawn), the wedges, lyrics,
+     *  pedals and octave shifts. */
+    private otherBoxesOf;
+    /** The vertical move this drawing gives the expression's label off the cross-staff beams and curves of its system
+     *  (0: none). */
+    private crossStaffOffsetOf;
+    /** Draws the expression's label by draw(), moved off the cross-staff beams and curves when they lie over it
+     *  (CrossStaffExpressionClearance); the label's layout position is kept. */
+    private drawClearOfCrossStaff;
     /** A curve in absolute units: one Bézier segment as a slur is drawn (drawSlur(): its outer edge's control points 0.3
      *  out, a tie's 0.27 as VexFlow's StaveTie), out across the line from end to end (the curve between staves can be
      *  steep); several segments filled from their outline (CrossStaffCurve.outline()). */
