@@ -35,7 +35,7 @@ import { ReaderPluginManager } from "./ReaderPluginManager";
 import { Instrument } from "../Instrument";
 
 /** An open tie found by VoiceGenerator.findOpenTie(): the dictionary it is in (this or another staff's), its key there, and the tie. */
-interface OpenTie {
+export interface OpenTie {
   dict: { [_: number]: Tie };
   key: number;
   tie: Tie;
@@ -63,6 +63,9 @@ export class VoiceGenerator {
   private slurReader: SlurReader;
   /** Shared by all voices of the instrument, set by InstrumentReader. */
   public voiceLeadingGuideReader: VoiceLeadingGuideReader;
+  /** The tie stops of the measure being read that wait for another voice's tie, shared by all voices of the
+   *  instrument, set by InstrumentReader. */
+  public pendingTieStops: PendingTieStops;
   private lyricsReader: LyricsReader;
   private articulationReader: ArticulationReader;
   private musicSheet: MusicSheet;
@@ -1180,20 +1183,20 @@ export class VoiceGenerator {
           const type: string = tieNode.attribute("type").value;
           try {
             if (type === "start") {
-              const num: number = this.findCurrentNoteInTieDict(this.openTieDict, this.currentNote);
-              if (num < 0) {
-                delete this.openTieDict[num];
-              }
+              // an open tie of the same pitch is kept (upstream deleted key -1 here, a no-op): another voice's
+              //   tie of that pitch may still be open (Die Hochländer-Wittwe m72)
               const newTieNumber: number = this.getNextAvailableNumberForTie();
               const tie: Tie = new Tie(this.currentNote, tieType);
               this.openTieDict[newTieNumber] = tie;
               tie.TieNumber = newTieNumber;
               tie.TieDirection = tieDirection;
             } else if (type === "stop") {
-              const openTie: OpenTie = this.findOpenTie(this.currentNote);
+              const openTie: OpenTie = VoiceGenerator.findOpenTie(this.instrument, this.openTieDict, this.currentNote, measureStartAbsoluteTimestamp, true);
               if (openTie) {
                 openTie.tie.AddNote(this.currentNote);
                 delete openTie.dict[openTie.key];
+              } else {
+                this.deferTieStop(this.currentNote, undefined, measureStartAbsoluteTimestamp);
               }
             }
           } catch (err) {
@@ -1203,7 +1206,7 @@ export class VoiceGenerator {
 
         }
       } else if (tieNodeList.length === 2) { // stop+start
-        const openTie: OpenTie = this.findOpenTie(this.currentNote);
+        const openTie: OpenTie = VoiceGenerator.findOpenTie(this.instrument, this.openTieDict, this.currentNote, measureStartAbsoluteTimestamp, true);
         if (openTie) {
           const tie: Tie = openTie.tie;
           tie.AddNote(this.currentNote);
@@ -1215,15 +1218,33 @@ export class VoiceGenerator {
             }
           }
         } else {
-          // nothing to stop (e.g. the note before a backward repeat, tied to the note that the repeat goes back to,
-          //   and also marked as a tie end): the start still starts a tie
+          // nothing to stop in this voice (e.g. the note before a backward repeat, tied to the note that the repeat
+          //   goes back to, and also marked as a tie end, or a tie from another voice): the start still starts a tie,
+          //   and the stop looks for another voice's tie when the measure has been read
+          let started: Tie = undefined;
           const startNode: IXmlElement = tieNodeList.find(tieNode => tieNode.attribute("type")?.value === "start");
           if (startNode) {
             this.addTie([startNode], measureStartAbsoluteTimestamp, maxTieNoteFraction, tieType);
+            started = this.currentNote.NoteTie;
           }
+          this.deferTieStop(this.currentNote, started, measureStartAbsoluteTimestamp);
         }
       }
     }
+  }
+
+  /**
+   * A tie stop that found no open tie of its own voice is matched with another voice's tie only after the whole
+   * measure is read (PendingTieStops.resolve()): voices are read one after the other, so a note of an earlier-read
+   * voice must not take the tie of a voice whose own stop comes later in the file (Schumann, Myrthen,
+   * Die Hochländer-Wittwe m72-73). Without a queue (a generator outside an InstrumentReader) the stop is matched now.
+   */
+  private deferTieStop(note: Note, started: Tie, measureStart: Fraction): void {
+    if (this.pendingTieStops) {
+      this.pendingTieStops.add(note, this.openTieDict, started, measureStart);
+      return;
+    }
+    PendingTieStops.stopTie(this.instrument, this.openTieDict, note, started, measureStart);
   }
 
   private getTieDirection(tieNode: IXmlElement): PlacementEnum {
@@ -1268,61 +1289,94 @@ export class VoiceGenerator {
   }
 
   /**
-   * The open tie that candidateNote stops: in this voice's staff first, then in the other staves of the instrument.
-   * A tie can start in one staff and end in the other (Schumann, Myrthen, Aus den hebräischen Gesängen m79-80:
-   * right-hand C4 half tied to the left-hand C4 whole, different voices); each staff keeps its own openTieDict,
-   * so the stop used to find nothing and both notes were drawn without a tie. The caller removes the tie from the
-   * dictionary it was found in (a stop+start pair that continues the tie keeps it).
+   * The open tie that note (a tie stop) ends, among the open ties of all staves of the instrument (a tie can start in
+   * one staff and end in the other: Schumann, Myrthen, Aus den hebräischen Gesängen m79-80, right-hand C4 half tied
+   * to the left-hand C4 whole, different voices; each staff keeps its own openTieDict). A candidate has the note's
+   * pitch (letter and octave, or tab string, else sounding pitch) and its last note is earlier than the note, or a
+   * grace note at its time (a tie never joins two notes of one chord: Basie, Straight Ahead m87, a cluster of B2 and
+   * Bb2 tied on chord by chord). Among candidates: the same voice, then the same staff, then the same pitch (letter,
+   * alteration and octave) before the same letter and octave before the same sounding pitch, then the nearest last
+   * note (one tie per held note: a stop does not skip a later tie of its voice), then ownDict first and the lowest
+   * key (upstream's order). sameVoiceOnly keeps the ties whose last note is in the note's voice only. measureStart is the absolute
+   * timestamp of the measure being read, whose SourceMeasure.AbsoluteTimestamp is set only after it is read.
+   *
+   * Upstream (and the fork before 10-07) took the first open tie of the pitch, the lowest key of the voice's own
+   * staff: in Die Hochländer-Wittwe m73 right-hand voice 1's G3 eighth (stop+start), read before voice 2, continued
+   * voice 2's G3 tie from m72 instead of its own G3 sixteenth's, and voice 2's G3 stop at the measure's start then
+   * ended that tie too.
    */
-  private findOpenTie(candidateNote: Note): OpenTie {
-    const ownKey: number = this.findCurrentNoteInTieDict(this.openTieDict, candidateNote);
-    if (ownKey >= 0) {
-      return { dict: this.openTieDict, key: ownKey, tie: this.openTieDict[ownKey] };
-    }
-    for (const otherStaff of this.instrument.Staves) {
-      if (otherStaff === this.staff) {
-        continue;
-      }
-      const dict: { [_: number]: Tie } = otherStaff.openTieDict;
-      const key: number = this.findCurrentNoteInTieDict(dict, candidateNote);
-      if (key >= 0) {
-        return { dict, key, tie: dict[key] };
+  public static findOpenTie(instrument: Instrument, ownDict: { [_: number]: Tie }, note: Note, measureStart: Fraction,
+                            sameVoiceOnly: boolean = false): OpenTie {
+    const time: Fraction = VoiceGenerator.absoluteTimestamp(note, measureStart);
+    const voiceId: number = note.ParentVoiceEntry.ParentVoice.VoiceId;
+    const noteStaff: Staff = note.ParentStaffEntry?.ParentStaff;
+    let best: OpenTie = undefined;
+    let bestRank: number[] = undefined;
+    const dicts: { [_: number]: Tie }[] = [ownDict];
+    for (const staff of instrument.Staves) {
+      if (staff.openTieDict !== ownDict) {
+        dicts.push(staff.openTieDict);
       }
     }
-    return undefined;
+    for (const dict of dicts) {
+      const keys: number[] = Object.keys(dict).map(k => +k).sort((a, b) => a - b);
+      for (const key of keys) {
+        const tie: Tie = dict[key];
+        if (!tie || tie.Notes.length === 0 || tie.Notes.includes(note)) {
+          continue;
+        }
+        const pitchMatch: number = VoiceGenerator.tiePitchMatch(tie, note);
+        if (pitchMatch === 0) {
+          continue;
+        }
+        const last: Note = tie.Notes[tie.Notes.length - 1];
+        const lastTime: Fraction = VoiceGenerator.absoluteTimestamp(last, measureStart);
+        if (time.lt(lastTime) || (time.Equals(lastTime) && !last.ParentVoiceEntry.IsGrace)) {
+          continue;
+        }
+        const sameVoice: boolean = last.ParentVoiceEntry.ParentVoice.VoiceId === voiceId;
+        if (sameVoiceOnly && !sameVoice) {
+          continue;
+        }
+        const sameStaff: boolean = last.ParentStaffEntry?.ParentStaff === noteStaff;
+        const rank: number[] = [sameVoice ? 1 : 0, sameStaff ? 1 : 0, pitchMatch, lastTime.RealValue];
+        if (!bestRank || VoiceGenerator.rankAbove(rank, bestRank)) {
+          best = { dict, key, tie };
+          bestRank = rank;
+        }
+      }
+    }
+    return best;
   }
 
-  /**
-   * Search the tieDictionary for the corresponding candidateNote to the currentNote.
-   * Prefer the existing spelling/string match, then fall back to sounding pitch for enharmonic ties.
-   * @param openTieDict the open ties of a staff (this voice's, or another staff's of the instrument)
-   * @param candidateNote
-   * @returns {number}
-   */
-  private findCurrentNoteInTieDict(openTieDict: { [_: number]: Tie }, candidateNote: Note): number {
-    for (const key in openTieDict) {
-      if (openTieDict.hasOwnProperty(key)) {
-        const tie: Tie = openTieDict[key];
-        const tieTabNote: TabNote = tie.Notes[0] as TabNote;
-        const tieCandidateNote: TabNote = candidateNote as TabNote;
-        if (tie.Pitch.FundamentalNote === candidateNote.Pitch.FundamentalNote && tie.Pitch.Octave === candidateNote.Pitch.Octave) {
-          return parseInt(key, 10);
-        } else if (tieTabNote.StringNumberTab !== undefined) {
-          if (tieTabNote.StringNumberTab === tieCandidateNote.StringNumberTab) {
-            return parseInt(key, 10);
-          }
-        }
+  private static rankAbove(a: number[], b: number[]): boolean {
+    for (let i: number = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) {
+        return a[i] > b[i];
       }
     }
-    for (const key in openTieDict) {
-      if (openTieDict.hasOwnProperty(key)) {
-        const tie: Tie = openTieDict[key];
-        if (tie.Pitch.getHalfTone() === candidateNote.Pitch.getHalfTone()) {
-          return parseInt(key, 10);
-        }
-      }
+    return false;
+  }
+
+  /** 3: the tie's pitch spelled as the note's (or the same tab string), 2: the same letter and octave (upstream's
+   *  match, the alteration aside), 1: the same sounding pitch, 0: another pitch. */
+  private static tiePitchMatch(tie: Tie, note: Note): number {
+    if (tie.Pitch.FundamentalNote === note.Pitch.FundamentalNote && tie.Pitch.Octave === note.Pitch.Octave) {
+      return tie.Pitch.getHalfTone() === note.Pitch.getHalfTone() ? 3 : 2;
     }
-    return -1;
+    const tieTabNote: TabNote = tie.Notes[0] as TabNote;
+    if (tieTabNote.StringNumberTab !== undefined && tieTabNote.StringNumberTab === (note as TabNote).StringNumberTab) {
+      return 3;
+    }
+    if (tie.Pitch.getHalfTone() === note.Pitch.getHalfTone()) {
+      return 1;
+    }
+    return 0;
+  }
+
+  /** The note's absolute timestamp; measureStart for the measure being read (its AbsoluteTimestamp isn't set yet). */
+  public static absoluteTimestamp(note: Note, measureStart: Fraction): Fraction {
+    return Fraction.plus(note.SourceMeasure.AbsoluteTimestamp ?? measureStart, note.ParentStaffEntry?.Timestamp ?? new Fraction(0, 1));
   }
 
   /**
@@ -1346,5 +1400,75 @@ export class VoiceGenerator {
       }
     }
     return undefined;
+  }
+}
+
+interface PendingTieStop {
+  note: Note;
+  ownDict: { [_: number]: Tie };
+  started: Tie;
+  measureStart: Fraction;
+  order: number;
+}
+
+/**
+ * The tie stops read in a measure that found no open tie of their own voice (VoiceGenerator.deferTieStop()), matched
+ * with the other voices' open ties by resolve() after the whole measure is read, earliest stop first.
+ */
+export class PendingTieStops {
+  private stops: PendingTieStop[] = [];
+
+  public add(note: Note, ownDict: { [_: number]: Tie }, started: Tie, measureStart: Fraction): void {
+    this.stops.push({ note, ownDict, started, measureStart, order: this.stops.length });
+  }
+
+  public resolve(instrument: Instrument): void {
+    if (this.stops.length === 0) {
+      return;
+    }
+    const stops: PendingTieStop[] = this.stops.slice()
+      .sort((a, b) => {
+        const byTime: number = VoiceGenerator.absoluteTimestamp(a.note, a.measureStart)
+          .CompareTo(VoiceGenerator.absoluteTimestamp(b.note, b.measureStart));
+        return byTime !== 0 ? byTime : a.order - b.order;
+      });
+    this.stops = [];
+    for (const stop of stops) {
+      PendingTieStops.stopTie(instrument, stop.ownDict, stop.note, stop.started, stop.measureStart);
+    }
+  }
+
+  /** Ends the open tie the note stops (any voice). started is the tie the note started (a stop+start that found no
+   *  tie of its voice): the tie found continues through it. */
+  public static stopTie(instrument: Instrument, ownDict: { [_: number]: Tie }, note: Note, started: Tie,
+                        measureStart: Fraction): void {
+    const openTie: OpenTie = VoiceGenerator.findOpenTie(instrument, ownDict, note, measureStart);
+    if (!openTie) {
+      return;
+    }
+    const tie: Tie = openTie.tie;
+    delete openTie.dict[openTie.key];
+    if (!started) {
+      tie.AddNote(note);
+      return;
+    }
+    const offset: number = tie.Notes.length;
+    for (let i: number = 0; i < started.Notes.length; i++) {
+      tie.AddNote(started.Notes[i]);
+      const direction: PlacementEnum = started.NoteIndexToTieDirection[i];
+      if (direction !== undefined) {
+        tie.NoteIndexToTieDirection[offset + i] = direction;
+      }
+    }
+    tie.NoteIndexToTieDirection[offset] = started.TieDirection;
+    // the started tie, if still open, goes on as the found one
+    for (const staff of instrument.Staves) {
+      const dict: { [_: number]: Tie } = staff.openTieDict;
+      for (const key of Object.keys(dict)) {
+        if (dict[key] === started) {
+          dict[key] = tie;
+        }
+      }
+    }
   }
 }
