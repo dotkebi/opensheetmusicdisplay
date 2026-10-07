@@ -242,14 +242,14 @@ describe("Wedge stops and drawn wedge ends", () => {
         // m8 in the last system, not stretched, keeps its minimum width
         const reserved: OpenSheetMusicDisplay = await render(1000);
         const reservedLength: number = reserved.EngravingRules.WedgeMinReservedLength;
-        expect(reservedLength).to.equal(4);
+        expect(reservedLength).to.equal(5);
         // to the left border of the sharpened next note
         expect(length(reserved)).to.be.greaterThan(reservedLength - 0.1);
         // a longer reservation widens the measure further
-        const longer: OpenSheetMusicDisplay = await render(1000, 6);
-        expect(length(longer)).to.be.greaterThan(6 - 0.1);
+        const longer: OpenSheetMusicDisplay = await render(1000, 7);
+        expect(length(longer)).to.be.greaterThan(7 - 0.1);
         const unreserved: OpenSheetMusicDisplay = await render(1000, 0);
-        expect(length(unreserved)).to.be.lessThan(6 - 0.1);
+        expect(length(unreserved)).to.be.lessThan(7 - 0.1);
     });
 
     it("ends a wedge on a staff without notes at the measure end", async () => {

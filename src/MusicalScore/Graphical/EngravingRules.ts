@@ -864,7 +864,7 @@ export class EngravingRules {
         this.WedgeVerticalMargin = 0.5;
         this.DistanceOffsetBetweenTwoHorizontallyCrossedWedges = 0.3;
         this.WedgeMinLength = 2.0;
-        this.WedgeMinReservedLength = 4.0;
+        this.WedgeMinReservedLength = 5.0;
         this.WedgeEndDistanceBetweenTimestampsFactor = 1.75;
         this.ArticulationAboveNoteForStemUp = false;
         this.SoftAccentWedgePadding = 0.4;
