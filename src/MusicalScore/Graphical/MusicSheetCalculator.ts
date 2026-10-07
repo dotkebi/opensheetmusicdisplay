@@ -4539,6 +4539,7 @@ export abstract class MusicSheetCalculator {
     }
 
     private calculateOrnaments(): void {
+        this.marksRaisedOverSlurs = [];
         for (let idx2: number = 0, len2: number = this.musicSystems.length; idx2 < len2; ++idx2) {
             const system: MusicSystem = this.musicSystems[idx2];
             for (let idx3: number = 0, len3: number = system.StaffLines.length; idx3 < len3; ++idx3) {
@@ -4563,6 +4564,54 @@ export abstract class MusicSheetCalculator {
                     }
                 }
             }
+        }
+        if (this.rules.RenderMeasureNumbers) {
+            for (const system of this.musicSystems) {
+                this.raiseMeasureNumbersOverRaisedMarks(system);
+            }
+        }
+    }
+
+    /**
+     * The ink of fermatas and ornaments that calculateOrnaments() raised over the slurs above (layoutFermatasOverSlurs(),
+     * layoutOrnament()), in units relative to its staff line, at its raised place.
+     */
+    protected marksRaisedOverSlurs: { staffLine: StaffLine, left: number, right: number, top: number, bottom: number }[] = [];
+
+    /**
+     * Measure numbers are placed before the ornaments (calculateMeasureNumberPlacement(), calculateMeasureNumberSkyline()),
+     * so a fermata or an ornament raised over a slur at the measure's start could go into the number (Giordani, Caro mio
+     * ben, voice m29: the fermata over the slur from its note). Raise the number over such ink under it, by
+     * [[measureNumberSlurClearance]], as over a slur (raiseMeasureNumberOverSlurs()), and reserve its new place.
+     */
+    private raiseMeasureNumbersOverRaisedMarks(musicSystem: MusicSystem): void {
+        const staffLine: StaffLine = musicSystem.StaffLines[0];
+        if (!staffLine || this.marksRaisedOverSlurs.length === 0) {
+            return;
+        }
+        const clearance: number = MusicSheetCalculator.measureNumberSlurClearance;
+        for (const label of musicSystem.MeasureNumberLabels) {
+            const box: BoundingBox = label.PositionAndShape;
+            const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x;
+            const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x;
+            let markTop: number = Number.POSITIVE_INFINITY;
+            for (const mark of this.marksRaisedOverSlurs) {
+                if (mark.staffLine !== staffLine || mark.right < left || mark.left > right) {
+                    continue;
+                }
+                // a number clear over the mark or clear under it stays
+                if (box.RelativePosition.y + box.BorderMarginBottom <= mark.top - clearance ||
+                    box.RelativePosition.y + box.BorderMarginTop >= mark.bottom + clearance) {
+                    continue;
+                }
+                markTop = Math.min(markTop, mark.top);
+            }
+            if (markTop === Number.POSITIVE_INFINITY) {
+                continue;
+            }
+            const shift: number = box.RelativePosition.y + box.BorderMarginBottom - (markTop - clearance);
+            box.RelativePosition = new PointF2D(box.RelativePosition.x, box.RelativePosition.y - shift);
+            staffLine.SkyBottomLineCalculator.updateSkyLineInRange(left, right, box.RelativePosition.y + box.BorderMarginTop);
         }
     }
 
