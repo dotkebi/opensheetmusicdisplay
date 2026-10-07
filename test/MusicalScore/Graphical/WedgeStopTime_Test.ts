@@ -16,7 +16,9 @@ import { TestUtils } from "../../Util/TestUtils";
  * - the drawn end goes towards the stop as written, not the end note plus the longest note of the staff there (Bononcini,
  *   Deh più a me non v'ascondete m4: a dotted half rest in voice 2 drew the crescendo to the end of the measure, and the
  *   diminuendo starting at its stop was stacked below it; m7 without the diminuendo);
- * - a start with a negative <offset> starts between the notes (Legrenzi m12).
+ * - a start with a negative <offset> starts between the notes (Legrenzi m12);
+ * - a wedge in one measure gets WedgeMinReservedLength from its start to its stop by widening the measure: in a tight measure
+ *   the one over a dotted quarter was a short ">" over the accent (Gluck m6).
  * Same as osmd-dart test/wedge_stop_time_test.dart.
  */
 describe("Wedge stops and drawn wedge ends", () => {
@@ -102,10 +104,13 @@ describe("Wedge stops and drawn wedge ends", () => {
 </score-partwise>`;
     /* eslint-enable max-len */
 
-    function render(): Promise<OpenSheetMusicDisplay> {
+    function render(width: number = 1600, reservedLength: number = undefined): Promise<OpenSheetMusicDisplay> {
         const div: HTMLElement = TestUtils.getDivElement(document);
-        div.style.width = "1600px";
+        div.style.width = `${width}px`;
         const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
+        if (reservedLength !== undefined) {
+            osmd.EngravingRules.WedgeMinReservedLength = reservedLength;
+        }
         return osmd.load(xml).then(() => {
             osmd.render();
             return osmd;
@@ -209,5 +214,20 @@ describe("Wedge stops and drawn wedge ends", () => {
         expect(left(dim)).to.be.lessThan(chord2);
         // to the second chord (its left edge for a diminuendo, at least WedgeMinLength)
         expect(right(dim)).to.be.closeTo(chord2 - margin, 0.7);
+    });
+
+    it("gives a wedge in a tight measure WedgeMinReservedLength", async () => {
+        const length: (osmd: OpenSheetMusicDisplay) => number = osmd => {
+            const dim: GraphicalContinuousDynamicExpression = wedge(osmd, 1, ContDynamicEnum.diminuendo);
+            return right(dim) - left(dim);
+        };
+        // m1 stays near its minimum width in a narrow system
+        const reserved: OpenSheetMusicDisplay = await render(1000);
+        const reservedLength: number = reserved.EngravingRules.WedgeMinReservedLength;
+        expect(reservedLength).to.equal(4);
+        // the diminuendo ends at the left edge of the next note
+        expect(length(reserved)).to.be.greaterThan(reservedLength - 0.7);
+        const unreserved: OpenSheetMusicDisplay = await render(1000, 0);
+        expect(length(unreserved)).to.be.lessThan(length(reserved) - 0.2);
     });
 });
