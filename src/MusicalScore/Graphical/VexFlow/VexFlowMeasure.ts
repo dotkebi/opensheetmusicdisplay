@@ -2520,10 +2520,41 @@ export class VexFlowMeasure extends GraphicalMeasure {
         return this.ornamentInkAt(VF.Modifier.Position.BELOW);
     }
 
-    /** Forget the raises (drops) of the ornaments over (under) slurs from a previous layout. */
+    /** The fermatas above the notes, drawn by the notes (not stacked beyond an ornament). */
+    private fermatasAbove(): any[] {
+        const fermatas: any[] = [];
+        for (const staffEntry of this.staffEntries) {
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                for (const modifier of ((gve as VexFlowVoiceEntry).vfStaveNote as any)?.getModifiers?.() ?? []) {
+                    if (modifier instanceof VF.Articulation && (modifier as any).type === "a@a" &&
+                        modifier.getPosition() === VF.Modifier.Position.ABOVE && modifier.getCategory() === "articulations") {
+                        fermatas.push(modifier);
+                    }
+                }
+            }
+        }
+        return fermatas;
+    }
+
+    /** Where the fermatas above the notes were drawn, without a raise over a slur, like [[OrnamentInk]]. */
+    public get FermataInk(): { fermata: any, left: number, right: number, top: number, bottom: number }[] {
+        const x: number = this.PositionAndShape.RelativePosition.x;
+        return this.fermatasAbove().filter(fermata => fermata.layoutInk).map(fermata => ({
+            fermata,
+            left: x + fermata.layoutInk.left / unitInPixels,
+            right: x + fermata.layoutInk.right / unitInPixels,
+            top: fermata.layoutInk.top / unitInPixels,
+            bottom: fermata.layoutInk.bottom / unitInPixels,
+        }));
+    }
+
+    /** Forget the raises (drops) of the ornaments and fermatas over (under) slurs from a previous layout. */
     public resetOrnamentSlurClearance(): void {
         for (const ornament of [...this.ornamentsAt(VF.Modifier.Position.ABOVE), ...this.ornamentsAt(VF.Modifier.Position.BELOW)]) {
             ornament.slurClearanceYShift = 0;
+        }
+        for (const fermata of this.fermatasAbove()) {
+            fermata.slurClearanceYShift = 0;
         }
     }
 

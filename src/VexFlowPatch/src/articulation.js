@@ -239,6 +239,8 @@ export class Articulation extends Modifier {
 
     //VexFlowPatch
     this.breathMarkDistance = 0.8; // % distance to next note or end of stave (0.8 = 80%)
+    // VexFlowPatch: a fermata's raise over a slur above it, in pixels (VexFlowMusicSheetCalculator.layoutFermatasOverSlurs())
+    this.slurClearanceYShift = 0;
     this.articulation = Flow.articulationCodes(this.type);
     if (this.isBreathMark()) { // breath mark. we could put this in tables.js:articulationCodes()
       // v6c: breathmarkcomma; 'abr|': the upbow breath mark (<breath-mark>upbow), the up-bow glyph v75
@@ -362,6 +364,7 @@ export class Articulation extends Modifier {
     if (this.y_shift) {
         y += this.y_shift;
     }
+    y += this.slurClearanceYShift;
 
     let centred = false; // VexFlowPatch: (for drawnInk)
     if (!isTab) {
@@ -386,5 +389,15 @@ export class Articulation extends Modifier {
     const { width, height } = glyph.getMetrics();
     const top = centred ? y - height / 2 : position === ABOVE ? y - height : y;
     this.drawnInk = { left: x - width / 2, top, right: x + width / 2, bottom: top + height };
+    // VexFlowPatch: a fermata's ink without its raise over a slur, relative to the stave's left and top line (see
+    //   VexFlowMeasure.FermataInk)
+    if (this.type === 'a@a' && position === ABOVE) {
+      this.layoutInk = {
+        left: this.drawnInk.left - stave.getX(),
+        right: this.drawnInk.right - stave.getX(),
+        top: this.drawnInk.top - this.slurClearanceYShift - stave.getYForLine(0),
+        bottom: this.drawnInk.bottom - this.slurClearanceYShift - stave.getYForLine(0),
+      };
+    }
   }
 }

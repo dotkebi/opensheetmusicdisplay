@@ -2236,6 +2236,11 @@ export abstract class MusicSheetCalculator {
         return;
     }
 
+    /** Raise the fermatas of a measure over the slurs above them (after the slurs are laid out). */
+    protected layoutFermatasOverSlurs(measure: GraphicalMeasure): void {
+        return;
+    }
+
     protected calculateRestNotePlacementWithinGraphicalBeam(graphicalStaffEntry: GraphicalStaffEntry,
                                                             restNote: GraphicalNote,
                                                             previousNote: GraphicalNote,
@@ -4516,6 +4521,7 @@ export abstract class MusicSheetCalculator {
                 const line: StaffLine = system.StaffLines[idx3];
                 for (let idx4: number = 0, len4: number = line.Measures.length; idx4 < len4; ++idx4) {
                     const measure: GraphicalMeasure = line.Measures[idx4];
+                    this.layoutFermatasOverSlurs(measure);
                     for (let idx5: number = 0, len5: number = measure.staffEntries.length; idx5 < len5; ++idx5) {
                         const graphicalStaffEntry: GraphicalStaffEntry = measure.staffEntries[idx5];
                         for (let idx6: number = 0, len6: number = graphicalStaffEntry.sourceStaffEntry.VoiceEntries.length; idx6 < len6; ++idx6) {
@@ -4537,6 +4543,7 @@ export abstract class MusicSheetCalculator {
                 const line: StaffLine = system.StaffLines[idx3];
                 for (let idx4: number = 0, len4: number = line.Measures.length; idx4 < len4; ++idx4) {
                     const measure: GraphicalMeasure = line.Measures[idx4];
+                    this.layoutFermatasOverSlurs(measure);
                     for (let idx5: number = 0, len5: number = measure.staffEntries.length; idx5 < len5; ++idx5) {
                         const graphicalStaffEntry: GraphicalStaffEntry = measure.staffEntries[idx5];
                         for (let idx6: number = 0, len6: number = graphicalStaffEntry.sourceStaffEntry.VoiceEntries.length; idx6 < len6; ++idx6) {
