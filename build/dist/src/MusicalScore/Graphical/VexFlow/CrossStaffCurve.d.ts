@@ -130,9 +130,14 @@ export declare class CrossStaffCurve {
     private fitSlur;
     /** Whether the fit climbs past one of its notes: ends at the end of a stem pointing away from the other note (an
      *  upper note's up stem, a lower note's down stem), runs through its notehead (a tenth of a space in), or ends
-     *  beyond its notehead's centre line, away from the other note, after passing beside the notehead (within
-     *  ObstacleClearance of it) on the other note's side (Myrthen 17 m3: up along the down stem of the right hand's
-     *  lower voice to the top of its notehead). */
+     *  beyond its notehead's centre line, away from the other note, after passing beside the notehead on the other
+     *  note's side (Myrthen 17 m3: up along the down stem of the right hand's lower voice to the top of its notehead).
+     *  Beside: within ObstacleClearance of it, or — wide — within the notehead's height (Myrthen 17 m2, m34 in the app
+     *  at some widths and zooms: 0.3 to 0.65 beside the right hand's lower-voice D4, up to the top of its notehead).
+     *  Wide for a slur whose side the XML does not give, no note of its voices between its ends: a side the XML gives
+     *  is kept but for a curve that clearly climbs (the corpus samples' placed slurs, 0.35 to 0.9 beside their notes
+     *  to their far sides), and over notes between it stays as it is (Myrthen 3: from the left hand's arpeggio up to
+     *  the right hand, from 0.3 beside its note). */
     private static climbsPast;
     /** Whether the curve runs through or along one of the notes — through its notehead (a tenth of a space in) or
      *  within 0.2 of its stem — away from the curve's own ends (0.6). */
