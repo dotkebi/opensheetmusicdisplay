@@ -157,6 +157,44 @@ function osmdPlaceRests(notes, startLines) {
       rest.setKeyLine(0, line);
     }
   });
+  osmdSeparateRests(notes);
+}
+
+// VexFlowPatch (OSMD): rests of two voices at the same time with no note of another voice there were drawn on each other
+//   (Gluck, O del mio dolce ardor m10, the right hand: voice 1's half rest and voice 2's 16th rest): the collisions of
+//   format() move a rest for a rest by nothing (shiftRestVertical()), and osmdPlaceRests() only clears notes. The upper
+//   voice's rest (its side, else its stem up: restSide, see VexFlowConverter) goes up and the lower voice's down, by half
+//   lines in turn, until they are OSMD_REST_MARGIN apart. Not rests of the same duration (see below). Same as osmd-dart
+//   (VoiceUnisonFormatter).
+function osmdSeparateRests(notes) {
+  const side = rest => rest.restSide ?? rest.getStemDirection();
+  const rests = notes.filter(note => note.isRest() && !note.osmdExplicitRest && !note.osmdInvisible);
+  for (const upper of rests) {
+    if (side(upper) !== Stem.UP) continue;
+    if (notes.some(note => !note.isRest() && !note.osmdInvisible && note.getStave() === upper.getStave())) continue;
+    for (const lower of rests) {
+      if (lower === upper || side(lower) !== Stem.DOWN || lower.getStave() !== upper.getStave()) continue;
+      // rests of the same duration at the same place read as one rest of both voices, as the app (VexFlow 5) draws
+      //   only one of them: they stay (solo vocal review E02 and E12 piano, which this rule would have split)
+      if (upper.getDuration() === lower.getDuration() && upper.getDots() === lower.getDots()) continue;
+      let upperLine = upper.getKeyLine(0);
+      let lowerLine = lower.getKeyLine(0);
+      for (let step = 0; step < 12 &&
+        upperLine - upper.glyph.line_below < lowerLine + lower.glyph.line_above + OSMD_REST_MARGIN; step++) {
+        if (step % 2 === 0) {
+          upperLine += 0.5;
+        } else {
+          lowerLine -= 0.5;
+        }
+      }
+      if (upperLine !== upper.getKeyLine(0)) {
+        upper.setKeyLine(0, upperLine);
+      }
+      if (lowerLine !== lower.getKeyLine(0)) {
+        lower.setKeyLine(0, lowerLine);
+      }
+    }
+  }
 }
 
 export class StaveNote extends StemmableNote {
