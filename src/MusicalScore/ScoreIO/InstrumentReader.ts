@@ -1,6 +1,6 @@
 import {Instrument} from "../Instrument";
 import {MusicSheet} from "../MusicSheet";
-import {VoiceGenerator} from "./VoiceGenerator";
+import {PendingTieStops, VoiceGenerator} from "./VoiceGenerator";
 import {Staff} from "../VoiceData/Staff";
 import {SourceMeasure} from "../VoiceData/SourceMeasure";
 import {SourceStaffEntry} from "../VoiceData/SourceStaffEntry";
@@ -79,6 +79,8 @@ export class InstrumentReader {
   private musicSheet: MusicSheet;
   private slurReader: SlurReader;
   private voiceLeadingGuideReader: VoiceLeadingGuideReader;
+  /** The tie stops of the measure being read that wait for another voice's tie, matched at the measure's end. */
+  private pendingTieStops: PendingTieStops = new PendingTieStops();
   public pluginManager: ReaderPluginManager;
   private instrument: Instrument;
   private voiceGeneratorsDict: { [n: number]: VoiceGenerator } = {};
@@ -626,6 +628,7 @@ export class InstrumentReader {
       log.debug("InstrumentReader.readNextXmlMeasure", errorMsg, e);
     }
 
+    this.pendingTieStops.resolve(this.instrument);
     this.linkArpeggiosAcrossStaves(this.currentMeasure);
     this.previousMeasure = this.currentMeasure;
     this.currentXmlMeasureIndex += 1;
@@ -828,6 +831,7 @@ export class InstrumentReader {
         this.staffMainVoiceGeneratorDict[staffId] = voiceGenerator;
       }
       voiceGenerator.voiceLeadingGuideReader = this.voiceLeadingGuideReader;
+      voiceGenerator.pendingTieStops = this.pendingTieStops;
     }
     return voiceGenerator;
   }

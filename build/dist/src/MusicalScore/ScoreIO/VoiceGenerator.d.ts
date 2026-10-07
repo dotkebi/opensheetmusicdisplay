@@ -3,6 +3,7 @@ import { StemDirectionType } from "../VoiceData/VoiceEntry";
 import { Note, TremoloInfo } from "../VoiceData/Note";
 import { SourceMeasure } from "../VoiceData/SourceMeasure";
 import { SourceStaffEntry } from "../VoiceData/SourceStaffEntry";
+import { Tie } from "../VoiceData/Tie";
 import { Fraction } from "../../Common/DataObjects/Fraction";
 import { IXmlElement } from "../../Common/FileIO/Xml";
 import { Staff } from "../VoiceData/Staff";
@@ -10,12 +11,24 @@ import { SlurReader } from "./MusicSymbolModules/SlurReader";
 import { VoiceLeadingGuideReader } from "./MusicSymbolModules/VoiceLeadingGuideReader";
 import { NoteType } from "../VoiceData/NoteType";
 import { ReaderPluginManager } from "./ReaderPluginManager";
+import { Instrument } from "../Instrument";
+/** An open tie found by VoiceGenerator.findOpenTie(): the dictionary it is in (this or another staff's), its key there, and the tie. */
+export interface OpenTie {
+    dict: {
+        [_: number]: Tie;
+    };
+    key: number;
+    tie: Tie;
+}
 export declare class VoiceGenerator {
     constructor(pluginManager: ReaderPluginManager, staff: Staff, voiceId: number, slurReader: SlurReader, mainVoice?: Voice);
     pluginManager: ReaderPluginManager;
     private slurReader;
     /** Shared by all voices of the instrument, set by InstrumentReader. */
     voiceLeadingGuideReader: VoiceLeadingGuideReader;
+    /** The tie stops of the measure being read that wait for another voice's tie, shared by all voices of the
+     *  instrument, set by InstrumentReader. */
+    pendingTieStops: PendingTieStops;
     private lyricsReader;
     private articulationReader;
     private musicSheet;
@@ -139,6 +152,13 @@ export declare class VoiceGenerator {
      *  where the cumulative time-modification actual-notes - e.g. 9 - differs from the number to show - e.g. 3). */
     private readTupletActualNumber;
     private addTie;
+    /**
+     * A tie stop that found no open tie of its own voice is matched with another voice's tie only after the whole
+     * measure is read (PendingTieStops.resolve()): voices are read one after the other, so a note of an earlier-read
+     * voice must not take the tie of a voice whose own stop comes later in the file (Schumann, Myrthen,
+     * Die Hochländer-Wittwe m72-73). Without a queue (a generator outside an InstrumentReader) the stop is matched now.
+     */
+    private deferTieStop;
     private getTieDirection;
     /**
      * Find the next free int (starting from 0) to use as key in TieDict.
@@ -146,25 +166,52 @@ export declare class VoiceGenerator {
      */
     private getNextAvailableNumberForTie;
     /**
-     * The open tie that candidateNote stops: in this voice's staff first, then in the other staves of the instrument.
-     * A tie can start in one staff and end in the other (Schumann, Myrthen, Aus den hebräischen Gesängen m79-80:
-     * right-hand C4 half tied to the left-hand C4 whole, different voices); each staff keeps its own openTieDict,
-     * so the stop used to find nothing and both notes were drawn without a tie. The caller removes the tie from the
-     * dictionary it was found in (a stop+start pair that continues the tie keeps it).
+     * The open tie that note (a tie stop) ends, among the open ties of all staves of the instrument (a tie can start in
+     * one staff and end in the other: Schumann, Myrthen, Aus den hebräischen Gesängen m79-80, right-hand C4 half tied
+     * to the left-hand C4 whole, different voices; each staff keeps its own openTieDict). A candidate has the note's
+     * pitch (letter and octave, or tab string, else sounding pitch) and its last note is earlier than the note; at the
+     * same time one of the two is a grace note (a grace note tied into its main note, or a main note into the grace
+     * notes after it), never two notes of one chord (Basie, Straight Ahead m87, a cluster of B2 and Bb2 tied on chord
+     * by chord). Among candidates: the same voice, then the same staff, then the same pitch (letter,
+     * alteration and octave) before the same letter and octave before the same sounding pitch, then the nearest last
+     * note (one tie per held note: a stop does not skip a later tie of its voice), then ownDict first and the lowest
+     * key (upstream's order). sameVoiceOnly keeps the ties whose last note is in the note's voice only. measureStart is the absolute
+     * timestamp of the measure being read, whose SourceMeasure.AbsoluteTimestamp is set only after it is read.
+     *
+     * Upstream (and the fork before 10-07) took the first open tie of the pitch, the lowest key of the voice's own
+     * staff: in Die Hochländer-Wittwe m73 right-hand voice 1's G3 eighth (stop+start), read before voice 2, continued
+     * voice 2's G3 tie from m72 instead of its own G3 sixteenth's, and voice 2's G3 stop at the measure's start then
+     * ended that tie too.
      */
-    private findOpenTie;
-    /**
-     * Search the tieDictionary for the corresponding candidateNote to the currentNote.
-     * Prefer the existing spelling/string match, then fall back to sounding pitch for enharmonic ties.
-     * @param openTieDict the open ties of a staff (this voice's, or another staff's of the instrument)
-     * @param candidateNote
-     * @returns {number}
-     */
-    private findCurrentNoteInTieDict;
+    static findOpenTie(instrument: Instrument, ownDict: {
+        [_: number]: Tie;
+    }, note: Note, measureStart: Fraction, sameVoiceOnly?: boolean): OpenTie;
+    private static rankAbove;
+    /** 3: the tie's pitch spelled as the note's (or the same tab string), 2: the same letter and octave (upstream's
+     *  match, the alteration aside), 1: the same sounding pitch, 0: another pitch. */
+    private static tiePitchMatch;
+    /** The note's absolute timestamp; measureStart for the measure being read (its AbsoluteTimestamp isn't set yet). */
+    static absoluteTimestamp(note: Note, measureStart: Fraction): Fraction;
     /**
      * Calculate the normal duration of a [[Tuplet]] note.
      * @param xmlNode
      * @returns {any}
      */
     private getTupletNoteDurationFromType;
+}
+/**
+ * The tie stops read in a measure that found no open tie of their own voice (VoiceGenerator.deferTieStop()), matched
+ * with the other voices' open ties by resolve() after the whole measure is read, earliest stop first.
+ */
+export declare class PendingTieStops {
+    private stops;
+    add(note: Note, ownDict: {
+        [_: number]: Tie;
+    }, started: Tie, measureStart: Fraction): void;
+    resolve(instrument: Instrument): void;
+    /** Ends the open tie the note stops (any voice). started is the tie the note started (a stop+start that found no
+     *  tie of its voice): the tie found continues through it. */
+    static stopTie(instrument: Instrument, ownDict: {
+        [_: number]: Tie;
+    }, note: Note, started: Tie, measureStart: Fraction): void;
 }

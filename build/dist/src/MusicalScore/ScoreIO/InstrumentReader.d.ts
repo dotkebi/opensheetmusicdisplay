@@ -17,6 +17,8 @@ export declare class InstrumentReader {
     private musicSheet;
     private slurReader;
     private voiceLeadingGuideReader;
+    /** The tie stops of the measure being read that wait for another voice's tie, matched at the measure's end. */
+    private pendingTieStops;
     pluginManager: ReaderPluginManager;
     private instrument;
     private voiceGeneratorsDict;
