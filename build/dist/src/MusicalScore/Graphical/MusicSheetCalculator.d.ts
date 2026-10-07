@@ -22,6 +22,7 @@ import { GraphicalTie } from "./GraphicalTie";
 import { RepetitionInstruction } from "../VoiceData/Instructions/RepetitionInstruction";
 import { MultiExpression, MultiExpressionEntry } from "../VoiceData/Expressions/MultiExpression";
 import { StaffEntryLink } from "../VoiceData/StaffEntryLink";
+import { MusicSystemBuilder } from "./MusicSystemBuilder";
 import { MultiTempoExpression } from "../VoiceData/Expressions/MultiTempoExpression";
 import { Repetition } from "../MusicSource/Repetition";
 import { PointF2D } from "../../Common/DataObjects/PointF2D";
@@ -352,8 +353,8 @@ export declare abstract class MusicSheetCalculator {
      *  double loop). */
     protected updateAllStaffLineBorders(): void;
     /** Async-only helper: finalize systems on all pages (mirror of the sync tail of {@link calculateMusicSystems}:
-     *  system lines/brackets, y-shift by BorderTop, page labels, top/bottom borders). */
-    protected finalizePageSystems(): void;
+     *  system lines/brackets, y-shift by the page's top border, page labels, top/bottom borders). */
+    protected finalizePageSystems(musicSystemBuilder: MusicSystemBuilder): void;
     /**
      * Loading-path async mirror of {@link calculateMusicSystems}: same step order and output, but yields
      * to the event loop after each step and, most importantly, chunks the dominant skyline pass. Progress
@@ -369,6 +370,24 @@ export declare abstract class MusicSheetCalculator {
     protected calculateMarkedAreas(): void;
     protected calculateComments(): void;
     protected calculateChordSymbols(): void;
+    /**
+     * Sets the x positions of the chord symbols of a measure (relative to their parent bounding boxes), before their y positions:
+     * a chord symbol not over a note goes from its staff entry (which has no x position without notes) to the measure,
+     * at an x proportional to its timestamp in the measure, and a chord symbol over a whole measure rest after the begin instructions.
+     * @param measure The measure whose chord symbols to position.
+     * @param measureStafflineIndex The index of the measure in its staffline, to find the measures of the other staves in musicSystem.
+     * @param musicSystem The system of the measure: chord symbols without a staff entry x position take the x position
+     *   of a staff entry with the same timestamp in the other staves.
+     */
+    protected calculateChordSymbolsXPositions(measure: GraphicalMeasure, measureStafflineIndex: number, musicSystem: MusicSystem): void;
+    /**
+     * Returns the highest (minimum) skyline and lowest (maximum) bottom line value under the chord symbols of the given staff entries,
+     * where they are drawn (see calculateChordSymbolsXPositions(), called before), to place them at one y position.
+     * @param staffEntries The staff entries whose chord symbols to align, e.g. of a staffline or measure (ChordSymbolYAlignmentScope).
+     * @param sbc The sky and bottom line calculator of the staffline of the staff entries.
+     * @returns The minimum skyline value under chord symbols placed above, and the maximum bottom line value under chord symbols
+     *   placed below (Number.MAX_SAFE_INTEGER and Number.MIN_SAFE_INTEGER if there are none).
+     */
     protected calculateAlignedChordSymbolsOffset(staffEntries: GraphicalStaffEntry[], sbc: SkyBottomLineCalculator): {
         minOffset: number;
         maxOffset: number;
@@ -423,8 +442,6 @@ export declare abstract class MusicSheetCalculator {
     protected calculateTempoExpressionsForMultiTempoExpression(sourceMeasure: SourceMeasure, multiTempoExpression: MultiTempoExpression, measureIndex: number): void;
     /** Whether tempo text has already been placed at this position, typically from another part. */
     protected isTempoMarkingAlreadyRendered(staffLine: StaffLine, tempoExpression: AbstractTempoExpression, absoluteTimestamp: Fraction): boolean;
-    /** Whether two metronome marks print the same: note equations by their notes rather than their playback tempo,
-     *  other marks by beat unit and bpm. */
     /** Whether another tempo expression at the moment of multiTempoExpression is written for a staff above staffIndex
      *  or without a placement (which could be any staff), see ownStaffIndexOfTempoExpression(). */
     private static hasTempoExpressionAboveAt;
@@ -460,7 +477,6 @@ export declare abstract class MusicSheetCalculator {
     protected getRelativePositionInStaffLineFromTimestamp(timestamp: Fraction, verticalIndex: number, staffLine: StaffLine, multiStaffInstrument: boolean, firstVisibleMeasureRelativeX?: number, useLeftStaffEntryBorder?: boolean): PointF2D;
     protected getRelativeXPositionFromTimestamp(timestamp: Fraction): number;
     protected calculatePageLabels(page: GraphicalMusicPage): void;
-    /** Subtitle position shared by drawing and first-page credit clearance. */
     /**
      * The composer and lyricist labels are placed above the first system's skyline, but symbols above the staff that reserve
      * no skyline (a segno in its default place, see VexFlowMusicSheetCalculator.placeWordRepetitionInSkyline()) were not
@@ -472,8 +488,18 @@ export declare abstract class MusicSheetCalculator {
     /** The top (page y) of the symbols above the first system that reserve no skyline between left and right (page x),
      *  undefined if there are none. See keepCreditLabelsClearOfFirstSystemSymbols(). */
     protected firstSystemUnreservedSymbolsTop(page: GraphicalMusicPage, left: number, right: number): number;
+    /** Subtitle position shared by drawing and first-page credit clearance. */
     private subtitleRelativeY;
     protected createGraphicalTies(): void;
+    /**
+     * Creates the graphical ties of a tie from the given note onwards, one from each note to the next.
+     * @param tie The tie.
+     * @param startGraphicalStaffEntry The staff entry of the note.
+     * @param staffIndex The index of the staff.
+     * @param measureIndex The index of the measure.
+     * @param startNoteIndex The index of the note in tie.Notes. The graphical ties before it were created with the earlier notes
+     *   (createGraphicalTies() calls this for each note of a tie but the last), and would be drawn twice if created again.
+     */
     private handleTie;
     /**
      * Whether a tie without an end note goes on after a backward repeat: its note ends the measure that ends with the repeat,
@@ -600,7 +626,6 @@ export declare abstract class MusicSheetCalculator {
     private getFirstRightNotNullStaffEntryFromContainer;
     private calculateWordRepetitionInstructions;
     private calculateRepetitionEndings;
-    private static hasMetronomeMarkEntry;
     private calculateTempoExpressions;
     private calculateRehearsalMarks;
     protected calculateRehearsalMark(measure: SourceMeasure): void;
@@ -619,6 +644,8 @@ export declare abstract class MusicSheetCalculator {
      * tendre m37). The 1722 print, like the grace notes there that have a stem in the XML, draws the stem opposite the slur.
      */
     private setGraceStemAwayFromSlur;
+    /** Whether a voice other than the given entry's has an entry (note or rest) in the same measure on the same staff. */
+    private otherVoicePresentInMeasure;
     /** Sets a voiceEntry's stem direction to one already set in other notes in its beam, if it has one. */
     private setBeamNotesWantedStemDirections;
 }

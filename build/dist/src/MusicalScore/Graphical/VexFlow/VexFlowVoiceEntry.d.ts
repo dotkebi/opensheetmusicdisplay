@@ -17,6 +17,14 @@ export declare class VexFlowVoiceEntry extends GraphicalVoiceEntry {
      *  cross-staff beam. */
     private static crossStaffBeamNoteBox;
     applyBordersFromVexflow(): void;
+    /** Sets the vertical borders of this voice entry to the bounding box of its Vexflow note, e.g. from the tip of an up-stem
+     *  that a beam extended (see VexFlowMeasure.updateBeamedVoiceEntryBorders()) to the lowest note head. Keeps the position of
+     *  the voice entry, which its notes are placed relative to (VexFlowMeasure.correctNotePositions()): the next render's
+     *  calculateXPosition() puts the voice entry there again (applyBordersFromVexflow()) and calculates the bounding boxes with
+     *  the notes still where this render placed them.
+     *  @param staveTopY The y of the stave's top line where the note's bounding box was measured (0 in calculateXPosition()).
+     */
+    applyVerticalBordersFromVexflow(boundingBox: any, staveTopY?: number): void;
     set vfStaveNote(value: VF.StemmableNote);
     get vfStaveNote(): VF.StemmableNote;
     /** Apply custom noteheads from Note.CustomNoteheadVFCode. This should happen before color(). */

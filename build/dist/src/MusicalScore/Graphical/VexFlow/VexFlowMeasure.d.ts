@@ -195,6 +195,27 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      */
     private postFormatBeams;
     /**
+     * Does what draw() does to the notes besides drawing them: the beams extend their notes' stems (see postFormatBeams()),
+     * and the notes are placed at their note heads (see correctNotePositions()). For the lazy reuse of a skyline
+     * (SkyBottomLineCalculator.applyGeometricSkylineSideEffectsOnly()), which skips the draw of the skyline calculation:
+     * the beams would extend the stems when the measure is drawn instead, at the stave's final position rather than the
+     * skyline calculation's, so a few stems and beams would end a few trillionths of a pixel off where render() draws them.
+     * Also what drawNotes() does to the notes of this fork: the rests of held notes move clear of them (clearRestsOfHeldNotes()),
+     * and the notes of cross-staff beams follow the stave (refreshCrossStaffBeamNoteYs()).
+     */
+    applyDrawSideEffects(): void;
+    /**
+     * Gives the notes of this measure's cross-staff beams their y values on the stave where it is now, as drawing the voices
+     * does (Voice.draw() sets each note's stave). The cross-staff beams are not among the beams of postFormatBeams(): the drawer
+     * post-formats them between the placed staves (VexFlowMusicSheetDrawer.prepareCrossStaffBeams()). But the voice entry of
+     * such a note gets its vertical borders from its y values (VexFlowVoiceEntry.crossStaffBeamNoteBox(), via
+     * correctNotePositions()), so without the draw of the skyline calculation they stayed those of the stave's earlier position,
+     * 100 pixels above the skyline calculation's (see SkyBottomLineCalculator.prepareMeasureForGeometricSkyline()): the curves
+     * between the staves reserved their outer sides from the wrong stem tips, and a renderNext() batch reusing the sky and
+     * bottom lines spaced the staves of the system differently from render() (Dichterliebe01, the piano's cross-staff slurs).
+     */
+    private refreshCrossStaffBeamNoteYs;
+    /**
      * Formats the voices of this measure's vertical measure, i.e. of all its staves (see VexFlowMusicSheetCalculator.formatMeasures()),
      * to the width of this measure's stave.
      * @param lastFormats For a series of formats, like the skyline calculation's (see SkyBottomLineCalculator), which formats every
@@ -223,6 +244,16 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      * A note's x: see VexFlowStaffEntry.calculateXPosition(). Called at the end of draw() (note.setIndex() needs to have been called).
      */
     correctNotePositions(): void;
+    /**
+     * Gives the voice entries of beamed notes the vertical borders of their stems as drawn, i.e. reaching the beam.
+     * A voice entry gets its bounding box from its Vexflow note in VexFlowStaffEntry.calculateXPosition()
+     * (VexFlowVoiceEntry.applyBordersFromVexflow()), before the beams extend their notes' stems to reach them
+     * (postFormatBeams(), in draw() or applyDrawSideEffects()). So a beamed note's voice entry ended at its unextended stem tip,
+     * short of the beam, and a slur on the stem side, which starts and ends at the voice entry's border
+     * (GraphicalSlur.calculateStartAndEnd()), started on the stem under the beam and crossed the beam and what is above it,
+     * e.g. a fingering (test_slur_above_beamed_stem_up_fingering_traumerei_measure3).
+     */
+    private updateBeamedVoiceEntryBorders;
     /**
      * Places each note of this TAB measure on its string, where its fret number is drawn.
      * The voice entry is placed on the string of its last note, and its notes relative to it, at its x (the right end of the widest
@@ -284,6 +315,18 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
      * @param beamedNotes notes that will not be autobeamed (usually because they are already beamed)
      */
     private autoBeamNotes;
+    /**
+     * Enhances engraving for specific scenarios, such as scale runs that reach deep into ledger lines.
+     * VexFlow naturally pushes beams far outward to ensure minimum stem lengths. However, for notes
+     * extremely high or low on the staff, this results in visually sparse, floating beams. Musicians
+     * generally prefer beams to anchor closer to the staff (e.g. the 2nd/3rd line) to reduce visual spread,
+     * provided it doesn't violate minimum stem lengths.
+     *
+     * This patch hooks into VexFlow's calculateSlope method to apply a post-calculation y_shift.
+     * By exclusively extending stems (pulling down-stems down and up-stems up), we mathematically
+     * guarantee we never squash stems or cross noteheads, perfectly preserving VexFlow's minimum bounds.
+     */
+    private applyLedgerLineEngravingRule;
     /**
      * Complete the creation of VexFlow Tuplets in this measure
      */

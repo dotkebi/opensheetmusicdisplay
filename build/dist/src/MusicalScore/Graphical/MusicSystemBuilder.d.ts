@@ -207,8 +207,11 @@ export declare class MusicSystemBuilder {
      *  (see optimizeDistanceBetweenStaffLines), so snapping the system y aligns all of them.
      *  Shifts the system by at most half a pixel. No-op if EngravingRules.SnapStafflinesToCrispPixels is off. */
     protected snapSystemYToCrispStaffLines(musicSystem: MusicSystem, systemY: number): number;
-    /** The first system's top border, by which all systems are shifted after page layout.
-     *  Use the same rounding for the fit check and the shift to preserve crisp staff lines. */
+    /** The top border of a page's first system (from its skyline), by which all systems of the page are moved down after the
+     *  page layout, see MusicSheetCalculator.calculateMusicSystems(). The page layout includes this move when checking
+     *  whether a system still fits above the bottom margin.
+     *  Rounded to whole pixels to keep the staff line positions snapped by snapSystemYToCrispStaffLines(),
+     *  or to the half-pixel grid if not snapping. */
     pageTopBorder(firstSystem: MusicSystem): number;
     /** Room below the last system of page 1, where calculatePageLabels places the copyright. */
     private copyrightHeightBelowSystems;

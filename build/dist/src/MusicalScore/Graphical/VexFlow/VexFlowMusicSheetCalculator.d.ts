@@ -38,9 +38,9 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      *  with the overflow. Indexed first by Staff, then by verse/container index. */
     private previousLyricOverflowsByStaff;
     private previousChordOverflowsByStaff;
-    private metronomePlacements;
     /** Multi-measure repeat units awaiting skyline reservation in the current render. */
     private measureRepeatUnitsPendingSkyline;
+    private metronomePlacements;
     constructor(rules: EngravingRules);
     protected clearRecreatedObjects(): void;
     protected formatMeasures(): void;
@@ -161,6 +161,13 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      * @param isTab Whether this tie is for a tab note (guitar tabulature)
      */
     protected layoutGraphicalTie(tie: GraphicalTie, tieIsAtSystemBreak: boolean, isTab: boolean): void;
+    /**
+     * Creates a Vexflow tie in a standard staff, curved in the given direction.
+     * @param notes The notes of the tie (or of the part of a tie across a system break), see VF.StaveTie.
+     * @param direction The direction, e.g. from the XML. Without one, Vexflow takes it from the stem direction of the notes.
+     * @returns The Vexflow tie.
+     */
+    private createStaveTie;
     protected calculateDynamicExpressionsForMultiExpression(multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
     protected createMetronomeMark(metronomeExpression: InstantaneousTempoExpression): void;
     /** Measures the drawn mark and its clearance from the notation, before tempo text takes its space. */
@@ -242,6 +249,8 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     /** The repetition instruction boxes already placed per staff line, for their mutual collision checks.
      *  (a WeakMap, so that the entries of a previous render's staff lines don't linger) */
     private placedWordRepetitionBoxes;
+    /** The repetition instructions in their default place (placeWordRepetitionInSkyline()) reserve no skyline. */
+    protected firstSystemUnreservedSymbolsTop(page: GraphicalMusicPage, left: number, right: number): number;
     /**
      * Shifts a repetition instruction (VF.Repetition, e.g. Coda sign or "D.S. al Fine" text) above
      * other objects in its range, e.g. chord symbols, which are calculated before the repetition
@@ -252,8 +261,6 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      * @param measure the (uppermost) measure the repetition instruction was added to
      * @param repetition the VexFlow repetition (stave modifier) to place, created by addWordRepetition()
      */
-    /** The repetition instructions in their default place (placeWordRepetitionInSkyline()) reserve no skyline. */
-    protected firstSystemUnreservedSymbolsTop(page: GraphicalMusicPage, left: number, right: number): number;
     protected placeWordRepetitionInSkyline(measure: VexFlowMeasure, repetition: VF.Repetition): void;
     protected calculateSkyBottomLines(): void;
     /** Compute (not reuse) the sky/bottom lines for the given staff lines: geometric, or the batched /
@@ -270,10 +277,17 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      *  call, so we yield around it. */
     private computeSkyBottomLinesForAsync;
     /**
-     * The words were placed clear of the dynamics and wedges, but AlignmentManager then moves those onto a common baseline:
-     * a dynamic pulled down to a wedge's baseline can land on a word under it (Enescu, Cantabile et Presto m37-38 on one
-     * system: the third sf of m38 on "cédez"). Stack such words beyond the dynamics and wedges again.
-     * (Same as osmd-dart's VexFlowMusicSheetCalculator._restackWordsClearOfDynamics.)
+     * Places the words of multiExpression (see super), then stacks each new words label clear of the dynamics and wedges
+     * of its staffline, see restackWordsClearOfDynamics().
+     */
+    protected calculateMoodAndUnknownExpression(multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void;
+    /**
+     * calculateLabel() places a words label at the sky/bottom line, which the dynamics and wedges (aligned onto a common
+     * baseline before, see calculateExpressionAlignements()) have raised: the label's text touches them, and its box,
+     * whose top/bottom margin reaches beyond the text, overlaps theirs (Enescu, Cantabile et Presto m37-38 on one system:
+     * "cédez" under the third sf of m38). Stack such words DynamicExpressionSpacer beyond the dynamics and wedges and update
+     * the sky/bottom line for their new position.
+     * (Same as osmd-dart's VexFlowMusicSheetCalculator._restackWordsClearOfDynamics, which runs after the alignment there.)
      */
     private restackWordsClearOfDynamics;
     /**

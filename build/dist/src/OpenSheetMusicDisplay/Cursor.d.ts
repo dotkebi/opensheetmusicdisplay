@@ -10,8 +10,6 @@ import { BoundingBox } from "../MusicalScore/Graphical/BoundingBox";
 import { GraphicalNote } from "../MusicalScore/Graphical/GraphicalNote";
 /** A cursor which can iterate through the music sheet. */
 export declare class Cursor {
-    /** Product playhead guards are implemented without replacing the upstream update lifecycle. */
-    static readonly HasPlayheadGuards: boolean;
     constructor(container: HTMLElement, openSheetMusicDisplay: OpenSheetMusicDisplay, cursorOptions: CursorOptions);
     adjustToBackgroundColor(): void;
     private container;
@@ -35,9 +33,6 @@ export declare class Cursor {
     private cursorOptions;
     private cursorOptionsRendered;
     private cursorWidthRendered;
-    private lastPlayheadMeasure;
-    private lastPlayheadTimestamp;
-    private lastPlayheadX;
     private skipInvisibleNotes;
     /** Initialize the cursor. Necessary before using functions like show() and next(). */
     init(manager: MusicPartManager, graphic: GraphicalMusicSheet): void;
@@ -47,7 +42,6 @@ export declare class Cursor {
     private getStaffEntryFromVoiceEntry;
     /** Moves the cursor to the current position of the iterator (visually), e.g. after next(). */
     update(): void;
-    private monotonicPlayheadX;
     private findVisibleGraphicalMeasure;
     updateWidthAndStyle(measurePositionAndShape: BoundingBox, x: number, y: number, height: number): void;
     /** Whether updateStyle() would draw a different image than the current one.

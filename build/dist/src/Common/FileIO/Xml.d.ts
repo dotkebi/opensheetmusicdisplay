@@ -23,6 +23,8 @@ export declare class IXmlElement {
     /**
      * Wraps 'elem' Element in a IXmlElement
      * @param elem
+     * @param knownName the element's lower-cased node name, when the caller
+     * already matched on it - saves a DOM read and a toLowerCase() per wrapper
      */
     constructor(elem: Element, knownName?: string);
     /** The text of the element if it only contains one text node, otherwise "". */

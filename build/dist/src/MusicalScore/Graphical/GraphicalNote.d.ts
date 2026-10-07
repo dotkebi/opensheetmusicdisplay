@@ -42,16 +42,20 @@ export declare class GraphicalNote extends GraphicalObject {
      */
     setColor(color: string, coloringOptions: ColoringOptions): void;
     /** Toggle visibility of the note, making it and its stem and beams invisible for `false`.
-     * By default, this will also hide the note's slurs and ties (see visibilityOptions).
+     * By default, this will also hide the note's slurs, ties and glissandi, e.g. slides (see visibilityOptions).
      * (This only works with the default SVG backend, not with the Canvas backend/renderer)
      * To get a GraphicalNote from a Note, use osmd.EngravingRules.GNote(note).
      */
     setVisible(visible: boolean, visibilityOptions?: VisibilityOptions): void;
 }
-/** Coloring options for VexFlowGraphicalNote.setColor(). */
+/** Coloring options for VexFlowGraphicalNote.setColor().
+ * Slurs, ties and glissandi belong to the note they start at: coloring only the note they end at doesn't color them.
+ */
 export interface ColoringOptions {
     applyToBeams?: boolean;
     applyToFlag?: boolean;
+    /** Glissandi and slides: their lines, and in a TAB staff their label "sl." too. */
+    applyToGlissandi?: boolean;
     applyToLedgerLines?: boolean;
     applyToLyrics?: boolean;
     applyToModifiers?: boolean;
@@ -67,9 +71,12 @@ export interface ColoringOptions {
 }
 /** Visibility options for VexFlowGraphicalNote.setVisible().
  * E.g. if setVisible(false, {applyToTies: false}), everything about a note will be invisible except its ties.
+ * Slurs, ties and glissandi belong to the note they start at: hiding only the note they end at keeps them visible.
  * */
 export interface VisibilityOptions {
     applyToBeams?: boolean;
+    /** Glissandi and slides: their lines, and in a TAB staff their label "sl." too. */
+    applyToGlissandi?: boolean;
     applyToLedgerLines?: boolean;
     applyToNotehead?: boolean;
     applyToSlurs?: boolean;

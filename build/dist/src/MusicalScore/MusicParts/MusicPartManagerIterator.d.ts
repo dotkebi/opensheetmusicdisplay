@@ -107,6 +107,13 @@ export declare class MusicPartManagerIterator {
     private doBackJump;
     private activateCurrentRhythmInstructions;
     private activateCurrentDynamicOrTempoInstructions;
+    /**
+     * Moves back to the previous vertical container: the previous one in the current measure, the last one of the
+     * source-previous measure (repetitions are not unrolled backwards), or the front of the sheet.
+     * Keeps the enrolled timestamp consistent with the source position: the measure durations that recursiveMove()
+     * added to it when leaving a measure forward are subtracted again when moving back into that measure,
+     * so that moving back and forth across a measure boundary is neutral.
+     */
     private recursiveMoveBack;
     private recursiveMove;
     /**

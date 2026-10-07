@@ -40,25 +40,33 @@ export declare abstract class MusicSheetDrawer {
     drawableBoundingBoxElement: string;
     skyLineVisible: boolean;
     bottomLineVisible: boolean;
-    /** Lazy rendering: when >= 0, drawPage() draws only the systems of (the first) page whose
-     *  index is within [LazyDrawSystemsFromIndex, LazyDrawSystemsToIndexExcl), leaving the
-     *  already-drawn systems above untouched in the shared backend. -1 (default) draws every system.
+    /** Lazy rendering: when >= 0, drawPage() draws only the systems whose index, counted through the systems of
+     *  all pages, is within [LazyDrawSystemsFromIndex, LazyDrawSystemsToIndexExcl), leaving the
+     *  already-drawn systems above untouched in the shared backends. -1 (default) draws every system.
      *  Set by OpenSheetMusicDisplay.renderAppend() before each appended batch; reset to -1 after. */
     LazyDrawSystemsFromIndex: number;
     LazyDrawSystemsToIndexExcl: number;
     /** Lazy horizontal rendering (RenderSingleHorizontalStaffline): draw only graphical objects whose right
      *  edge x (in OSMD units) lies in (LazyDrawFromXUnits, LazyDrawToXUnits] -- the measures and spanning
      *  elements that first entered the drawn frontier this batch. ±Infinity (default) draws everything.
-     *  Set by OpenSheetMusicDisplay.renderAppendGrowingHorizontal() per batch; reset after. */
+     *  Set by drawPage() for each system from LazyDrawSystemWindows; reset after. */
     LazyDrawFromXUnits: number;
     LazyDrawToXUnits: number;
-    /** Lazy horizontal rendering: when true, drawPage() skips the page-level labels (title/credits). They are
-     *  drawn once, on the final batch, when the page has reached its full width and they sit at their final
-     *  (re-centered) positions -- drawing them earlier would place them under a still-growing page. */
+    /** Lazy horizontal rendering: when set, drawPage() draws only the systems in this map, each with its own draw
+     *  x-window (see LazyDrawFromXUnits): a batch can reach several systems, e.g. after forced system breaks.
+     *  Set by OpenSheetMusicDisplay.renderAppendGrowingHorizontal() per batch; reset after. */
+    LazyDrawSystemWindows: Map<MusicSystem, {
+        fromX: number;
+        toX: number;
+    }>;
+    /** Lazy horizontal rendering: when true, drawPage() skips the page-level labels (title/credits) and the
+     *  bounding boxes (see drawableBoundingBoxElement). They are drawn once, on the final batch, when the
+     *  page is drawn to its full width. */
     LazySkipPageLabels: boolean;
     /** Lazy horizontal rendering: when true, drawLabel() ignores the x-window gate. Scoped (set/restored) to
      *  the page-label loop in drawPage(), since those labels span the full page width and must all be drawn
-     *  even though their left edges lie behind the final batch's frontier. */
+     *  even though their left edges lie behind the final batch's frontier, and to the labels of a measure's
+     *  staff entries (see VexFlowMusicSheetDrawer.drawMeasure()), which are drawn with their measure. */
     LazyForcePageLabels: boolean;
     protected rules: EngravingRules;
     protected graphicalMusicSheet: GraphicalMusicSheet;
@@ -102,11 +110,12 @@ export declare abstract class MusicSheetDrawer {
      *  x-window (its right edge first entered the drawn frontier this batch). True when not lazy-horizontal. */
     protected lazyDrawsAtX(rightXUnits: number): boolean;
     protected lazyDrawsObject(psh: BoundingBox): boolean;
-    /** Lazy horizontal rendering: whether to draw the once-only left-edge system elements (instrument braces
-     *  and group brackets). True for non-lazy and for the first lazy-horizontal batch, which owns the left edge
-     *  (LazyDrawFromXUnits is -Infinity); false for continuation batches, so a single-system score's brace
-     *  isn't redrawn on top of itself every batch. (Vertical lazy keeps the x-window at ±Infinity and draws
-     *  each system's brace once via the per-system gate, so this stays true there.) */
+    /** Lazy horizontal rendering: whether to draw the once-only system elements (instrument braces and group
+     *  brackets at the left edge, and the sky and bottom lines of the stafflines, see skyLineVisible). True for
+     *  non-lazy and for a system's first lazy-horizontal batch, which owns its left edge (LazyDrawFromXUnits is
+     *  -Infinity); false for continuation batches, so a system's brace isn't redrawn on top of itself every
+     *  batch. (Vertical lazy keeps the x-window at ±Infinity and draws each system's brace once via the
+     *  per-system gate, so this stays true there.) */
     protected lazyDrawsLeftEdgeOnce(): boolean;
     drawLabel(graphicalLabel: GraphicalLabel, layer: number): Node;
     protected applyScreenTransformation(point: PointF2D): PointF2D;
@@ -132,6 +141,15 @@ export declare abstract class MusicSheetDrawer {
     protected activateSystemRendering(systemId: number, absBoundingRect: RectangleF2D, systemBoundingBoxInPixels: RectangleF2D, createNewImage: boolean): boolean;
     protected drawSystemLineObject(systemLine: SystemLine): void;
     protected drawStaffLine(staffLine: StaffLine): void;
+    /**
+     * Draws the lyric lines (extenders, e.g. "dich___") of a staff line.
+     * They are positioned relative to the staff line (see MusicSheetCalculator.calculateLyricExtend()),
+     * because the staff lines are spaced vertically only after the lyrics are positioned.
+     * They are drawn at their absolute position without changing them, so that drawing the laid-out sheet again
+     * (e.g. in an incremental render) draws them at the same position.
+     * @param lyricLines the lyric lines of the staff line
+     * @param staffLine the staff line the lyric lines are positioned relative to
+     */
     protected drawLyricLines(lyricLines: GraphicalLine[], staffLine: StaffLine): void;
     protected drawExpressions(staffline: StaffLine): void;
     /** Draws the dashed lines after text expressions (MusicXML <dashes>, e.g. "rit. - - -"). */
@@ -164,6 +182,26 @@ export declare abstract class MusicSheetDrawer {
     protected get leadSheet(): boolean;
     protected set leadSheet(value: boolean);
     protected drawPage(page: GraphicalMusicPage): void;
+    /**
+     * Lazy rendering: whether drawPage() draws the system with the given index (see LazyDrawSystemsFromIndex).
+     * @param systemIndex the index of the system, counted through the systems of all pages
+     * @returns true if the system is in the draw range of the batch, or if the render isn't lazy
+     */
+    protected lazyDrawsSystem(systemIndex: number): boolean;
+    /**
+     * Lazy rendering: the index of the page's first system, counted through the systems of all pages: the number of systems
+     * on the pages before it.
+     * @param page the page
+     * @returns the number of systems before the page
+     */
+    private systemCountBefore;
+    /**
+     * Lazy rendering: the index of the sheet's last drawn system (on the last page drawn, see EngravingRules.MaxPageToDrawNumber),
+     * counted through the systems of all pages.
+     * @param page a page of the sheet
+     * @returns the index of the last system
+     */
+    private lastSystemIndex;
     /**
      * Draw bounding boxes aroung GraphicalObjects
      * @param startBox Bounding Box that is used as a staring point to recursively go through all child elements

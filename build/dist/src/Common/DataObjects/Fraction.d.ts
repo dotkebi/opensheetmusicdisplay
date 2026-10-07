@@ -24,6 +24,13 @@ export declare class Fraction {
     static plus(f1: Fraction, f2: Fraction): Fraction;
     static minus(f1: Fraction, f2: Fraction): Fraction;
     static multiply(f1: Fraction, f2: Fraction): Fraction;
+    /**
+     * Greatest common divisor of two non-negative numbers (called by simplify() with the absolute
+     * numerator and denominator).
+     * @param a first number (non-negative; simplify() only calls this with a non-zero numerator)
+     * @param b second number (non-negative)
+     * @returns the GCD, at least 1 (never 0, which would produce NaNs downstream, see #1511)
+     */
     private static greatestCommonDenominator;
     /**
      *

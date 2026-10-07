@@ -92,31 +92,28 @@ export declare class OpenSheetMusicDisplay {
      */
     updateGraphic(): void;
     /** Lazy rendering (LazyConsistentGraphic): number of systems already drawn into the shared
-     *  backend across prior batches. Greedy layout is *usually* forward-stable, so the next batch skips
-     *  redrawing these and draws from this index -- but some scores re-position earlier systems as the
-     *  prefix grows, so each batch verifies the drawn systems against lazyDrawnSystemY and redraws from
+     *  backends across prior batches, counted through the pages. Greedy layout is *usually* forward-stable, so the next
+     *  batch skips redrawing these and draws from this index -- but some scores re-position earlier systems as the
+     *  prefix grows, so each batch verifies the drawn systems against lazyDrawnSystemPositions and redraws from
      *  the topmost one that moved (reconciliation). */
     private lazyDrawnSystemCount;
-    /** Lazy rendering: the absolute Y (in units) each already-drawn system [index] was drawn at,
+    /** Lazy rendering: the page and the absolute Y (in units, on the page) each already-drawn system [index] was drawn at,
      *  used to detect when a later batch's full-prefix layout moves an earlier system (forward-stability
      *  is not universal) so it can be redrawn at its corrected position. */
-    private lazyDrawnSystemY;
-    /** Lazy HORIZONTAL rendering (RenderSingleHorizontalStaffline): number of graphical measures already
-     *  drawn into the shared SVG (left-to-right). The next batch draws from here, deferring the prefix's
-     *  last measure (it carries an end-barline until it becomes interior), like the vertical path defers
-     *  its last system. */
+    private lazyDrawnSystemPositions;
+    /** Lazy HORIZONTAL rendering (RenderSingleHorizontalStaffline): number of graphical measures of the top
+     *  staffline already drawn, counted through the systems in order (see renderAppendGrowingHorizontal()).
+     *  The next batch draws from here. */
     private lazyDrawnHMeasureCount;
-    /** Lazy HORIZONTAL: for a multi-staff score, lay the whole score out ONCE on the first batch and reuse that
-     *  final layout for every batch (only the drawn x-window grows). A growing partial re-layout would route
-     *  slurs/ties along each batch's boundary skyline and size the inter-staff gap to the prefix's max
-     *  clearance -- so lower stafflines would drift down batch to batch. A single horizontal staffline always
-     *  fits one SVG, so the full layout is safe; only the (expensive) DRAW stays lazy. Single-staff scores keep
-     *  the growing layout (lazy layout + draw; nothing below the top line to drift). */
-    private lazyHReuseLayout;
     /** Incremental rendering ({@link renderNext}): whether a session is in progress (started, not yet reset). */
     private lazyIncrementalActive;
     /** Incremental rendering: source-measure index where the next batch continues (the drawn frontier). */
     private lazyNextSourceIndex;
+    /** Incremental rendering of the endless page: the width in pixels all batches of the session lay the sheet out at, the
+     *  container's content width when the first batch read it (like render() reads it once). A batch reading the width again
+     *  laid its systems out narrower than the ones drawn before when the container had become narrower in between, e.g. by
+     *  the vertical scrollbar the page gets once the first batch makes it longer than the window. */
+    private lazyLayoutWidth;
     /** Incremental rendering: the draw-measure range the lazy layout mutates, saved on begin and restored on
      *  reset, so a later normal render() isn't left limited to the last batch's draw range. */
     private lazySavedMinMeasureToDrawIndex;
@@ -157,8 +154,9 @@ export declare class OpenSheetMusicDisplay {
      *  clearFirst=true starts a fresh session (clears prior content, resets the counters). Returns the
      *  source-measure index at which the next batch should continue. fromMeasureIndex is informational --
      *  the drawn frontier is tracked internally. Targets the endless vertical-scroll format and
-     *  RenderSingleHorizontalStaffline. `targetNewSystems`, if set, draws that many whole systems this batch
-     *  (vertical path only; ignored for the single horizontal staffline, which is one system). */
+     *  RenderSingleHorizontalStaffline (laid out once, then drawn to the right batch by batch).
+     *  `targetNewSystems`, if set, draws that many whole systems this batch (vertical path only; ignored for
+     *  the single horizontal staffline, which is one system). */
     private renderAppend;
     /**
      * Incrementally render the loaded sheet one batch at a time, appending each batch so a large score
@@ -166,6 +164,10 @@ export declare class OpenSheetMusicDisplay {
      * or the first after load(), render() or resetIncrementalRendering() -- starts a fresh session: it
      * clears the container and lays the score out from the first measure. Each later call appends the next
      * batch. Returns progress; once `done` is true the whole sheet is rendered and further calls are no-ops.
+     * Like render(), a session lays the sheet out at the container's width when it starts: to adapt it to a new
+     * width, e.g. after a resize, start a new session.
+     * Page labels are drawn with the batch that finalizes their position: the title block (title, subtitle,
+     * composer, lyricist) with the first batch, the copyright (below the last system) with the final batch.
      *
      * Pair with {@link enableIncrementalRenderingOnScroll} for scroll-to-load, or {@link renderRemaining}
      * to finish synchronously (e.g. before PDF/image export). Works for the endless vertical-scroll page
@@ -239,24 +241,68 @@ export declare class OpenSheetMusicDisplay {
      * we skip drawing the already-drawn systems above and DEFER the last system of a non-final batch (it
      * is unstretched and shifts once it becomes an interior, stretched system next batch). But this is NOT
      * universal -- some scores re-position earlier systems by several px as later systems are added -- so
-     * each batch first VERIFIES the drawn systems against their drawn Y (lazyDrawnSystemY) and, if any
+     * each batch first VERIFIES the drawn systems against their drawn Y (lazyDrawnSystemPositions) and, if any
      * moved, redraws the whole drawn range at the corrected positions (reconciliation). In the common
      * (stable) case nothing is redrawn. See export/inspect_prefix_stability.mjs / inspect_optionb_drawpos.mjs.
+     * The layout can have several pages (NewPageAtXMLNewPageAttribute), each drawn into its own backend like in render():
+     * the systems are counted through the pages, and a backend is added for each page the layout grows to.
      *
      * @returns the source-measure index at which the next batch should continue (past the last drawn system).
      */
     private renderAppendGrowing;
     /**
-     * Lazy rendering for RenderSingleHorizontalStaffline (one continuous staffline, horizontal scroll).
-     * Lays out the whole prefix [0..toMeasureIndex] as ONE system (greedy builder at SheetMaximumWidth so it
-     * never breaks) and draws only the measures (and spanning elements) whose right edge first entered the
-     * drawn frontier this batch -- the single SVG grows to the RIGHT (and taller if later measures are tall).
-     * Measure X and Y are forward-stable here, so unlike the vertical path there is no reconciliation and no
-     * deferred last unit: every batch simply appends. SVG backend only (Canvas keeps its existing width cap).
+     * Lazy rendering: where the furthest wedge or octave shift ends that reaches into the systems a batch draws and ends in the
+     * last system of its layout, or beyond. Such a wedge or octave shift needs a longer layout: their parts depend on the system
+     * they end in, e.g. a wedge's parts after the first are placed at its last system's bottom line, and an octave shift ends at
+     * a note there. The last system still grows (and is stretched once complete), and the end can be beyond the layout, where a
+     * wedge isn't calculated at all, so the systems drawn now would be drawn with other or without these parts. They aren't
+     * drawn again. A wedge or octave shift without an end is ignored, and so is a verbal continuous dynamic like "cresc.",
+     * which is drawn at its start only (see GraphicalContinuousDynamicExpression.IsVerbal).
+     * @param systems the systems of the layout, in order
+     * @param drawToIdxExcl the index of the first system the batch doesn't draw
+     * @returns the source-measure index of the furthest end in the last system or beyond, or -1 if there is none
+     */
+    private lazySpannerEndInLastSystem;
+    /**
+     * Lazy rendering: the systems of the laid-out pages that are drawn (see EngravingRules.MaxPageToDrawNumber), in order.
+     * The systems a batch draws are counted through them (see MusicSheetDrawer.LazyDrawSystemsFromIndex).
+     * @returns the systems of the pages in order
+     */
+    private lazyLaidOutSystems;
+    /**
+     * Lazy rendering for RenderSingleHorizontalStaffline (one staffline growing to the right, horizontal scroll).
+     * The first batch lays the whole score out like render(), and each batch reuses that layout and draws only the
+     * measures entering the drawn frontier (and the elements ending in them), so that the finished incremental render
+     * looks like a normal render(). Laying out a growing prefix instead would move what is drawn already, e.g. a
+     * higher note further right moves the staffline down, and the lyrics of a staffline are aligned at one height.
+     * Laying out the whole staffline is fast anyway, drawing it is the expensive part, which stays lazy.
+     * The layout can have several systems, e.g. with forced system breaks (NewSystemAtXMLNewSystemAttribute,
+     * RenderXMeasuresPerLineAkaSystem) or where the staffline would be wider than SheetMaximumWidth, and pages
+     * (NewPageAtXMLNewPageAttribute): the frontier advances through the measures of all systems in order, and each
+     * system a batch reaches is drawn in its own x-window, from the system's previous frontier to its new one. A
+     * system's first window is open to the left and its last one to the right, so that every element is drawn once,
+     * also the ones beyond the first or last measure, like the instrument names or a long last chord symbol.
+     * @param toMeasureIndex source-measure index up to which this batch draws (at least the next measure, so that
+     *  the frontier always advances)
+     * @param clearFirst whether this batch starts a new session: lays the score out and creates the backends
      * @returns the source-measure index at which the next batch should continue.
      */
     private renderAppendGrowingHorizontal;
-    protected createOrRefreshRenderBackend(): void;
+    /**
+     * Removes the backends (SVG or canvas) from the container and creates a new one for each page drawn.
+     * @param pageWidth the width of the pages in pixels. By default the container's content width, read after removing the
+     *  backends. An incremental render passes the width all its batches lay the sheet out at (see lazyLayoutWidth).
+     */
+    protected createOrRefreshRenderBackend(pageWidth?: number): void;
+    /**
+     * Returns the width in pixels of the container's content box, which the page fills.
+     * The page is drawn inside the container's border and padding, so a page as wide as the container's offsetWidth
+     * overflowed the container by their width.
+     * Like offsetWidth, the width includes a vertical scrollbar of the container. clientWidth doesn't: it would change
+     * when createOrRefreshRenderBackend() empties the container and the scrollbar disappears, after render() used it
+     * for the layout. It's also 0 in generateImages_browserless, which only sets offsetWidth.
+     */
+    protected getContainerContentWidth(): number;
     exportSVG(): void;
     /** States whether the render() function can be safely called. */
     IsReadyToRender(): boolean;

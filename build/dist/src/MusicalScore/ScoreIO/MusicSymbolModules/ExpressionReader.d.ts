@@ -13,6 +13,7 @@ export declare class ExpressionReader {
     private soundTimestamp;
     private explicitSoundTempo;
     private soundDynamic;
+    private soundDynamicTimestamp;
     private divisions;
     private offsetDivisions;
     private staffNumber;
@@ -96,7 +97,7 @@ export declare class ExpressionReader {
     private static isSameMetronomeMark;
     /** The metronome mark already read for this staff at the given time of the measure, if any. */
     private metronomeMarkAt;
-    private readTempoTimestamp;
+    private readDirectionTimestamp;
     private createNewTempoExpressionIfNeeded;
     private addWedge;
     private fillMultiOrTempoExpression;

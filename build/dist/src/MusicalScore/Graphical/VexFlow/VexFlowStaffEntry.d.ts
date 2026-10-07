@@ -34,10 +34,11 @@ export declare class VexFlowStaffEntry extends GraphicalStaffEntry {
      *   moves aside so that the voices' notes don't overlap (x shift),
      * - at the right end of the widest fret number of a TAB chord.
      * The notes' y: see VexFlowMeasure.correctNotePositions().
+     * Also sets the centre of the column of note heads of each voice entry (GraphicalVoiceEntry.noteHeadsCenterX).
      */
     private positionNotesAtNoteHeads;
-    /** The x (in pixels) at which Vexflow draws the centre of the note's head, or of a TAB note's fret number. */
-    private static drawnCenterX;
+    /** The x (in pixels) at which Vexflow draws the note's head, or a TAB note's fret number, and its width. */
+    private static drawnHead;
     setMaxAccidentals(): number;
     setModifierXOffsets(): void;
     private applyModifierOffsets;

@@ -18,6 +18,12 @@ export declare class Tie {
      *  even if tie.TieDirection is PlacementEnum.Above (tie starts going up on Notes[0]).
      */
     NoteIndexToTieDirection: NoteIndexToPlacementEnum;
+    /**
+     * Gets the direction of the tie from the given note to the next one: the direction given at that note,
+     * or at the last note before it that gives one (see NoteIndexToTieDirection), else TieDirection.
+     * @param startNote The note of the tie that the part starts at. Without it, TieDirection.
+     * @returns The direction, PlacementEnum.NotYetDefined if none is given.
+     */
     getTieDirection(startNote?: Note): PlacementEnum;
     get Notes(): Note[];
     get Type(): TieTypes;

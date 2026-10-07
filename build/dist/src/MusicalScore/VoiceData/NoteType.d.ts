@@ -8,7 +8,9 @@ export declare enum NoteType {
     _64th = 5,
     _32nd = 6,
     _16th = 7,
+    /** Misspelled name of EIGHTH (same value), kept for compatibility. */
     EIGTH = 8,
+    EIGHTH = 8,// same value, so QUARTER etc. keep their values (= their index in NoteTypeHandler.NoteTypeXmlValues)
     QUARTER = 9,
     HALF = 10,
     WHOLE = 11,

@@ -228,9 +228,24 @@ export declare class GraphicalMusicSheet {
     /**
      * Get visible staffentry for the container given by the index.
      * @param index
+     * @param onlyReliableXAnchors Whether to skip entries whose x position doesn't reliably reflect
+     * their timestamp (see {@link isReliableCursorXAnchor}), for cursor positioning by timestamp.
      * @returns {GraphicalStaffEntry}
      */
-    getStaffEntry(index: number): GraphicalStaffEntry;
+    getStaffEntry(index: number, onlyReliableXAnchors?: boolean): GraphicalStaffEntry;
+    /**
+     * Whether a staff entry's x position is a reliable anchor for mapping a timestamp to an
+     * x position (cursor positioning during playback, see {@link calculateXPositionFromTimestamp}).
+     * Two kinds of entries are excluded:
+     * - Entries without any graphical notes, e.g. staff entries only carrying a chord symbol
+     *   (MusicXML harmony). These are never positioned by the layout (their relative x stays at the
+     *   measure's left border regardless of their timestamp), so using them as anchors makes the
+     *   cursor jump backwards to the measure start (e.g. chord symbols above a centered whole rest).
+     * - Entries positioned outside their measure's horizontal bounds. These occur when a note was
+     *   never actually formatted/laid out (e.g. rests in some tablature edge cases) and carry
+     *   meaningless coordinates.
+     */
+    isReliableCursorXAnchor(entry: GraphicalStaffEntry): boolean;
     /**
      * Returns the index of the closest previous (earlier) vertical container which has at least some visible staff entry, with respect to the given index.
      * @param index
@@ -245,8 +260,8 @@ export declare class GraphicalMusicSheet {
      * @constructor
      */
     GetNextVisibleContainerIndex(index: number): number;
-    findClosestLeftStaffEntry(fractionalIndex: number, searchOnlyVisibleEntries: boolean): GraphicalStaffEntry;
-    findClosestRightStaffEntry(fractionalIndex: number, returnOnlyVisibleEntries: boolean): GraphicalStaffEntry;
+    findClosestLeftStaffEntry(fractionalIndex: number, searchOnlyVisibleEntries: boolean, onlyReliableXAnchors?: boolean): GraphicalStaffEntry;
+    findClosestRightStaffEntry(fractionalIndex: number, returnOnlyVisibleEntries: boolean, onlyReliableXAnchors?: boolean): GraphicalStaffEntry;
     calculateCursorLineAtTimestamp(musicTimestamp: Fraction, styleEnum: OutlineAndFillStyleEnum): GraphicalLine;
     calculateXPositionFromTimestamp(timeStamp: Fraction): [number, MusicSystem];
     GetNumberOfVisibleInstruments(): number;

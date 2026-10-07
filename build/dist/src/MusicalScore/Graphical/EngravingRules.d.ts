@@ -72,12 +72,19 @@ export declare class EngravingRules {
     FlatBeams: boolean;
     FlatBeamOffset: number;
     FlatBeamOffsetPerBeam: number;
+    /** Whether to pull extreme high/low ledger line beams closer to the staff. */
+    OptimizeExtremeLedgerBeams: boolean;
     ClefLeftMargin: number;
     ClefRightMargin: number;
     /** How many unique note positions a percussion score needs to have to not be rendered on one line.
-     * To always use 5 lines for percussion, set this to 0. (works unless the XML says <staff-lines>1)
+     * Set this to 0 to disable one-line reduction and percussion note positioning, or -1 to keep the note positioning.
+     * A staff whose XML gives the number of lines (<staff-lines>) keeps it, unless PercussionKeepXMLStafflineCount is false.
      */
     PercussionOneLineCutoff: number;
+    /** Whether a percussion staff whose XML gives the number of lines (<staff-lines>) keeps it. Default true.
+     * If false, PercussionOneLineCutoff also draws such a staff on one line, e.g. a snare drum with <staff-lines>5.
+     */
+    PercussionKeepXMLStafflineCount: boolean;
     PercussionForceVoicesOneLineCutoff: number;
     PercussionUseXMLDisplayStep: boolean;
     PercussionXMLDisplayStepNoteValueShift: number;
@@ -115,6 +122,11 @@ export declare class EngravingRules {
      *  Same as osmd-dart. */
     CrossStaffBeamsCenterUniformXmlStems: boolean;
     SetWantedStemDirectionByXml: boolean;
+    /** Whether a secondary voice (any voice after the first one on a staff, e.g. MusicXML voice 2) that is the only
+     *  voice with entries in a measure gets pitch-based (automatic) stem directions instead of the stems-down that
+     *  mark a secondary voice. Only affects notes without a <stem> in the MusicXML (see SetWantedStemDirectionByXml).
+     *  Default false: stems down are the usual signal for a secondary voice (MuseScore renders it that way too), #1719. */
+    AutoStemSecondaryVoicesWhenAloneInMeasure: boolean;
     GraceNoteScalingFactor: number;
     GraceNoteXOffset: number;
     /** Set this to e.g. -0.5 or -0.8 to put grace notes a lot closer to the main note. */
@@ -269,6 +281,10 @@ export declare class EngravingRules {
      */
     LyricsAlignmentStandard: TextAlignmentEnum;
     LyricsHeight: number;
+    /** Whether to re-link lyric word chains split across voices of the same staff
+     * after reading, so that dashes are drawn between their syllables.
+     * Set before loading a score: the words are linked when loading. */
+    RelinkLyricWordsAcrossVoices: boolean;
     LyricsYOffsetToStaffHeight: number;
     LyricsYMarginToBottomLine: number;
     /** Draw the verse number ("1.", "2.", …) at the left of the first syllable of every numbered verse
@@ -531,6 +547,14 @@ export declare class EngravingRules {
     DefaultColorTitle: string;
     DefaultColorCursor: string;
     DefaultFontFamily: string;
+    /** Font family of the texts that VexFlow draws in fonts of its own: rehearsal marks, ending numbers, the text of
+     *  metronome marks, repetition instructions like "D.C. al Fine", octave shift texts like "8va", fingerings left or right
+     *  of notes and of grace notes, string numbers, and in tabs the fret numbers, bends, and the texts of hammer-ons,
+     *  pull-offs and slides.
+     *  If undefined, these keep VexFlow's fonts (e.g. bold sans-serif for rehearsal marks, Times for repetition instructions).
+     *  Their size, weight and style don't change. Set it e.g. to DefaultFontFamily to draw all texts in the same font.
+     *  Set before loading a score: fingerings, string numbers, tab fret numbers and bends are created when loading. */
+    VexFlowTextFontFamily: string;
     DefaultFontStyle: FontStyles;
     DefaultVexFlowNoteFont: string;
     MaxMeasureToDrawIndex: number;
@@ -590,7 +614,7 @@ export declare class EngravingRules {
      *  A whole repeat unit stays written out if it spans systems or the draw range, its reference is not visible,
      *  or it contains clef/key/time changes, grace notes, lyrics/extenders, trill lines, multi-rests,
      *  connections outside the unit or to another staff, or a slur with an unattached end.
-     *  TAB staves and incremental renderNext() remain written out. */
+     *  TAB staves remain written out. */
     RenderMeasureRepeats: boolean;
     RenderRehearsalMarks: boolean;
     RenderClefsAtBeginningOfStaffline: boolean;

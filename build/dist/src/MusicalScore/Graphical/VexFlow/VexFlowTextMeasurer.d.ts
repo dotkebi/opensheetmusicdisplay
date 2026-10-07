@@ -12,5 +12,6 @@ export declare class VexFlowTextMeasurer implements ITextMeasurer {
     fontSizeStandard: number;
     private rules;
     computeTextWidthToHeightRatio(text: string, font: Fonts, style: FontStyles, fontFamily?: string, fontSize?: number): number;
+    computeTextWidthInCssFont(text: string, cssFont: string): number;
     setFontSize(fontSize?: number): number;
 }

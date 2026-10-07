@@ -74,8 +74,9 @@ export declare class SkyBottomLineCalculator {
     private prepareMeasureForGeometricSkyline;
     /** Replay the geometric skyline calc's per-measure side effects WITHOUT the expensive extent
      *  measurement, so lazy rendering can reuse cached sky/bottom lines while leaving the measures in the exact
-     *  state a normal render would. (calculateLinesGeometric does correctNotePositions inside measure.draw;
-     *  here we call it directly since the draw is skipped.) No-op for the non-default raster skyline path.
+     *  state a normal render would. (calculateLinesGeometric extends the beamed stems and does correctNotePositions
+     *  inside measure.draw; here we do both directly since the draw is skipped, see VexFlowMeasure.applyDrawSideEffects().)
+     *  No-op for the non-default raster skyline path.
      *  lastMeasureFormats: see calculateLines(). */
     applyGeometricSkylineSideEffectsOnly(lastMeasureFormats?: Map<SourceMeasure, IVerticalMeasureFormat>): void;
     updateSkyLineWithLine(start: PointF2D, end: PointF2D, value: number): void;

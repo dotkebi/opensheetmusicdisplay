@@ -69,6 +69,20 @@ export declare class VexFlowConverter {
      */
     private static addAccidental;
     /**
+     * Whether a rest that is moved above (or below) the notes of the other voices of its staff entry would be moved towards
+     * the staff of a note's voice, i.e. past a cross-staff note from that staff. MusicXML files usually number the voices of a part
+     * with several staves by staff: 1-4 on the upper staff, 5-8 on the lower one, so voices 1 and 5 are the upper voices.
+     * E.g. the notes of voice 1 that reach down into the lower staff are above the lower staff's voice 5,
+     * so voice 5's rest doesn't go above them, between the staves. Neither does voice 2's rest go below the notes of voice 5
+     * that reach up into the upper staff.
+     * @param restVoiceId the voice of the rest
+     * @param noteVoiceId the voice of a note in the rest's staff entry
+     * @param restAbove whether the rest is moved above the other voices' notes (upper voice), or else below them
+     * @param numberOfStaves the number of staves of the part
+     * @returns true if the note's voice belongs to another staff of the part, on the side the rest would be moved to
+     */
+    private static restMovesTowardsStaffOfVoice;
+    /**
      * Convert a GraphicalVoiceEntry to a VexFlow StaveNote
      * @param gve the GraphicalVoiceEntry which can hold a note or a chord on the staff belonging to one voice
      * @returns {VF.StaveNote}
@@ -173,6 +187,22 @@ export declare class VexFlowConverter {
      * @returns {string}
      */
     static font(fontSize: number, fontStyle: FontStyles, font: Fonts, rules: EngravingRules, fontFamily?: string): string;
+    /**
+     * Sets EngravingRules.VexFlowTextFontFamily, if given, as the family of a font that VexFlow draws a text in,
+     * e.g. a rehearsal mark's. The size, weight and style stay VexFlow's.
+     */
+    static setVexFlowTextFontFamily(font: {
+        family: string;
+    }, rules: EngravingRules): void;
+    /**
+     * Draws the text of a bend in EngravingRules.VexFlowTextFontFamily, if given.
+     * VexFlow sizes a bend by an estimate of its text width (7px per character, which fits its 10pt Arial),
+     * so the bend is widened where its text is wider in that family, as VexFlow's Bend.updateWidth() would size it,
+     * if the TextMeasurer can measure it (see ITextMeasurer.computeTextWidthInCssFont()).
+     */
+    private static setVexFlowTextFontOfBend;
+    /** Like setVexFlowTextFontFamily(), for the CSS fonts like "10pt Arial" that VexFlow uses for tab fret numbers and bends. */
+    static vexFlowTextCssFont(cssFont: string, rules: EngravingRules): string;
     /**
      * Converts the style into a string that VexFlow RenderContext can understand
      * as the weight of the font

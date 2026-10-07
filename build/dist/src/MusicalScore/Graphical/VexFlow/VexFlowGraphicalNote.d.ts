@@ -46,7 +46,7 @@ export declare class VexFlowGraphicalNote extends GraphicalNote {
      */
     getSVGId(): string;
     /** Toggle visibility of the note, making it and its stem and beams invisible for `false`.
-     * By default, this will also hide the note's slurs and ties (see visibilityOptions).
+     * By default, this will also hide the note's slurs, ties and glissandi, e.g. slides (see visibilityOptions).
      * (This only works with the default SVG backend, not with the Canvas backend/renderer)
      * To get a GraphicalNote from a Note, use osmd.EngravingRules.GNote(note).
      */
@@ -62,10 +62,14 @@ export declare class VexFlowGraphicalNote extends GraphicalNote {
     getBeamSVGs(): HTMLElement[];
     /** Gets the SVG path elements of the note's ledger lines. */
     getLedgerLineSVGs(): HTMLElement[];
-    /** Gets the SVG path elements of the note's tie curves. */
+    /** Gets the SVG groups of the ties starting at this note, each with the tie's curve.
+     *  A tie across a system break has a group in each system (see VexFlowMeasure.addStaveTie()). */
     getTieSVGs(): HTMLElement[];
     /** Gets the SVG path elements of the note's slur curve. */
     getSlurSVGs(): HTMLElement[];
+    /** Gets the SVG groups of the glissandi and slides starting at this note: each with the line, and in a TAB staff the label "sl.".
+     *  A glissando across a system break has a group in each system (see VexFlowMusicSheetDrawer.drawGlissando()). */
+    getGlissandoSVGs(): HTMLElement[];
     /** Gets the SVG elements of the note heads, e.g. the paths of a chord's heads, or the fret numbers of a TAB note (and its chord). */
     getNoteheadSVGs(): HTMLElement[];
     getFlagSVG(): HTMLElement;
@@ -81,8 +85,8 @@ export declare class VexFlowGraphicalNote extends GraphicalNote {
      * A grace note is drawn with its main note, in its own group, which is skipped.
      */
     private getTabNoteSVGs;
-    /** Colors the paths of a group, e.g. of a note head, or a single shape of a TAB note: its fill,
-     *  or its stroke if it's only a line, like the curve of a bend. */
+    /** Colors the paths of a group, e.g. of a note head, or a single shape, e.g. of a TAB note or a glissando: its fill,
+     *  or its stroke if it's only a line, like the curve of a bend or the line of a slide. */
     private static colorShapes;
     /** Change the color of a note (without re-rendering). See ColoringOptions for options like applyToBeams etc.
      * For a TAB note, the note heads are its fret numbers, and its modifiers e.g. bends.

@@ -55,6 +55,13 @@ export declare class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
      *  when the notes can't be located (don't suppress). See drawSlurs() for why we avoid the bezier points. */
     private lazyDrawsSlur;
     private drawGlissandi;
+    /**
+     * Lazy horizontal rendering: whether a glissando belongs in this batch's draw x-window, by the right edge of its
+     * staff entries in this staffline.
+     * @param gGliss the glissando (the part of it in one staffline)
+     * @returns true when not lazy-horizontal, or when the glissando has no staff entries (don't suppress it)
+     */
+    private lazyDrawsGlissando;
     private drawGlissando;
     /** Draws the voice leading guides of a system (visual lines from notehead to notehead, see VoiceLeadingGuide).
      *  Their lines are calculated here, at draw time, when both stafflines of a guide have their final positions. */
