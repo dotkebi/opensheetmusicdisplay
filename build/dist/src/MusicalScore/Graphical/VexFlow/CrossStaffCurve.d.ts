@@ -129,7 +129,10 @@ export declare class CrossStaffCurve {
      *  facing sides (facingEnd()). */
     private fitSlur;
     /** Whether the fit climbs past one of its notes: ends at the end of a stem pointing away from the other note (an
-     *  upper note's up stem, a lower note's down stem), or runs through its notehead (a tenth of a space in). */
+     *  upper note's up stem, a lower note's down stem), runs through its notehead (a tenth of a space in), or ends
+     *  beyond its notehead's centre line, away from the other note, after passing beside the notehead (within
+     *  ObstacleClearance of it) on the other note's side (Myrthen 17 m3: up along the down stem of the right hand's
+     *  lower voice to the top of its notehead). */
     private static climbsPast;
     /** Whether the curve runs through or along one of the notes — through its notehead (a tenth of a space in) or
      *  within 0.2 of its stem — away from the curve's own ends (0.6). */
@@ -141,7 +144,13 @@ export declare class CrossStaffCurve {
     /** Whether a slur's notes are nearly one above the other: across less than half the way up (Myrthen 17: from the
      *  left hand's last sixteenth up to the right hand's next note, 0.16 to 0.26 in the app). Its ends on its notes'
      *  usual sides — both above or both below — may make the curve climb past one of them to its far side
-     *  (climbsPast()); the source joins the sides the notes face each other with. */
+     *  (climbsPast()); the source joins the sides the notes face each other with. So it does from beside the start's
+     *  stem pointing to the other note (besideStem()) at any width: the usual curve starts at that stem's end, already
+     *  up by its length, and climbs on along the other note's stem whether the notes stand one above the other or not
+     *  (Myrthen 17 in wider measures: 0.52 to 1.31 on the web) — whereas a slur between notes whose stems point away
+     *  from each other keeps its usual ends (from a chord's notehead down to the end of the next note's down stem two
+     *  beats later, 4 to 6 across). A side the XML gives is kept there but for the steep: a pair of slurs between the
+     *  same notes, placed above and below, would run as one. */
     private static isSteep;
     /** A steep slur's end at the note: on the side facing the other note — above the lower note, below the upper — or,
      *  when the note's stem points that way on the side towards the other note, beside the stem at the notehead at
@@ -153,6 +162,8 @@ export declare class CrossStaffCurve {
     /** The ends tried at the note: the notehead, and its stem's end when the stem points to the slur's side (usual
      *  first). */
     private static endChoices;
+    /** Whether the XML gives the slur's side (followed by placementOf()). */
+    private placedByXml;
     /** The XML placement, else away from the slur's own notes between its ends (most of them above the line from end
      *  to end: below), else as upstream (a slur up to the upper staff above, down to the lower one below). */
     private placementOf;

@@ -339,14 +339,18 @@ export class CrossStaffCurve {
         const fit: (below: boolean, steep: boolean) => SlurFit = (side: boolean, steep: boolean) =>
             this.fitSlur(rules, geometry, upper, lower, upperOrigin, lowerOrigin, start, end, inner, side, steep);
         let best: SlurFit = fit(below, false);
-        // a steep slur whose curve climbs past one of its notes — through its notehead, or along a stem pointing away
-        //   from the other note to its end (Myrthen 17: placed above, from the left hand's last sixteenth up past the
-        //   right hand's next note): from the notes' facing sides, bowing away from the start's stem beside it (there
+        // a steep slur — or, its side not given by the XML, one from beside its start's stem, however wide
+        //   (isSteep()) — whose curve climbs past one of its notes: through its notehead, along a stem pointing away
+        //   from the other note to its end, or beside the notehead to its far side (Myrthen 17: from the left hand's
+        //   last sixteenth up past the right hand's next note; m3: up along the down stem of the right hand's lower
+        //   voice over its notehead): from the notes' facing sides, bowing away from the start's stem beside it (there
         //   right, as in the source — to the left it would run back through the left hand's beam), when no other note
         //   stands between its ends and it is clear of the notes across it on both staves, their stems and beams
         //   (Myrthen 3, 15 m16: from the first of the left hand's beamed notes it would bend under the others; 15 m57:
         //   cross the left hand's other voice)
-        if (best && CrossStaffCurve.isSteep(start, end) && CrossStaffCurve.climbsPast(best, start, end)) {
+        if (best && (CrossStaffCurve.isSteep(start, end) ||
+                     CrossStaffCurve.besideStem(start, end, true) && !this.placedByXml(rules)) &&
+            CrossStaffCurve.climbsPast(best, start, end)) {
             const steepBelow: boolean = CrossStaffCurve.besideStem(start, end, true) ? end.headY < start.headY : below;
             const steep: SlurFit = fit(steepBelow, true);
             const others: CrossStaffCurveNote[] = steep ? this.notesUnder(geometry, steep.segments) : [];
@@ -445,19 +449,36 @@ export class CrossStaffCurve {
     }
 
     /** Whether the fit climbs past one of its notes: ends at the end of a stem pointing away from the other note (an
-     *  upper note's up stem, a lower note's down stem), or runs through its notehead (a tenth of a space in). */
+     *  upper note's up stem, a lower note's down stem), runs through its notehead (a tenth of a space in), or ends
+     *  beyond its notehead's centre line, away from the other note, after passing beside the notehead (within
+     *  ObstacleClearance of it) on the other note's side (Myrthen 17 m3: up along the down stem of the right hand's
+     *  lower voice to the top of its notehead). */
     private static climbsPast(fit: SlurFit, start: CrossStaffCurveNote, end: CrossStaffCurveNote): boolean {
         const away: (note: CrossStaffCurveNote, other: CrossStaffCurveNote) => boolean =
             (note: CrossStaffCurveNote, other: CrossStaffCurveNote) => note.stem === (note.headY < other.headY ? 1 : -1);
         if (fit.startAtStem && away(start, end) || fit.endAtStem && away(end, start)) {
             return true;
         }
-        for (const p of CrossStaffCurve.sampleOf(fit.segments, 32)) {
+        const samples: PointF2D[] = CrossStaffCurve.sampleOf(fit.segments, 32);
+        for (const p of samples) {
             for (const note of [start, end]) {
                 if (p.x > note.headLeft + 0.1 && p.x < note.headRight - 0.1 &&
                     p.y > headTop(note) + 0.1 && p.y < headBottom(note) - 0.1) {
                     return true;
                 }
+            }
+        }
+        const ends: [CrossStaffCurveNote, CrossStaffCurveNote, PointF2D][] =
+            [[start, end, samples[0]], [end, start, samples[samples.length - 1]]];
+        for (const [note, other, p] of ends) {
+            const upper: boolean = note.headY < other.headY;
+            if (upper ? p.y >= note.headY : p.y <= note.headY) {
+                continue;
+            }
+            const clearance: number = CrossStaffCurve.ObstacleClearance;
+            if (samples.some(q => (upper ? q.y > note.headY : q.y < note.headY) &&
+                                  q.x > note.headLeft - clearance && q.x < note.headRight + clearance)) {
+                return true;
             }
         }
         return false;
@@ -523,7 +544,13 @@ export class CrossStaffCurve {
     /** Whether a slur's notes are nearly one above the other: across less than half the way up (Myrthen 17: from the
      *  left hand's last sixteenth up to the right hand's next note, 0.16 to 0.26 in the app). Its ends on its notes'
      *  usual sides — both above or both below — may make the curve climb past one of them to its far side
-     *  (climbsPast()); the source joins the sides the notes face each other with. */
+     *  (climbsPast()); the source joins the sides the notes face each other with. So it does from beside the start's
+     *  stem pointing to the other note (besideStem()) at any width: the usual curve starts at that stem's end, already
+     *  up by its length, and climbs on along the other note's stem whether the notes stand one above the other or not
+     *  (Myrthen 17 in wider measures: 0.52 to 1.31 on the web) — whereas a slur between notes whose stems point away
+     *  from each other keeps its usual ends (from a chord's notehead down to the end of the next note's down stem two
+     *  beats later, 4 to 6 across). A side the XML gives is kept there but for the steep: a pair of slurs between the
+     *  same notes, placed above and below, would run as one. */
     private static isSteep(start: CrossStaffCurveNote, end: CrossStaffCurveNote): boolean {
         return Math.abs(headCenterX(end) - headCenterX(start)) < 0.5 * Math.abs(end.headY - start.headY);
     }
@@ -555,13 +582,18 @@ export class CrossStaffCurve {
         return note.stem === (below ? -1 : 1) ? [true, false] : [false];
     }
 
+    /** Whether the XML gives the slur's side (followed by placementOf()). */
+    private placedByXml(rules: EngravingRules): boolean {
+        const xml: PlacementEnum = this.graphicalSlur.slur.PlacementXml;
+        return rules.SlurPlacementFromXML && (xml === PlacementEnum.Above || xml === PlacementEnum.Below);
+    }
+
     /** The XML placement, else away from the slur's own notes between its ends (most of them above the line from end
      *  to end: below), else as upstream (a slur up to the upper staff above, down to the lower one below). */
     private placementOf(rules: EngravingRules, start: CrossStaffCurveNote, end: CrossStaffCurveNote,
                         inner: CrossStaffCurveNote[]): PlacementEnum {
-        const xml: PlacementEnum = this.graphicalSlur.slur.PlacementXml;
-        if (rules.SlurPlacementFromXML && (xml === PlacementEnum.Above || xml === PlacementEnum.Below)) {
-            return xml;
+        if (this.placedByXml(rules)) {
+            return this.graphicalSlur.slur.PlacementXml;
         }
         let above: number = 0;
         let underneath: number = 0;

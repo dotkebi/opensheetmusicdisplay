@@ -14,7 +14,12 @@ import { PointF2D } from "../../../src/Common/DataObjects/PointF2D";
  * under a slur from the A3 to the A4, placed below, over a whole note of another voice on the left hand (Myrthen 1
  * m4); m2->m3 a tie from the right hand's B3 to the left hand's (one voice); m4 a slur without placement from the right
  * hand's E5 down to the left hand's C3, its notes between (A2, G2) below the line from end to end; m5 a slur placed above
- * from the left hand's last thirty-second E3 (stem up, beamed) to the right hand's D4 right after it (Myrthen 17).
+ * from the left hand's last thirty-second E3 (stem up, beamed) to the right hand's D4 right after it (Myrthen 17); m6 a
+ * slur without placement from the left hand's sixteenth D3-B3 to the right hand's lower voice's D4 (stem down) under a
+ * half note G4 of its upper voice (Myrthen 17 m3); m7 a slur without placement from the left hand's sixteenth B2 (stem
+ * up, beamed) to the bottom A3 of the right hand's chord A3-D#4-A4 (stem up) right after it, wider than half the way up
+ * (Myrthen 17 m15; hidden thirty-second rests around the sixteenth widen the spacing here), and a second slur between
+ * the same notes placed above.
  */
 describe("Curves between staves", () => {
     let container: HTMLElement;
@@ -128,11 +133,108 @@ describe("Curves between staves", () => {
         expect(mid.x).to.be.greaterThan(curve.startPoint.x + t * (curve.endPoint.x - curve.startPoint.x));
     });
 
+    it("a steep slur to a lower voice's note joins the notes' facing sides, not along its stem over its notehead", () => {
+        expect(curvesStartingIn(5).length).to.equal(1);
+        const curve: CrossStaffCurve = curvesStartingIn(5)[0];
+        expect(curve.unclearedObstacles).to.equal(0);
+        const start: any = (curve.startNote as any).vfnote[0];
+        const end: any = (curve.endNote as any).vfnote[0];
+        expect(end.getStemDirection()).to.equal(-1);
+        // steep at this width too: across less than half the way up
+        const across: number = Math.abs((end.getNoteHeadBeginX() + end.getNoteHeadEndX()) - (start.getNoteHeadBeginX() + start.getNoteHeadEndX())) / 2;
+        expect(across).to.be.lessThan(0.5 * Math.abs(end.getYs()[0] - start.getYs()[0]));
+        // from right of the sixteenth's stem, at its notehead
+        expect(curve.startPoint.x).to.be.greaterThan(start.getStemX() / 10);
+        // to under the D4 notehead, at its stem's end (not over it, up along its stem as the usual curve above would)
+        expect(curve.endPoint.y).to.be.greaterThan(end.getYs()[0] / 10 + 0.5);
+        expect(curve.endPoint.y).to.be.at.least(end.getStemExtents().topY / 10);
+        // bowing right of the line from end to end, as in the source
+        expect(curve.placement).to.equal(PlacementEnum.Below);
+        const mid: PointF2D = curve.sample(64)[32];
+        const t: number = (mid.y - curve.startPoint.y) / (curve.endPoint.y - curve.startPoint.y);
+        expect(mid.x).to.be.greaterThan(curve.startPoint.x + t * (curve.endPoint.x - curve.startPoint.x));
+        expectClearOfRightHand(curve, 5);
+    });
+
+    /** m7's slurs: without placement, placed above */
+    const m7: () => CrossStaffCurve[] = () => {
+        const curves: CrossStaffCurve[] = curvesStartingIn(6);
+        expect(curves.length).to.equal(2);
+        const placed: (curve: CrossStaffCurve) => boolean =
+            (curve: CrossStaffCurve) => curve.graphicalSlur.slur.PlacementXml === PlacementEnum.Above;
+        return [curves.find(curve => !placed(curve)), curves.find(placed)];
+    };
+
+    it("a slur from beside its start's stem joins the notes' facing sides, however wide", () => {
+        const curve: CrossStaffCurve = m7()[0];
+        expect(curve.unclearedObstacles).to.equal(0);
+        const start: any = (curve.startNote as any).vfnote[0];
+        const end: any = (curve.endNote as any).vfnote[0];
+        expect(start.getStemDirection()).to.equal(1);
+        expect(end.getStemDirection()).to.equal(1);
+        // wide at this width: across more than half the way up (the usual curve climbed along the chord's stem to its
+        //   end)
+        const index: number = (curve.endNote as any).vfnote[1] ?? 0;
+        const across: number = Math.abs((end.getNoteHeadBeginX() + end.getNoteHeadEndX()) - (start.getNoteHeadBeginX() + start.getNoteHeadEndX())) / 2;
+        expect(across).to.be.greaterThan(0.5 * Math.abs(end.getYs()[index] - start.getYs()[0]));
+        // from right of the sixteenth's stem, at its notehead (not its beam)
+        expect(curve.startPoint.x).to.be.greaterThan(start.getStemX() / 10);
+        expect(curve.startPoint.y).to.be.closeTo(start.getYs()[0] / 10 - 0.25, 0.01);
+        // to under the chord's A3, not over the chord at its stem's end
+        expect(curve.endPoint.y).to.be.greaterThan(end.getYs()[index] / 10 + 0.5);
+        // bowing right of the line from end to end, as in the source
+        expect(curve.placement).to.equal(PlacementEnum.Below);
+        const mid: PointF2D = curve.sample(64)[32];
+        const t: number = (mid.y - curve.startPoint.y) / (curve.endPoint.y - curve.startPoint.y);
+        expect(mid.x).to.be.greaterThan(curve.startPoint.x + t * (curve.endPoint.x - curve.startPoint.x));
+        expectClearOfRightHand(curve, 6);
+    });
+
+    it("a wide slur from beside its start's stem keeps the side the XML gives", () => {
+        const curve: CrossStaffCurve = m7()[1];
+        const end: any = (curve.endNote as any).vfnote[0];
+        // (wider than half the way up: only a steep slur's facing sides override the XML — the two slurs would run as
+        //   one)
+        expect(curve.placement).to.equal(PlacementEnum.Above);
+        // the usual ends above: at the chord's stem's end, over its notes
+        expect(curve.endPoint.x).to.be.closeTo(end.getStemX() / 10, 0.01);
+        expect(curve.endPoint.y).to.be.lessThan(end.getStemExtents().topY / 10);
+    });
+
+    /** the curve clear of the right hand's notes in the measure, all voices: noteheads and stems (but at its end) */
+    const expectClearOfRightHand: (curve: CrossStaffCurve, index: number) => void = (curve: CrossStaffCurve, index: number) => {
+        for (const staffEntry of measureAt(index, 0).staffEntries) {
+            for (const voiceEntry of staffEntry.graphicalVoiceEntries) {
+                for (const note of voiceEntry.notes) {
+                    const vfNote: any = (note as any).vfnote[0];
+                    if (!vfNote?.getStemExtents) {
+                        continue;
+                    }
+                    const left: number = vfNote.getNoteHeadBeginX() / 10;
+                    const right: number = vfNote.getNoteHeadEndX() / 10;
+                    const y: number = vfNote.getYs()[0] / 10;
+                    const stemX: number = vfNote.getStemX() / 10;
+                    const extents: any = vfNote.getStemExtents();
+                    const stemFrom: number = Math.min(extents.topY, extents.baseY) / 10;
+                    const stemTo: number = Math.max(extents.topY, extents.baseY) / 10;
+                    for (const p of curve.sample(64)) {
+                        if (Math.hypot(p.x - curve.endPoint.x, p.y - curve.endPoint.y) < 0.6) {
+                            continue;
+                        }
+                        const inHead: boolean = p.x > left + 0.1 && p.x < right - 0.1 && Math.abs(p.y - y) < 0.4;
+                        const onStem: boolean = Math.abs(p.x - stemX) < 0.2 && p.y > stemFrom && p.y < stemTo;
+                        expect(inHead || onStem, `${note.sourceNote.Pitch?.ToString()} at ${p.x}, ${p.y}`).to.equal(false);
+                    }
+                }
+            }
+        }
+    };
+
     it("draws each curve once per drawing, the same by renderAsync", async () => {
         const curvePaths: (div: HTMLElement) => string[] = (div: HTMLElement) =>
             Array.from(div.querySelectorAll("g.vf-curve path")).map(path => path.getAttribute("d"));
         const sync: string[] = curvePaths(container);
-        expect(sync.length, "three slurs and a tie").to.equal(4);
+        expect(sync.length, "six slurs and a tie").to.equal(7);
         osmd.clear();
         container.remove();
         await load();
