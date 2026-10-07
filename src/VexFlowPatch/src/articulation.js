@@ -19,6 +19,21 @@ import { TickContext } from './tickcontext';
 // To enable logging for this class. Set `Vex.Flow.Articulation.DEBUG` to `true`.
 function L(...args) { if (Articulation.DEBUG) Vex.L('Vex.Flow.Articulation', args); }
 
+// VexFlowPatch: the tick breath mark (<breath-mark>tick, 'abrv'), which VexFlow's font doesn't have: a check mark drawn
+//   from this outline (OSMD's own, not a font's), the size and baseline of the SMuFL breathMarkTick the app draws (about
+//   1.5 by 1.5 staff spaces at font_scale 38, its bottom on the baseline): a short left arm down to the point and a long
+//   thin right arm up. Font units as VexFlow's font (resolution 1000, y up).
+const OSMD_BREATH_TICK = 'osmdBreathMarkTick';
+const OSMD_BREATH_TICK_FONT = {
+  resolution: 1000,
+  glyphs: {
+    [OSMD_BREATH_TICK]: {
+      x_min: 0, x_max: 540, ha: 540,
+      o: 'm 0 300 l 45 335 l 170 95 l 505 540 l 540 520 l 185 0 l 150 0 l 0 300',
+    },
+  },
+};
+
 const { ABOVE, BELOW } = Modifier.Position;
 
 const roundToNearestHalf = (mathFn, value) => mathFn(value / 0.5) * 0.5;
@@ -243,20 +258,26 @@ export class Articulation extends Modifier {
     this.slurClearanceYShift = 0;
     this.articulation = Flow.articulationCodes(this.type);
     if (this.isBreathMark()) { // breath mark. we could put this in tables.js:articulationCodes()
-      // v6c: breathmarkcomma; 'abr|': the upbow breath mark (<breath-mark>upbow), the up-bow glyph v75
-      this.articulation = { code: this.type === 'abr|' ? 'v75' : 'v6c', between_lines: false };
+      // v6c: breathmarkcomma; 'abr|': the upbow breath mark (<breath-mark>upbow), the up-bow glyph v75;
+      //   'abrv': the tick breath mark (<breath-mark>tick), OSMD's outline (OSMD_BREATH_TICK_FONT)
+      const code = this.type === 'abr|' ? 'v75' : this.type === 'abrv' ? OSMD_BREATH_TICK : 'v6c';
+      this.articulation = { code, between_lines: false };
     }
     if (!this.articulation) {
       throw new Vex.RERR('ArgumentError', `Articulation not found: ${this.type}`);
     }
 
-    this.glyph = new Glyph(this.articulation.code, this.render_options.font_scale);
+    this.glyph = new Glyph(this.articulation.code, this.render_options.font_scale,
+      this.type === 'abrv' ? { font: OSMD_BREATH_TICK_FONT } : undefined);
 
-    this.setWidth(this.glyph.getMetrics().width);
+    // (the tick takes the comma's width in the spacing: it is drawn towards the next note like the comma, and its wider
+    //   glyph moved notes onto another system, Leo, Dal tuo soglio luminoso; the app's spacing doesn't change either)
+    this.setWidth(this.type === 'abrv' ? new Glyph('v6c', this.render_options.font_scale).getMetrics().width :
+      this.glyph.getMetrics().width);
   }
 
-  // VexFlowPatch: breath marks, 'abr' (comma) and 'abr|' (upbow)
-  isBreathMark() { return this.type === 'abr' || this.type === 'abr|'; }
+  // VexFlowPatch: breath marks, 'abr' (comma), 'abr|' (upbow) and 'abrv' (tick)
+  isBreathMark() { return this.type === 'abr' || this.type === 'abr|' || this.type === 'abrv'; }
 
   // VexFlowPatch: a fermata or an aspiration on the side of its note where the note has an ornament goes beyond the
   //   ornament (Couperin, Concerts royaux I Menuet en trio m8-9, IV Rigaudon m22, as in the 1722 print), see

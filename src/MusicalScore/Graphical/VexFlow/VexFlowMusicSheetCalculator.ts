@@ -3768,6 +3768,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (raise > 0) {
         ink.ornament.slurClearanceYShift = -raise * unitInPixels;
         staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
+        this.marksRaisedOverSlurs.push({ staffLine, left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise });
       }
     }
     // The same below the notes (a lower voice, Couperin, Concerts royaux I Menuet en trio): an ornament a slur
@@ -3848,6 +3849,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (raise > 0) {
         ink.fermata.slurClearanceYShift = -raise * unitInPixels;
         staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
+        this.marksRaisedOverSlurs.push({ staffLine, left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise });
       }
     }
   }

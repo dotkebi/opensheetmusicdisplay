@@ -1013,9 +1013,11 @@ export class VexFlowConverter {
                     break;
                 }
                 case ArticulationEnum.breathmark: {
-                    // "abr|": the upbow breath mark (VexFlowPatch articulation.js). This font has no tick or
-                    // salzedo breath mark glyph, they stay commas.
-                    vfArt = new VF.Articulation(articulation.breathMark === BreathMarkValue.upbow ? "abr|" : "abr");
+                    // "abr|": the upbow breath mark, "abrv": the tick breath mark (VexFlowPatch articulation.js; the
+                    // tick is drawn from OSMD's outline, this font has none). The salzedo breath mark stays a comma:
+                    // no glyph here nor in the app's font, and the corpus has none.
+                    vfArt = new VF.Articulation(articulation.breathMark === BreathMarkValue.upbow ? "abr|" :
+                        articulation.breathMark === BreathMarkValue.tick ? "abrv" : "abr");
                     if (articulation.placement === PlacementEnum.Above) {
                         vfArtPosition = VF.Modifier.Position.ABOVE;
                     }

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <work><work-title>test_fermata_slur_measure_number</work-title></work>
+  <identification>
+    <rights>Synthetic regression fixture authored for this repository (BSD-3-Clause). Not a transcription of any score.</rights>
+    <encoding><software>hand-written</software><encoding-date>2026-10-07</encoding-date></encoding>
+  </identification>
+  <part-list><score-part id="P1"><part-name>Voice</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1027">
+      <attributes><divisions>2</divisions><key><fifths>-3</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+    </measure>
+    <measure number="1028">
+      <note><pitch><step>A</step><alter>-1</alter><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+    </measure>
+    <measure number="1029">
+      <note><pitch><step>E</step><alter>-1</alter><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><stem>up</stem><notations><fermata type="upright"/><slur number="1" type="start" placement="above"/></notations></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><stem>up</stem><notations><slur number="1" type="stop"/></notations></note>
+      <note><rest/><duration>2</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+    <measure number="1030">
+      <note><pitch><step>E</step><alter>-1</alter><octave>5</octave></pitch><duration>8</duration><voice>1</voice><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>
