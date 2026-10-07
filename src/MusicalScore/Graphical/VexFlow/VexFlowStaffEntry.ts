@@ -112,6 +112,7 @@ export class VexFlowStaffEntry extends GraphicalStaffEntry {
         //   e.g. wrong for Beethoven Geliebte measure 1 ("auf - dem", distance < width of "auf"), correct for measure 3 ("spä - hend")
         //   this leads to a (lyrics) measure elongation of ~1.3 for measure 1, though it doesn't need any elongation (should be factor 1)
         this.positionGraceEntries(graceEntries);
+        this.placeGraceLyrics(graceEntries);
         // before calculating the bounding box, which spans the notes (they would have their positions from the last render)
         this.positionNotesAtNoteHeads();
         // the bounding box without the grace notes (see above)
@@ -158,6 +159,24 @@ export class VexFlowStaffEntry extends GraphicalStaffEntry {
                 x = gve.vfStaveNote.getBoundingBox().getX() / unitInPixels - gve.PositionAndShape.BorderLeft;
             }
             gve.PositionAndShape.RelativePosition.x = x - this.PositionAndShape.RelativePosition.x;
+        }
+    }
+
+    /**
+     * Places the syllables sung on grace notes at their grace notes (GraphicalLyricEntry.placeAtGraceNote()), which
+     * positionGraceEntries() has just placed. A lyric label is positioned relative to its staff entry, i.e. at the main note
+     * the grace note belongs to, where the main note's own syllable overlapped it. That syllable is kept clear of the grace
+     * note's by VexFlowMusicSheetCalculator.fitGraceLyricsToFormattedEntries().
+     */
+    private placeGraceLyrics(graceEntries: VexFlowVoiceEntry[]): void {
+        if (graceEntries.length === 0 || this.LyricsEntries.length === 0) {
+            return;
+        }
+        for (const lyricEntry of this.LyricsEntries) {
+            const graceEntry: VexFlowVoiceEntry = graceEntries.find((gve: VexFlowVoiceEntry) => gve.parentVoiceEntry === lyricEntry.LyricsEntry.Parent);
+            if (graceEntry) {
+                lyricEntry.placeAtGraceNote(graceEntry.PositionAndShape.RelativePosition.x);
+            }
         }
     }
 
