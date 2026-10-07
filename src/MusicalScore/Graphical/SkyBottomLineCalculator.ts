@@ -370,8 +370,8 @@ export class SkyBottomLineCalculator {
         if (!next?.vfTies) {
             return;
         }
-        // (A tie into the other staff of the instrument is split into two stubs, the start one held by this measure:
-        //   see MusicSheetCalculator.calculateTieCurves().)
+        // (A tie into the other staff of the instrument in this system is a CrossStaffCurve, not a StaveTie of the next
+        //   measure: see MusicSheetCalculator.calculateTieCurves().)
         for (const tie of next.vfTies as any[]) {
             if (tie instanceof VF.TabSlide) {
                 continue;

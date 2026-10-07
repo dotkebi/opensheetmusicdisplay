@@ -1,0 +1,142 @@
+import { expect } from "chai";
+import { TestUtils } from "../../Util/TestUtils";
+import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
+import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
+import { CrossStaffCurve } from "../../../src/MusicalScore/Graphical/VexFlow/CrossStaffCurve";
+import { PlacementEnum } from "../../../src/MusicalScore/VoiceData/Expressions/AbstractExpression";
+import { PointF2D } from "../../../src/Common/DataObjects/PointF2D";
+
+/**
+ * Slurs and ties between the two staves of a piano part in one system, one curve each between the placed staves
+ * (CrossStaffCurve, PLAN-cross-staff-beam (4)). Same fixture and checks as osmd-dart test/cross_staff_curve_test.dart.
+ *
+ * Fixture test_cross_staff_curves.musicxml (synthetic, piano, 4/4): m1 a cross-staff beam (LH A3 up, RH D4 F4 A4 down)
+ * under a slur from the A3 to the A4, placed below, over a whole note of another voice on the left hand (Myrthen 1
+ * m4); m2->m3 a tie from the right hand's B3 to the left hand's (one voice); m4 a slur without placement from the right
+ * hand's E5 down to the left hand's C3, its notes between (A2, G2) below the line from end to end; m5 a slur placed above
+ * from the left hand's last thirty-second E3 (stem up, beamed) to the right hand's D4 right after it (Myrthen 17).
+ */
+describe("Curves between staves", () => {
+    let container: HTMLElement;
+    let osmd: OpenSheetMusicDisplay;
+    const load: () => Promise<void> = async () => {
+        container = TestUtils.getDivElement(document);
+        container.style.width = "1400px";
+        osmd = new OpenSheetMusicDisplay(container, { autoResize: false, backend: "svg" });
+        await osmd.load(TestUtils.getScore("test_cross_staff_curves.musicxml"));
+    };
+    beforeEach(async () => {
+        await load();
+        osmd.render();
+    });
+    afterEach(() => {
+        osmd.clear();
+        container.remove();
+    });
+    const measureAt: (index: number, staff: number) => VexFlowMeasure =
+        (index: number, staff: number) => osmd.GraphicSheet.MeasureList[index][staff] as VexFlowMeasure;
+    const curvesStartingIn: (index: number) => CrossStaffCurve[] = (index: number) => {
+        const curves: CrossStaffCurve[] = [];
+        for (const curve of [...measureAt(index, 0).crossStaffCurves, ...measureAt(index, 1).crossStaffCurves]) {
+            if (curves.indexOf(curve) < 0 && curve.startNote.sourceNote.SourceMeasure.measureListIndex === index) {
+                curves.push(curve);
+            }
+        }
+        return curves;
+    };
+    /** the curve's y at x (the sample nearest to it) */
+    const yAt: (curve: CrossStaffCurve, x: number) => number = (curve: CrossStaffCurve, x: number) => {
+        let best: PointF2D = curve.sample()[0];
+        for (const point of curve.sample(64)) {
+            if (Math.abs(point.x - x) < Math.abs(best.x - x)) {
+                best = point;
+            }
+        }
+        return best.y;
+    };
+
+    it("is one system, a curve per slur and tie", () => {
+        expect(osmd.GraphicSheet.MusicPages[0].MusicSystems.length).to.equal(1);
+        expect(curvesStartingIn(0).length).to.equal(1);
+        expect(curvesStartingIn(1).length).to.equal(1);
+        expect(curvesStartingIn(3).length).to.equal(1);
+        expect(curvesStartingIn(1)[0].isTie).to.equal(true);
+        // held by both staves' measures it spans
+        const slur: CrossStaffCurve = curvesStartingIn(0)[0];
+        expect(measureAt(0, 0).crossStaffCurves).to.include(slur);
+        expect(measureAt(0, 1).crossStaffCurves).to.include(slur);
+    });
+
+    it("a slur under a cross-staff beam: from the left-hand notehead to the right-hand stem, under the beam", () => {
+        const curve: CrossStaffCurve = curvesStartingIn(0)[0];
+        expect(curve.placement).to.equal(PlacementEnum.Below);
+        expect(curve.unclearedObstacles).to.equal(0);
+        const beam: any = measureAt(0, 1).crossStaffBeams[0];
+        const notes: any[] = beam.notes;
+        // the end: the right hand's A4, its down stem reaching the beam
+        const a4: any = notes[notes.length - 1];
+        expect(curve.endPoint.x).to.be.closeTo(a4.getStemX() / 10, 0.01);
+        expect(curve.endPoint.y).to.be.closeTo(a4.getStemExtents().topY / 10 + 0.5, 0.01);
+        // the start: under the left hand's A3 notehead
+        expect(curve.startPoint.y).to.be.closeTo(notes[0].getYs()[0] / 10 + 1, 0.01);
+        // under the beam between them: each stem's end, beam lines under it
+        for (const note of notes.slice(1, notes.length - 1)) {
+            const x: number = note.getStemX() / 10;
+            expect(yAt(curve, x), `under the beam at ${x}`).to.be.greaterThan(note.getStemExtents().topY / 10);
+        }
+        // not pushed under the left hand's whole note (another voice)
+        const lowerTop: number = measureAt(0, 1).ParentStaffLine.PositionAndShape.AbsolutePosition.y;
+        const maxY: number = Math.max(...curve.sample().map(p => p.y));
+        expect(maxY, "over the D3 whole note (head top 1.5 under the top line)").to.be.lessThan(lowerTop + 1.5);
+    });
+
+    it("a tie from one staff to the other: one arch away from the stem, no stubs", () => {
+        const curve: CrossStaffCurve = curvesStartingIn(1)[0];
+        expect(curve.segments.length).to.equal(1);
+        expect(curve.placement, "B3 stem up").to.equal(PlacementEnum.Below);
+        expect(measureAt(1, 0).vfTies.length, "no stub").to.equal(0);
+        expect(measureAt(2, 1).vfTies.length, "no stub").to.equal(0);
+        const p0: PointF2D = curve.startPoint;
+        const p3: PointF2D = curve.endPoint;
+        const length: number = Math.sqrt((p3.x - p0.x) ** 2 + (p3.y - p0.y) ** 2);
+        const n: PointF2D = curve.outerNormal();
+        const reach: number = Math.max(...curve.sample().map(p => (p.x - p0.x) * n.x + (p.y - p0.y) * n.y));
+        expect(reach).to.be.closeTo(Math.min(1.5, Math.max(0.4, 0.36 + 0.082 * length)), 0.02);
+    });
+
+    it("a slur without placement bows away from its notes between", () => {
+        const curve: CrossStaffCurve = curvesStartingIn(3)[0];
+        expect(curve.placement).to.equal(PlacementEnum.Above);
+        expect(curve.unclearedObstacles).to.equal(0);
+    });
+
+    it("a steep slur joins the notes' facing sides, bowing away from the start's stem", () => {
+        expect(curvesStartingIn(4).length).to.equal(1);
+        const curve: CrossStaffCurve = curvesStartingIn(4)[0];
+        expect(curve.unclearedObstacles).to.equal(0);
+        const start: any = (curve.startNote as any).vfnote[0];
+        const end: any = (curve.endNote as any).vfnote[0];
+        // from right of the sixteenth's stem, at its notehead (not its beam)
+        expect(curve.startPoint.x).to.be.greaterThan(start.getStemX() / 10);
+        expect(curve.startPoint.y).to.be.closeTo(start.getYs()[0] / 10 - 0.25, 0.01);
+        // to under the D4 notehead (not over it, as the XML's above would)
+        expect(curve.endPoint.y).to.be.greaterThan(end.getYs()[0] / 10 + 0.5);
+        // bowing right of the line from end to end, as in the source
+        expect(curve.placement).to.equal(PlacementEnum.Below);
+        const mid: PointF2D = curve.sample(64)[32];
+        const t: number = (mid.y - curve.startPoint.y) / (curve.endPoint.y - curve.startPoint.y);
+        expect(mid.x).to.be.greaterThan(curve.startPoint.x + t * (curve.endPoint.x - curve.startPoint.x));
+    });
+
+    it("draws each curve once per drawing, the same by renderAsync", async () => {
+        const curvePaths: (div: HTMLElement) => string[] = (div: HTMLElement) =>
+            Array.from(div.querySelectorAll("g.vf-curve path")).map(path => path.getAttribute("d"));
+        const sync: string[] = curvePaths(container);
+        expect(sync.length, "three slurs and a tie").to.equal(4);
+        osmd.clear();
+        container.remove();
+        await load();
+        await osmd.renderAsync();
+        expect(curvePaths(container)).to.deep.equal(sync);
+    });
+});

@@ -4,6 +4,7 @@ import { MusicSheetDrawer } from "../MusicSheetDrawer";
 import { RectangleF2D } from "../../../Common/DataObjects/RectangleF2D";
 import { VexFlowMeasure } from "./VexFlowMeasure";
 import { CrossStaffBeam } from "./CrossStaffBeam";
+import { CrossStaffCurve, CrossStaffCurveDrawGeometry } from "./CrossStaffCurve";
 import { PointF2D } from "../../../Common/DataObjects/PointF2D";
 import { GraphicalLabel } from "../GraphicalLabel";
 import { VexFlowTextMeasurer } from "./VexFlowTextMeasurer";
@@ -94,6 +95,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         this.pageIdx = 0;
         this.backend = this.backends[0];
         this.drawnCrossStaffBeams.clear();
+        this.drawnCrossStaffCurves.clear();
         super.drawSheet(graphicalMusicSheet);
     }
 
@@ -145,6 +147,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         this.pageIdx = 0;
         this.backend = this.backends[0];
         this.drawnCrossStaffBeams.clear();
+        this.drawnCrossStaffCurves.clear();
         await super.drawSheetAsync(graphicalMusicSheet, yielder, onSystemDrawn, maxPageCount);
     }
 
@@ -211,15 +214,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                 continue;
             }
             if (graphicalSlur.slur.isCrossed() && !graphicalSlur.isCrossStaffPiece) {
-                if (!this.rules.RenderSlursAcrossStaves) {
-                    continue; // cross-staff slurs disabled (supplementary to RenderSlurs)
-                }
-                // A cross-staff slur spans two stafflines, so its curve is calculated here (at draw time, when
-                // both stafflines have their final positions) rather than in calculateSlurs(). It is attached
-                // to the start note's staffline, so absolutePos already refers to that staffline.
-                if (!graphicalSlur.calculateCurveCrossStaff(this.rules)) {
-                    continue; // couldn't be calculated (e.g. notes in different systems)
-                }
+                continue; // one curve between two staves is drawn with its measures (drawCrossStaffCurves())
             }
             this.drawSlur(graphicalSlur, absolutePos);
         }
@@ -348,6 +343,76 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         graphicalSlur.SVGElement = this.backend.renderCurve(curvePointsInPixels, true, startNote);
     }
 
+    /** The curves between staves drawn in this drawing (drawSheet / drawSheetAsync). */
+    private drawnCrossStaffCurves: Set<CrossStaffCurve> = new Set<CrossStaffCurve>();
+
+    /** Draws the slurs and ties between two staves held by the measure (CrossStaffCurve) after it was drawn, once per
+     *  drawing: the curve is calculated between the placed staves, after all its measures have their final positions
+     *  and their cross-staff beams are placed. Lazy horizontal rendering draws it in the batch of its right end (as
+     *  drawSlurs()). Same as osmd-dart. */
+    private drawCrossStaffCurves(measure: VexFlowMeasure): void {
+        for (const curve of measure.crossStaffCurves) {
+            if (this.drawnCrossStaffCurves.has(curve) || !curve.isTie && !this.rules.RenderSlursAcrossStaves) {
+                continue;
+            }
+            const rightX: number = Math.max(curve.startNote.PositionAndShape.AbsolutePosition.x,
+                                            curve.endNote.PositionAndShape.AbsolutePosition.x);
+            if (!this.lazyDrawsAtX(rightX)) {
+                continue;
+            }
+            this.drawnCrossStaffCurves.add(curve);
+            try {
+                for (const participant of curve.participants as VexFlowMeasure[]) {
+                    if (participant !== measure) {
+                        const position: PointF2D = participant.PositionAndShape.AbsolutePosition;
+                        participant.setAbsoluteCoordinates(position.x * unitInPixels, position.y * unitInPixels);
+                        this.prepareCrossStaffBeams(participant);
+                    }
+                }
+                if (curve.calculate(this.rules, new CrossStaffCurveDrawGeometry(unitInPixels))) {
+                    this.drawCurve(curve);
+                }
+            } catch (ex) {
+                log.warn("VexFlowMusicSheetDrawer.drawCrossStaffCurves", ex);
+            }
+        }
+    }
+
+    /** A curve in absolute units: one Bézier segment as a slur is drawn (drawSlur(): its outer edge's control points 0.3
+     *  out, a tie's 0.27 as VexFlow's StaveTie), out across the line from end to end (the curve between staves can be
+     *  steep); several segments filled from their outline (CrossStaffCurve.outline()). */
+    private drawCurve(curve: CrossStaffCurve): void {
+        const thickness: number = curve.isTie ? 0.27 : 0.3;
+        const startNote: VexFlowGraphicalNote = curve.startNote as VexFlowGraphicalNote;
+        let node: Node;
+        if (curve.segments.length === 1) {
+            const points: PointF2D[] = curve.segments[0];
+            const normal: PointF2D = curve.outerNormal();
+            const pixels: PointF2D[] = points.map(point => this.applyScreenTransformation(point));
+            points.forEach((point, i) => {
+                const out: number = i === 0 || i === 3 ? 0.05 : thickness;
+                pixels.push(this.applyScreenTransformation(new PointF2D(point.x + normal.x * out, point.y + normal.y * out)));
+            });
+            node = this.backend.renderCurve(pixels, !curve.isTie, startNote);
+        } else {
+            const ctx: any = this.backend.getContext();
+            const outline: PointF2D[] = curve.outline(thickness).map(point => this.applyScreenTransformation(point));
+            node = ctx.openGroup("curve", !curve.isTie && startNote?.getSVGId ? `${startNote.getSVGId()}-slur` : undefined);
+            ctx.beginPath();
+            ctx.moveTo(outline[0].x, outline[0].y);
+            for (const point of outline.slice(1)) {
+                ctx.lineTo(point.x, point.y);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.closeGroup();
+        }
+        if (curve.graphicalSlur) {
+            curve.graphicalSlur.SVGElement = node;
+        }
+        curve.rendered = true;
+    }
+
     /** The cross-staff beams drawn in this drawing (drawSheet / drawSheetAsync). */
     private drawnCrossStaffBeams: Set<CrossStaffBeam> = new Set<CrossStaffBeam>();
 
@@ -409,6 +474,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             this.prepareCrossStaffBeams(measure);
             measure.draw(this.backend.getContext());
             this.drawCrossStaffBeams(measure);
+            this.drawCrossStaffCurves(measure);
             // Vexflow errors can happen here. If we don't catch errors, rendering will stop after this measure.
         } catch (ex) {
             log.warn("VexFlowMusicSheetDrawer.drawMeasure", ex);

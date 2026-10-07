@@ -42,6 +42,7 @@ import { GraphicalTie } from "../GraphicalTie";
 import { Note } from "../../VoiceData/Note";
 import { TabNote } from "../../VoiceData/TabNote";
 import { CrossStaffBeam } from "./CrossStaffBeam";
+import { CrossStaffCurve } from "./CrossStaffCurve";
 
 // type StemmableNote = VF.StemmableNote;
 
@@ -109,6 +110,10 @@ export class VexFlowMeasure extends GraphicalMeasure {
      *  (VexFlowMusicSheetDrawer), not by draw(). */
     public crossStaffBeams: CrossStaffBeam[] = [];
     private ownedCrossStaffBeams: CrossStaffBeam[] = [];
+    /** The slurs and ties from a note of this measure, or of a measure between, to a note on another staff of the part
+     *  in the same system (CrossStaffCurve): listed in every measure they span on both staves, calculated and drawn by
+     *  the drawer. Built by the tie and slur layout (VexFlowMusicSheetCalculator). */
+    public crossStaffCurves: CrossStaffCurve[] = [];
     /** Intermediate object to construct tuplets */
     protected tuplets: { [voiceID: number]: [Tuplet, VexFlowVoiceEntry[]][] } = {};
     /** VexFlow Tuplets */

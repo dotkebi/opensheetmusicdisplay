@@ -1373,8 +1373,28 @@ export abstract class MusicSheetCalculator {
             for (const staffLine of musicSystem.StaffLines) {
                 const calculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
                 this.skyBottomLinesBeforeExpressions.set(staffLine, [calculator.SkyLine.slice(), calculator.BottomLine.slice()]);
+                staffLine.NotesSkyLine = calculator.SkyLine.slice();
+                staffLine.NotesBottomLine = calculator.BottomLine.slice();
             }
         }
+        this.reserveCrossStaffCurves();
+    }
+
+    /** Reserves the outer sides of the curves between staves in the sky and bottom lines, after the notes' lines are
+     *  saved (see VexFlowMusicSheetCalculator). */
+    protected reserveCrossStaffCurves(): void {
+        // implemented by VexFlowMusicSheetCalculator
+    }
+
+    /** Forgets the curves between staves of the last layout (see VexFlowMusicSheetCalculator). */
+    protected clearCrossStaffCurves(): void {
+        // implemented by VexFlowMusicSheetCalculator
+    }
+
+    /** Lays out a tie from one staff of an instrument to another staff of it in the same system: one curve between the
+     *  placed staves (see VexFlowMusicSheetCalculator). */
+    protected layoutCrossStaffTie(tie: GraphicalTie): void {
+        // implemented by VexFlowMusicSheetCalculator
     }
 
     /**
@@ -1618,6 +1638,7 @@ export abstract class MusicSheetCalculator {
             this.optimizeRestPlacement();
             // possible Displacement of RestNotes
             this.calculateStaffEntryArticulationMarks();
+            this.clearCrossStaffCurves();
             if (this.rules.RenderSlurs) { // technically we should separate slurs and ties, but shouldn't be relevant for now
                 // calculate Ties
                 this.calculateTieCurves();
@@ -1908,6 +1929,7 @@ export abstract class MusicSheetCalculator {
         if (!this.leadSheet) {
             await step(() => this.optimizeRestPlacement());
             await step(() => this.calculateStaffEntryArticulationMarks());
+            this.clearCrossStaffCurves();
             if (this.rules.RenderSlurs) {
                 await step(() => this.calculateTieCurves());
             }
@@ -4750,14 +4772,16 @@ export abstract class MusicSheetCalculator {
                         for (const graphicalTie of staffEntry.GraphicalTies) {
                             if (graphicalTie.StartNote !== undefined && graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry === staffEntry) {
                                 // (a tie without an end note, see tieContinuesAfterRepeat(), is drawn to the end of its staff)
-                                // A tie is split into two stubs at a system break and between the two staves of an instrument:
-                                //   one curve from a note on one staff to a note on the other runs nearly straight across both
-                                //   staves and the beams between them (Schumann, Myrthen, Die Hochländer-Wittwe m72-73). Each
-                                //   staff gets the half at its own note, as at a system break.
-                                const tieIsAtSystemBreak: boolean = graphicalTie.EndNote !== undefined && (
-                                    graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine !==
-                                    graphicalTie.EndNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine
-                                );
+                                // A tie is split into two stubs at a system break, each staff line getting the half at its own
+                                //   note. A tie to another staff of the instrument in the same system is one curve between the
+                                //   placed staves (CrossStaffCurve, layoutCrossStaffTie()).
+                                const startLine: StaffLine = graphicalTie.StartNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine;
+                                const endLine: StaffLine = graphicalTie.EndNote?.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine;
+                                const tieIsAtSystemBreak: boolean = graphicalTie.EndNote !== undefined && startLine !== endLine;
+                                if (tieIsAtSystemBreak && endLine && startLine.ParentMusicSystem === endLine.ParentMusicSystem) {
+                                    this.layoutCrossStaffTie(graphicalTie);
+                                    continue;
+                                }
                                 this.layoutGraphicalTie(graphicalTie, tieIsAtSystemBreak, measure.ParentStaff.isTab);
                             }
                         }

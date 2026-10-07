@@ -60,6 +60,17 @@ export declare class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
      *  Their lines are calculated here, at draw time, when both stafflines of a guide have their final positions. */
     protected drawVoiceLeadingGuides(musicSystem: MusicSystem): void;
     private drawSlur;
+    /** The curves between staves drawn in this drawing (drawSheet / drawSheetAsync). */
+    private drawnCrossStaffCurves;
+    /** Draws the slurs and ties between two staves held by the measure (CrossStaffCurve) after it was drawn, once per
+     *  drawing: the curve is calculated between the placed staves, after all its measures have their final positions
+     *  and their cross-staff beams are placed. Lazy horizontal rendering draws it in the batch of its right end (as
+     *  drawSlurs()). Same as osmd-dart. */
+    private drawCrossStaffCurves;
+    /** A curve in absolute units: one Bézier segment as a slur is drawn (drawSlur(): its outer edge's control points 0.3
+     *  out, a tie's 0.27 as VexFlow's StaveTie), out across the line from end to end (the curve between staves can be
+     *  steep); several segments filled from their outline (CrossStaffCurve.outline()). */
+    private drawCurve;
     /** The cross-staff beams drawn in this drawing (drawSheet / drawSheetAsync). */
     private drawnCrossStaffBeams;
     /** Formats the cross-staff beams of the measure before the first of their measures is drawn (a note's modifiers are
