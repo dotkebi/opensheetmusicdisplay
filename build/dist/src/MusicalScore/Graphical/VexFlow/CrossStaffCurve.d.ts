@@ -125,6 +125,31 @@ export declare class CrossStaffCurve {
      * beside its stem).
      */
     private calculateSlur;
+    /** The slur's curve on one side: the best of its end pairs (calculateSlur()), or for a steep one from its notes'
+     *  facing sides (facingEnd()). */
+    private fitSlur;
+    /** Whether the fit climbs past one of its notes: ends at the end of a stem pointing away from the other note (an
+     *  upper note's up stem, a lower note's down stem), or runs through its notehead (a tenth of a space in). */
+    private static climbsPast;
+    /** Whether the curve runs through or along one of the notes — through its notehead (a tenth of a space in) or
+     *  within 0.2 of its stem — away from the curve's own ends (0.6). */
+    private static alongNotes;
+    /** Whether the curve crosses a stem of the notes or a beam between two of them (neighbours with beams and stems the
+     *  same way), away from the curve's own ends (0.6). */
+    private static crossesStemsAndBeams;
+    private static segmentsCross;
+    /** Whether a slur's notes are nearly one above the other: across less than half the way up (Myrthen 17: from the
+     *  left hand's last sixteenth up to the right hand's next note, 0.16 to 0.26 in the app). Its ends on its notes'
+     *  usual sides — both above or both below — may make the curve climb past one of them to its far side
+     *  (climbsPast()); the source joins the sides the notes face each other with. */
+    private static isSteep;
+    /** A steep slur's end at the note: on the side facing the other note — above the lower note, below the upper — or,
+     *  when the note's stem points that way on the side towards the other note, beside the stem at the notehead at
+     *  the start (Myrthen 17: right of the left hand's sixteenth's stem) and at the stem's end at the end. */
+    private static facingEnd;
+    /** Whether a steep slur's end at the note is beside its stem: the stem points towards the other note and stands on
+     *  its side (an up stem is right of its notehead, a down stem left). */
+    private static besideStem;
     /** The ends tried at the note: the notehead, and its stem's end when the stem points to the slur's side (usual
      *  first). */
     private static endChoices;
@@ -133,6 +158,10 @@ export declare class CrossStaffCurve {
     private placementOf;
     /** The slur's end at the note: at its stem's end (atStem) or beside its notehead on the slur's side. */
     private static endPointOf;
+    /** The notes of the curve's measures on both staves, any voice, across its width — but its own two. */
+    private notesUnder;
+    /** Whether one of the notes has its notehead between the curve's two ends (across, a third of a space in). */
+    private static headsBetween;
     /** The notes of the slur's voices (its start note's and end note's) strictly between its two notes: in its measures
      *  on both staves. */
     private voiceNotesBetween;
