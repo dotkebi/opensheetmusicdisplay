@@ -56,6 +56,7 @@ import { VexFlowContinuousDynamicExpression } from "./VexFlowContinuousDynamicEx
 import { GraphicalInstantaneousDynamicExpression } from "../GraphicalInstantaneousDynamicExpression";
 import { GraphicalContinuousDynamicExpression } from "../GraphicalContinuousDynamicExpression";
 import { GraphicalUnknownExpression } from "../GraphicalUnknownExpression";
+import { AbstractGraphicalExpression } from "../AbstractGraphicalExpression";
 import { InstantaneousTempoExpression, MetronomeNoteGroup, TempoType } from "../../VoiceData/Expressions/InstantaneousTempoExpression";
 import { AlignRestOption } from "../../../OpenSheetMusicDisplay/OSMDOptions";
 import { VexFlowStaffLine } from "./VexFlowStaffLine";
@@ -3619,12 +3620,37 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   }
 
   /**
-   * The words were placed clear of the dynamics and wedges, but AlignmentManager then moves those onto a common baseline:
-   * a dynamic pulled down to a wedge's baseline can land on a word under it (Enescu, Cantabile et Presto m37-38 on one
-   * system: the third sf of m38 on "cédez"). Stack such words beyond the dynamics and wedges again.
-   * (Same as osmd-dart's VexFlowMusicSheetCalculator._restackWordsClearOfDynamics.)
+   * Places the words of multiExpression (see super), then stacks each new words label clear of the dynamics and wedges
+   * of its staffline, see restackWordsClearOfDynamics().
    */
-  private restackWordsClearOfDynamics(staffLine: StaffLine): void {
+  protected calculateMoodAndUnknownExpression(multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void {
+    const staffLine: StaffLine = this.graphicalMusicSheet.MeasureList[measureIndex]?.[staffIndex]?.ParentStaffLine;
+    const known: Set<AbstractGraphicalExpression> = new Set(staffLine?.AbstractExpressions);
+    super.calculateMoodAndUnknownExpression(multiExpression, measureIndex, staffIndex);
+    if (!staffLine) {
+      return;
+    }
+    const words: GraphicalUnknownExpression[] = [];
+    for (const expression of staffLine.AbstractExpressions) {
+      if (expression instanceof GraphicalUnknownExpression && !known.has(expression)) {
+        known.add(expression);
+        words.push(expression);
+      }
+    }
+    if (words.length > 0) {
+      this.restackWordsClearOfDynamics(staffLine, words);
+    }
+  }
+
+  /**
+   * calculateLabel() places a words label at the sky/bottom line, which the dynamics and wedges (aligned onto a common
+   * baseline before, see calculateExpressionAlignements()) have raised: the label's text touches them, and its box,
+   * whose top/bottom margin reaches beyond the text, overlaps theirs (Enescu, Cantabile et Presto m37-38 on one system:
+   * "cédez" under the third sf of m38). Stack such words DynamicExpressionSpacer beyond the dynamics and wedges and update
+   * the sky/bottom line for their new position.
+   * (Same as osmd-dart's VexFlowMusicSheetCalculator._restackWordsClearOfDynamics, which runs after the alignment there.)
+   */
+  private restackWordsClearOfDynamics(staffLine: StaffLine, words: GraphicalUnknownExpression[]): void {
     const boxes: { placement: PlacementEnum, left: number, right: number, top: number, bottom: number }[] = [];
     for (const expression of staffLine.AbstractExpressions) {
       if (expression instanceof GraphicalInstantaneousDynamicExpression) {
@@ -3664,10 +3690,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     if (boxes.length === 0) {
       return;
     }
-    for (const word of new Set(staffLine.AbstractExpressions)) {
-      if (!(word instanceof GraphicalUnknownExpression)) {
-        continue;
-      }
+    for (const word of words) {
       const below: boolean = word.Placement === PlacementEnum.Below;
       if (!below && word.Placement !== PlacementEnum.Above) {
         continue;
@@ -3699,6 +3722,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       }
       if (shift !== 0) {
         label.RelativePosition = new PointF2D(label.RelativePosition.x, label.RelativePosition.y + shift);
+        word.updateSkyBottomLine();
       }
     }
   }
@@ -3711,7 +3735,6 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       for (const staffLine of musicSystem.StaffLines) {
         try {
           (<VexFlowStaffLine>staffLine).AlignmentManager.alignDynamicExpressions();
-          this.restackWordsClearOfDynamics(staffLine);
           staffLine.AbstractExpressions.forEach(ae => {
             ae.updateSkyBottomLine();
           });
