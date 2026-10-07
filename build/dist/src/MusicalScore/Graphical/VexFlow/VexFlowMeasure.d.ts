@@ -356,7 +356,17 @@ export declare class VexFlowMeasure extends GraphicalMeasure {
         top: number;
         bottom: number;
     }[];
-    /** Forget the raises (drops) of the ornaments over (under) slurs from a previous layout. */
+    /** The fermatas above the notes, drawn by the notes (not stacked beyond an ornament). */
+    private fermatasAbove;
+    /** Where the fermatas above the notes were drawn, without a raise over a slur, like [[OrnamentInk]]. */
+    get FermataInk(): {
+        fermata: any;
+        left: number;
+        right: number;
+        top: number;
+        bottom: number;
+    }[];
+    /** Forget the raises (drops) of the ornaments and fermatas over (under) slurs from a previous layout. */
     resetOrnamentSlurClearance(): void;
     /**
      * Return the VexFlow Stave corresponding to this graphicalMeasure
