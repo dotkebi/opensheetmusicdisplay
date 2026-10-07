@@ -2767,12 +2767,27 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     parentStaffline.SkyBottomLineCalculator.updateSkyLineInRange(startX, stopX, headroom);
   }
 
+  /** A staff line's bottom line as it was before its first pedal mark, by the bottom line array (a new layout makes a
+   *  new one). */
+  private static bottomLineBeforePedals: WeakMap<number[], number[]> = new WeakMap<number[], number[]>();
+
   private calculatePedalSkyBottomLine(startVfVoiceEntry: VexFlowVoiceEntry, endVfVoiceEntry: VexFlowVoiceEntry,
     vfPedal: VexFlowPedal, parentStaffline: StaffLine): void {
       // The x values below are positions in the staffline (xInStaffLine()), as its sky/bottom lines. They were the boxes'
       //   absolute positions, which are relative to their measure at this point (the skyline pass computes them from the
       //   measure): the bottom line was read away from the pedal (Schumann, Myrthen 11 m48, 25 m38).
       const skyBottomLine: SkyBottomLineCalculator = parentStaffline.SkyBottomLineCalculator;
+      // The pedals of a staff line are kept level (below), so a pedal clears what was there before the first pedal
+      //   mark: reading the marks too, each Ped. right after the previous * went 3.5 spaces lower than it, down into the
+      //   next system (Gluck, Che fiero costume, piano m6-10).
+      const bottomLine: number[] = skyBottomLine.BottomLine;
+      let bottomLineBeforePedals: number[] = VexFlowMusicSheetCalculator.bottomLineBeforePedals.get(bottomLine);
+      if (!bottomLineBeforePedals) {
+        bottomLineBeforePedals = bottomLine.slice();
+        VexFlowMusicSheetCalculator.bottomLineBeforePedals.set(bottomLine, bottomLineBeforePedals);
+      }
+      const bottomLineMaxInRange: (start: number, end: number) => number = (start: number, end: number): number =>
+        skyBottomLine.getMaxInRangeOf(bottomLineBeforePedals, start, end);
       const xOf: (box: BoundingBox) => number = (box: BoundingBox): number => VexFlowMusicSheetCalculator.xInStaffLine(box, parentStaffline);
       let endBbox: BoundingBox = endVfVoiceEntry?.PositionAndShape;
       if (!endBbox) {
@@ -2818,9 +2833,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         //   line: the footroom of the notes was their bottom line, so a sign under a low note was drawn into it
         //   (Schumann, Myrthen 11 m48: Ped. over G1's notehead and ledger lines). Half a unit clear of them.
         const signClearance: number = 1.5;
-        footroom = Math.max(skyBottomLine.getBottomLineMaxInRange(startX, stopX) + signClearance, footroom);
+        footroom = Math.max(bottomLineMaxInRange(startX, stopX) + signClearance, footroom);
         footroom = Math.max(yLineForPedalMarking + symbolHalfHeight * 2, footroom);
-        const footroom2: number = skyBottomLine.getBottomLineMaxInRange(startX2, stopX2) + signClearance;
+        const footroom2: number = bottomLineMaxInRange(startX2, stopX2) + signClearance;
         //If Depress text is set, means we are not rendering the begin label (we are just rendering the end one)
         if (!vfPedal.DepressText) {
           footroom = Math.max(footroom, footroom2);
@@ -2862,7 +2877,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           stopX += clefWidth;
         }
 
-        footroom = Math.max(skyBottomLine.getBottomLineMaxInRange(startX, stopX), footroom);
+        footroom = Math.max(bottomLineMaxInRange(startX, stopX), footroom);
         if (footroom === Infinity) { // will cause Vexflow error
           return;
         }
