@@ -28,5 +28,13 @@
       <note><pitch><step>D</step><octave>4</octave></pitch><duration>2</duration><voice>2</voice><type>half</type><stem>down</stem><notations><articulations><accent placement="above"/></articulations></notations></note>
       <note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><voice>2</voice><type>half</type><stem>down</stem></note>
     </measure>
+    <measure number="4">
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><stem>down</stem></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><stem>down</stem><notations><articulations><accent/></articulations></notations></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><stem>down</stem></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>2</voice><type>quarter</type><stem>up</stem></note>
+      <note print-object="no"><rest/><duration>3</duration><voice>2</voice><type>half</type><dot/></note>
+    </measure>
   </part>
 </score-partwise>

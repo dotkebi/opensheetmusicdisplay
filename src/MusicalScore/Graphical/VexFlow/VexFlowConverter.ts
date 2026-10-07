@@ -19,7 +19,6 @@ import {OutlineAndFillStyleEnum, OUTLINE_AND_FILL_STYLE_DICT} from "../DrawingEn
 import log from "loglevel";
 import { ArticulationEnum, StemDirectionType, VoiceEntry } from "../../VoiceData/VoiceEntry";
 import { BreathMarkValue } from "../../VoiceData/Articulation";
-import { Voice } from "../../VoiceData/Voice";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { SystemLinePosition } from "../SystemLinePosition";
 import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
@@ -905,15 +904,24 @@ export class VexFlowConverter {
         return vfnote;
     }
 
-    /** Whether another voice has a visible note (or rest) on the note's staff in its measure. */
-    public static hasOtherVoiceInMeasure(gNote: GraphicalNote): boolean {
-        const voice: Voice = gNote.sourceNote.ParentVoiceEntry.ParentVoice;
+    /** Whether another voice has a visible note (or rest) on the note's staff sounding at the same time as it (Schumann,
+     *  Myrthen 2 m19: the left hand's chords after the first beat are alone, their staccatos stay above). */
+    public static hasOtherVoiceAtTime(gNote: GraphicalNote): boolean {
+        const voiceEntry: VoiceEntry = gNote.sourceNote.ParentVoiceEntry;
+        const start: number = voiceEntry.Timestamp.RealValue;
+        const end: number = start + gNote.sourceNote.Length.RealValue;
         const measure: GraphicalMeasure = gNote.parentVoiceEntry?.parentStaffEntry?.parentMeasure;
         for (const staffEntry of measure?.staffEntries ?? []) {
             for (const gve of staffEntry.graphicalVoiceEntries) {
-                if (gve.parentVoiceEntry.ParentVoice !== voice && !gve.parentVoiceEntry.IsGrace &&
-                    gve.notes.some((note) => note.sourceNote.PrintObject)) {
-                    return true;
+                const other: VoiceEntry = gve.parentVoiceEntry;
+                if (other.ParentVoice === voiceEntry.ParentVoice || other.IsGrace) {
+                    continue;
+                }
+                for (const note of gve.notes) {
+                    const noteStart: number = other.Timestamp.RealValue;
+                    if (note.sourceNote.PrintObject && noteStart < end && noteStart + note.sourceNote.Length.RealValue > start) {
+                        return true;
+                    }
                 }
             }
         }
@@ -954,7 +962,7 @@ export class VexFlowConverter {
             }
             // two voices on the staff: outside, on the voice's stem side (the upper voice's above, the lower voice's
             //   below), not on the notehead side between the voices (Caccini, Amarilli, Schirmer, piano m4, m11-12)
-            if (VexFlowConverter.hasOtherVoiceInMeasure(gNote)) {
+            if (VexFlowConverter.hasOtherVoiceAtTime(gNote)) {
                 vfArtPosition = vfnote.getStemDirection() === VF.Stem.UP ? VF.Modifier.Position.ABOVE : VF.Modifier.Position.BELOW;
             }
             let vfArt: VF.Articulation = undefined;

@@ -45,6 +45,7 @@ describe("Articulations of two voices on a staff", () => {
             "m1 v1 a> above", "m1 v2 a> below", "m1 v1 a. above", "m1 v2 a- below",
             "m2 v1 a> below", "m2 v1 a> above", // one voice: notehead side
             "m3 v1 a> below", "m3 v2 a> above", // placement from the XML
+            "m4 v1 a> above", // alone at its time: notehead side
         ]);
     });
 });
