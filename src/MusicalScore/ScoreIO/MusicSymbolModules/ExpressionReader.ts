@@ -1297,8 +1297,11 @@ export class ExpressionReader {
                     stringTrimmed);
             continuousDynamicExpression.ColorXML = fontColor;
             continuousDynamicExpression.language = language;
+            // a new verbal dynamic ends an open verbal one ("cresc." ... "dim."). A wedge is ended by its stop only:
+            //   the last multi expression may be a wedge read before this text (Parisotti, Zingarella Canto m62:
+            //   the wedge at beat 1.75 is read before "cres." at beat 1.5 and was closed before it began, a 2-space stub)
             const openWordContinuousDynamic: MultiExpression = this.getMultiExpression;
-            if (openWordContinuousDynamic) {
+            if (openWordContinuousDynamic?.StartingContinuousDynamic?.Label) {
                 this.closeOpenContinuousDynamic(openWordContinuousDynamic.StartingContinuousDynamic, currentMeasure, inSourceMeasureCurrentFraction);
             }
             this.createNewMultiExpressionIfNeeded(currentMeasure, -1);
