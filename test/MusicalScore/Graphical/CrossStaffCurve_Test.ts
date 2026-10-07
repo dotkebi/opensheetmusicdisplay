@@ -13,7 +13,8 @@ import { PointF2D } from "../../../src/Common/DataObjects/PointF2D";
  * Fixture test_cross_staff_curves.musicxml (synthetic, piano, 4/4): m1 a cross-staff beam (LH A3 up, RH D4 F4 A4 down)
  * under a slur from the A3 to the A4, placed below, over a whole note of another voice on the left hand (Myrthen 1
  * m4); m2->m3 a tie from the right hand's B3 to the left hand's (one voice); m4 a slur without placement from the right
- * hand's E5 down to the left hand's C3, its notes between (A2, G2) below the line from end to end.
+ * hand's E5 down to the left hand's C3, its notes between (A2, G2) below the line from end to end; m5 a slur placed above
+ * from the left hand's last thirty-second E3 (stem up, beamed) to the right hand's D4 right after it (Myrthen 17).
  */
 describe("Curves between staves", () => {
     let container: HTMLElement;
@@ -109,11 +110,29 @@ describe("Curves between staves", () => {
         expect(curve.unclearedObstacles).to.equal(0);
     });
 
+    it("a steep slur joins the notes' facing sides, bowing away from the start's stem", () => {
+        expect(curvesStartingIn(4).length).to.equal(1);
+        const curve: CrossStaffCurve = curvesStartingIn(4)[0];
+        expect(curve.unclearedObstacles).to.equal(0);
+        const start: any = (curve.startNote as any).vfnote[0];
+        const end: any = (curve.endNote as any).vfnote[0];
+        // from right of the sixteenth's stem, at its notehead (not its beam)
+        expect(curve.startPoint.x).to.be.greaterThan(start.getStemX() / 10);
+        expect(curve.startPoint.y).to.be.closeTo(start.getYs()[0] / 10 - 0.25, 0.01);
+        // to under the D4 notehead (not over it, as the XML's above would)
+        expect(curve.endPoint.y).to.be.greaterThan(end.getYs()[0] / 10 + 0.5);
+        // bowing right of the line from end to end, as in the source
+        expect(curve.placement).to.equal(PlacementEnum.Below);
+        const mid: PointF2D = curve.sample(64)[32];
+        const t: number = (mid.y - curve.startPoint.y) / (curve.endPoint.y - curve.startPoint.y);
+        expect(mid.x).to.be.greaterThan(curve.startPoint.x + t * (curve.endPoint.x - curve.startPoint.x));
+    });
+
     it("draws each curve once per drawing, the same by renderAsync", async () => {
         const curvePaths: (div: HTMLElement) => string[] = (div: HTMLElement) =>
             Array.from(div.querySelectorAll("g.vf-curve path")).map(path => path.getAttribute("d"));
         const sync: string[] = curvePaths(container);
-        expect(sync.length, "two slurs and a tie").to.equal(3);
+        expect(sync.length, "three slurs and a tie").to.equal(4);
         osmd.clear();
         container.remove();
         await load();

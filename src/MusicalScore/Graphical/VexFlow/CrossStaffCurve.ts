@@ -145,6 +145,15 @@ const headCenterX: (note: CrossStaffCurveNote) => number =
 /** A cubic Bézier segment: [start, control, control, end]. */
 type Segment = PointF2D[];
 
+/** A slur's curve on one side (CrossStaffCurve.fitSlur()). */
+interface SlurFit {
+    segments: Segment[];
+    hull: boolean;
+    uncleared: number;
+    startAtStem: boolean;
+    endAtStem: boolean;
+}
+
 /**
  * A slur or tie from a note on one staff of an instrument to a note on another staff of it in the same system
  * (Schumann, Myrthen 1 m4–5: slurs from the left hand into the right hand across the cross-staff beams; 14 m12–14: a
@@ -326,9 +335,51 @@ export class CrossStaffCurve {
         const lowerOrigin: PointF2D = startIsUpper ? endOrigin : startOrigin;
 
         const inner: CrossStaffCurveNote[] = this.voiceNotesBetween(geometry);
-        this.placement = this.placementOf(rules, start, end, inner);
-        const below: boolean = this.placement === PlacementEnum.Below;
+        let below: boolean = this.placementOf(rules, start, end, inner) === PlacementEnum.Below;
+        const fit: (below: boolean, steep: boolean) => SlurFit = (side: boolean, steep: boolean) =>
+            this.fitSlur(rules, geometry, upper, lower, upperOrigin, lowerOrigin, start, end, inner, side, steep);
+        let best: SlurFit = fit(below, false);
+        // a steep slur whose curve climbs past one of its notes — through its notehead, or along a stem pointing away
+        //   from the other note to its end (Myrthen 17: placed above, from the left hand's last sixteenth up past the
+        //   right hand's next note): from the notes' facing sides, bowing away from the start's stem beside it (there
+        //   right, as in the source — to the left it would run back through the left hand's beam), when no other note
+        //   stands between its ends and it is clear of the notes across it on both staves, their stems and beams
+        //   (Myrthen 3, 15 m16: from the first of the left hand's beamed notes it would bend under the others; 15 m57:
+        //   cross the left hand's other voice)
+        if (best && CrossStaffCurve.isSteep(start, end) && CrossStaffCurve.climbsPast(best, start, end)) {
+            const steepBelow: boolean = CrossStaffCurve.besideStem(start, end, true) ? end.headY < start.headY : below;
+            const steep: SlurFit = fit(steepBelow, true);
+            const others: CrossStaffCurveNote[] = steep ? this.notesUnder(geometry, steep.segments) : [];
+            // (not a note of either end's chord)
+            const between: CrossStaffCurveNote[] = others.filter(note =>
+                Math.abs(headCenterX(note) - headCenterX(start)) > 0.5 && Math.abs(headCenterX(note) - headCenterX(end)) > 0.5);
+            if (steep && !CrossStaffCurve.alongNotes(steep.segments, [start, end, ...others]) &&
+                !CrossStaffCurve.headsBetween(steep.segments, between) &&
+                !CrossStaffCurve.crossesStemsAndBeams(steep.segments, [start, ...others, end])) {
+                best = steep;
+                below = steepBelow;
+            }
+        }
+        if (!best) {
+            return false;
+        }
+        this.placement = below ? PlacementEnum.Below : PlacementEnum.Above;
         gSlur.placement = this.placement;
+        this.segments = best.segments;
+        this.followsHull = best.hull;
+        this.unclearedObstacles = best.uncleared;
+        gSlur.bezierStartPt = this.segments[0][0];
+        gSlur.bezierStartControlPt = this.segments[0][1];
+        gSlur.bezierEndControlPt = this.segments[this.segments.length - 1][2];
+        gSlur.bezierEndPt = this.segments[this.segments.length - 1][3];
+        return true;
+    }
+
+    /** The slur's curve on one side: the best of its end pairs (calculateSlur()), or for a steep one from its notes'
+     *  facing sides (facingEnd()). */
+    private fitSlur(rules: EngravingRules, geometry: CrossStaffCurveGeometry, upper: StaffLine, lower: StaffLine,
+                    upperOrigin: PointF2D, lowerOrigin: PointF2D, start: CrossStaffCurveNote, end: CrossStaffCurveNote,
+                    inner: CrossStaffCurveNote[], below: boolean, steep: boolean): SlurFit {
         const gap: number = rules.SlurNoteHeadYOffset;
         const far: StaffLine = below ? upper : lower;
         const farOrigin: PointF2D = below ? upperOrigin : lowerOrigin;
@@ -345,53 +396,157 @@ export class CrossStaffCurve {
             .map(note => new PointF2D(note.stemX, note.stemTip));
 
         let best: number = Number.POSITIVE_INFINITY;
-        let bestSegments: Segment[] = undefined;
-        let bestHull: boolean = false;
-        let bestUncleared: number = 0;
-        // (the usual ends come first: one clean arch there can't be beaten)
-        choices:
-        for (const startAtStem of CrossStaffCurve.endChoices(start, below)) {
-            for (const endAtStem of CrossStaffCurve.endChoices(end, below)) {
-                const p0: PointF2D = CrossStaffCurve.endPointOf(start, below, gap, true, startAtStem);
-                const p3: PointF2D = CrossStaffCurve.endPointOf(end, below, gap, false, endAtStem);
-                // (a slur between two notes at one time is nearly upright: Myrthen has none, a test of measure repeats
-                //   does)
-                if (CrossStaffCurve.distance(p0, p3) < 0.5) {
-                    continue;
-                }
-                const points: PointF2D[] = [...candidates, ...ownStems].filter(point => point.x > p0.x + 0.1 && point.x < p3.x - 0.1);
-                const arch: Segment[] = this.fitArch(rules, p0, p3, points, below);
-                const archReach: number = CrossStaffCurve.reach(arch, p0, p3, below);
-                // (the hull reaches as far as its highest corner: an obstacle, or the least bow)
-                const hullReach: number = CrossStaffCurve.hullHeight(rules, p0, p3, points, below);
-                const useArch: boolean = archReach <= hullReach * 1.25 + 0.5 && CrossStaffCurve.uncleared(arch, points, below) === 0;
-                const hull: Segment[] = useArch ? arch : this.hullCurve(rules, p0, p3, points, below);
-                const usual: boolean = startAtStem === (start.stem === (below ? -1 : 1)) &&
-                    endAtStem === (end.stem === (below ? -1 : 1));
-                // one clean arch first, then the usual ends, then the lower curve
-                const cost: number = (useArch ? 0 : 1000) + (usual ? 0 : 100) + (useArch ? archReach : hullReach);
-                if (cost < best) {
-                    best = cost;
-                    bestSegments = useArch ? arch : hull;
-                    bestHull = !useArch;
-                    bestUncleared = useArch ? 0 : CrossStaffCurve.uncleared(hull, points, below);
-                }
-                if (best < 100) {
-                    break choices;
+        let bestFit: SlurFit = undefined;
+        // the end pairs to try (the usual ends first: one clean arch there can't be beaten)
+        const usualStart: boolean = start.stem === (below ? -1 : 1);
+        const usualEnd: boolean = end.stem === (below ? -1 : 1);
+        const pairs: [PointF2D, PointF2D, boolean, boolean, boolean][] = [];
+        if (steep) {
+            pairs.push([CrossStaffCurve.facingEnd(start, end, gap, true), CrossStaffCurve.facingEnd(end, start, gap, false), true,
+                        false, false]);
+        } else {
+            for (const startAtStem of CrossStaffCurve.endChoices(start, below)) {
+                for (const endAtStem of CrossStaffCurve.endChoices(end, below)) {
+                    pairs.push([CrossStaffCurve.endPointOf(start, below, gap, true, startAtStem),
+                                CrossStaffCurve.endPointOf(end, below, gap, false, endAtStem),
+                                startAtStem === usualStart && endAtStem === usualEnd, startAtStem, endAtStem]);
                 }
             }
         }
-        if (!bestSegments) {
-            return false;
+        for (const [p0, p3, usual, startAtStem, endAtStem] of pairs) {
+            // (a slur between two notes at one time is nearly upright: Myrthen has none, a test of measure repeats does)
+            if (CrossStaffCurve.distance(p0, p3) < 0.5) {
+                continue;
+            }
+            const points: PointF2D[] = [...candidates, ...ownStems].filter(point => point.x > p0.x + 0.1 && point.x < p3.x - 0.1);
+            const arch: Segment[] = this.fitArch(rules, p0, p3, points, below);
+            const archReach: number = CrossStaffCurve.reach(arch, p0, p3, below);
+            // (the hull reaches as far as its highest corner: an obstacle, or the least bow)
+            const hullReach: number = CrossStaffCurve.hullHeight(rules, p0, p3, points, below);
+            const useArch: boolean = archReach <= hullReach * 1.25 + 0.5 && CrossStaffCurve.uncleared(arch, points, below) === 0;
+            const hull: Segment[] = useArch ? arch : this.hullCurve(rules, p0, p3, points, below);
+            // one clean arch first, then the usual ends, then the lower curve
+            const cost: number = (useArch ? 0 : 1000) + (usual ? 0 : 100) + (useArch ? archReach : hullReach);
+            if (cost < best) {
+                best = cost;
+                bestFit = {
+                    segments: useArch ? arch : hull,
+                    hull: !useArch,
+                    uncleared: useArch ? 0 : CrossStaffCurve.uncleared(hull, points, below),
+                    startAtStem: startAtStem,
+                    endAtStem: endAtStem,
+                };
+            }
+            if (best < 100) {
+                break;
+            }
         }
-        this.segments = bestSegments;
-        this.followsHull = bestHull;
-        this.unclearedObstacles = bestUncleared;
-        gSlur.bezierStartPt = this.segments[0][0];
-        gSlur.bezierStartControlPt = this.segments[0][1];
-        gSlur.bezierEndControlPt = this.segments[this.segments.length - 1][2];
-        gSlur.bezierEndPt = this.segments[this.segments.length - 1][3];
-        return true;
+        return bestFit;
+    }
+
+    /** Whether the fit climbs past one of its notes: ends at the end of a stem pointing away from the other note (an
+     *  upper note's up stem, a lower note's down stem), or runs through its notehead (a tenth of a space in). */
+    private static climbsPast(fit: SlurFit, start: CrossStaffCurveNote, end: CrossStaffCurveNote): boolean {
+        const away: (note: CrossStaffCurveNote, other: CrossStaffCurveNote) => boolean =
+            (note: CrossStaffCurveNote, other: CrossStaffCurveNote) => note.stem === (note.headY < other.headY ? 1 : -1);
+        if (fit.startAtStem && away(start, end) || fit.endAtStem && away(end, start)) {
+            return true;
+        }
+        for (const p of CrossStaffCurve.sampleOf(fit.segments, 32)) {
+            for (const note of [start, end]) {
+                if (p.x > note.headLeft + 0.1 && p.x < note.headRight - 0.1 &&
+                    p.y > headTop(note) + 0.1 && p.y < headBottom(note) - 0.1) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Whether the curve runs through or along one of the notes — through its notehead (a tenth of a space in) or
+     *  within 0.2 of its stem — away from the curve's own ends (0.6). */
+    private static alongNotes(curve: Segment[], notes: CrossStaffCurveNote[]): boolean {
+        const p0: PointF2D = curve[0][0];
+        const p3: PointF2D = curve[curve.length - 1][3];
+        for (const p of CrossStaffCurve.sampleOf(curve, 32)) {
+            if (CrossStaffCurve.distance(p, p0) < 0.6 || CrossStaffCurve.distance(p, p3) < 0.6) {
+                continue;
+            }
+            for (const note of notes) {
+                if (p.x > note.headLeft + 0.1 && p.x < note.headRight - 0.1 &&
+                    p.y > headTop(note) + 0.1 && p.y < headBottom(note) - 0.1) {
+                    return true;
+                }
+                if (note.stem !== 0 && Math.abs(p.x - note.stemX) < 0.2 &&
+                    p.y > Math.min(note.headY, note.stemTip) && p.y < Math.max(note.headY, note.stemTip)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Whether the curve crosses a stem of the notes or a beam between two of them (neighbours with beams and stems the
+     *  same way), away from the curve's own ends (0.6). */
+    private static crossesStemsAndBeams(curve: Segment[], notes: CrossStaffCurveNote[]): boolean {
+        const lines: [PointF2D, PointF2D][] = notes
+            .filter(note => note.stem !== 0)
+            .map(note => [new PointF2D(note.stemX, note.headY), new PointF2D(note.stemX, note.stemTip)]);
+        const byX: CrossStaffCurveNote[] = [...notes].sort((a, b) => a.stemX - b.stemX);
+        for (let i: number = 0; i + 1 < byX.length; i++) {
+            const a: CrossStaffCurveNote = byX[i];
+            const b: CrossStaffCurveNote = byX[i + 1];
+            if (a.beamCount > 0 && b.beamCount > 0 && a.stem !== 0 && a.stem === b.stem && b.stemX - a.stemX < 8) {
+                lines.push([new PointF2D(a.stemX, a.stemTip), new PointF2D(b.stemX, b.stemTip)]);
+            }
+        }
+        const p0: PointF2D = curve[0][0];
+        const p3: PointF2D = curve[curve.length - 1][3];
+        const samples: PointF2D[] = CrossStaffCurve.sampleOf(curve, 32)
+            .filter(p => CrossStaffCurve.distance(p, p0) >= 0.6 && CrossStaffCurve.distance(p, p3) >= 0.6);
+        for (let i: number = 0; i + 1 < samples.length; i++) {
+            for (const [a, b] of lines) {
+                if (CrossStaffCurve.segmentsCross(samples[i], samples[i + 1], a, b)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static segmentsCross(p: PointF2D, q: PointF2D, a: PointF2D, b: PointF2D): boolean {
+        const side: (o: PointF2D, u: PointF2D, v: PointF2D) => number =
+            (o: PointF2D, u: PointF2D, v: PointF2D) => (u.x - o.x) * (v.y - o.y) - (u.y - o.y) * (v.x - o.x);
+        return side(a, b, p) * side(a, b, q) < 0 && side(p, q, a) * side(p, q, b) < 0;
+    }
+
+    /** Whether a slur's notes are nearly one above the other: across less than half the way up (Myrthen 17: from the
+     *  left hand's last sixteenth up to the right hand's next note, 0.16 to 0.26 in the app). Its ends on its notes'
+     *  usual sides — both above or both below — may make the curve climb past one of them to its far side
+     *  (climbsPast()); the source joins the sides the notes face each other with. */
+    private static isSteep(start: CrossStaffCurveNote, end: CrossStaffCurveNote): boolean {
+        return Math.abs(headCenterX(end) - headCenterX(start)) < 0.5 * Math.abs(end.headY - start.headY);
+    }
+
+    /** A steep slur's end at the note: on the side facing the other note — above the lower note, below the upper — or,
+     *  when the note's stem points that way on the side towards the other note, beside the stem at the notehead at
+     *  the start (Myrthen 17: right of the left hand's sixteenth's stem) and at the stem's end at the end. */
+    private static facingEnd(note: CrossStaffCurveNote, other: CrossStaffCurveNote, gap: number, isStart: boolean): PointF2D {
+        const isUpper: boolean = note.headY < other.headY;
+        const toward: number = isStart ? 1 : -1;
+        if (CrossStaffCurve.besideStem(note, other, isStart)) {
+            // (at the end: its stem's end — the start's side would bring the curve back across the stem to its notehead)
+            return isStart
+                ? new PointF2D(note.stemX + toward * 0.3, note.headY + (isUpper ? 0.25 : -0.25))
+                : new PointF2D(note.stemX, note.stemTip + (isUpper ? gap : -gap));
+        }
+        return new PointF2D(headCenterX(note) + toward * 0.2, isUpper ? headBottom(note) + gap : headTop(note) - gap);
+    }
+
+    /** Whether a steep slur's end at the note is beside its stem: the stem points towards the other note and stands on
+     *  its side (an up stem is right of its notehead, a down stem left). */
+    private static besideStem(note: CrossStaffCurveNote, other: CrossStaffCurveNote, isStart: boolean): boolean {
+        return note.stem === (note.headY < other.headY ? -1 : 1) && (note.stem > 0) === isStart;
     }
 
     /** The ends tried at the note: the notehead, and its stem's end when the stem points to the slur's side (usual
@@ -437,6 +592,43 @@ export class CrossStaffCurve {
             return new PointF2D(note.stemX, note.stemTip + side * gap);
         }
         return new PointF2D(headCenterX(note) + (isStart ? 0.2 : -0.2), (below ? headBottom(note) : headTop(note)) + side * gap);
+    }
+
+    /** The notes of the curve's measures on both staves, any voice, across its width — but its own two. */
+    private notesUnder(geometry: CrossStaffCurveGeometry, curve: Segment[]): CrossStaffCurveNote[] {
+        const xs: number[] = CrossStaffCurve.sampleOf(curve, 16).map(p => p.x);
+        const fromX: number = Math.min(...xs) - 1;
+        const toX: number = Math.max(...xs) + 1;
+        const result: CrossStaffCurveNote[] = [];
+        for (const measure of this.participants) {
+            for (const staffEntry of measure.staffEntries) {
+                for (const voiceEntry of staffEntry.graphicalVoiceEntries) {
+                    for (const gNote of voiceEntry.notes) {
+                        if (gNote === this.startNote || gNote === this.endNote) {
+                            continue;
+                        }
+                        const note: Note = gNote.sourceNote;
+                        if (note.isRest() || !note.PrintObject) {
+                            continue;
+                        }
+                        const noteGeometry: CrossStaffCurveNote = geometry.note(gNote);
+                        if (noteGeometry && noteGeometry.headRight > fromX && noteGeometry.headLeft < toX) {
+                            result.push(noteGeometry);
+                        }
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    /** Whether one of the notes has its notehead between the curve's two ends (across, a third of a space in). */
+    private static headsBetween(curve: Segment[], notes: CrossStaffCurveNote[]): boolean {
+        const a: number = curve[0][0].x;
+        const b: number = curve[curve.length - 1][3].x;
+        const fromX: number = Math.min(a, b) + 0.3;
+        const toX: number = Math.max(a, b) - 0.3;
+        return notes.some(note => note.headRight > fromX && note.headLeft < toX);
     }
 
     /** The notes of the slur's voices (its start note's and end note's) strictly between its two notes: in its measures
