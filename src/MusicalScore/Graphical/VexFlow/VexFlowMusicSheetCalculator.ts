@@ -52,7 +52,7 @@ import { PointF2D } from "../../../Common/DataObjects/PointF2D";
 import { TextAlignmentEnum, TextAlignment } from "../../../Common/Enums/TextAlignment";
 import { GraphicalSlur } from "../GraphicalSlur";
 import { BoundingBox } from "../BoundingBox";
-import { ContinuousDynamicExpression } from "../../VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
+import { ContDynamicEnum, ContinuousDynamicExpression } from "../../VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
 import { VexFlowContinuousDynamicExpression } from "./VexFlowContinuousDynamicExpression";
 import { GraphicalInstantaneousDynamicExpression } from "../GraphicalInstantaneousDynamicExpression";
 import { GraphicalContinuousDynamicExpression } from "../GraphicalContinuousDynamicExpression";
@@ -96,6 +96,8 @@ interface ExpressionSlot {
   endTimestamp: number;
   /** a wedge's stop as written (ContinuousDynamicExpression.StopTimestamp) */
   stopTimestamp?: number;
+  /** a diminuendo ends at the left border of the note after its stop */
+  diminuendo?: boolean;
   below: boolean;
   isLabel: boolean;
   /** label borders relative to the x of timestamp */
@@ -1338,8 +1340,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         } else {
           const end: MultiExpression = continuous.EndMultiExpression;
           if (end && end.SourceMeasureParent === source) {
-            slots.push({ below, endTimestamp: end.Timestamp.RealValue, isLabel: false, left: 0, right: 0,
-              stopTimestamp: continuous.StopTimestamp?.RealValue, text: "wedge", timestamp });
+            slots.push({ below, diminuendo: continuous.DynamicType === ContDynamicEnum.diminuendo, endTimestamp: end.Timestamp.RealValue,
+              isLabel: false, left: 0, right: 0, stopTimestamp: continuous.StopTimestamp?.RealValue, text: "wedge", timestamp });
           }
         }
       }
@@ -1380,8 +1382,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     return pairs;
   }
 
-  /** Each wedge that starts and stops before the last staff entry of the measure, from its start (after a dynamic there) to
-   *  its stop, with the distance WedgeMinReservedLength and the end margin it is drawn with. */
+  /** Each wedge that starts and stops before the last staff entry of the measure, from its start (after a dynamic there, else
+   *  the left border of its note) to its stop (the left border of the note there for a diminuendo, as drawn), with the distance
+   *  WedgeMinReservedLength and the end margin it is drawn with. */
   private wedgeLengthPairs(measure: VexFlowMeasure, slots: ExpressionSlot[]): ExpressionPair[] {
     const margin: number = this.rules.WedgeHorizontalMargin;
     const need: number = this.rules.WedgeMinReservedLength + margin;
@@ -1393,13 +1396,17 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (stop === undefined || stop <= wedge.timestamp || stop > lastEntry) {
         continue;
       }
+      const borderLeftAt: (timestamp: number) => number = (timestamp: number): number =>
+        measure.staffEntries.find(se => se.relInMeasureTimestamp.RealValue === timestamp)?.PositionAndShape.BorderLeft ?? 0;
       // the wedge starts after a dynamic at its start (startCollideBox)
-      const startRight: number = slots.filter(s => s.isLabel && s.below === wedge.below && s.timestamp === wedge.timestamp)
-        .reduce((r, s) => Math.max(r, s.right + margin), 0);
+      const labels: ExpressionSlot[] = slots.filter(s => s.isLabel && s.below === wedge.below && s.timestamp === wedge.timestamp);
+      const startRight: number = labels.length === 0 ? borderLeftAt(wedge.timestamp) :
+        labels.reduce((r, s) => Math.max(r, s.right + margin), 0);
+      const stopLeft: number = wedge.diminuendo ? borderLeftAt(stop) : 0;
       pairs.push({
         earlier: { below: wedge.below, endTimestamp: wedge.timestamp, isLabel: true, left: 0, right: startRight, text: "",
                    timestamp: wedge.timestamp },
-        later: { below: wedge.below, endTimestamp: stop, isLabel: true, left: 0, right: 0, text: "", timestamp: stop },
+        later: { below: wedge.below, endTimestamp: stop, isLabel: true, left: stopLeft, right: 0, text: "", timestamp: stop },
         measure, need,
       });
     }

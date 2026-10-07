@@ -34,7 +34,7 @@ describe("Wedge stops and drawn wedge ends", () => {
       <direction placement="above"><direction-type><wedge type="diminuendo" number="1"/></direction-type></direction>
       <note><pitch><step>G</step><octave>4</octave></pitch><duration>3</duration><voice>1</voice><type>quarter</type><dot/><notations><articulations><accent placement="above"/></articulations></notations></note>
       <direction placement="above"><direction-type><wedge type="stop" number="1"/></direction-type></direction>
-      <note><pitch><step>F</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+      <note><pitch><step>F</step><alter>1</alter><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><accidental>sharp</accidental></note>
       <note><pitch><step>F</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
       <note><rest/><duration>2</duration><voice>1</voice><type>quarter</type></note>
     </measure>
@@ -102,6 +102,14 @@ describe("Wedge stops and drawn wedge ends", () => {
       <note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><voice>2</voice><type>quarter</type><stem>down</stem></note>
       <note><rest/><duration>6</duration><voice>2</voice><type>half</type><dot/></note>
     </measure>
+    <measure number="8">
+      <direction placement="above"><direction-type><wedge type="diminuendo" number="1"/></direction-type></direction>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>3</duration><voice>1</voice><type>quarter</type><dot/></note>
+      <direction placement="above"><direction-type><wedge type="stop" number="1"/></direction-type></direction>
+      <note><pitch><step>F</step><alter>1</alter><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><accidental>sharp</accidental></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+      <note><rest/><duration>2</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
   </part>
 </score-partwise>`;
     /* eslint-enable max-len */
@@ -162,6 +170,13 @@ describe("Wedge stops and drawn wedge ends", () => {
         return entry.PositionAndShape.RelativePosition.x + m.PositionAndShape.RelativePosition.x;
     }
 
+    /** left border (in the staff line) of the staff entry at `timestamp`: where a diminuendo ends before it */
+    function entryLeft(osmd: OpenSheetMusicDisplay, measureNumber: number, timestamp: number): number {
+        const m: GraphicalMeasure = measure(osmd, measureNumber);
+        const entry: GraphicalStaffEntry = m.staffEntries.find(e => Math.abs(e.relInMeasureTimestamp.RealValue - timestamp) < 1e-9);
+        return entryX(osmd, measureNumber, timestamp) + entry.PositionAndShape.BorderLeft;
+    }
+
     it("keeps the stop as written and ends where it was read", async () => {
         const osmd: OpenSheetMusicDisplay = await render();
         const describe: (w: ContinuousDynamicExpression) => string = w =>
@@ -177,6 +192,7 @@ describe("Wedge stops and drawn wedge ends", () => {
             "diminuendo 5@0.5-5@0.75 stop 1",
             "diminuendo 6@0.25-6@0 stop 0.5",
             "crescendo 7@0.25-7@0.25 stop 0.5",
+            "diminuendo 8@0-8@0 stop 0.375",
         ]);
     });
 
@@ -186,7 +202,7 @@ describe("Wedge stops and drawn wedge ends", () => {
         // to the next note (its left edge for a diminuendo), not 1/WedgeEndDistanceBetweenTimestampsFactor of the way
         for (const [m, start, next] of [[1, 0, 3 / 8], [3, 1 / 2, 3 / 4]]) {
             const dim: GraphicalContinuousDynamicExpression = wedge(osmd, m, ContDynamicEnum.diminuendo);
-            const nextX: number = entryX(osmd, m, next) - margin;
+            const nextX: number = entryLeft(osmd, m, next) - margin;
             expect(left(dim)).to.be.closeTo(entryX(osmd, m, start), 1.0);
             expect(right(dim)).to.be.at.most(nextX + 0.01);
             expect(right(dim) - left(dim)).to.be.greaterThan(0.75 * (nextX - left(dim)));
@@ -220,17 +236,20 @@ describe("Wedge stops and drawn wedge ends", () => {
 
     it("gives a wedge in a tight measure WedgeMinReservedLength", async () => {
         const length: (osmd: OpenSheetMusicDisplay) => number = osmd => {
-            const dim: GraphicalContinuousDynamicExpression = wedge(osmd, 1, ContDynamicEnum.diminuendo);
+            const dim: GraphicalContinuousDynamicExpression = wedge(osmd, 8, ContDynamicEnum.diminuendo);
             return right(dim) - left(dim);
         };
-        // m1 stays near its minimum width in a narrow system
+        // m8 in the last system, not stretched, keeps its minimum width
         const reserved: OpenSheetMusicDisplay = await render(1000);
         const reservedLength: number = reserved.EngravingRules.WedgeMinReservedLength;
         expect(reservedLength).to.equal(4);
-        // the diminuendo ends at the left edge of the next note
-        expect(length(reserved)).to.be.greaterThan(reservedLength - 0.7);
+        // to the left border of the sharpened next note
+        expect(length(reserved)).to.be.greaterThan(reservedLength - 0.1);
+        // a longer reservation widens the measure further
+        const longer: OpenSheetMusicDisplay = await render(1000, 6);
+        expect(length(longer)).to.be.greaterThan(6 - 0.1);
         const unreserved: OpenSheetMusicDisplay = await render(1000, 0);
-        expect(length(unreserved)).to.be.lessThan(length(reserved) - 0.2);
+        expect(length(unreserved)).to.be.lessThan(6 - 0.1);
     });
 
     it("ends a wedge on a staff without notes at the measure end", async () => {
