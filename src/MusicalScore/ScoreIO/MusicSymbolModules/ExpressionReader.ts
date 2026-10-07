@@ -458,7 +458,7 @@ export class ExpressionReader {
     private lastPedalStop: { pedal: Pedal, measure: SourceMeasure, timestamp: Fraction };
     /** A stop read while no pedal was open. A voice written earlier in the measure can carry the stop of a pedal whose
      *  start is written later (at an earlier time); that start then ends at this stop. */
-    private pendingPedalStop: { measure: SourceMeasure, timestamp: Fraction };
+    private pendingPedalStop: { measure: SourceMeasure, timestamp: Fraction, releaseHidden: boolean };
 
     public addPedalMarking(directionNode: IXmlElement, currentMeasure: SourceMeasure, endTimestamp: Fraction): void {
         const directionTypeNodes: IXmlElement[] = directionNode.elements("direction-type");
@@ -503,20 +503,22 @@ export class ExpressionReader {
                             this.createNewMultiExpressionIfNeeded(currentMeasure, -1);
                             this.openPedal = new Pedal(line, sign);
                             const stop: { pedal: Pedal, measure: SourceMeasure, timestamp: Fraction } = this.lastPedalStop;
-                            if (stop && !line && !stop.pedal.IsLine && stop.measure === currentMeasure &&
+                            if (stop && !line && !stop.pedal.IsLine && !stop.pedal.ReleaseHidden && stop.measure === currentMeasure &&
                                 stop.timestamp.Equals(this.directionTimestamp)) {
-                                // explicit stop and start at one time: a pedal change
+                                // explicit stop and start at one time: a pedal change. A stop without its sign (sign="no") is
+                                //   no change: the next Ped. alone retakes the pedal, as engraved (Gluck, Tu lo sai m31).
                                 stop.pedal.ChangeEnd = true;
                                 this.openPedal.ChangeBegin = true;
                             }
                             this.lastPedalStop = undefined;
                             this.getMultiExpression.PedalStart = this.openPedal;
                             this.openPedal.ParentStartMultiExpression = this.getMultiExpression;
-                            const pending: { measure: SourceMeasure, timestamp: Fraction } = this.pendingPedalStop;
+                            const pending: { measure: SourceMeasure, timestamp: Fraction, releaseHidden: boolean } = this.pendingPedalStop;
                             this.pendingPedalStop = undefined;
                             if (pending && pending.measure === currentMeasure && pending.timestamp.gt(this.directionTimestamp)) {
                                 // the stop of this pedal was written before it (other voice)
                                 const started: Pedal = this.openPedal;
+                                started.ReleaseHidden = pending.releaseHidden;
                                 this.endOpenPedal(currentMeasure, pending.timestamp);
                                 this.lastPedalStop = { pedal: started, measure: currentMeasure, timestamp: pending.timestamp };
                             }
@@ -524,12 +526,15 @@ export class ExpressionReader {
                         }
                         case "stop": {
                             const stopTimestamp: Fraction = this.pedalStopTimestamp(directionNode, endTimestamp);
+                            // <pedal type="stop" sign="no">: released without a *
+                            const releaseHidden: boolean = pedalNode.attribute("sign")?.value === "no";
                             if (this.openPedal) {
                                 const stopped: Pedal = this.openPedal;
+                                stopped.ReleaseHidden = releaseHidden;
                                 this.endOpenPedal(currentMeasure, stopTimestamp);
                                 this.lastPedalStop = { pedal: stopped, measure: currentMeasure, timestamp: stopTimestamp };
                             } else {
-                                this.pendingPedalStop = { measure: currentMeasure, timestamp: stopTimestamp };
+                                this.pendingPedalStop = { measure: currentMeasure, timestamp: stopTimestamp, releaseHidden: releaseHidden };
                             }
                             break;
                         }

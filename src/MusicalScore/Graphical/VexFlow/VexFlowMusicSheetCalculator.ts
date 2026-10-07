@@ -2413,10 +2413,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       }
       // The next pedal starts exactly where this one ends (a sign pedal closed by the next Ped. in the reader):
       //   the next Ped. is the release, as engraved, so no * is drawn. An explicit stop+start at one time is a
-      //   change (ChangeEnd) and keeps its *.
+      //   change (ChangeEnd) and keeps its *. A stop with sign="no" draws no * either.
       const nextPedalAtEnd: Pedal = pedal.ParentEndMultiExpression?.PedalStart;
       const hideRelease: boolean = graphicalPedal.pedalSymbol === MusicSymbol.PEDAL_SYMBOL &&
-        nextPedalAtEnd !== undefined && nextPedalAtEnd !== pedal && !pedal.ChangeEnd;
+        (pedal.ReleaseHidden || nextPedalAtEnd !== undefined && nextPedalAtEnd !== pedal && !pedal.ChangeEnd);
       if (!graphicalPedal.setStartNote(startStaffEntry)){
         return;
       }
