@@ -307,9 +307,13 @@ export class VexFlowConverter {
         let nearestDistance: number = Infinity;
         let stemSide: number = undefined;
         let stemless: boolean = false;
+        // (the notes on the rest's staff: one Voice holds a voice number's notes on all staves of the part, Gluck, O del
+        //   mio dolce ardor m26: the right hand's voice 1 with up stems, the left hand's with down stems)
+        const staff: Staff = rest.ParentSourceStaffEntry?.ParentStaff;
         for (const entry of rest.ParentVoice.VoiceEntries) {
             if (entry === rest || entry.IsGrace || entry.Notes.length === 0 || entry.Notes[0].isRest() || !entry.Notes[0].Pitch ||
-                entry.ParentSourceStaffEntry?.VerticalContainerParent?.ParentMeasure !== measure) {
+                entry.ParentSourceStaffEntry?.VerticalContainerParent?.ParentMeasure !== measure ||
+                entry.ParentSourceStaffEntry?.ParentStaff !== staff) {
                 continue;
             }
             const side: number = entry.StemDirectionXml === StemDirectionType.Up ? 1 :
