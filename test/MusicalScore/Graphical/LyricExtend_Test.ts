@@ -81,13 +81,15 @@ describe("Lyric extend lines", () => {
         return measure.staffEntries.find((entry) => entry.LyricsEntries.some((lyric) => lyric.LyricsEntry.Text === text));
     }
 
-    /** Absolute x of the right edge (incl. margin) of the syllable's label. */
+    /** Right edge (incl. margin) of the syllable's label, relative to the staff line. */
     function labelRight(entry: GraphicalStaffEntry): number {
-        const box: { AbsolutePosition: { x: number }, BorderMarginRight: number } = entry.LyricsEntries[0].GraphicalLabel.PositionAndShape;
-        return box.AbsolutePosition.x + box.BorderMarginRight;
+        const box: { RelativePosition: { x: number }, BorderMarginRight: number } = entry.LyricsEntries[0].GraphicalLabel.PositionAndShape;
+        return entry.parentMeasure.PositionAndShape.RelativePosition.x + entry.PositionAndShape.RelativePosition.x +
+            box.RelativePosition.x + box.BorderMarginRight;
     }
 
-    /** The extend line that starts right after the syllable's label (lines are absolute after drawing). */
+    /** The extend line that starts right after the syllable's label (lines stay relative to the staff line after drawing,
+     *  see MusicSheetDrawer.drawLyricLines()). */
     function lineAfter(entry: GraphicalStaffEntry): GraphicalLine {
         const right: number = labelRight(entry);
         const line: GraphicalLine = staffLine.LyricLines.find((candidate) => Math.abs(candidate.Start.x - right) < 0.01);
@@ -125,10 +127,9 @@ describe("Lyric extend lines", () => {
         expect(tiedNote.LyricsEntries.length, "the tied note carries no syllable").to.equal(0);
         const line: GraphicalLine = lineAfter(miei);
         const minimumLength: number = osmd.EngravingRules.LyricExtendMinimumLength;
-        const offset: number = staffLine.PositionAndShape.AbsolutePosition.x; // lines are absolute after drawing
-        const tiedNoteRight: number = offset + measure.PositionAndShape.RelativePosition.x +
+        const tiedNoteRight: number = measure.PositionAndShape.RelativePosition.x +
             tiedNote.PositionAndShape.RelativePosition.x + tiedNote.PositionAndShape.BorderMarginRight;
-        const limit: number = offset + nextSyllableLimit(measure, mar);
+        const limit: number = nextSyllableLimit(measure, mar);
         expect(line.End.x, "line reaches at least the tied note's right border").to.be.at.least(tiedNoteRight - 0.01);
         expect(line.End.x, "line ends before the next syllable").to.be.at.most(limit + 0.01);
         expect(line.End.x - line.Start.x, "line is at least the minimum length, or as long as the room allows")
@@ -142,7 +143,7 @@ describe("Lyric extend lines", () => {
         const melismaNote: GraphicalStaffEntry = measure.staffEntries[1];
         expect(melismaNote.LyricsEntries.length).to.equal(0);
         const line: GraphicalLine = lineAfter(la);
-        const noteRight: number = staffLine.PositionAndShape.AbsolutePosition.x + measure.PositionAndShape.RelativePosition.x +
+        const noteRight: number = measure.PositionAndShape.RelativePosition.x +
             melismaNote.PositionAndShape.RelativePosition.x + melismaNote.PositionAndShape.BorderMarginRight;
         expect(line.End.x).to.be.closeTo(noteRight, 0.01);
         expect(line.End.x - line.Start.x).to.be.at.least(osmd.EngravingRules.LyricExtendMinimumLength);

@@ -70,11 +70,10 @@ describe("Lyric extend ends", () => {
         }
         return undefined;
     }
-    /** the extend lines of the staff line as [start x, end x] in staff line coordinates (they are stored with the staff
-     *  line's absolute x added) */
+    /** the extend lines of the staff line as [start x, end x] in staff line coordinates (the drawer leaves them relative to
+     *  the staff line and adds its position only when drawing, see MusicSheetDrawer.drawLyricLines()) */
     function extendLines(line: StaffLine): [number, number][] {
-        const x: number = line.PositionAndShape.AbsolutePosition.x;
-        return line.LyricLines.map(l => [l.Start.x - x, l.End.x - x] as [number, number]);
+        return line.LyricLines.map(l => [l.Start.x, l.End.x] as [number, number]);
     }
     /** the syllable's label edges in staff line coordinates */
     function labelEdges(entry: GraphicalStaffEntry): [number, number] {
