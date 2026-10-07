@@ -94,8 +94,9 @@ export class AccidentalCalculator {
                     this.keySignatureNoteAlterationsDict.getValue(pitchKey) !== pitch.AccidentalHalfTones) {
                     this.currentInMeasureNoteAlterationsDict.setValue(pitchKey, pitch.AccidentalHalfTones);
                 } else if (pitch.Accidental !== AccidentalEnum.NONE) {
-                    // explicit accidental that matches key signature (or no key sig for this pitch)
-                    // Restore to key signature state or remove if not in key sig (#1564)
+                    // explicit accidental that matches the key signature, or of a pitch the key signature doesn't alter:
+                    //   restore the key signature state (#1564), or remember a sharp or flat the key signature doesn't have,
+                    //   e.g. F# after F natural in C major, so that the next F natural gets its natural sign again.
                     if (this.keySignatureNoteAlterationsDict.containsKey(pitchKey)) {
                         this.currentInMeasureNoteAlterationsDict.setValue(
                             pitchKey,
@@ -104,8 +105,6 @@ export class AccidentalCalculator {
                     } else if (pitch.AccidentalHalfTones === 0) {
                         this.currentInMeasureNoteAlterationsDict.remove(pitchKey);
                     } else {
-                        // an alteration of a pitch that the key leaves natural, e.g. D# after D natural in G major:
-                        //   remember it, so that the next D# of the measure gets no accidental
                         this.currentInMeasureNoteAlterationsDict.setValue(pitchKey, pitch.AccidentalHalfTones);
                     }
                 } else {

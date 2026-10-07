@@ -39,6 +39,7 @@ import { GraphicalMeasure } from "../GraphicalMeasure";
 import { Staff } from "../../VoiceData/Staff";
 import { VexFlowStaffEntry } from "./VexFlowStaffEntry";
 import { VexFlowVoiceEntry } from "./VexFlowVoiceEntry";
+import { MusicSheetCalculator } from "../MusicSheetCalculator";
 
 /**
  * Helper class, which contains static methods which actually convert
@@ -280,6 +281,29 @@ export class VexFlowConverter {
     }
 
     /**
+     * Whether a rest that is moved above (or below) the notes of the other voices of its staff entry would be moved towards
+     * the staff of a note's voice, i.e. past a cross-staff note from that staff. MusicXML files usually number the voices of a part
+     * with several staves by staff: 1-4 on the upper staff, 5-8 on the lower one, so voices 1 and 5 are the upper voices.
+     * E.g. the notes of voice 1 that reach down into the lower staff are above the lower staff's voice 5,
+     * so voice 5's rest doesn't go above them, between the staves. Neither does voice 2's rest go below the notes of voice 5
+     * that reach up into the upper staff.
+     * @param restVoiceId the voice of the rest
+     * @param noteVoiceId the voice of a note in the rest's staff entry
+     * @param restAbove whether the rest is moved above the other voices' notes (upper voice), or else below them
+     * @param numberOfStaves the number of staves of the part
+     * @returns true if the note's voice belongs to another staff of the part, on the side the rest would be moved to
+     */
+    private static restMovesTowardsStaffOfVoice(restVoiceId: number, noteVoiceId: number, restAbove: boolean, numberOfStaves: number): boolean {
+        const restVoiceStaffIndex: number = Math.floor((restVoiceId - 1) / 4);
+        const noteVoiceStaffIndex: number = Math.floor((noteVoiceId - 1) / 4);
+        const isStaffIndex: (index: number) => boolean = (index: number): boolean => index >= 0 && index < numberOfStaves; // false for NaN
+        if (!isStaffIndex(restVoiceStaffIndex) || !isStaffIndex(noteVoiceStaffIndex) || noteVoiceStaffIndex === restVoiceStaffIndex) {
+            return false; // same staff, or voice numbers that don't follow the numbering by staff
+        }
+        return (noteVoiceStaffIndex < restVoiceStaffIndex) === restAbove;
+    }
+
+    /**
      * Convert a GraphicalVoiceEntry to a VexFlow StaveNote
      * @param gve the GraphicalVoiceEntry which can hold a note or a chord on the staff belonging to one voice
      * @returns {VF.StaveNote}
@@ -436,8 +460,8 @@ export class VexFlowConverter {
                     baseNoteLength.RealValue === note.sourceNote.SourceMeasure.ActiveTimeSignature.RealValue;
                 if (isWholeMeasureRest) {
                     keys = ["d/5"];
-                    if (gve.parentStaffEntry.parentMeasure.ParentStaff.StafflineCount === 1) {
-                        keys = ["b/4"];
+                    if (gve.parentStaffEntry.parentMeasure.ParentStaff.StafflineCount <= 2) {
+                        keys = ["b/4"]; // the line of a one-line staff, the top line of a 2-line staff (see VexFlowMeasure.setLineNumber())
                     }
                     duration = "w";
                     numDots = 0;
@@ -474,6 +498,11 @@ export class VexFlowConverter {
                         // the side for VexFlow's rest collisions (stavenote.js format()), see below
                         restSideForVexFlow = restSide ?? (restVoiceId === 1 || restVoiceId === 5 ? 1 : -1);
                     }
+                    // a rest is on the side of its voice's notes (see restSideFromVoice()).
+                    //   Else voice 1 (or 5, the first voice of a second staff) is the upper voice.
+                    const isUpperVoiceRest: boolean = restSide !== undefined ? restSide === 1 : restVoiceId === 1 || restVoiceId === 5;
+                    const lineShiftDirection: number = isUpperVoiceRest ? 1 : -1; // voice 1: put rest above (-y). other voices: below
+                    const numberOfStaves: number = note.sourceNote.ParentStaff.ParentInstrument.Staves.length;
                     let maxHalftone: number;
                     let linesShift: number;
                     for (const staffGve of staffGves) {
@@ -481,13 +510,16 @@ export class VexFlowConverter {
                             if (gveNote === note || gveNote.sourceNote.isRest() || !gveNote.sourceNote.PrintObject) {
                                 continue;
                             }
+                            // A cross-staff note doesn't move the rest towards the staff of its voice (see restMovesTowardsStaffOfVoice()).
+                            //   Like in MuseScore, the rest stays at its position then, and VexFlow's StaveNote.format() still moves it
+                            //   a line away if it overlaps the note.
+                            const noteVoiceId: number = gveNote.parentVoiceEntry.parentVoiceEntry.ParentVoice.VoiceId;
+                            if (VexFlowConverter.restMovesTowardsStaffOfVoice(restVoiceId, noteVoiceId, isUpperVoiceRest, numberOfStaves)) {
+                                continue;
+                            }
                             // unfortunately, we don't have functional note bounding boxes at this point,
                             //   so we have to infer the note positions and sizes manually.
                             const wantedStemDirection: StemDirectionType = gveNote.parentVoiceEntry.parentVoiceEntry.WantedStemDirection;
-                            // a rest is on the side of its voice's notes (see restSideFromVoice()).
-                            //   Else voice 1 (or 5, the first voice of a second staff) is the upper voice.
-                            const isUpperVoiceRest: boolean = restSide !== undefined ? restSide === 1 : restVoiceId === 1 || restVoiceId === 5;
-                            const lineShiftDirection: number = isUpperVoiceRest ? 1 : -1; // voice 1: put rest above (-y). other voices: below
                             const gveNotePitch: Pitch = gveNote.sourceNote.Pitch;
                             const noteHalftone: number = gveNotePitch.getHalfTone();
                             const newHigh: boolean = lineShiftDirection === 1 && noteHalftone > maxHalftone;
@@ -1446,6 +1478,7 @@ export class VexFlowConverter {
         } else {
             vfnote = new VF.TabNote(tabNoteStruct);
         }
+        (vfnote as any).render_options.font = VexFlowConverter.vexFlowTextCssFont((vfnote as any).render_options.font, rules);
         if (isXNotehead) {
             // (vfnote as any).render_options.fretScale = rules.TabXNoteheadScale; // doesn't work, is overwritten later
             (vfnote as any).render_options.scale = rules.TabXNoteheadScale; // VexFlowPatch
@@ -1462,11 +1495,9 @@ export class VexFlowConverter {
         }
 
         tabPhrases.forEach(function(phrase: { type: number, text: string, width: number }): void {
-            if (phrase.type === VF.Bend.UP) {
-                vfnote.addModifier (new VF.Bend(phrase.text, false));
-            } else {
-                vfnote.addModifier (new VF.Bend(phrase.text, true));
-            }
+            const bend: VF.Bend = new VF.Bend(phrase.text, phrase.type !== VF.Bend.UP);
+            VexFlowConverter.setVexFlowTextFontOfBend(bend, rules);
+            vfnote.addModifier(bend);
         });
 
         return vfnote;
@@ -1697,6 +1728,47 @@ export class VexFlowConverter {
         }
 
         return style + " " + weight + " " + Math.floor(fontSize) + "px " + family;
+    }
+
+    /**
+     * Sets EngravingRules.VexFlowTextFontFamily, if given, as the family of a font that VexFlow draws a text in,
+     * e.g. a rehearsal mark's. The size, weight and style stay VexFlow's.
+     */
+    public static setVexFlowTextFontFamily(font: { family: string }, rules: EngravingRules): void {
+        if (rules.VexFlowTextFontFamily) {
+            font.family = rules.VexFlowTextFontFamily;
+        }
+    }
+
+    /**
+     * Draws the text of a bend in EngravingRules.VexFlowTextFontFamily, if given.
+     * VexFlow sizes a bend by an estimate of its text width (7px per character, which fits its 10pt Arial),
+     * so the bend is widened where its text is wider in that family, as VexFlow's Bend.updateWidth() would size it,
+     * if the TextMeasurer can measure it (see ITextMeasurer.computeTextWidthInCssFont()).
+     */
+    private static setVexFlowTextFontOfBend(bend: VF.Bend, rules: EngravingRules): void {
+        if (!rules.VexFlowTextFontFamily) {
+            return;
+        }
+        const font: string = VexFlowConverter.vexFlowTextCssFont((bend as any).font, rules);
+        (bend as any).setFont(font);
+        if (!MusicSheetCalculator.TextMeasurer.computeTextWidthInCssFont) {
+            return;
+        }
+        for (const part of (bend as any).phrase) {
+            const textWidth: number = MusicSheetCalculator.TextMeasurer.computeTextWidthInCssFont(part.text, font);
+            part.width = Math.max(part.width, textWidth + 3);
+            part.draw_width = part.width / 2;
+        }
+        (bend as any).updateWidth();
+    }
+
+    /** Like setVexFlowTextFontFamily(), for the CSS fonts like "10pt Arial" that VexFlow uses for tab fret numbers and bends. */
+    public static vexFlowTextCssFont(cssFont: string, rules: EngravingRules): string {
+        if (!rules.VexFlowTextFontFamily) {
+            return cssFont;
+        }
+        return `${cssFont.split(" ")[0]} ${rules.VexFlowTextFontFamily}`;
     }
 
     /**

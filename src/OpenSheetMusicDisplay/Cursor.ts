@@ -19,8 +19,6 @@ import { GraphicalNote } from "../MusicalScore/Graphical/GraphicalNote";
 
 /** A cursor which can iterate through the music sheet. */
 export class Cursor {
-  /** Product playhead guards are implemented without replacing the upstream update lifecycle. */
-  public static readonly HasPlayheadGuards: boolean = true;
   constructor(container: HTMLElement, openSheetMusicDisplay: OpenSheetMusicDisplay, cursorOptions: CursorOptions) {
     this.container = container;
     this.openSheetMusicDisplay = openSheetMusicDisplay;
@@ -84,9 +82,6 @@ export class Cursor {
   private cursorOptions: CursorOptions;
   private cursorOptionsRendered: CursorOptions;
   private cursorWidthRendered: number;
-  private lastPlayheadMeasure: number;
-  private lastPlayheadTimestamp: number;
-  private lastPlayheadX: number;
   private skipInvisibleNotes: boolean = true;
 
   /** Initialize the cursor. Necessary before using functions like show() and next(). */
@@ -205,15 +200,21 @@ export class Cursor {
     } else {
       // get all staff entries inside the current voice entry
       const gseArr: VexFlowStaffEntry[] = voiceEntries.map(ve => this.getStaffEntryFromVoiceEntry(ve));
-      const formatted: VexFlowStaffEntry[] = gseArr.filter(entry => entry &&
-        !(entry.PositionAndShape.RelativePosition.x === 0 && entry.relInMeasureTimestamp.RealValue > 0));
-      const candidates: VexFlowStaffEntry[] = formatted.length > 0 ? formatted : gseArr;
+      // only use entries whose x position reliably reflects their timestamp: e.g. never-formatted
+      //   tablature rests carry garbage coordinates that would put the cursor far off-canvas
+      const reliableGseArr: VexFlowStaffEntry[] = gseArr.filter(entry => entry && this.graphic.isReliableCursorXAnchor(entry));
       // sort them by x position and take the leftmost entry
       const gse: VexFlowStaffEntry =
-            candidates.sort((a, b) => a?.PositionAndShape?.AbsolutePosition?.x <= b?.PositionAndShape?.AbsolutePosition?.x ? -1 : 1 )[0];
+            reliableGseArr.sort((a, b) => a?.PositionAndShape?.AbsolutePosition?.x <= b?.PositionAndShape?.AbsolutePosition?.x ? -1 : 1 )[0];
       if (gse) {
-        x = this.monotonicPlayheadX(gse.PositionAndShape.AbsolutePosition.x);
+        x = gse.PositionAndShape.AbsolutePosition.x;
         musicSystem = gse.parentMeasure.ParentMusicSystem;
+      } else if (gseArr.length > 0) {
+        // all entries at this position have unreliable positions: interpolate between the closest
+        //   reliable entries instead of jumping to a garbage x position
+        const [timestampX, timestampSystem] = this.graphic.calculateXPositionFromTimestamp(iterator.currentTimeStamp);
+        x = timestampX;
+        musicSystem = timestampSystem;
       }
 
       // debug: change color of notes under cursor (needs re-render)
@@ -256,18 +257,6 @@ export class Cursor {
     // Show cursor
     // // Old cursor: this.graphic.Cursors.push(cursor);
     this.cursorElement.style.display = "";
-  }
-
-  private monotonicPlayheadX(x: number): number {
-    const measure: number = this.iterator.CurrentMeasureIndex;
-    const timestamp: number = this.iterator.CurrentSourceTimestamp.RealValue;
-    if (measure === this.lastPlayheadMeasure && timestamp > this.lastPlayheadTimestamp && x < this.lastPlayheadX) {
-      x = this.lastPlayheadX;
-    }
-    this.lastPlayheadMeasure = measure;
-    this.lastPlayheadTimestamp = timestamp;
-    this.lastPlayheadX = x;
-    return x;
   }
 
   private findVisibleGraphicalMeasure(measureIndex: number): GraphicalMeasure {
@@ -372,9 +361,6 @@ export class Cursor {
 
   /** reset cursor to start position (start of sheet or osmd.Sheet.SelectionStart if set). */
   public reset(): void {
-    this.lastPlayheadMeasure = undefined;
-    this.lastPlayheadTimestamp = undefined;
-    this.lastPlayheadX = undefined;
     this.resetIterator();
     //this.iterator.moveToNext();
     this.update();

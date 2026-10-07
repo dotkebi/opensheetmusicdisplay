@@ -6,6 +6,8 @@ import { GraphicalMeasure } from "../../../src/MusicalScore/Graphical/GraphicalM
 import { GraphicalStaffEntry } from "../../../src/MusicalScore/Graphical/GraphicalStaffEntry";
 import { Note } from "../../../src/MusicalScore/VoiceData/Note";
 import { PlacementEnum } from "../../../src/MusicalScore/VoiceData/Expressions/AbstractExpression";
+import { BrailleConverter, BrailleOutput } from "../../../src/Plugins/Braille/BrailleConverter";
+import { BRAILLE_SLUR, BRAILLE_BRACKET_SLUR_OPEN, BRAILLE_BRACKET_SLUR_CLOSE } from "../../../src/Plugins/Braille/BrailleSymbols";
 
 /**
  * A slur start and a slur stop with the same number on the same note, where the stop ends no earlier slur: Dolet for
@@ -116,4 +118,14 @@ describe("Slur with an unattached end", () => {
         }
     });
 
+    it("leaves it out in Braille, which has no sign for a slur without end note", () => {
+        const output: BrailleOutput = new BrailleConverter().convert(osmd.Sheet);
+        const measures: string[] = output.text.split(" ");
+        const slurSigns: RegExp = new RegExp(`${BRAILLE_SLUR}|${BRAILLE_BRACKET_SLUR_OPEN}|${BRAILLE_BRACKET_SLUR_CLOSE}`);
+        expect(measures.length).to.equal(5);
+        for (const measureIndex of [0, 1, 2, 4]) {
+            expect(measures[measureIndex], `no slur sign in m.${measureIndex + 1}`).to.not.match(slurSigns);
+        }
+        expect(measures[3], "the slur from the last note of m.4 to m.5").to.match(slurSigns);
+    });
 });

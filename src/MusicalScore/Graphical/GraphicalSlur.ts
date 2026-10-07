@@ -929,11 +929,6 @@ export class GraphicalSlur extends GraphicalCurve {
         return Math.max(y, staffHeight - 1.5);
     }
 
-    /** Where a slur without end note ends (see Slur.HasUnattachedEnd), relative to the staffline: at the barline of its
-     *  measure, before the end instructions like a repeat sign or a clef change at the measure end.
-     *  If that's too close to the start note to look like a slur (e.g. before a repeat sign), it reaches a bit past the note,
-     *  over the repeat dots, but not up to the barline.
-     */
     /** Start x (relative to the staff line) of a cross-staff piece without its start note: after the begin
      *  instructions of its first measure (also a volta piece, see isVoltaPiece). Undefined for other slurs (the staff
      *  line's start). */
@@ -954,6 +949,11 @@ export class GraphicalSlur extends GraphicalCurve {
         return measure.PositionAndShape.RelativePosition.x + measure.PositionAndShape.Size.width;
     }
 
+    /** Where a slur without end note ends (see Slur.HasUnattachedEnd), relative to the staffline: at the barline of its
+     *  measure, before the end instructions like a repeat sign or a clef change at the measure end.
+     *  If that's too close to the start note to look like a slur (e.g. before a repeat sign), it reaches a bit past the note,
+     *  over the repeat dots, but not up to the barline.
+     */
     private getUnattachedEndX(): number {
         const endMeasure: GraphicalMeasure = this.staffEntries[this.staffEntries.length - 1].parentMeasure;
         const measureEndX: number = endMeasure.PositionAndShape.RelativePosition.x + endMeasure.PositionAndShape.Size.width;

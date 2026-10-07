@@ -126,9 +126,11 @@ export class StaveTempo extends StaveModifier {
       ctx.fill();
     }
 
-    ctx.openGroup("bpm"); // VexFlowPatch: open group
+    const bpmGroup = ctx.openGroup("bpm"); // VexFlowPatch: open group
     const text = ' = ' + bpm + closing;
     ctx.fillText(text, x + 3 * scale, y);
+    // VexFlowPatch: keep the leading space, which SVG strips by default (only SVG returns a group)
+    bpmGroup?.lastChild.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
     ctx.closeGroup();
     return x + 3 * scale + ctx.measureText(text).width;
   }

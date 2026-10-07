@@ -6,6 +6,8 @@ import { GraphicalGlissando } from "../../../src/MusicalScore/Graphical/Graphica
 import { GraphicalStaffEntry } from "../../../src/MusicalScore/Graphical/GraphicalStaffEntry";
 import { Glissando } from "../../../src/MusicalScore/VoiceData/Glissando";
 import { VexFlowGlissando } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowGlissando";
+import { VexFlowGraphicalNote } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowGraphicalNote";
+import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
 
 /**
  * test_glissando_without_slur_or_slide.musicxml has a glissando on notes without a <slur> or <slide> of their own,
@@ -38,6 +40,29 @@ describe("Glissandi", () => {
         for (const glissando of glissandi) {
             const endStaffEntry: GraphicalStaffEntry = glissando.staffEntries[glissando.staffEntries.length - 1];
             expect(endStaffEntry.findGraphicalNoteFromNote(glissando.Glissando.EndNote), "drawn to its end note").to.not.equal(undefined);
+        }
+    });
+
+    it("leaves the same space between the line and the note heads at both ends", () => {
+        osmd.render();
+        const staffLine: StaffLine = osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines[0];
+        /** The drawn note head of the glissando's start or end note, in units. */
+        function noteHead(glissando: GraphicalGlissando, end: boolean): { left: number, right: number } {
+            const staffEntry: GraphicalStaffEntry = glissando.staffEntries[end ? glissando.staffEntries.length - 1 : 0];
+            const note: VexFlowGraphicalNote = staffEntry.findGraphicalNoteFromNote(
+                end ? glissando.Glissando.EndNote : glissando.Glissando.StartNote) as VexFlowGraphicalNote;
+            const box: DOMRect = (document.getElementById("vf-" + note.getSVGId())
+                .querySelectorAll(":scope > .vf-note .vf-notehead")[note.vfnote[1]] as SVGGraphicsElement).getBBox();
+            return { left: box.x / 10, right: (box.x + box.width) / 10 };
+        }
+        for (const glissando of staffLine.GraphicalGlissandi) {
+            // the line's x are relative to the staff line
+            const startSpace: number = glissando.Line.Start.x + staffLine.PositionAndShape.AbsolutePosition.x - noteHead(glissando, false).right;
+            const endSpace: number = noteHead(glissando, true).left - (glissando.Line.End.x + staffLine.PositionAndShape.AbsolutePosition.x);
+            // the start touched its note head: the note heads' x are their centres, and only the end was moved by half a note head
+            expect(startSpace, "space after the start note head").to.be.greaterThan(0.2);
+            expect(Math.abs(startSpace - endSpace), `space after the start note head ${startSpace.toFixed(2)}, ` +
+                `before the end note head ${endSpace.toFixed(2)}`).to.be.lessThan(0.15);
         }
     });
 });
@@ -78,7 +103,7 @@ describe("Slides in a part with a standard and a tab staff", () => {
         }
     });
 
-    it("draws every slide of the tab staff", () => {
+    it("draws every slide of the tab staff, with the text sl. in Times", () => {
         osmd.render();
         const tabSlides: VexFlowGlissando[] = [];
         for (const system of osmd.GraphicSheet.MusicPages[0].MusicSystems) {
@@ -91,6 +116,12 @@ describe("Slides in a part with a standard and a tab staff", () => {
         expect(tabSlides.length, "three slides, none continued into the next system").to.equal(3);
         for (const slide of tabSlides) {
             expect(slide.vfTie, "drawn as a tab slide").to.not.equal(undefined);
+        }
+        // VexFlow's TabSlide set its font with the key font instead of family, so "sl." was drawn in the family "undefined"
+        const slideTexts: Element[] = Array.from(container.querySelectorAll("text")).filter(text => text.textContent === "sl.");
+        expect(slideTexts.length, "a text sl. at each slide").to.equal(3);
+        for (const text of slideTexts) {
+            expect(text.getAttribute("font-family"), "font of the text sl.").to.equal("Times");
         }
     });
 });

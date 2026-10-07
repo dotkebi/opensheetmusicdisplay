@@ -18,7 +18,6 @@ export class VexFlowContinuousDynamicExpression extends GraphicalContinuousDynam
         super(continuousDynamic, staffLine, measure);
         if (this.IsVerbal) {
             this.label = VexFlowContinuousDynamicExpression.createVerbalLabel(continuousDynamic, this.rules, textHeight, this.PositionAndShape);
-            this.label.Label.language = continuousDynamic.language;
             this.PositionAndShape.calculateBoundingBox();
 
             if (continuousDynamic.ColorXML && this.rules.ExpressionsUseXMLColor) {
@@ -32,6 +31,7 @@ export class VexFlowContinuousDynamicExpression extends GraphicalContinuousDynam
     public static createVerbalLabel(continuousDynamic: ContinuousDynamicExpression, rules: EngravingRules,
                                     textHeight?: number, parent: BoundingBox = undefined): GraphicalLabel {
         const sourceLabel: Label = new Label(continuousDynamic.Label);
+        sourceLabel.language = continuousDynamic.language;
         const label: GraphicalLabel = new GraphicalLabel(sourceLabel,
                                                          textHeight ? textHeight : rules.ContinuousDynamicTextHeight,
                                                          TextAlignmentEnum.LeftCenter,

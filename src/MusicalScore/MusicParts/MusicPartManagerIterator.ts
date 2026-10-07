@@ -42,6 +42,7 @@ export class MusicPartManagerIterator {
             do {
                 this.moveToNext();
             } while ((!this.currentVoiceEntries || this.currentTimeStamp.lt(startTimestamp)) && !this.endReached);
+            this.currentDynamicChangingExpressions.length = 0;
             for (let staffIndex: number = 0; staffIndex < this.activeDynamicExpressions.length; staffIndex++) {
                 if (this.activeDynamicExpressions[staffIndex]) {
                     if (this.activeDynamicExpressions[staffIndex] instanceof ContinuousDynamicExpression) {
@@ -465,6 +466,9 @@ export class MusicPartManagerIterator {
                         return;
                     }
                     if (forwardJumpTargetMeasureIndex === -2) {
+                        // The piece ends at this Fine. As at the end of the last measure, the iterator still moves past this
+                        //   measure (no return here): Cursor.update() moves it back into this measure and forth again to draw
+                        //   the cursor at the end, and only passing the Fine again ends it again.
                         this.endReached = true;
                     }
                 }
@@ -509,31 +513,22 @@ export class MusicPartManagerIterator {
     }
     private activateCurrentDynamicOrTempoInstructions(): void {
         const timeSortedDynamics: DynamicsContainer[] = this.musicSheet.TimestampSortedDynamicExpressionsList;
-        while (
-            this.currentDynamicEntryIndex > 0 && (
-            this.currentDynamicEntryIndex >= timeSortedDynamics.length ||
-            timeSortedDynamics[this.currentDynamicEntryIndex].parMultiExpression().AbsoluteTimestamp.gte(this.CurrentSourceTimestamp))) {
-                this.currentDynamicEntryIndex--;
+        // Rebuild all staves after a backward jump across a dynamic change.
+        if (this.currentDynamicEntryIndex > 0 &&
+            timeSortedDynamics[this.currentDynamicEntryIndex - 1].parMultiExpression().AbsolutePlaybackTimestamp.gt(this.CurrentSourceTimestamp)) {
+            this.currentDynamicEntryIndex = 0;
+            this.activeDynamicExpressions.fill(undefined);
         }
+        const changedStaves: Set<number> = new Set();
         while (
           this.currentDynamicEntryIndex < timeSortedDynamics.length &&
-          timeSortedDynamics[this.currentDynamicEntryIndex].parMultiExpression().AbsoluteTimestamp.lt(this.CurrentSourceTimestamp)
-        ) {
-            this.currentDynamicEntryIndex++;
-        }
-        while (
-          this.currentDynamicEntryIndex < timeSortedDynamics.length
-          && timeSortedDynamics[this.currentDynamicEntryIndex].parMultiExpression().AbsoluteTimestamp.Equals(this.CurrentSourceTimestamp)
+          timeSortedDynamics[this.currentDynamicEntryIndex].parMultiExpression().AbsolutePlaybackTimestamp.lte(this.CurrentSourceTimestamp)
         ) {
             const dynamicsContainer: DynamicsContainer = timeSortedDynamics[this.currentDynamicEntryIndex];
             const staffIndex: number = dynamicsContainer.staffNumber;
-            if (this.CurrentSourceTimestamp.Equals(dynamicsContainer.parMultiExpression().AbsoluteTimestamp)) {
-                if (dynamicsContainer.continuousDynamicExpression) {
-                    this.activeDynamicExpressions[staffIndex] = dynamicsContainer.continuousDynamicExpression;
-                } else if (dynamicsContainer.instantaneousDynamicExpression) {
-                    this.activeDynamicExpressions[staffIndex] = dynamicsContainer.instantaneousDynamicExpression;
-                }
-            }
+            this.activeDynamicExpressions[staffIndex] = dynamicsContainer.continuousDynamicExpression ??
+                dynamicsContainer.instantaneousDynamicExpression;
+            changedStaves.add(staffIndex);
             this.currentDynamicEntryIndex++;
         }
         this.currentDynamicChangingExpressions.length = 0;
@@ -543,14 +538,14 @@ export class MusicPartManagerIterator {
                 let endTime: Fraction;
                 if (this.activeDynamicExpressions[staffIndex] instanceof ContinuousDynamicExpression) {
                     const continuousDynamic: ContinuousDynamicExpression = <ContinuousDynamicExpression>this.activeDynamicExpressions[staffIndex];
-                    startTime = continuousDynamic.StartMultiExpression.AbsoluteTimestamp;
-                    endTime = continuousDynamic.EndMultiExpression.AbsoluteTimestamp;
+                    startTime = continuousDynamic.StartMultiExpression.AbsolutePlaybackTimestamp;
+                    endTime = continuousDynamic.EndMultiExpression.AbsolutePlaybackTimestamp;
                     if (this.CurrentSourceTimestamp.gte(startTime) && this.CurrentSourceTimestamp.lte(endTime)) {
                         this.currentDynamicChangingExpressions.push(new DynamicsContainer(continuousDynamic, staffIndex));
                     }
                 } else {
                     const instantaneousDynamic: InstantaneousDynamicExpression = <InstantaneousDynamicExpression>this.activeDynamicExpressions[staffIndex];
-                    if (this.CurrentSourceTimestamp.Equals(instantaneousDynamic.ParentMultiExpression.AbsoluteTimestamp)) {
+                    if (changedStaves.has(staffIndex)) {
                         this.currentDynamicChangingExpressions.push(new DynamicsContainer(instantaneousDynamic, staffIndex));
                     }
                 }
@@ -594,8 +589,22 @@ export class MusicPartManagerIterator {
         this.currentTempoChangingExpression = this.activeTempoExpression;
     }
 
+    /**
+     * Moves back to the previous vertical container: the previous one in the current measure, the last one of the
+     * source-previous measure (repetitions are not unrolled backwards), or the front of the sheet.
+     * Keeps the enrolled timestamp consistent with the source position: the measure durations that recursiveMove()
+     * added to it when leaving a measure forward are subtracted again when moving back into that measure,
+     * so that moving back and forth across a measure boundary is neutral.
+     */
     private recursiveMoveBack(): void {
        if (this.currentVoiceEntryIndex > 0 ) {
+            if (this.currentVoiceEntryIndex === this.currentMeasure.VerticalSourceStaffEntryContainers.length) {
+                // coming back from the end of the sheet: recursiveMove() left the index behind the last container of the
+                //   last measure and had added the measure's duration to the enrolled timestamp when it left the measure,
+                //   which the positions inside the measure must not include.
+                //   (An end set by Sheet.SelectionEnd is reached at a container of the measure, without that addition.)
+                this.currentEnrolledMeasureTimestamp.Sub(this.currentMeasure.Duration);
+            }
             this.currentVoiceEntryIndex--;
             const currentContainer: VerticalSourceStaffEntryContainer = this.currentMeasure.VerticalSourceStaffEntryContainers[this.currentVoiceEntryIndex];
             this.currentVoiceEntries = this.getVoiceEntries(currentContainer);
@@ -613,6 +622,8 @@ export class MusicPartManagerIterator {
         }
         else if (this.currentVoiceEntryIndex === 0  && this.currentMeasureIndex !== 0) {
             const m: SourceMeasure = this.musicSheet.SourceMeasures[this.currentMeasureIndex-1];
+            // moving back into the previous measure: undo what recursiveMove() added when it left that measure forward
+            this.currentEnrolledMeasureTimestamp.Sub(m.Duration);
             this.currentMeasureIndex--;
             this.currentMeasure = this.musicSheet.SourceMeasures[this.currentMeasureIndex];
             const currentContainer: VerticalSourceStaffEntryContainer = m.VerticalSourceStaffEntryContainers[m.VerticalSourceStaffEntryContainers.length-1];

@@ -28,7 +28,7 @@ export class VexFlowVoiceEntry extends GraphicalVoiceEntry {
      *  between the staves (as osmd-dart, whose borders are read again after a progressive draw). Undefined: not in a
      *  cross-staff beam. */
     private static crossStaffBeamNoteBox(note: any): [number, number] {
-        const beam: any = note.beam;
+        const beam: any = note?.beam;
         if (!(beam instanceof CrossStaffBeam) || !note.getStem()) {
             return undefined;
         }
@@ -55,19 +55,35 @@ export class VexFlowVoiceEntry extends GraphicalVoiceEntry {
         }
         const boundingBox: any = staveNote.getBoundingBox();
         const modifierWidth: number = staveNote.getNoteHeadBeginX() - boundingBox.x;
-        let boxY: number = boundingBox.y;
-        let boxH: number = boundingBox.h;
+        // a note of a cross-staff beam: the box the layout reserves for it (see crossStaffBeamNoteBox(), applyVerticalBordersFromVexflow())
         const crossStaffBox: [number, number] = VexFlowVoiceEntry.crossStaffBeamNoteBox(staveNote);
-        if (crossStaffBox) {
-            [boxY, boxH] = crossStaffBox;
-        }
+        const boxY: number = crossStaffBox ? crossStaffBox[0] : boundingBox.y;
 
-        this.PositionAndShape.RelativePosition.y = boxY / unitInPixels;
-        this.PositionAndShape.BorderTop = 0;
-        this.PositionAndShape.BorderBottom = boxH / unitInPixels;
+        this.PositionAndShape.RelativePosition.y = boxY / unitInPixels; // the top of the note, e.g. the tip of an up-stem
+        this.applyVerticalBordersFromVexflow(boundingBox);
         const halfStavenoteWidth: number = (staveNote.width - ((staveNote as any).paddingRight ?? 0)) / 2;
         this.PositionAndShape.BorderLeft = -(modifierWidth + halfStavenoteWidth) / unitInPixels; // Left of our X origin is the modifier
         this.PositionAndShape.BorderRight = (boundingBox.w - modifierWidth) / unitInPixels; // Right of x origin is the note
+    }
+
+    /** Sets the vertical borders of this voice entry to the bounding box of its Vexflow note, e.g. from the tip of an up-stem
+     *  that a beam extended (see VexFlowMeasure.updateBeamedVoiceEntryBorders()) to the lowest note head. Keeps the position of
+     *  the voice entry, which its notes are placed relative to (VexFlowMeasure.correctNotePositions()): the next render's
+     *  calculateXPosition() puts the voice entry there again (applyBordersFromVexflow()) and calculates the bounding boxes with
+     *  the notes still where this render placed them.
+     *  @param staveTopY The y of the stave's top line where the note's bounding box was measured (0 in calculateXPosition()).
+     */
+    public applyVerticalBordersFromVexflow(boundingBox: any, staveTopY: number = 0): void {
+        let boxY: number = boundingBox.y;
+        let boxH: number = boundingBox.h;
+        // a note of a cross-staff beam keeps the box the layout reserves for it, not its stem reaching the beam (see applyBordersFromVexflow())
+        const crossStaffBox: [number, number] = VexFlowVoiceEntry.crossStaffBeamNoteBox(this.vfStaveNote);
+        if (crossStaffBox) {
+            [boxY, boxH] = crossStaffBox;
+        }
+        const top: number = (boxY - staveTopY) / unitInPixels - this.PositionAndShape.RelativePosition.y;
+        this.PositionAndShape.BorderTop = top;
+        this.PositionAndShape.BorderBottom = top + boxH / unitInPixels;
     }
 
     public set vfStaveNote(value: VF.StemmableNote) {

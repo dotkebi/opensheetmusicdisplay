@@ -87,34 +87,6 @@ export class VexFlowTabMeasure extends VexFlowMeasure {
                     graceGVoiceEntriesBefore = [];
                     graceSlur = false;
                 }
-                if (gve.parentVoiceEntry.IsGrace) {
-                    graceGVoiceEntriesBefore.push(gve);
-                    graceSlur = graceSlur || gve.parentVoiceEntry.GraceSlur;
-                    continue;
-                }
-                if (graceGVoiceEntriesBefore.length > 0) {
-                    if (isRest) {
-                        // a GhostNote (rest in a tab measure) doesn't draw modifiers, so these grace notes are drawn as their own tickables
-                        for (const graceGve of graceGVoiceEntriesBefore) {
-                            graceGve.isStandAloneGrace = true; // added to the vexflow voice below
-                        }
-                    } else {
-                        // attach the grace notes to their main note in a Vexflow GraceNoteGroup, which formats and draws them
-                        //   left of the main note (as for classical notes). Otherwise they would never be drawn: they are not
-                        //   tickables of the vexflow voice (see below), which is why they were missing in tabs before (#1721).
-                        const vfGraceNotes: VF.TabNote[] = graceGVoiceEntriesBefore.map(
-                            (graceGve: VexFlowVoiceEntry) => graceGve.vfStaveNote as VF.TabNote);
-                        const graceNoteGroup: VF.GraceNoteGroup = new VF.GraceNoteGroup(vfGraceNotes as unknown as VF.GraceNote[], graceSlur);
-                        // note the argument order: (Tab)Note.addModifier(modifier, index), unlike StaveNote.addModifier(index, modifier)
-                        (gve.vfStaveNote as VF.TabNote).addModifier(graceNoteGroup, 0);
-                    }
-                    graceGVoiceEntriesBefore = [];
-                    graceSlur = false;
-                }
-            }
-            // remaining grace notes without a main note after them (e.g. at the end of the measure): stand-alone grace notes
-            for (const graceGve of graceGVoiceEntriesBefore) {
-                graceGve.isStandAloneGrace = true;
             }
             // remaining grace notes without a main note after them (e.g. at the end of the measure): stand-alone grace notes
             for (const graceGve of graceGVoiceEntriesBefore) {

@@ -31,6 +31,8 @@ export class IXmlElement {
     /**
      * Wraps 'elem' Element in a IXmlElement
      * @param elem
+     * @param knownName the element's lower-cased node name, when the caller
+     * already matched on it - saves a DOM read and a toLowerCase() per wrapper
      */
     constructor(elem: Element, knownName?: string) {
         if (!elem) {
@@ -110,7 +112,7 @@ export class IXmlElement {
      * @returns {Attr}
      */
     public attribute(attributeName: string): IXmlAttribute {
-        return this.elem.attributes.getNamedItem(attributeName);
+        return this.elem.getAttributeNode(attributeName);
     }
 
     /**
