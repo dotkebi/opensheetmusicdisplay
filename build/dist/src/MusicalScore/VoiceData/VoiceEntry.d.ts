@@ -37,6 +37,11 @@ export declare class VoiceEntry {
     private articulations;
     private technicalInstructions;
     private lyricsEntries;
+    /** The verse numbers of the <lyric> nodes of this note that hold only an <extend> (continue or stop) and no text: the
+     *  melisma of the verse's previous syllable goes on over this note. Read for every note, used for a grace note, whose
+     *  extend would otherwise be lost: it shares the staff entry of the next syllable's note (see
+     *  MusicSheetCalculator.calculateLyricExtend()). */
+    private extendOnlyLyricVerses;
     /** The Arpeggio consisting of this VoiceEntry's notes. Undefined if no arpeggio exists. */
     private arpeggio;
     private ornamentContainer;
@@ -59,6 +64,7 @@ export declare class VoiceEntry {
     get IsGrace(): boolean;
     set IsGrace(value: boolean);
     get GraceAfterMainNote(): boolean;
+    get ExtendOnlyLyricVerses(): string[];
     set GraceAfterMainNote(value: boolean);
     get GraceNoteSlash(): boolean;
     set GraceNoteSlash(value: boolean);

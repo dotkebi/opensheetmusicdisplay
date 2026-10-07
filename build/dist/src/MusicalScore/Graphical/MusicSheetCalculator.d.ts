@@ -37,6 +37,7 @@ import { ITextMeasurer } from "../Interfaces/ITextMeasurer";
 import { ITransposeCalculator } from "../Interfaces/ITransposeCalculator";
 import { AccidentalCalculator } from "./AccidentalCalculator";
 import { GraphicalLyricWord } from "./GraphicalLyricWord";
+import { GraphicalVoiceEntry } from "./GraphicalVoiceEntry";
 import { SkyBottomLineCalculator } from "./SkyBottomLineCalculator";
 import { AbstractExpression, PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
 import { InstantaneousTempoExpression } from "../VoiceData/Expressions/InstantaneousTempoExpression";
@@ -583,6 +584,12 @@ export declare abstract class MusicSheetCalculator {
      */
     private calculateLyricExtend;
     private hasLyricsOfVerse;
+    /** The last of the grace notes before the main note of the next syllable's staff entry that carry the verse's extend
+     *  (VoiceEntry.ExtendOnlyLyricVerses) in the extend's voice, where the extend line ends. Undefined if there is none. */
+    private extendEndGraceEntry;
+    /** The right end of a lyric extend line relative to its end staff entry: the entry's right border, or that of the
+     *  grace note the extend ends at (placed where it is drawn, see VexFlowStaffEntry.positionGraceEntries()). */
+    protected extendEndRightInStaffEntry(endStaffEntry: GraphicalStaffEntry, endGraceEntry: GraphicalVoiceEntry): number;
     /** Whether the voice has syllables of other verses in the measure, but none of the given verse. */
     private isSungOnlyInOtherVerses;
     /** Whether the verse has a syllable in or after the given vertical container. */

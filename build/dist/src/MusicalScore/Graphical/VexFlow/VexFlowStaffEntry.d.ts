@@ -24,6 +24,13 @@ export declare class VexFlowStaffEntry extends GraphicalStaffEntry {
      */
     private positionGraceEntries;
     /**
+     * Places the syllables sung on grace notes at their grace notes (GraphicalLyricEntry.placeAtGraceNote()), which
+     * positionGraceEntries() has just placed. A lyric label is positioned relative to its staff entry, i.e. at the main note
+     * the grace note belongs to, where the main note's own syllable overlapped it. That syllable is kept clear of the grace
+     * note's by VexFlowMusicSheetCalculator.fitGraceLyricsToFormattedEntries().
+     */
+    private placeGraceLyrics;
+    /**
      * Places the notes where they are drawn, relative to their voice entries: at the centres of their note heads, or of their
      * fret numbers in a TAB staff. That's where e.g. a click finds them (GraphicalMusicSheet.GetNearestNote()), and where slurs
      * start and end (GraphicalSlur.calculateStartAndEnd()).
