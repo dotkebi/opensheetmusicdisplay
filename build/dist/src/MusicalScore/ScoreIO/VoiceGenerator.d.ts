@@ -169,9 +169,10 @@ export declare class VoiceGenerator {
      * The open tie that note (a tie stop) ends, among the open ties of all staves of the instrument (a tie can start in
      * one staff and end in the other: Schumann, Myrthen, Aus den hebräischen Gesängen m79-80, right-hand C4 half tied
      * to the left-hand C4 whole, different voices; each staff keeps its own openTieDict). A candidate has the note's
-     * pitch (letter and octave, or tab string, else sounding pitch) and its last note is earlier than the note, or a
-     * grace note at its time (a tie never joins two notes of one chord: Basie, Straight Ahead m87, a cluster of B2 and
-     * Bb2 tied on chord by chord). Among candidates: the same voice, then the same staff, then the same pitch (letter,
+     * pitch (letter and octave, or tab string, else sounding pitch) and its last note is earlier than the note; at the
+     * same time one of the two is a grace note (a grace note tied into its main note, or a main note into the grace
+     * notes after it), never two notes of one chord (Basie, Straight Ahead m87, a cluster of B2 and Bb2 tied on chord
+     * by chord). Among candidates: the same voice, then the same staff, then the same pitch (letter,
      * alteration and octave) before the same letter and octave before the same sounding pitch, then the nearest last
      * note (one tie per held note: a stop does not skip a later tie of its voice), then ownDict first and the lowest
      * key (upstream's order). sameVoiceOnly keeps the ties whose last note is in the note's voice only. measureStart is the absolute
