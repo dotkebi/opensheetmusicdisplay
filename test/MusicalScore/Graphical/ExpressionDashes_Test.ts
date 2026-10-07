@@ -112,10 +112,10 @@ describe("Expression dashes", () => {
         const words: string = "<direction placement=\"above\"><direction-type><words font-style=\"italic\">poco a poco</words></direction-type>" +
             "<direction-type><dashes type=\"start\" number=\"1\"/></direction-type></direction>";
         const stop: string = "<direction placement=\"above\"><direction-type><dashes type=\"stop\" number=\"1\"/></direction-type></direction>";
+        // (the words start at the measure, not left of it, see WordsMeasureStart_Test: the dashes end with the measure)
         const measure2: string = m17Notes.replace("__WORDS__", "").replace(
             "<note><pitch><step>B</step><octave>4</octave></pitch><duration>4</duration>",
-            `${words}<note><pitch><step>B</step><octave>4</octave></pitch><duration>4</duration>`).replace(
-            "<note><pitch><step>G</step>", `${stop}<note><pitch><step>G</step>`);
+            `${words}<note><pitch><step>B</step><octave>4</octave></pitch><duration>4</duration>`) + stop;
         const osmd: OpenSheetMusicDisplay = await render(singleStaffScore(measure2));
         const line: StaffLine = staffLines(osmd)[0];
         const unknown: GraphicalUnknownExpression = line.AbstractExpressions.find(

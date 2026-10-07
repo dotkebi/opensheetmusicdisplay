@@ -3764,28 +3764,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (ornamentsOfEntry.indexOf(ink.ornament) < 0) {
         continue;
       }
-      let raise: number = 0;
-      for (const slur of staffLine.GraphicalSlurs) {
-        if (slur.placement !== PlacementEnum.Above || !slur.bezierStartPt) {
-          continue;
-        }
-        let curveTop: number = Number.POSITIVE_INFINITY;
-        let touches: boolean = false;
-        for (let i: number = 0; i <= 128; i++) {
-          const point: PointF2D = slur.calculateCurvePointAtIndex(i / 128);
-          if (point.x < ink.left || point.x > ink.right) {
-            continue;
-          }
-          curveTop = Math.min(curveTop, point.y);
-          // (a slur lifted over the ornament clears it by the full clearance)
-          if (point.y > ink.top - clearance + 0.1 && point.y < ink.bottom + over - 0.1) {
-            touches = true;
-          }
-        }
-        if (touches) {
-          raise = Math.max(raise, ink.bottom + over - curveTop);
-        }
-      }
+      const raise: number = VexFlowMusicSheetCalculator.raiseOverSlursAbove(ink, staffLine);
       if (raise > 0) {
         ink.ornament.slurClearanceYShift = -raise * unitInPixels;
         staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
@@ -3821,6 +3800,54 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (drop > 0) {
         ink.ornament.slurClearanceYShift = drop * unitInPixels;
         staffLine.SkyBottomLineCalculator.updateBottomLineInRange(ink.left, ink.right, ink.bottom + drop);
+      }
+    }
+  }
+
+  /** How far ink above the notes goes up to clear the slurs above that would touch it (0: none), see layoutOrnament(). */
+  private static raiseOverSlursAbove(ink: { left: number, right: number, top: number, bottom: number }, staffLine: StaffLine): number {
+    const clearance: number = GraphicalSlur.ornamentClearance;
+    const over: number = clearance + GraphicalSlur.thickness;
+    let raise: number = 0;
+    for (const slur of staffLine.GraphicalSlurs) {
+      if (slur.placement !== PlacementEnum.Above || !slur.bezierStartPt) {
+        continue;
+      }
+      let curveTop: number = Number.POSITIVE_INFINITY;
+      let touches: boolean = false;
+      for (let i: number = 0; i <= 128; i++) {
+        const point: PointF2D = slur.calculateCurvePointAtIndex(i / 128);
+        if (point.x < ink.left || point.x > ink.right) {
+          continue;
+        }
+        curveTop = Math.min(curveTop, point.y);
+        // (a slur lifted over the ornament clears it by the full clearance)
+        if (point.y > ink.top - clearance + 0.1 && point.y < ink.bottom + over - 0.1) {
+          touches = true;
+        }
+      }
+      if (touches) {
+        raise = Math.max(raise, ink.bottom + over - curveTop);
+      }
+    }
+    return raise;
+  }
+
+  /**
+   * A fermata above a note goes over a slur above that would touch it, like an ornament (layoutOrnament()): the slur
+   * ends at its note's stem, where the fermata is (Torelli, Tu lo sai, piano m38 and m44; Giordani, Caro mio ben, voice m29:
+   * the slur from the fermata's note). The sky line reserves the fermata's new place.
+   */
+  protected layoutFermatasOverSlurs(measure: GraphicalMeasure): void {
+    const staffLine: StaffLine = measure.ParentStaffLine;
+    if (!staffLine || !(measure instanceof VexFlowMeasure)) {
+      return;
+    }
+    for (const ink of measure.FermataInk) {
+      const raise: number = VexFlowMusicSheetCalculator.raiseOverSlursAbove(ink, staffLine);
+      if (raise > 0) {
+        ink.fermata.slurClearanceYShift = -raise * unitInPixels;
+        staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
       }
     }
   }

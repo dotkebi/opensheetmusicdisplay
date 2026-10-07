@@ -270,10 +270,12 @@ export declare abstract class MusicSheetCalculator {
     /** Visible left and right edge of a words label relative to its anchor x, aligned as calculateLabel() aligns it
      *  (below: from the anchor, above: centered on it). */
     wordsLabelExtent(text: string, fontStyle: FontStyles, placement: PlacementEnum, fontHeight: number): [number, number];
-    /** Words in a measure that ends the staff line or ends with a double, final or repeat barline end
+    /** Words don't start left of their measure: words above are centered on their note, and a long label at the start
+     *  of a narrow measure ran over the barline before it (Monteverdi, Lasciatemi morire!, piano m17 "cresc. assai").
+     *  Words in a measure that ends the staff line or ends with a double, final or repeat barline also end
      *  wordsBarlineMargin() before its end (Couperin, Concerts royaux II Échos m16 "fin." at the last beat, before the
      *  repeat sign; IV Forlane m60 "au Rondeau pour finir." at the final barline). They are moved left, but not left of
-     *  the measure's notes. Words after the last note (e.g. at the time of a key change drawn after it) start at that
+     *  the measure's start. Words after the last note (e.g. at the time of a key change drawn after it) start at that
      *  note: the measure is wide enough for them from there (VexFlowMusicSheetCalculator.trailingWordsMinimumWidth()).
      *  Same rule as osmd-dart. */
     private keepWordsBeforeStrongBarline;
@@ -381,6 +383,8 @@ export declare abstract class MusicSheetCalculator {
     protected layoutBeams(staffEntry: GraphicalStaffEntry): void;
     protected layoutArticulationMarks(articulations: Articulation[], voiceEntry: VoiceEntry, graphicalStaffEntry: GraphicalStaffEntry): void;
     protected layoutOrnament(ornaments: OrnamentContainer, voiceEntry: VoiceEntry, graphicalStaffEntry: GraphicalStaffEntry): void;
+    /** Raise the fermatas of a measure over the slurs above them (after the slurs are laid out). */
+    protected layoutFermatasOverSlurs(measure: GraphicalMeasure): void;
     protected calculateRestNotePlacementWithinGraphicalBeam(graphicalStaffEntry: GraphicalStaffEntry, restNote: GraphicalNote, previousNote: GraphicalNote, nextStaffEntry: GraphicalStaffEntry, nextNote: GraphicalNote): void;
     protected calculateTupletNumbers(): void;
     protected calculateSlurs(): void;

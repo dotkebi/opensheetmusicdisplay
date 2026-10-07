@@ -41,6 +41,8 @@ export class RhythmInstruction extends AbstractNotationInstruction {
     public clone(): RhythmInstruction {
         const clone: RhythmInstruction = new RhythmInstruction(this.rhythm.clone(), this.symbolEnum);
         clone.SynthesizedFromNoTimeSignature = this.SynthesizedFromNoTimeSignature;
+        // the reader clones the rhythm onto staves without one; a <time print-object="no"> stays hidden on each
+        clone.PrintObject = this.PrintObject;
         return clone;
     }
 

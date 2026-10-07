@@ -1175,20 +1175,24 @@ export abstract class MusicSheetCalculator {
         return [graphLabel.PositionAndShape.BorderLeft, graphLabel.PositionAndShape.BorderRight];
     }
 
-    /** Words in a measure that ends the staff line or ends with a double, final or repeat barline end
+    /** Words don't start left of their measure: words above are centered on their note, and a long label at the start
+     *  of a narrow measure ran over the barline before it (Monteverdi, Lasciatemi morire!, piano m17 "cresc. assai").
+     *  Words in a measure that ends the staff line or ends with a double, final or repeat barline also end
      *  wordsBarlineMargin() before its end (Couperin, Concerts royaux II Échos m16 "fin." at the last beat, before the
      *  repeat sign; IV Forlane m60 "au Rondeau pour finir." at the final barline). They are moved left, but not left of
-     *  the measure's notes. Words after the last note (e.g. at the time of a key change drawn after it) start at that
+     *  the measure's start. Words after the last note (e.g. at the time of a key change drawn after it) start at that
      *  note: the measure is wide enough for them from there (VexFlowMusicSheetCalculator.trailingWordsMinimumWidth()).
      *  Same rule as osmd-dart. */
     private keepWordsBeforeStrongBarline(measure: GraphicalMeasure, staffLine: StaffLine, x: number, timestamp: Fraction,
                                          text: string, fontStyle: FontStyles, placement: PlacementEnum, fontHeight: number): number {
+        const measureX: number = measure.PositionAndShape.RelativePosition.x;
+        const start: number = measureX + measure.beginInstructionsWidth;
+        const [left, right] = this.wordsLabelExtent(text, fontStyle, placement, fontHeight);
         const style: SystemLinesEnum = MusicSheetCalculator.endingBarline(measure.parentSourceMeasure);
         const strongBarline: boolean = MusicSheetCalculator.isStrongBarline(style);
         if (!strongBarline && staffLine.Measures[staffLine.Measures.length - 1] !== measure) {
-            return x;
+            return Math.max(x, start - left);
         }
-        const measureX: number = measure.PositionAndShape.RelativePosition.x;
         if (strongBarline) {
             const withNotes: GraphicalStaffEntry[] = measure.staffEntries.filter(
                 entry => entry.graphicalVoiceEntries.some(gve => gve.notes.length > 0));
@@ -1197,14 +1201,12 @@ export abstract class MusicSheetCalculator {
                 x = Math.min(x, measureX + lastNote.PositionAndShape.RelativePosition.x);
             }
         }
-        const [left, right] = this.wordsLabelExtent(text, fontStyle, placement, fontHeight);
         const limit: number = measureX + measure.PositionAndShape.Size.width -
             MusicSheetCalculator.wordsBarlineMargin(strongBarline ? style : undefined);
         if (x + right <= limit) {
-            return x;
+            return Math.max(x, start - left);
         }
-        const start: number = measureX + measure.beginInstructionsWidth;
-        return Math.max(limit - right, Math.min(x, start - left));
+        return Math.max(limit - right, Math.min(x, start - left), start - left);
     }
 
     /** Words after the last note of the piece (e.g. "Fin" written after the final notes or with an offset to the end of
@@ -2233,6 +2235,11 @@ export abstract class MusicSheetCalculator {
 
     protected layoutOrnament(ornaments: OrnamentContainer, voiceEntry: VoiceEntry,
                              graphicalStaffEntry: GraphicalStaffEntry): void {
+        return;
+    }
+
+    /** Raise the fermatas of a measure over the slurs above them (after the slurs are laid out). */
+    protected layoutFermatasOverSlurs(measure: GraphicalMeasure): void {
         return;
     }
 
@@ -4516,6 +4523,7 @@ export abstract class MusicSheetCalculator {
                 const line: StaffLine = system.StaffLines[idx3];
                 for (let idx4: number = 0, len4: number = line.Measures.length; idx4 < len4; ++idx4) {
                     const measure: GraphicalMeasure = line.Measures[idx4];
+                    this.layoutFermatasOverSlurs(measure);
                     for (let idx5: number = 0, len5: number = measure.staffEntries.length; idx5 < len5; ++idx5) {
                         const graphicalStaffEntry: GraphicalStaffEntry = measure.staffEntries[idx5];
                         for (let idx6: number = 0, len6: number = graphicalStaffEntry.sourceStaffEntry.VoiceEntries.length; idx6 < len6; ++idx6) {
@@ -4537,6 +4545,7 @@ export abstract class MusicSheetCalculator {
                 const line: StaffLine = system.StaffLines[idx3];
                 for (let idx4: number = 0, len4: number = line.Measures.length; idx4 < len4; ++idx4) {
                     const measure: GraphicalMeasure = line.Measures[idx4];
+                    this.layoutFermatasOverSlurs(measure);
                     for (let idx5: number = 0, len5: number = measure.staffEntries.length; idx5 < len5; ++idx5) {
                         const graphicalStaffEntry: GraphicalStaffEntry = measure.staffEntries[idx5];
                         for (let idx6: number = 0, len6: number = graphicalStaffEntry.sourceStaffEntry.VoiceEntries.length; idx6 < len6; ++idx6) {

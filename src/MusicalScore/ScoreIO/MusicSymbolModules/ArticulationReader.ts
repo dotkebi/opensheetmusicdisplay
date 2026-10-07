@@ -5,7 +5,7 @@ import {TechnicalInstruction, TechnicalInstructionType} from "../../VoiceData/In
 import {OrnamentContainer, OrnamentEnum} from "../../VoiceData/OrnamentContainer";
 import {PlacementEnum} from "../../VoiceData/Expressions/AbstractExpression";
 import {AccidentalEnum} from "../../../Common/DataObjects/Pitch";
-import { Articulation } from "../../VoiceData/Articulation";
+import { Articulation, breathMarkValueFromXml } from "../../VoiceData/Articulation";
 import { Note } from "../../VoiceData/Note";
 import { EngravingRules } from "../../Graphical/EngravingRules";
 import { MultiExpression } from "../../VoiceData/Expressions/MultiExpression";
@@ -98,6 +98,7 @@ export class ArticulationReader {
               if (placement === PlacementEnum.NotYetDefined) {
                 newArticulation.placement = PlacementEnum.Above;
               }
+              newArticulation.breathMark = breathMarkValueFromXml(childNode.value);
             }
             else if (name === "strongaccent") { // see name.replace("-", "") above
               const marcatoType: string = childNode?.attribute("type")?.value;

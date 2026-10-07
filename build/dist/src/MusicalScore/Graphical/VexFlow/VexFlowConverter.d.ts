@@ -88,6 +88,9 @@ export declare class VexFlowConverter {
      */
     static restSideFromVoice(rest: VoiceEntry, highestOther: number, lowestOther: number): number;
     static StaveNote(gve: GraphicalVoiceEntry): VF.StaveNote;
+    /** Whether another voice has a visible note (or rest) on the note's staff sounding at the same time as it (Schumann,
+     *  Myrthen 2 m19: the left hand's chords after the first beat are alone, their staccatos stay above). */
+    static hasOtherVoiceAtTime(gNote: GraphicalNote): boolean;
     static generateArticulations(vfnote: VF.StemmableNote, gNote: GraphicalNote, rules: EngravingRules): void;
     /**
      * A fermata or an aspiration on the side of its note where the note has an ornament goes beyond the ornament, not

@@ -310,6 +310,14 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      * GraphicalSlur.thickness over its curve. The sky line reserves the ornament's new place.
      */
     protected layoutOrnament(ornaments: OrnamentContainer, voiceEntry: VoiceEntry, graphicalStaffEntry: GraphicalStaffEntry): void;
+    /** How far ink above the notes goes up to clear the slurs above that would touch it (0: none), see layoutOrnament(). */
+    private static raiseOverSlursAbove;
+    /**
+     * A fermata above a note goes over a slur above that would touch it, like an ornament (layoutOrnament()): the slur
+     * ends at its note's stem, where the fermata is (Torelli, Tu lo sai, piano m38 and m44; Giordani, Caro mio ben, voice m29:
+     * the slur from the fermata's note). The sky line reserves the fermata's new place.
+     */
+    protected layoutFermatasOverSlurs(measure: GraphicalMeasure): void;
     /**
      * Add articulations to the given vexflow staff entry.
      * @param articulations

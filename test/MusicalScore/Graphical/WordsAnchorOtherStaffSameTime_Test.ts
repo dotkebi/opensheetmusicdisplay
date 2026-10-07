@@ -15,6 +15,7 @@ describe("Words at a time only another staff of the instrument plays", () => {
     let osmd: OpenSheetMusicDisplay;
     let staffLines: StaffLine[];
     let wordsX: Map<string, number>;
+    let wordsLeft: Map<string, number>;
     const entryX: (measure: GraphicalMeasure, index: number) => number = (measure, index) =>
         measure.PositionAndShape.RelativePosition.x + measure.staffEntries[index].PositionAndShape.RelativePosition.x;
 
@@ -27,9 +28,11 @@ describe("Words at a time only another staff of the instrument plays", () => {
         osmd.render();
         staffLines = osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines;
         wordsX = new Map();
+        wordsLeft = new Map();
         for (const expression of staffLines[1].AbstractExpressions) {
             if (expression instanceof GraphicalUnknownExpression) {
                 wordsX.set(expression.Label.Label.text, expression.Label.PositionAndShape.RelativePosition.x);
+                wordsLeft.set(expression.Label.Label.text, expression.Label.PositionAndShape.BorderLeft);
             }
         }
     });
@@ -43,8 +46,13 @@ describe("Words at a time only another staff of the instrument plays", () => {
         expect(wordsX.get("Fin")).to.be.lessThan(staffLines[1].Measures[1].PositionAndShape.RelativePosition.x);
     });
 
-    it("stay at a note of their own staff", () => {
-        expect(wordsX.get("Couplet")).to.be.closeTo(entryX(staffLines[1].Measures[1], 0), 0.001);
+    it("stay at a note of their own staff, not left of its measure", () => {
+        // (centered on the note, "Couplet" would start left of the barline: it starts at the measure, see
+        //   WordsMeasureStart_Test)
+        const measure: GraphicalMeasure = staffLines[1].Measures[1];
+        const start: number = measure.PositionAndShape.RelativePosition.x + measure.beginInstructionsWidth;
+        const expected: number = Math.max(entryX(measure, 0), start - wordsLeft.get("Couplet"));
+        expect(wordsX.get("Couplet")).to.be.closeTo(expected, 0.01);
     });
 
     it("do not use a note of another instrument", () => {

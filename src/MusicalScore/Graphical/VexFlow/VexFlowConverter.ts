@@ -18,6 +18,7 @@ import {Fonts} from "../../../Common/Enums/Fonts";
 import {OutlineAndFillStyleEnum, OUTLINE_AND_FILL_STYLE_DICT} from "../DrawingEnums";
 import log from "loglevel";
 import { ArticulationEnum, StemDirectionType, VoiceEntry } from "../../VoiceData/VoiceEntry";
+import { BreathMarkValue } from "../../VoiceData/Articulation";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { SystemLinePosition } from "../SystemLinePosition";
 import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
@@ -305,9 +306,13 @@ export class VexFlowConverter {
         let nearestDistance: number = Infinity;
         let stemSide: number = undefined;
         let stemless: boolean = false;
+        // (the notes on the rest's staff: one Voice holds a voice number's notes on all staves of the part, Gluck, O del
+        //   mio dolce ardor m26: the right hand's voice 1 with up stems, the left hand's with down stems)
+        const staff: Staff = rest.ParentSourceStaffEntry?.ParentStaff;
         for (const entry of rest.ParentVoice.VoiceEntries) {
             if (entry === rest || entry.IsGrace || entry.Notes.length === 0 || entry.Notes[0].isRest() || !entry.Notes[0].Pitch ||
-                entry.ParentSourceStaffEntry?.VerticalContainerParent?.ParentMeasure !== measure) {
+                entry.ParentSourceStaffEntry?.VerticalContainerParent?.ParentMeasure !== measure ||
+                entry.ParentSourceStaffEntry?.ParentStaff !== staff) {
                 continue;
             }
             const side: number = entry.StemDirectionXml === StemDirectionType.Up ? 1 :
@@ -899,6 +904,37 @@ export class VexFlowConverter {
         return vfnote;
     }
 
+    /** Whether another voice has a visible note (or rest) on the note's staff sounding at the same time as it (Schumann,
+     *  Myrthen 2 m19: the left hand's chords after the first beat are alone, their staccatos stay above). */
+    public static hasOtherVoiceAtTime(gNote: GraphicalNote): boolean {
+        // (the times of the graphical staff entries: a voice entry's Timestamp can be unset here, Couperin's ornaments)
+        const voiceEntry: VoiceEntry = gNote.sourceNote.ParentVoiceEntry;
+        const ownEntry: GraphicalStaffEntry = gNote.parentVoiceEntry?.parentStaffEntry;
+        if (!ownEntry?.relInMeasureTimestamp) {
+            return false;
+        }
+        const start: number = ownEntry.relInMeasureTimestamp.RealValue;
+        const end: number = start + gNote.sourceNote.Length.RealValue;
+        for (const staffEntry of ownEntry.parentMeasure?.staffEntries ?? []) {
+            const noteStart: number = staffEntry.relInMeasureTimestamp?.RealValue;
+            if (noteStart === undefined || noteStart >= end) {
+                continue;
+            }
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                const other: VoiceEntry = gve.parentVoiceEntry;
+                if (other.ParentVoice === voiceEntry.ParentVoice || other.IsGrace) {
+                    continue;
+                }
+                for (const note of gve.notes) {
+                    if (note.sourceNote.PrintObject && noteStart + note.sourceNote.Length.RealValue > start) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     public static generateArticulations(vfnote: VF.StemmableNote, gNote: GraphicalNote,
                                         rules: EngravingRules): void {
         if (!vfnote || vfnote.getAttribute("type") === "GhostNote") {
@@ -930,6 +966,11 @@ export class VexFlowConverter {
                     // this "piano left hand check" could be extended to also match old scores using 1 instrument per hand,
                     //   but this can get complicated especially if there's also e.g. a voice instrument above. (e.g. Schubert An die Musik)
                 }
+            }
+            // two voices on the staff: outside, on the voice's stem side (the upper voice's above, the lower voice's
+            //   below), not on the notehead side between the voices (Caccini, Amarilli, Schirmer, piano m4, m11-12)
+            if (VexFlowConverter.hasOtherVoiceAtTime(gNote)) {
+                vfArtPosition = vfnote.getStemDirection() === VF.Stem.UP ? VF.Modifier.Position.ABOVE : VF.Modifier.Position.BELOW;
             }
             let vfArt: VF.Articulation = undefined;
             const articulationEnum: ArticulationEnum = articulation.articulationEnum;
@@ -972,7 +1013,9 @@ export class VexFlowConverter {
                     break;
                 }
                 case ArticulationEnum.breathmark: {
-                    vfArt = new VF.Articulation("abr");
+                    // "abr|": the upbow breath mark (VexFlowPatch articulation.js). This font has no tick or
+                    // salzedo breath mark glyph, they stay commas.
+                    vfArt = new VF.Articulation(articulation.breathMark === BreathMarkValue.upbow ? "abr|" : "abr");
                     if (articulation.placement === PlacementEnum.Above) {
                         vfArtPosition = VF.Modifier.Position.ABOVE;
                     }
