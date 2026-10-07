@@ -1002,7 +1002,7 @@ export class ExpressionReader {
             }
             inSourceMeasureCurrentFraction = this.wedgeStopTimestamp(currentMeasure, stopReadAt, inSourceMeasureCurrentFraction);
             this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml, inSourceMeasureCurrentFraction);
-            this.addWedge(wedgeNode, currentMeasure, inSourceMeasureCurrentFraction, endOffset);
+            this.addWedge(wedgeNode, currentMeasure, inSourceMeasureCurrentFraction, endOffset, stopReadAt);
             return;
         }
         this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml, undefined, this.soundDynamicTimestamp);
@@ -1129,7 +1129,7 @@ export class ExpressionReader {
         }
     }
     private addWedge(wedgeNode: IXmlElement, currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction,
-                     endOffset: Fraction = undefined): void {
+                     endOffset: Fraction = undefined, stopTimestamp: Fraction = undefined): void {
         if (wedgeNode !== undefined && wedgeNode.hasAttributes) {
             const numberXml: number = this.readNumber(wedgeNode);
             const type: string = wedgeNode.attribute("type").value.toLowerCase();
@@ -1160,6 +1160,8 @@ export class ExpressionReader {
                         if (openCont.NumberXml === numberXml) {
                             // if (openCont.NumberXml === numberXml) { // was there supposed to be another check here? someone wrote the same check twice.
                             openCont.EndOffsetFraction = endOffset;
+                            openCont.StopTimestamp = stopTimestamp && inSourceMeasureCurrentFraction.lt(stopTimestamp) ?
+                                stopTimestamp.clone() : undefined;
                             this.closeOpenContinuousDynamic(openCont, currentMeasure, inSourceMeasureCurrentFraction);
                         }
                     }
@@ -1297,9 +1299,12 @@ export class ExpressionReader {
                     stringTrimmed);
             continuousDynamicExpression.ColorXML = fontColor;
             continuousDynamicExpression.language = language;
-            const openWordContinuousDynamic: MultiExpression = this.getMultiExpression;
-            if (openWordContinuousDynamic) {
-                this.closeOpenContinuousDynamic(openWordContinuousDynamic.StartingContinuousDynamic, currentMeasure, inSourceMeasureCurrentFraction);
+            // Close the word dynamic ("cresc.") still open at the last multi expression. A wedge starting there may already be
+            // closed: its stop on the note it starts on shares that multi expression, and closing it again moved its end to these
+            // words (Legrenzi, Che fiero costume, piano m16: the diminuendo ran on to the "cresc." of m17).
+            const openWordContinuousDynamic: ContinuousDynamicExpression = this.getMultiExpression?.StartingContinuousDynamic;
+            if (openWordContinuousDynamic && this.openContinuousDynamicExpressions.includes(openWordContinuousDynamic)) {
+                this.closeOpenContinuousDynamic(openWordContinuousDynamic, currentMeasure, inSourceMeasureCurrentFraction);
             }
             this.createNewMultiExpressionIfNeeded(currentMeasure, -1);
             if (this.activeInstantaneousDynamic !== undefined && this.activeInstantaneousDynamic.StaffNumber === continuousDynamicExpression.StaffNumber) {

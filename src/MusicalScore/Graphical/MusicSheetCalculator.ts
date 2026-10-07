@@ -2477,7 +2477,12 @@ export abstract class MusicSheetCalculator {
             endAbsoluteTimestamp, staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0,
             useStaffEntryBorderLeft);
 
-        const beginOfNextNote: Fraction = Fraction.plus(endAbsoluteTimestamp, maxNoteLength);
+        // The drawn end goes towards the stop as written. The end note's start plus the longest note of the staff there is the stop
+        // only in one voice (see ContinuousDynamicExpression.StopTimestamp).
+        const stopTimestamp: Fraction = graphicalContinuousDynamic.ContinuousDynamic.StopTimestamp;
+        const beginOfNextNote: Fraction = stopTimestamp ?
+            Fraction.plus(graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.SourceMeasureParent.AbsoluteTimestamp, stopTimestamp) :
+            Fraction.plus(endAbsoluteTimestamp, maxNoteLength);
         const placementFraction: Fraction = beginOfNextNote.clone();
         const endOffsetFraction: Fraction = graphicalContinuousDynamic.ContinuousDynamic.EndOffsetFraction;
         if (endOffsetFraction && this.rules.UseEndOffsetForExpressions) {
@@ -2493,12 +2498,22 @@ export abstract class MusicSheetCalculator {
         const sizeFactor: number = this.rules.SoftAccentSizeFactor;
         //const standardWidth: number = 2;
 
+        // A wedge that starts and ends on one note (its stop before the next note, or a start with a negative offset after
+        // its end note) reaches the next note: 1/WedgeEndDistanceBetweenTimestampsFactor of the way drew a short ">" over the
+        // note (Gluck, O del mio dolce ardor m6; Monteverdi, Lasciatemi morire m19). Same as osmd-dart.
+        const startAbsoluteTimestamp: Fraction = graphicalContinuousDynamic.ContinuousDynamic.StartMultiExpression?.AbsoluteTimestamp;
+        const endBeforeStart: boolean = startAbsoluteTimestamp !== undefined && sameStaffLine &&
+            endAbsoluteTimestamp.RealValue <= startAbsoluteTimestamp.RealValue;
+
         //If the next note position is not on the next staffline
         //extend close to the next note
         if (isSoftAccent) {
             //startPosInStaffline.x -= 1;
             startPosInStaffline.x -= staffEntryWidth / 2 * sizeFactor + wedgePadding;
             endPosInStaffLine.x = startPosInStaffline.x + staffEntryWidth / 2 * sizeFactor;
+        } else if (endBeforeStart && nextNotePosInStaffLine.x > startPosInStaffline.x) {
+            endPosInStaffLine.x = (nextNotePosInStaffLine.x < endOfMeasure ? nextNotePosInStaffLine.x : endOfMeasure) -
+                this.rules.WedgeHorizontalMargin;
         } else if (nextNotePosInStaffLine.x > endPosInStaffLine.x && nextNotePosInStaffLine.x < endOfMeasure) {
             endPosInStaffLine.x += (nextNotePosInStaffLine.x - endPosInStaffLine.x) / this.rules.WedgeEndDistanceBetweenTimestampsFactor;
         } else { //Otherwise extend to the end of the measure
