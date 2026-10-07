@@ -598,7 +598,11 @@ export class ExpressionReader {
         this.openPedal.ParentEndMultiExpression = this.getMultiExpression;
         this.openPedal = undefined;
     }
-    public addWavyLine(wavyLineNode: IXmlElement, currentMeasure: SourceMeasure, currentTimestamp: Fraction, previousTimestamp: Fraction): void {
+    /** Reads a `<wavy-line>` start or stop.
+     *  @returns the wavy line that this stops, if it is a stop of an open wavy line
+     */
+    public addWavyLine(wavyLineNode: IXmlElement, currentMeasure: SourceMeasure, currentTimestamp: Fraction, previousTimestamp: Fraction): WavyLine {
+        let stoppedWavyLine: WavyLine = undefined;
         if (wavyLineNode && wavyLineNode.hasAttributes) {
             try {
                 switch (wavyLineNode.attribute("type").value) {
@@ -613,6 +617,7 @@ export class ExpressionReader {
                             this.createNewMultiExpressionIfNeeded(currentMeasure, -1, currentTimestamp);
                             this.getMultiExpression.WavyLineEnd = this.openWavyLine;
                             this.openWavyLine.ParentEndMultiExpression = this.getMultiExpression;
+                            stoppedWavyLine = this.openWavyLine;
                             this.openWavyLine = undefined;
                         }
                     break;
@@ -628,6 +633,7 @@ export class ExpressionReader {
                 log.debug("ExpressionReader.addWavyLine", errorMsg, ex);
             }
         }
+        return stoppedWavyLine;
     }
     private initialize(): void {
         this.placement = PlacementEnum.NotYetDefined;

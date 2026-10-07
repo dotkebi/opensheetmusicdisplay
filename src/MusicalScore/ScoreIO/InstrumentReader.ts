@@ -30,7 +30,8 @@ import {StemDirectionType, VoiceEntry} from "../VoiceData/VoiceEntry";
 import {NoteType, NoteTypeHandler} from "../VoiceData/NoteType";
 import { SystemLinesEnumHelper } from "../Graphical/SystemLinesEnum";
 import { ReaderPluginManager } from "./ReaderPluginManager";
-import { TremoloInfo } from "../VoiceData/Note";
+import { Note, TremoloInfo } from "../VoiceData/Note";
+import { WavyLine } from "../VoiceData/Expressions/ContinuousExpressions/WavyLine";
 import { Arpeggio } from "../VoiceData/Arpeggio";
 // import {Dictionary} from "typescript-collections";
 
@@ -386,13 +387,14 @@ export class InstrumentReader {
           // check Tremolo, Vibrato
           let tremoloInfo: TremoloInfo;
           //let vibratoStrokes: boolean = false; // not necessary, handled by wavy-line
+          let stoppedWavyLines: WavyLine[] = [];
           if (notationsNode) {
             const ornamentsNode: IXmlElement = notationsNode.element("ornaments");
             if (ornamentsNode) {
               tremoloInfo = this.getTremoloInfo(ornamentsNode);
               // a chord note's time is its chord's (currentFraction is already past it): a wavy line started on a
               //   chord note other than the first (Legrenzi, Che fiero costume m16: the trill's F#5 over D5) starts there
-              this.getWavyLines(ornamentsNode, xmlNode, isChord ? previousFraction : currentFraction, previousFraction);
+              stoppedWavyLines = this.getWavyLines(ornamentsNode, xmlNode, isChord ? previousFraction : currentFraction, previousFraction);
             }
           }
 
@@ -447,7 +449,7 @@ export class InstrumentReader {
             // (*) this.musicSheet.SheetPlaybackSetting.Rhythm = this.activeRhythm.Rhythm;
           }
           const dots: number = xmlNode.elements("dot").length;
-          this.currentVoiceGenerator.read(
+          const note: Note = this.currentVoiceGenerator.read(
             xmlNode, noteDuration, typeDuration, noteTypeXml, normalNotes, restNote,
             this.currentStaffEntry, this.currentMeasure,
             measureStartAbsoluteTimestamp,
@@ -455,6 +457,14 @@ export class InstrumentReader {
             printObject, isCueNote, isGraceNote, stemDirectionXml, tremoloInfo, stemColorXml, noteheadColorXml,
             dots
           );
+          if (isGraceNote && note?.ParentVoiceEntry) {
+            // a wavy line stopped on a grace note ends there, e.g. at the first note of a Nachschlag ending a trill (Legrenzi,
+            //   Che fiero costume m16: grace note E5 before G5). The grace note has its main note's timestamp, so the stop's
+            //   multi expression alone would end the wavy line at the main note.
+            for (const wavyLine of stoppedWavyLines) {
+              wavyLine.EndGraceVoiceEntry = note.ParentVoiceEntry;
+            }
+          }
 
           // notationsNode created further up for multiple checks
           if (notationsNode !== undefined && notationsNode.element("dynamics")) {
@@ -1806,10 +1816,14 @@ export class InstrumentReader {
     };
   }
 
-  private getWavyLines(ornamentsNode: IXmlElement, xmlNode: IXmlElement, currentFraction: Fraction, previousFraction: Fraction): void {
+  /** Reads the note's `<wavy-line>`s.
+   *  @returns the wavy lines that the note stops
+   */
+  private getWavyLines(ornamentsNode: IXmlElement, xmlNode: IXmlElement, currentFraction: Fraction, previousFraction: Fraction): WavyLine[] {
+    const stoppedWavyLines: WavyLine[] = [];
     const wavyLineNodes: IXmlElement[] = ornamentsNode.elements("wavy-line");
     if (!wavyLineNodes) {
-      return;
+      return stoppedWavyLines;
     }
     /* As mentioned elsewhere, the wavy-line is technically an ornament element, but is specified and behaves
         very much like a continuous expression, so makes more sense to interpret as an expression in our model.
@@ -1821,11 +1835,15 @@ export class InstrumentReader {
         expressionReader.readExpressionParameters(
           wavyLineNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, false
         );
-        expressionReader.addWavyLine(
+        const stoppedWavyLine: WavyLine = expressionReader.addWavyLine(
           wavyLineNode, this.currentMeasure, currentFraction, previousFraction
         );
+        if (stoppedWavyLine) {
+          stoppedWavyLines.push(stoppedWavyLine);
+        }
       }
     }
+    return stoppedWavyLines;
   }
 
   private getNoteStaff(xmlNode: IXmlElement): number {

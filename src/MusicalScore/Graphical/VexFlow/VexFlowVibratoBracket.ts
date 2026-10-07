@@ -3,6 +3,7 @@ import { BoundingBox } from "../BoundingBox";
 import { GraphicalStaffEntry } from "../GraphicalStaffEntry";
 import { GraphicalWavyLine } from "../GraphicalWavyLine";
 import { VexFlowVoiceEntry } from "./VexFlowVoiceEntry";
+import { VoiceEntry } from "../../VoiceData/VoiceEntry";
 import Vex from "vexflow";
 
 export class VexFlowVibratoBracket extends GraphicalWavyLine {
@@ -47,6 +48,15 @@ export class VexFlowVibratoBracket extends GraphicalWavyLine {
      * @param graphicalStaffEntry the staff entry that holds the end note
      */
     public setEndNote(graphicalStaffEntry: GraphicalStaffEntry): boolean {
+        const graceVve: VexFlowVoiceEntry = this.findEndGraceVoiceEntry(graphicalStaffEntry);
+        if (graceVve) {
+            // the wavy line stops at this grace note, e.g. the first note of a Nachschlag ending a trill: it ends at the grace
+            //   note, not at its main note (which this staff entry's main note would be) or the end of the measure
+            this.endNote = graceVve.vfStaveNote;
+            this.endVfVoiceEntry = graceVve;
+            this.toEndOfStopStave = false;
+            return true;
+        }
         const vve: VexFlowVoiceEntry = this.findNoteVoiceEntry(graphicalStaffEntry);
         if (!vve) {
             return false; // couldn't find an endNote
@@ -58,6 +68,29 @@ export class VexFlowVibratoBracket extends GraphicalWavyLine {
         //If this is the last staff entry of the stave (measure), render line to end of measure
         this.toEndOfStopStave = (lastStaffEntry === vve.parentStaffEntry);
         return true;
+    }
+
+    /** Whether the bracket ends at the grace note that its wavy line stops at (see WavyLine.EndGraceVoiceEntry). */
+    public get EndsAtGraceNote(): boolean {
+        return this.endVfVoiceEntry !== undefined && this.endVfVoiceEntry.parentVoiceEntry === this.getWavyLine.EndGraceVoiceEntry;
+    }
+
+    /**
+     * Finds the voice entry of the grace note that the wavy line stops at (WavyLine.EndGraceVoiceEntry) in a staff entry.
+     * @param graphicalStaffEntry the staff entry that holds the end note
+     */
+    private findEndGraceVoiceEntry(graphicalStaffEntry: GraphicalStaffEntry): VexFlowVoiceEntry {
+        const endGraceVoiceEntry: VoiceEntry = this.getWavyLine.EndGraceVoiceEntry;
+        if (!endGraceVoiceEntry || !graphicalStaffEntry) {
+            return undefined;
+        }
+        for (const gve of graphicalStaffEntry.graphicalVoiceEntries) {
+            const vve: VexFlowVoiceEntry = (gve as VexFlowVoiceEntry);
+            if (vve.parentVoiceEntry === endGraceVoiceEntry && vve.vfStaveNote) {
+                return vve;
+            }
+        }
+        return undefined;
     }
 
     /**

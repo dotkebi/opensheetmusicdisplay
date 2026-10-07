@@ -11,6 +11,7 @@ import { FontStyles } from "../../../Common/Enums/FontStyles";
 import { VoiceEntry } from "../../VoiceData/VoiceEntry";
 import { GraphicalNote } from "../GraphicalNote";
 import { GraphicalStaffEntry } from "../GraphicalStaffEntry";
+import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
 import { GraphicalTie } from "../GraphicalTie";
 import { Tie } from "../../VoiceData/Tie";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
@@ -2744,6 +2745,13 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         depressAnchor = undefined;
       }
       let endStaffEntry: GraphicalStaffEntry = endMeasure.findGraphicalStaffEntryFromTimestamp(endTimeStamp);
+      if (wavyLine.EndGraceVoiceEntry && !endIsClipped) {
+        // it stops at a grace note: the staff entry that holds it, which a grace note after its main note (a Nachschlag)
+        //   was moved to (its stop's timestamp is the main note's end)
+        endStaffEntry = endMeasure.staffEntries.find((gse: GraphicalStaffEntry): boolean =>
+          gse.graphicalVoiceEntries.some((gve: GraphicalVoiceEntry): boolean => gve.parentVoiceEntry === wavyLine.EndGraceVoiceEntry)
+        ) ?? endStaffEntry;
+      }
       if (!this.hasVexFlowNote(endStaffEntry)) { // fix for rendering range set
         endStaffEntry = this.findBoundaryNoteEntry(endNoteMeasures, true);
       }
@@ -2810,7 +2818,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           graphicalWavyLine.endNote = graphicalWavyLine.startNote;
           graphicalWavyLine.endVfVoiceEntry = graphicalWavyLine.startVfVoiceEntry;
         }
-        if (wavyLine.ParentEndMultiExpression === wavyLine.ParentStartMultiExpression) {
+        if (wavyLine.ParentEndMultiExpression === wavyLine.ParentStartMultiExpression && !graphicalWavyLine.EndsAtGraceNote) {
           // it starts and stops at the same note, e.g. a trill line over one note from Dolet for Sibelius or MuseScore:
           //   trill-mark, wavy-line start and wavy-line stop
           graphicalWavyLine.coverEndNoteDuration();
