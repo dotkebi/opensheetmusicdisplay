@@ -353,7 +353,9 @@ export class PedalMarking extends Element {
         if (pedal.custom_depress_text) {
           text_width = ctx.measureText(pedal.custom_depress_text).width;
           const left = this.ChangeBegin ? anchor + PedalMarking.CHANGE_GAP : anchor - (text_width / 2);
-          ctx.fillText(pedal.custom_depress_text, left, y);
+          if (!PedalMarking.isBlankText(pedal.custom_depress_text)) {
+            ctx.fillText(pedal.custom_depress_text, left, y);
+          }
         } else {
           // the glyph is drawn x_shift (-10) left of the given x; a change puts its left edge CHANGE_GAP right of the note
           const glyphX = this.ChangeBegin ? anchor + PedalMarking.CHANGE_GAP - PedalMarking.GLYPHS.pedal_depress.x_shift : anchor;
@@ -371,7 +373,9 @@ export class PedalMarking extends Element {
           } else if (this.ChangeEnd) {
             left = x - PedalMarking.CHANGE_GAP - text_width;
           }
-          ctx.fillText(pedal.custom_release_text, left, y);
+          if (!PedalMarking.isBlankText(pedal.custom_release_text)) {
+            ctx.fillText(pedal.custom_release_text, left, y);
+          }
         } else {
           // the glyph is drawn x_shift (-2) left of the given x
           const glyphData = PedalMarking.GLYPHS.pedal_release;
@@ -387,6 +391,15 @@ export class PedalMarking extends Element {
         }
       }
     });
+  }
+
+  // VexFlowPatch: a custom text of only spaces, which OSMD gives a mark it leaves out (" ": the release of a pedal piece
+  //   continued in the next system, the depress of a continuation, a release the next Ped. replaces), is not drawn. It
+  //   would draw nothing visible, but at the x of the pedal's end note, which can be in another system, not placed yet, and
+  //   differ between an incremental render's batches (renderNext()) and render() (Dichterliebe01: a <text> " " at the end
+  //   note of the pickup measure's Ped., which the Ped. in m.26 ends).
+  static isBlankText(text) {
+    return typeof text === 'string' && text.trim() === '';
   }
 
   // VexFlowPatch: horizontal gap kept between a release glyph and the depress glyph of a change at the same note.
