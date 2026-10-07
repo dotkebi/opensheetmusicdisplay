@@ -505,6 +505,24 @@ export declare abstract class MusicSheetCalculator {
     protected calculateExpressionAlignements(): void;
     private calculateStaffEntryArticulationMarks;
     private calculateOrnaments;
+    /**
+     * The ink of fermatas and ornaments that calculateOrnaments() raised over the slurs above (layoutFermatasOverSlurs(),
+     * layoutOrnament()), in units relative to its staff line, at its raised place.
+     */
+    protected marksRaisedOverSlurs: {
+        staffLine: StaffLine;
+        left: number;
+        right: number;
+        top: number;
+        bottom: number;
+    }[];
+    /**
+     * Measure numbers are placed before the ornaments (calculateMeasureNumberPlacement(), calculateMeasureNumberSkyline()),
+     * so a fermata or an ornament raised over a slur at the measure's start could go into the number (Giordani, Caro mio
+     * ben, voice m29: the fermata over the slur from its note). Raise the number over such ink under it, by
+     * [[measureNumberSlurClearance]], as over a slur (raiseMeasureNumberOverSlurs()), and reserve its new place.
+     */
+    private raiseMeasureNumbersOverRaisedMarks;
     private getFingeringPlacement;
     calculateFingerings(): void;
     private optimizeRestPlacement;
