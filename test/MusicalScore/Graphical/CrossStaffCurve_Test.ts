@@ -202,33 +202,8 @@ describe("Curves between staves", () => {
     });
 
     /** the curve clear of the right hand's notes in the measure, all voices: noteheads and stems (but at its end) */
-    const expectClearOfRightHand: (curve: CrossStaffCurve, index: number) => void = (curve: CrossStaffCurve, index: number) => {
-        for (const staffEntry of measureAt(index, 0).staffEntries) {
-            for (const voiceEntry of staffEntry.graphicalVoiceEntries) {
-                for (const note of voiceEntry.notes) {
-                    const vfNote: any = (note as any).vfnote[0];
-                    if (!vfNote?.getStemExtents) {
-                        continue;
-                    }
-                    const left: number = vfNote.getNoteHeadBeginX() / 10;
-                    const right: number = vfNote.getNoteHeadEndX() / 10;
-                    const y: number = vfNote.getYs()[0] / 10;
-                    const stemX: number = vfNote.getStemX() / 10;
-                    const extents: any = vfNote.getStemExtents();
-                    const stemFrom: number = Math.min(extents.topY, extents.baseY) / 10;
-                    const stemTo: number = Math.max(extents.topY, extents.baseY) / 10;
-                    for (const p of curve.sample(64)) {
-                        if (Math.hypot(p.x - curve.endPoint.x, p.y - curve.endPoint.y) < 0.6) {
-                            continue;
-                        }
-                        const inHead: boolean = p.x > left + 0.1 && p.x < right - 0.1 && Math.abs(p.y - y) < 0.4;
-                        const onStem: boolean = Math.abs(p.x - stemX) < 0.2 && p.y > stemFrom && p.y < stemTo;
-                        expect(inHead || onStem, `${note.sourceNote.Pitch?.ToString()} at ${p.x}, ${p.y}`).to.equal(false);
-                    }
-                }
-            }
-        }
-    };
+    const expectClearOfRightHand: (curve: CrossStaffCurve, index: number) => void =
+        (curve: CrossStaffCurve, index: number) => expectClearOfStaff(curve, measureAt(index, 0));
 
     it("draws each curve once per drawing, the same by renderAsync", async () => {
         const curvePaths: (div: HTMLElement) => string[] = (div: HTMLElement) =>
@@ -240,5 +215,79 @@ describe("Curves between staves", () => {
         await load();
         await osmd.renderAsync();
         expect(curvePaths(container)).to.deep.equal(sync);
+    });
+});
+
+/** the curve clear of the measure's notes, all voices: noteheads and stems (but at its end) */
+const expectClearOfStaff: (curve: CrossStaffCurve, measure: VexFlowMeasure) => void = (curve: CrossStaffCurve, measure: VexFlowMeasure) => {
+    for (const staffEntry of measure.staffEntries) {
+        for (const voiceEntry of staffEntry.graphicalVoiceEntries) {
+            for (const note of voiceEntry.notes) {
+                const vfNote: any = (note as any).vfnote[0];
+                if (!vfNote?.getStemExtents) {
+                    continue;
+                }
+                const left: number = vfNote.getNoteHeadBeginX() / 10;
+                const right: number = vfNote.getNoteHeadEndX() / 10;
+                const y: number = vfNote.getYs()[0] / 10;
+                const stemX: number = vfNote.getStemX() / 10;
+                const extents: any = vfNote.getStemExtents();
+                const stemFrom: number = Math.min(extents.topY, extents.baseY) / 10;
+                const stemTo: number = Math.max(extents.topY, extents.baseY) / 10;
+                for (const p of curve.sample(64)) {
+                    if (Math.hypot(p.x - curve.endPoint.x, p.y - curve.endPoint.y) < 0.6) {
+                        continue;
+                    }
+                    const inHead: boolean = p.x > left + 0.1 && p.x < right - 0.1 && Math.abs(p.y - y) < 0.4;
+                    const onStem: boolean = Math.abs(p.x - stemX) < 0.2 && p.y > stemFrom && p.y < stemTo;
+                    expect(inHead || onStem, `${note.sourceNote.Pitch?.ToString()} at ${p.x}, ${p.y}`).to.equal(false);
+                }
+            }
+        }
+    }
+};
+
+/**
+ * Fixture test_cross_staff_slur_beside.musicxml (synthetic, piano, 4/4, one measure): Myrthen 17 m2's shape — the right
+ * hand's upper voice six triplet eighths B4 A4 B4 C5 B4 A4 (stem up) over its lower voice's two D4 quarters (stem down),
+ * the left hand's G2 dotted eighth and D3-C4 sixteenth (stem up, beamed), a slur without placement from the sixteenth
+ * to the second D4. Wider than m6 of the curves' fixture (Myrthen 17 m3, its upper voice a half note): stretched to
+ * 600 px, the usual curve above runs up beside the D4's notehead, further off than ObstacleClearance (0.36 here), to its
+ * top.
+ */
+describe("A slur between the staves passing beside its note", () => {
+    let container: HTMLElement;
+    let osmd: OpenSheetMusicDisplay;
+    beforeEach(async () => {
+        container = TestUtils.getDivElement(document);
+        container.style.width = "600px";
+        osmd = new OpenSheetMusicDisplay(container, { autoResize: false, backend: "svg", stretchLastSystemLine: true });
+        await osmd.load(TestUtils.getScore("test_cross_staff_slur_beside.musicxml"));
+        osmd.render();
+    });
+    afterEach(() => {
+        osmd.clear();
+        container.remove();
+    });
+
+    it("to a lower voice's note, its side not given by the XML, joins the notes' facing sides", () => {
+        const curves: CrossStaffCurve[] = (osmd.GraphicSheet.MeasureList[0][1] as VexFlowMeasure).crossStaffCurves;
+        expect(curves.length).to.equal(1);
+        const curve: CrossStaffCurve = curves[0];
+        expect(curve.unclearedObstacles).to.equal(0);
+        const start: any = (curve.startNote as any).vfnote[0];
+        const end: any = (curve.endNote as any).vfnote[0];
+        expect(end.getStemDirection()).to.equal(-1);
+        // from right of the sixteenth's stem, at its notehead
+        expect(curve.startPoint.x).to.be.greaterThan(start.getStemX() / 10);
+        // to under the D4 notehead, at its stem's end (not up beside it over its top)
+        expect(curve.endPoint.y).to.be.greaterThan(end.getYs()[0] / 10 + 0.5);
+        expect(curve.endPoint.y).to.be.at.least(end.getStemExtents().topY / 10);
+        // bowing right of the line from end to end, as in the source
+        expect(curve.placement).to.equal(PlacementEnum.Below);
+        const mid: PointF2D = curve.sample(64)[32];
+        const t: number = (mid.y - curve.startPoint.y) / (curve.endPoint.y - curve.startPoint.y);
+        expect(mid.x).to.be.greaterThan(curve.startPoint.x + t * (curve.endPoint.x - curve.startPoint.x));
+        expectClearOfStaff(curve, osmd.GraphicSheet.MeasureList[0][0] as VexFlowMeasure);
     });
 });
