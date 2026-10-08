@@ -596,6 +596,9 @@ export declare abstract class MusicSheetCalculator {
      */
     private calculateLyricExtend;
     private hasLyricsOfVerse;
+    /** Whether a note of the voice in the staff entry carries the verse's extend in a text-less lyric node (continue or stop,
+     *  VoiceEntry.ExtendOnlyLyricVerses). Any voice when the extend's voice is unknown. */
+    private voiceCarriesExtendInStaffEntry;
     /** The last of the grace notes before the main note of the next syllable's staff entry that carry the verse's extend
      *  (VoiceEntry.ExtendOnlyLyricVerses) in the extend's voice, where the extend line ends. Undefined if there is none. */
     private extendEndGraceEntry;
@@ -621,9 +624,11 @@ export declare abstract class MusicSheetCalculator {
      * syllable instead, up to EngravingRules.LyricExtendMinimumLength, but never into its label.
      * Lines that are already long enough are returned unchanged.
      */
-    /** The x a lyric extend line in the staff line must end before: the left of the next syllable's label, if it is in the
-     *  staff line (else the staff line's end). The last note of a melisma can sit under that label when the measure is
-     *  narrow, so the line ended inside it (Schumann, Myrthen 10 m14 in the app: "weh!" into the E of "Ein"). */
+    /** The x a lyric extend line in the staff line must end before: the left of the next syllable's label less
+     *  EngravingRules.LyricExtendEndGap, if it is in the staff line (else the staff line's end). The last note of a melisma can
+     *  sit under that label when the measure is narrow, so the line ended inside it (Schumann, Myrthen 10 m14 in the app:
+     *  "weh!" into the E of "Ein"), and a line ending right at the label reads as part of it (Bellini, Almen se non poss'io
+     *  m27 "voi ___ non"). */
     private lyricLineLimitBeforeNextSyllable;
     private extendLyricLineToMinimumLength;
     private calculateSingleLyricWordWithUnderscore;
