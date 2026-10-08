@@ -222,7 +222,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             if (!this.lazyDrawsSlur(graphicalSlur)) {
                 continue;
             }
-            if (graphicalSlur.slur.isCrossed() && !graphicalSlur.isCrossStaffPiece) {
+            if (graphicalSlur.slur.isCrossed() && !graphicalSlur.isCrossStaffPiece || graphicalSlur.crossStaffCurve) {
                 continue; // one curve between two staves is drawn with its measures (drawCrossStaffCurves())
             }
             this.drawSlur(graphicalSlur, absolutePos);

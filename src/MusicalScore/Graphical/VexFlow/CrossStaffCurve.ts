@@ -196,19 +196,27 @@ export class CrossStaffCurve {
     public readonly tieDirection: PlacementEnum | undefined;
     /** the measures from the start note's to the end note's, on both staves */
     public readonly participants: GraphicalMeasure[];
+    /** For a slur whose two notes lie on one staff while its voice's notes between them lie on the other staff of the
+     *  same system (Bellini, Sogno d'infanzia m36: the left hand's E3 to its G3 over the right hand's E4 C4 under a
+     *  cross-staff beam): that other staff. The curve runs between the two staves as a slur from one to the other does,
+     *  over (under) those notes and the beam, its ends at the ends of the notes' stems on the beam as the source's slur
+     *  over the beam (VexFlowMusicSheetCalculator.sameStaffSlurInnerLine()). Undefined otherwise. */
+    public readonly innerLine: StaffLine | undefined;
 
     private constructor(graphicalSlur: GraphicalSlur | undefined, startNote: GraphicalNote, endNote: GraphicalNote,
-                        tieDirection: PlacementEnum | undefined, participants: GraphicalMeasure[]) {
+                        tieDirection: PlacementEnum | undefined, participants: GraphicalMeasure[],
+                        innerLine: StaffLine | undefined = undefined) {
         this.graphicalSlur = graphicalSlur;
         this.startNote = startNote;
         this.endNote = endNote;
         this.tieDirection = tieDirection;
         this.participants = participants;
+        this.innerLine = innerLine;
     }
 
     public static slur(graphicalSlur: GraphicalSlur, startNote: GraphicalNote, endNote: GraphicalNote,
-                       participants: GraphicalMeasure[]): CrossStaffCurve {
-        return new CrossStaffCurve(graphicalSlur, startNote, endNote, undefined, participants);
+                       participants: GraphicalMeasure[], innerLine: StaffLine | undefined = undefined): CrossStaffCurve {
+        return new CrossStaffCurve(graphicalSlur, startNote, endNote, undefined, participants, innerLine);
     }
 
     public static tie(startNote: GraphicalNote, endNote: GraphicalNote, direction: PlacementEnum,
@@ -244,6 +252,11 @@ export class CrossStaffCurve {
         if (!startLine || !endLine || startLine.ParentMusicSystem !== endLine.ParentMusicSystem) {
             return false;
         }
+        // (a slur on one staff over its voice's notes on the other: the other staff is theirs, innerLine)
+        const otherLine: StaffLine = startLine === endLine ? this.innerLine : endLine;
+        if (!otherLine || otherLine.ParentMusicSystem !== startLine.ParentMusicSystem) {
+            return false;
+        }
         const start: CrossStaffCurveNote = geometry.note(this.startNote);
         const end: CrossStaffCurveNote = geometry.note(this.endNote);
         if (!start || !end) {
@@ -251,7 +264,7 @@ export class CrossStaffCurve {
         }
         return this.isTie
             ? this.calculateTie(start, end)
-            : this.calculateSlur(rules, geometry, startLine, endLine, start, end);
+            : this.calculateSlur(rules, geometry, startLine, otherLine, start, end);
     }
 
     // ------------------------------------------------------------------------------------------------------- ties
@@ -321,23 +334,27 @@ export class CrossStaffCurve {
      * notehead or, when the stem points to the slur's side, the stem's end (as on one staff) — each of the four pairs is
      * tried, the curve clearing all obstacles with one arch wins, the usual ends first (Myrthen 1 m4: the slur under the
      * beam ends at the right-hand note's stem; 3 m3: the slur over the arpeggio starts at the left-hand notehead,
-     * beside its stem).
+     * beside its stem). A slur on one staff over its voice's notes on the other (innerLine) is fitted upright (see
+     * fitSlur()).
      */
     private calculateSlur(rules: EngravingRules, geometry: CrossStaffCurveGeometry, startLine: StaffLine,
-                          endLine: StaffLine, start: CrossStaffCurveNote, end: CrossStaffCurveNote): boolean {
+                          otherLine: StaffLine, start: CrossStaffCurveNote, end: CrossStaffCurveNote): boolean {
         const gSlur: GraphicalSlur = this.graphicalSlur;
+        // the slur's two staves: its end note's, or — both notes on one staff — the staff of its voice's notes
+        //   between them (innerLine)
+        const sameStaff: boolean = otherLine !== this.endLine;
         const startOrigin: PointF2D = geometry.origin(startLine);
-        const endOrigin: PointF2D = geometry.origin(endLine);
-        const startIsUpper: boolean = startOrigin.y < endOrigin.y;
-        const upper: StaffLine = startIsUpper ? startLine : endLine;
-        const lower: StaffLine = startIsUpper ? endLine : startLine;
-        const upperOrigin: PointF2D = startIsUpper ? startOrigin : endOrigin;
-        const lowerOrigin: PointF2D = startIsUpper ? endOrigin : startOrigin;
+        const otherOrigin: PointF2D = geometry.origin(otherLine);
+        const startIsUpper: boolean = startOrigin.y < otherOrigin.y;
+        const upper: StaffLine = startIsUpper ? startLine : otherLine;
+        const lower: StaffLine = startIsUpper ? otherLine : startLine;
+        const upperOrigin: PointF2D = startIsUpper ? startOrigin : otherOrigin;
+        const lowerOrigin: PointF2D = startIsUpper ? otherOrigin : startOrigin;
 
         const inner: CrossStaffCurveNote[] = this.voiceNotesBetween(geometry);
         let below: boolean = this.placementOf(rules, start, end, inner) === PlacementEnum.Below;
         const fit: (below: boolean, steep: boolean) => SlurFit = (side: boolean, steep: boolean) =>
-            this.fitSlur(rules, geometry, upper, lower, upperOrigin, lowerOrigin, start, end, inner, side, steep);
+            this.fitSlur(rules, geometry, upper, lower, upperOrigin, lowerOrigin, start, end, inner, side, steep, sameStaff);
         let best: SlurFit = fit(below, false);
         // a steep slur — or, its side not given by the XML, one from beside its start's stem, however wide
         //   (isSteep()) — whose curve climbs past one of its notes: through its notehead, along a stem pointing away
@@ -383,7 +400,8 @@ export class CrossStaffCurve {
      *  facing sides (facingEnd()). */
     private fitSlur(rules: EngravingRules, geometry: CrossStaffCurveGeometry, upper: StaffLine, lower: StaffLine,
                     upperOrigin: PointF2D, lowerOrigin: PointF2D, start: CrossStaffCurveNote, end: CrossStaffCurveNote,
-                    inner: CrossStaffCurveNote[], below: boolean, steep: boolean): SlurFit {
+                    inner: CrossStaffCurveNote[], below: boolean, steep: boolean,
+                    sameStaff: boolean = false): SlurFit {
         const gap: number = rules.SlurNoteHeadYOffset;
         const far: StaffLine = below ? upper : lower;
         const farOrigin: PointF2D = below ? upperOrigin : lowerOrigin;
@@ -423,12 +441,17 @@ export class CrossStaffCurve {
                 continue;
             }
             const points: PointF2D[] = [...candidates, ...ownStems].filter(point => point.x > p0.x + 0.1 && point.x < p3.x - 0.1);
+            // (on one staff the frame is upright — along x, beyond vertically, as the arch's first family: the beam
+            //   and the other staff's notes stand high over a nearly level line, those near its ends projecting past
+            //   it along the line, Bellini Sogno m36's C4 at its end)
+            const upright: boolean = sameStaff && p3.x - p0.x > 0.5;
             const arch: Segment[] = this.fitArch(rules, p0, p3, points, below);
             const archReach: number = CrossStaffCurve.reach(arch, p0, p3, below);
             // (the hull reaches as far as its highest corner: an obstacle, or the least bow)
-            const hullReach: number = CrossStaffCurve.hullHeight(rules, p0, p3, points, below);
-            const useArch: boolean = archReach <= hullReach * 1.25 + 0.5 && CrossStaffCurve.uncleared(arch, points, below) === 0;
-            const hull: Segment[] = useArch ? arch : this.hullCurve(rules, p0, p3, points, below);
+            const hullReach: number = CrossStaffCurve.hullHeight(rules, p0, p3, points, below, upright);
+            const useArch: boolean = archReach <= hullReach * 1.25 + 0.5 &&
+                CrossStaffCurve.uncleared(arch, points, below, upright) === 0;
+            const hull: Segment[] = useArch ? arch : this.hullCurve(rules, p0, p3, points, below, upright);
             // one clean arch first, then the usual ends, then the lower curve
             const cost: number = (useArch ? 0 : 1000) + (usual ? 0 : 100) + (useArch ? archReach : hullReach);
             if (cost < best) {
@@ -436,7 +459,7 @@ export class CrossStaffCurve {
                 bestFit = {
                     segments: useArch ? arch : hull,
                     hull: !useArch,
-                    uncleared: useArch ? 0 : CrossStaffCurve.uncleared(hull, points, below),
+                    uncleared: useArch ? 0 : CrossStaffCurve.uncleared(hull, points, below, upright),
                     startAtStem: startAtStem,
                     endAtStem: endAtStem,
                 };
@@ -910,22 +933,30 @@ export class CrossStaffCurve {
     /** The curve over (under) the convex hull of the ends and the obstacles (each ObstacleClearance out), with the
      *  slur's least bow: a Catmull-Rom spline through the hull's corners. It follows obstacles that one arch can't
      *  clear without rising far past them. */
-    private hullCurve(rules: EngravingRules, p0: PointF2D, p3: PointF2D, points: PointF2D[], below: boolean): Segment[] {
+    private hullCurve(rules: EngravingRules, p0: PointF2D, p3: PointF2D, points: PointF2D[], below: boolean,
+                      upright: boolean = false): Segment[] {
         const length: number = CrossStaffCurve.distance(p0, p3);
         const ex: PointF2D = new PointF2D((p3.x - p0.x) / length, (p3.y - p0.y) / length);
         const n: PointF2D = CrossStaffCurve.normal(p0, p3, below);
         const bow: number = 0.75 * CrossStaffCurve.bow(rules, p0, p3);
-        // (u along the line from p0, v away from it on the slur's side)
+        const dx: number = p3.x - p0.x;
+        const dy: number = p3.y - p0.y;
+        const side: number = below ? 1 : -1;
+        // (u along the line from p0, v away from it on the slur's side — or, upright, u along x and v vertically
+        //   beyond the line)
+        const span: number = upright ? dx : length;
+        const toFrame: (point: PointF2D) => PointF2D = (point: PointF2D): PointF2D => upright
+            ? new PointF2D(point.x - p0.x, side * (point.y - p0.y - dy / dx * (point.x - p0.x)))
+            : new PointF2D((point.x - p0.x) * ex.x + (point.y - p0.y) * ex.y, (point.x - p0.x) * n.x + (point.y - p0.y) * n.y);
         const frame: PointF2D[] = [
             new PointF2D(0, 0),
-            ...[0.25, 0.5, 0.75].map(k => new PointF2D(k * length, 4 * k * (1 - k) * bow)),
+            ...[0.25, 0.5, 0.75].map(k => new PointF2D(k * span, 4 * k * (1 - k) * bow)),
             ...points.map(point => {
-                const dx: number = point.x - p0.x;
-                const dy: number = point.y - p0.y;
-                return new PointF2D(dx * ex.x + dy * ex.y, dx * n.x + dy * n.y + CrossStaffCurve.ObstacleClearance);
+                const p: PointF2D = toFrame(point);
+                return new PointF2D(p.x, p.y + CrossStaffCurve.ObstacleClearance);
             }),
-            new PointF2D(length, 0),
-        ].filter(point => point.x >= 0 && point.x <= length && point.y >= 0)
+            new PointF2D(span, 0),
+        ].filter(point => point.x >= 0 && point.x <= span && point.y >= 0)
             .sort((a, b) => a.x - b.x);
         // the upper hull (largest v), left to right
         const hull: PointF2D[] = [];
@@ -943,7 +974,9 @@ export class CrossStaffCurve {
             hull.push(point);
         }
         const corners: PointF2D[] = CrossStaffCurve.simplify(hull, 0.25)
-            .map(p => new PointF2D(p0.x + p.x * ex.x + p.y * n.x, p0.y + p.x * ex.y + p.y * n.y));
+            .map(p => upright
+                ? new PointF2D(p0.x + p.x, p0.y + dy / dx * p.x + side * p.y)
+                : new PointF2D(p0.x + p.x * ex.x + p.y * n.x, p0.y + p.x * ex.y + p.y * n.y));
         corners[0] = p0;
         corners[corners.length - 1] = p3;
         const result: Segment[] = [];
@@ -990,13 +1023,23 @@ export class CrossStaffCurve {
 
     /** The height of hullCurve()'s highest corner over the line from p0 to p3: the highest obstacle (with its
      *  clearance), or the least bow. */
-    private static hullHeight(rules: EngravingRules, p0: PointF2D, p3: PointF2D, points: PointF2D[], below: boolean): number {
+    private static hullHeight(rules: EngravingRules, p0: PointF2D, p3: PointF2D, points: PointF2D[], below: boolean,
+                              upright: boolean = false): number {
         const n: PointF2D = CrossStaffCurve.normal(p0, p3, below);
         let height: number = 0.75 * CrossStaffCurve.bow(rules, p0, p3);
         for (const point of points) {
-            height = Math.max(height, (point.x - p0.x) * n.x + (point.y - p0.y) * n.y + CrossStaffCurve.ObstacleClearance);
+            height = Math.max(height, CrossStaffCurve.beyond(p0, p3, n, point, below, upright) + CrossStaffCurve.ObstacleClearance);
         }
         return height;
+    }
+
+    /** How far the point lies beyond the line from p0 to p3 on the curve's side (n: its normal): square to the line,
+     *  or, upright, vertically. */
+    private static beyond(p0: PointF2D, p3: PointF2D, n: PointF2D, point: PointF2D, below: boolean, upright: boolean): number {
+        if (upright) {
+            return (below ? 1 : -1) * (point.y - p0.y - (p3.y - p0.y) / (p3.x - p0.x) * (point.x - p0.x));
+        }
+        return (point.x - p0.x) * n.x + (point.y - p0.y) * n.y;
     }
 
     private static bow(rules: EngravingRules, p0: PointF2D, p3: PointF2D): number {
@@ -1020,19 +1063,21 @@ export class CrossStaffCurve {
 
     /** The obstacles closer than MinClearance to the curve or past it (on its side of the line from its start to its
      *  end, outside the curve), away from its ends (an obstacle next to an end, its own notehead or stem, is reached). */
-    private static uncleared(curve: Segment[], points: PointF2D[], below: boolean): number {
+    private static uncleared(curve: Segment[], points: PointF2D[], below: boolean, upright: boolean = false): number {
         const samples: PointF2D[] = CrossStaffCurve.sampleOf(curve, 32);
         const p0: PointF2D = samples[0];
         const p3: PointF2D = samples[samples.length - 1];
-        const length: number = CrossStaffCurve.distance(p0, p3);
+        const length: number = upright ? p3.x - p0.x : CrossStaffCurve.distance(p0, p3);
         const n: PointF2D = CrossStaffCurve.normal(p0, p3, below);
         let count: number = 0;
         for (const point of points) {
-            const along: number = ((point.x - p0.x) * (p3.x - p0.x) + (point.y - p0.y) * (p3.y - p0.y)) / Math.max(1e-9, length);
+            const along: number = upright
+                ? point.x - p0.x
+                : ((point.x - p0.x) * (p3.x - p0.x) + (point.y - p0.y) * (p3.y - p0.y)) / Math.max(1e-9, length);
             if (along < 0.75 || along > length - 0.75) {
                 continue;
             }
-            const beyondLine: boolean = (point.x - p0.x) * n.x + (point.y - p0.y) * n.y > 0;
+            const beyondLine: boolean = CrossStaffCurve.beyond(p0, p3, n, point, below, upright) > 0;
             if (beyondLine && !CrossStaffCurve.inside(samples, point) ||
                 CrossStaffCurve.distanceToPolyline(samples, point) < CrossStaffCurve.MinClearance) {
                 count++;
@@ -1134,7 +1179,7 @@ export class CrossStaffCurve {
      *  CrossStaffBeam.reservedStemLength()). */
     public reserveOuterSides(rules: EngravingRules, geometry: CrossStaffCurveLayoutGeometry): void {
         const startLine: StaffLine = this.startLine;
-        const endLine: StaffLine = this.endLine;
+        const endLine: StaffLine = this.startLine === this.endLine ? this.innerLine : this.endLine;
         if (!startLine || !endLine || this.segments.length === 0) {
             return;
         }
