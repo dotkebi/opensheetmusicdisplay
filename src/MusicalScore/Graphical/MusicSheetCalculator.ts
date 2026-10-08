@@ -1373,9 +1373,18 @@ export abstract class MusicSheetCalculator {
             }
         }
 
+        // The words keep their label's margin (LabelMarginBorderFactor, about 0.2 units) clear of the sky (bottom) line, as a
+        //   verbal dynamic's box does (calculateGraphicalVerbalContinuousDynamic()) and as osmd-dart places words: with the
+        //   text itself at the line, words kept inside their measure (keepWordsBeforeStrongBarline()) moved onto the breath
+        //   mark of their note and onto a slur and touched them (Bellini, Vaga luna, voice and piano m11 "più cresc.").
+        if (!this.rules.PlaceWordsInsideStafflineFromXml || !(defaultYXml < 0 && defaultYXml > -50)) {
+            graphLabel.PositionAndShape.RelativePosition.y -= placement === PlacementEnum.Below ?
+                graphLabel.PositionAndShape.BorderMarginTop : graphLabel.PositionAndShape.BorderMarginBottom;
+        }
         // registers itself in staffLine.AbstractExpressions (pushing it there again drew the words twice)
-        new GraphicalUnknownExpression(
+        const unknownExpression: GraphicalUnknownExpression = new GraphicalUnknownExpression(
             staffLine, graphLabel, placement, measures[staffIndex]?.parentSourceMeasure, multiExpression);
+        unknownExpression.updateSkyBottomLine();
         //    multiExpression); // TODO would be nice to hand over and save reference to original expression,
         //                         but MultiExpression is not an AbstractExpression.
         if (lastEntry?.expression) {
@@ -2576,11 +2585,18 @@ export abstract class MusicSheetCalculator {
         if (endOffsetFraction && this.rules.UseEndOffsetForExpressions) {
             placementFraction.Add(endOffsetFraction);
         }
+        // The grace notes before the next note are drawn left of it, inside its staff entry's box: a wedge ending at that
+        //   note ends before them, where a wedge starting there starts (Gluck, O del mio dolce ardor, Canto m13: the
+        //   crescendo ran over the grace note to the note, into the diminuendo starting at the grace note, which was then
+        //   stacked above it). Same as osmd-dart.
+        const graceBeforeNextNote: boolean = endMeasure.staffEntries.some(se =>
+            Math.abs(se.getAbsoluteTimestamp().RealValue - placementFraction.RealValue) < 1e-9 &&
+            se.graphicalVoiceEntries.some(gve => gve.parentVoiceEntry.IsGrace && !gve.parentVoiceEntry.GraceAfterMainNote));
         // TODO for the last note of the piece (wedge ending after last note), this timestamp is incorrect, being after the last note
         //   but there's a workaround in getRelativePositionInStaffLineFromTimestamp() via the variable endAfterRightStaffEntry
         const nextNotePosInStaffLine: PointF2D = this.getRelativePositionInStaffLineFromTimestamp(
             placementFraction, staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0,
-            graphicalContinuousDynamic.ContinuousDynamic.DynamicType === ContDynamicEnum.diminuendo);
+            graphicalContinuousDynamic.ContinuousDynamic.DynamicType === ContDynamicEnum.diminuendo || graceBeforeNextNote);
         const wedgePadding: number = this.rules.SoftAccentWedgePadding;
         const staffEntryWidth: number = container.getFirstNonNullStaffEntry().PositionAndShape.Size.width; // staff entry widths for whole notes is too long
         const sizeFactor: number = this.rules.SoftAccentSizeFactor;
@@ -5324,10 +5340,31 @@ export abstract class MusicSheetCalculator {
                     endStaffEntry.PositionAndShape.BorderMarginRight;
                 secondEndX = Math.min(secondEndX, this.lyricLineLimitBeforeNextSyllable(nextLyricStaffEntry, endStaffLine));
                 if (secondEndX > secondStartX) {
-                    this.calculateSingleLyricWordWithUnderscore(endStaffLine, secondStartX, secondEndX, startY);
+                    // at the verse's row in the end staff line, which has rows of its own (Bellini, Vaga luna, voice m29:
+                    //   verse 2's line continued at the first system's row, at verse 1's height on the second, into its hyphens)
+                    const secondY: number = this.lyricExtendYInStaffLine(endStaffLine, verseNumber, voice) ?? startY;
+                    this.calculateSingleLyricWordWithUnderscore(endStaffLine, secondStartX, secondEndX, secondY);
                 }
             }
         }
+    }
+
+    /** The y of a lyric extend line of the verse in the staff line: the row of the verse's syllables there, as
+     *  calculateLyricExtend() takes it from the extend's own syllable (its label's y, lined up with the text's bottom).
+     *  Each staff line's lyric rows start under its own lowest notes (calculateLyricsPosition()), so the row of the
+     *  first system is not the row of the second. Undefined when the verse has no syllable in the staff line. */
+    private lyricExtendYInStaffLine(staffLine: StaffLine, verseNumber: string, voice: Voice): number {
+        for (const measure of staffLine.Measures) {
+            for (const entry of measure.staffEntries) {
+                for (const lyric of entry.LyricsEntries) {
+                    if (lyric.LyricsEntry.VerseNumber === verseNumber && (!voice || lyric.LyricsEntry.Parent?.ParentVoice === voice)) {
+                        const box: BoundingBox = lyric.GraphicalLabel.PositionAndShape;
+                        return box.RelativePosition.y - box.Size.height / 4;
+                    }
+                }
+            }
+        }
+        return undefined;
     }
 
     private hasLyricsOfVerse(staffEntry: GraphicalStaffEntry, verseNumber: string): boolean {

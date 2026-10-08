@@ -4,6 +4,7 @@ import { GraphicalNote } from "./GraphicalNote";
 import { GraphicalCurve } from "./GraphicalCurve";
 import { Slur } from "../VoiceData/Expressions/ContinuousExpressions/Slur";
 import { PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
+import { Articulation } from "../VoiceData/Articulation";
 import { EngravingRules } from "./EngravingRules";
 import { StaffLine } from "./StaffLine";
 import { SkyBottomLineCalculator } from "./SkyBottomLineCalculator";
@@ -13,7 +14,7 @@ import { GraphicalVoiceEntry } from "./GraphicalVoiceEntry";
 import { GraphicalStaffEntry } from "./GraphicalStaffEntry";
 import { GraphicalMeasure } from "./GraphicalMeasure";
 import { Fraction } from "../../Common/DataObjects/Fraction";
-import { StemDirectionType, VoiceEntry } from "../VoiceData/VoiceEntry";
+import { ArticulationEnum, StemDirectionType, VoiceEntry } from "../VoiceData/VoiceEntry";
 import { VexFlowGraphicalNote, VexFlowMeasure } from "./VexFlow";
 import { CrossStaffCurve } from "./VexFlow/CrossStaffCurve";
 import Vex from "vexflow";
@@ -696,6 +697,62 @@ export class GraphicalSlur extends GraphicalCurve {
         return {startX: start.x, startY: start.y, endX: end.x, endY: end.y};
     }
 
+    /** The clearance a slur keeps from an articulation at its start or end note on its side (in units). */
+    private static readonly articulationClearance: number = 0.3;
+
+    /**
+     * Where a slur on `side` starts or ends at `note` when the note has an articulation on that side: beyond the
+     * articulation, with articulationClearance, read from the sky (bottom) line before the slurs were placed
+     * (StaffLine.SkyLineBeforeSlurs). The slur's end point at the note's box plus SlurEndArticulationYOffset ran through an
+     * accent put on the stem side for a second voice (Caccini, Amarilli, piano m11, m25, m42; Bellini, Vaga luna, piano
+     * m13 and m49: an accent between the end of one slur and the start of the next), and the start had no offset at all.
+     * Fermatas and breath marks keep their own place (a fermata is raised over the slur, VexFlowMusicSheetCalculator.
+     * layoutFermatasOverSlurs()). Returns Infinity (above) or -Infinity (below) without such an articulation. Same as osmd-dart.
+     */
+    private static yOverArticulation(note: GraphicalNote, side: PlacementEnum): number {
+        // (no constraint: the minimum with it keeps the y above, the maximum the y below)
+        const none: number = side === PlacementEnum.Above ? Infinity : -Infinity;
+        if (!note || !GraphicalSlur.hasArticulationOnSide(note, side)) {
+            return none;
+        }
+        const entry: GraphicalStaffEntry = note.parentVoiceEntry?.parentStaffEntry;
+        if (!entry?.parentMeasure?.ParentStaffLine?.SkyLineBeforeSlurs) {
+            return none;
+        }
+        if (side === PlacementEnum.Above) {
+            return entry.getSkylineMinBeforeSlurs() - GraphicalSlur.articulationClearance;
+        }
+        return entry.getBottomlineMaxBeforeSlurs() + GraphicalSlur.articulationClearance;
+    }
+
+    /** Whether the note's voice entry has an articulation other than a fermata or a breath mark on `side`: as the XML
+     *  places it, else as VexFlow positioned it (the modifiers of the note). */
+    private static hasArticulationOnSide(note: GraphicalNote, side: PlacementEnum): boolean {
+        const ownPlace: (a: Articulation) => boolean = (a: Articulation): boolean =>
+            a.articulationEnum === ArticulationEnum.fermata || a.articulationEnum === ArticulationEnum.invertedfermata ||
+            a.articulationEnum === ArticulationEnum.breathmark;
+        const articulations: Articulation[] = note.parentVoiceEntry?.parentVoiceEntry?.Articulations?.filter(a => !ownPlace(a)) ?? [];
+        if (articulations.length === 0) {
+            return false;
+        }
+        if (articulations.some(a => a.placement === side)) {
+            return true;
+        }
+        if (!articulations.some(a => a.placement === PlacementEnum.NotYetDefined)) {
+            return false;
+        }
+        const vfNotes: any[] = (note as VexFlowGraphicalNote).vfnote;
+        const modifiers: any[] = vfNotes && vfNotes.length > 0 && vfNotes[0] ? (vfNotes[0] as any).modifiers : undefined;
+        const vfSide: number = side === PlacementEnum.Above ? VF.Modifier.Position.ABOVE : VF.Modifier.Position.BELOW;
+        for (const modifier of modifiers || []) {
+            if (modifier.getCategory?.() === VF.Articulation.CATEGORY && modifier.position === vfSide &&
+                !modifier.isBreathMark?.() && modifier.type !== "a@a" && modifier.type !== "a@u") {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private calculateStartAndEnd(   slurStartNote: GraphicalNote,
                                     slurEndNote: GraphicalNote,
                                     staffLine: StaffLine,
@@ -732,6 +789,7 @@ export class GraphicalSlur extends GraphicalCurve {
                     //     }
                     // }
                 }
+                startY = Math.min(startY, GraphicalSlur.yOverArticulation(slurStartNote, PlacementEnum.Above));
             } else {
                 startY = slurStartVE.PositionAndShape.RelativePosition.y + slurStartVE.PositionAndShape.BorderBottom;
                 if (this.rules.SlurPlacementUseSkyBottomLine) {
@@ -743,6 +801,7 @@ export class GraphicalSlur extends GraphicalCurve {
                 //         break;
                 //     }
                 // }
+                startY = Math.max(startY, GraphicalSlur.yOverArticulation(slurStartNote, PlacementEnum.Below));
             }
 
             // If the stem points towards the starting point of the slur, shift the slur by a small amount to start (approximately) at the x-position
@@ -812,6 +871,7 @@ export class GraphicalSlur extends GraphicalCurve {
                 if (articulationPlacement === PlacementEnum.Above) {
                     endY -= this.rules.SlurEndArticulationYOffset;
                 }
+                endY = Math.min(endY, GraphicalSlur.yOverArticulation(slurEndNote, PlacementEnum.Above));
             } else {
                 endY = slurEndVE.PositionAndShape.RelativePosition.y + slurEndVE.PositionAndShape.BorderBottom;
                 if (this.rules.SlurPlacementUseSkyBottomLine) {
@@ -820,6 +880,7 @@ export class GraphicalSlur extends GraphicalCurve {
                 if (articulationPlacement === PlacementEnum.Below) {
                     endY += this.rules.SlurEndArticulationYOffset;
                 }
+                endY = Math.max(endY, GraphicalSlur.yOverArticulation(slurEndNote, PlacementEnum.Below));
             }
 
             // If the stem points towards the endpoint of the slur, shift the slur by a small amount to start (approximately) at the x-position

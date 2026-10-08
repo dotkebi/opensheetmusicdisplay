@@ -368,6 +368,12 @@ export class VexFlowConverter {
         if (stemless) {
             return pitchSide;
         }
+        // when the notes don't say (the nearest note of the voice at the other voice's pitch), the stems do: the lower voice
+        //   by its stems keeps its rest below (Gluck, O del mio dolce ardor, left hand m10: voice 5's eighth rest between
+        //   its low E3 and its G4 at voice 6's G4 went above as the rest of a "first" voice, into voice 6's beam)
+        if (pitchSide === undefined) {
+            return stemSide;
+        }
         return pitchSide === stemSide ? pitchSide : undefined;
     }
 
