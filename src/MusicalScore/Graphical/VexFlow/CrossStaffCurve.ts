@@ -372,8 +372,14 @@ export class CrossStaffCurve {
         //   right, as in the source — to the left it would run back through the left hand's beam), when no other note
         //   stands between its ends and it is clear of the notes across it on both staves, their stems and beams
         //   (Myrthen 3, 15 m16: from the first of the left hand's beamed notes it would bend under the others; 15 m57:
-        //   cross the left hand's other voice)
-        if (best && (CrossStaffCurve.isSteep(start, end) ||
+        //   cross the left hand's other voice). Not a curve from stem end to stem end of two notes of one beam, their
+        //   stems to its side: it runs over the beam they end on (Bellini, Dolente immagine m24-25 in the app, the beam
+        //   above the right hand's chords: from the chord over the beam to the left hand's E3 — R12, the beam's XML
+        //   stems all up)
+        const startBeam: Beam = this.startNote.sourceNote.NoteBeam;
+        const overOwnBeam: boolean = !!best && best.startAtStem && best.endAtStem && !!startBeam &&
+            startBeam === this.endNote.sourceNote.NoteBeam;
+        if (best && !overOwnBeam && (CrossStaffCurve.isSteep(start, end) ||
                      CrossStaffCurve.besideStem(start, end, true) && !this.placedByXml(rules)) &&
             CrossStaffCurve.climbsPast(best, start, end, !this.placedByXml(rules) && inner.length === 0)) {
             const steepBelow: boolean = CrossStaffCurve.besideStem(start, end, true) ? end.headY < start.headY : below;

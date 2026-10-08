@@ -18,7 +18,8 @@ import { StemDirectionType, VoiceEntry } from "../../VoiceData/VoiceEntry";
  *
  * Stems: the notes keep the direction the layout gave them — the XML `<stem>` when given, else the centred default
  * {@link CrossStaffBeam.centerStemDirection} (notes of the upper staff down, of the lower staff up: the beam between
- * the staves; also for XML stems all one way, EngravingRules.CrossStaffBeamsCenterUniformXmlStems). When the
+ * the staves; also for XML stems all down, EngravingRules.CrossStaffBeamsCenterUniformXmlStems — XML stems all up
+ * are kept, EngravingRules.CrossStaffBeamsFollowUniformUpXmlStems: the beam above the notes of both staves). When the
  * directions differ ("mixed", the centred beam) the beam is placed by placeMixed() — VexFlow 1.2.93 cannot place
  * such a beam (it extends every stem as if it went the first note's way), so it is placed here, the same way as in
  * osmd-dart (VexFlow 5). When all stems go one way the beam is VexFlow's own.
@@ -337,8 +338,10 @@ export class CrossStaffBeam extends VF.Beam {
 
     /** The centred stem direction of a voice entry in a cross-staff beam segment: down on the segment's top staff, up
      *  below it (the beam between the staves). Undefined: not in such a segment (or, with onlyIfXmlStemsUniform, not
-     *  every note of it has the same XML stem). */
-    public static centerStemDirection(voiceEntry: VoiceEntry, onlyIfXmlStemsUniform: boolean = false): StemDirectionType {
+     *  every note of it has the same XML stem; with keepUniformUp too, that stem is up —
+     *  EngravingRules.CrossStaffBeamsFollowUniformUpXmlStems). */
+    public static centerStemDirection(voiceEntry: VoiceEntry, onlyIfXmlStemsUniform: boolean = false,
+                                      keepUniformUp: boolean = false): StemDirectionType {
         for (const note of voiceEntry.Notes) {
             if (!note.NoteBeam) {
                 continue;
@@ -351,6 +354,9 @@ export class CrossStaffBeam extends VF.Beam {
                 const xml: Set<StemDirectionType> = new Set(segment.map(n => n.ParentVoiceEntry.StemDirectionXml));
                 const single: StemDirectionType = xml.values().next().value;
                 if (xml.size !== 1 || single === StemDirectionType.Undefined || single === undefined) {
+                    return undefined;
+                }
+                if (keepUniformUp && single === StemDirectionType.Up) {
                     return undefined;
                 }
             }

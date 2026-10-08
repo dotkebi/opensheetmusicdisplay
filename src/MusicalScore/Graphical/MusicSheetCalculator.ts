@@ -3398,8 +3398,11 @@ export abstract class MusicSheetCalculator {
         if (voiceEntry.StemDirectionXml !== StemDirectionType.Undefined &&
             this.rules.SetWantedStemDirectionByXml &&
             voiceEntry.StemDirectionXml !== undefined) {
+                // XML stems all one way in a cross-staff beam: centred anyway (CrossStaffBeamsCenterUniformXmlStems),
+                //   but all up stays up (CrossStaffBeamsFollowUniformUpXmlStems: Bellini Sogno m110–117).
                 const centered: StemDirectionType = this.rules.CrossStaffBeamsCenterUniformXmlStems ?
-                    CrossStaffBeam.centerStemDirection(voiceEntry, true) : undefined;
+                    CrossStaffBeam.centerStemDirection(voiceEntry, true, this.rules.CrossStaffBeamsFollowUniformUpXmlStems) :
+                    undefined;
                 voiceEntry.WantedStemDirection = centered ?? voiceEntry.StemDirectionXml;
         } else {
             // Without an XML stem, a note beamed across the staves is stemmed towards the other staff: the beam lies
