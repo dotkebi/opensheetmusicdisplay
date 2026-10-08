@@ -119,7 +119,7 @@ describe("Lyrics on grace notes", () => {
         expect(lines[0][0]).to.be.closeTo(labelRight, 1e-6);
         expect(lines[0][1]).to.be.greaterThan(lines[0][0] + 1, "the line reaches the grace notes");
         expect(lines[0][1]).to.be.lessThan(entryX(nextEntry), "the line ends before the main note of the next syllable");
-        expect(lines[0][1]).to.be.at.most(labelEdges(nextEntry, "re")[0] - osmd.EngravingRules.HorizontalBetweenLyricsDistance + 1e-6);
+        expect(lines[0][1]).to.be.at.most(labelEdges(nextEntry, "re")[0] - osmd.EngravingRules.LyricExtendEndGap + 1e-6);
     }
 
     it("draws the extend line to a grace note that carries the stop", async () => {

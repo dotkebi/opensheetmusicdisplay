@@ -99,7 +99,7 @@ describe("Lyric extend ends", () => {
         const nextLeft: number = labelEdges(entryWithLyric(line, "Ein"))[0];
         const lines: [number, number][] = extendLines(line);
         expect(lines.length).to.equal(1);
-        expect(lines[0][1]).to.be.at.most(nextLeft - osmd.EngravingRules.HorizontalBetweenLyricsDistance + 1e-6);
+        expect(lines[0][1]).to.be.at.most(nextLeft - osmd.EngravingRules.LyricExtendEndGap + 1e-6);
     });
 
     it("continues the extend line under the first note of the next system", async () => {
