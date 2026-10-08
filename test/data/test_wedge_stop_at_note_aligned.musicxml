@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Parisotti, Martini Piacer d'amor, Canto m44-46 (renderer leftovers 2, decision C-6): an extract of Opusis' own MusicXML
+     encoding of the public-domain Parisotti edition, without print and barline elements. The diminuendo of m45 is stopped at
+     the third note; the crescendo of m44 ends at the barline, close enough for the dynamics alignment to group the two. -->
+<score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Canto</part-name></score-part></part-list><part id="P1">
+<measure implicit="no" number="44">
+      <attributes><divisions>221760</divisions><key>
+          <fifths>-6</fifths>
+        </key><time>
+          <beats>6</beats>
+          <beat-type>8</beat-type>
+        </time><clef>
+          <sign>G</sign>
+          <line>2</line>
+        </clef></attributes><direction placement="above">
+        <direction-type>
+          <dynamics>
+            <mf/>
+          </dynamics>
+        </direction-type>
+        <sound dynamics="69"/>
+      </direction>
+      <direction placement="above"><direction-type><wedge type="crescendo" number="1" spread="0"/></direction-type></direction><note>
+        <pitch>
+          <step>A</step>
+          <alter>-1</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <stem>up</stem>
+        <lyric number="1" name="Italiano"><syllabic>single</syllabic><text>mi</text></lyric></note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <alter>-1</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <stem>up</stem>
+        <lyric number="1" name="Italiano"><syllabic>begin</syllabic><text>dis</text></lyric></note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <alter>-1</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <stem>up</stem>
+        <lyric number="1" name="Italiano"><syllabic>end</syllabic><text>se</text></lyric></note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <alter>-1</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <stem>up</stem>
+        <beam number="1">begin</beam><notations>
+          <slur number="1" type="start" orientation="under" placement="below"/>
+        </notations>
+        <lyric number="1" name="Italiano"><syllabic>begin</syllabic><text>l&#8217;in</text><extend type="start"/></lyric></note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <stem>up</stem>
+        <beam number="1">end</beam><notations>
+          <slur number="1" type="stop" orientation="under"/>
+        </notations>
+      <lyric number="1" name="Italiano"><extend type="stop"/></lyric></note>
+      <note>
+        <pitch>
+          <step>C</step>
+          <alter>-1</alter>
+          <octave>5</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <stem>down</stem>
+        <lyric number="1" name="Italiano"><syllabic>middle</syllabic><text>fe</text></lyric></note>
+    <direction placement="above"><direction-type><wedge type="stop" number="1" spread="12"/></direction-type></direction></measure>
+<measure implicit="no" number="45">
+      <direction placement="above"><direction-type><wedge type="diminuendo" number="1" spread="12"/></direction-type></direction><note>
+        <pitch>
+          <step>D</step>
+          <alter>-1</alter>
+          <octave>5</octave>
+        </pitch>
+        <duration>221760</duration>
+        <type>quarter</type>
+        <notations>
+          <slur number="2" type="start" orientation="over" placement="above"/>
+        </notations>
+        <lyric number="1" name="Italiano"><syllabic>middle</syllabic><text>de</text><extend type="start"/></lyric></note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <notations>
+          <slur number="2" type="stop" orientation="over"/>
+        </notations>
+      <lyric number="1" name="Italiano"><extend type="stop"/></lyric></note>
+      <direction placement="above"><direction-type><wedge type="stop" number="1" spread="0"/></direction-type></direction><note>
+        <pitch>
+          <step>G</step>
+          <alter>-1</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>221760</duration>
+        <type>quarter</type>
+        <lyric number="1" name="Italiano"><syllabic>end</syllabic><text>le.</text></lyric></note>
+      <note>
+        <rest/>
+        <duration>110880</duration>
+        <type>eighth</type>
+      </note>
+    </measure>
+<measure implicit="no" number="46">
+      <direction placement="above">
+        <direction-type>
+          <words>e smorz.</words>
+        </direction-type>
+      </direction>
+      <direction placement="above">
+        <direction-type>
+          <dynamics>
+            <pp/>
+          </dynamics>
+        </direction-type>
+        <sound dynamics="31"/>
+      </direction>
+      <note>
+        <pitch>
+          <step>F</step>
+          <octave>4</octave>
+        </pitch>
+        <duration>221760</duration>
+        <type>quarter</type>
+        <stem>down</stem><lyric number="1" name="Italiano"><syllabic>begin</syllabic><text>Scor</text></lyric></note>
+      <direction placement="above"><direction-type><wedge type="diminuendo" number="1" spread="12"/></direction-type></direction><note>
+        <pitch>
+          <step>F</step>
+          <octave>4</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <stem>down</stem><lyric number="1" name="Italiano"><syllabic>end</syllabic><text>re il</text></lyric></note>
+      <note>
+        <pitch>
+          <step>F</step>
+          <octave>4</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <stem>up</stem>
+        <beam number="1">begin</beam><notations>
+          <slur number="3" type="start" orientation="under" placement="below"/>
+        </notations>
+        <lyric number="1" name="Italiano"><syllabic>begin</syllabic><text>ri</text><extend type="start"/></lyric></note>
+      <note>
+        <pitch>
+          <step>E</step>
+          <alter>-1</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <stem>up</stem>
+        <beam number="1">end</beam><notations>
+          <slur number="3" type="stop" orientation="under"/>
+        </notations>
+      <lyric number="1" name="Italiano"><extend type="stop"/></lyric></note>
+      <note>
+        <pitch>
+          <step>D</step>
+          <alter>0</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <accidental>natural</accidental>
+        <stem>up</stem>
+        <lyric number="1" name="Italiano"><syllabic>middle</syllabic><text>o an</text></lyric></note>
+    <direction placement="above"><direction-type><wedge type="stop" number="1" spread="0"/></direction-type></direction></measure>
+</part></score-partwise>
