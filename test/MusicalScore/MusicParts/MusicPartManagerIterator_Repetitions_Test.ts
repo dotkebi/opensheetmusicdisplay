@@ -103,6 +103,17 @@ describe("MusicPartManagerIterator measure order with repetitions", () => {
         expect(osmd.Sheet.Repetitions[0].DefaultNumberOfRepetitions).to.equal(3);
     });
 
+    /**
+     * The times of a backward repeat (<repeat times>) is how many times the repeat is played. It wins over the lyric verses.
+     * It was not read, so a repeat without lyrics was played twice.
+     *
+     * Sample: measures 1-2 repeated with times="3" and no lyrics, then measure 3;
+     * measures 4-5 repeated with times="2" and three lyric verses, then measure 6.
+     */
+    it("plays a repeat the times written on it", async () => {
+        expect(await playedMeasures("test_repeat_times.musicxml")).to.deep.equal([0, 1, 0, 1, 0, 1, 2, 3, 4, 3, 4, 5]);
+    });
+
     /** The types of the repetition instructions drawn at the end of the measure. */
     function lastInstructionTypes(measureIndex: number): RepetitionInstructionEnum[] {
         return osmd.Sheet.SourceMeasures[measureIndex].LastRepetitionInstructions.map(
