@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Tremolos between two notes: half notes (written, 2:1 time modification) in m1, whose three strokes are short and centred
+     between the stems (Bellini, L'abbandono, piano m103-104: drawn like beams from stem to stem), and eighths in m2 (one stroke),
+     whose strokes keep running like beams. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification><stem>up</stem><notations><ornaments><tremolo type="start">3</tremolo></ornaments></notations></note>
+      <note><pitch><step>B</step><alter>-1</alter><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification><stem>up</stem><notations><ornaments><tremolo type="stop">3</tremolo></ornaments></notations></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification><stem>up</stem><notations><ornaments><tremolo type="start">3</tremolo></ornaments></notations></note>
+      <note><pitch><step>B</step><alter>-1</alter><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification><stem>up</stem><notations><ornaments><tremolo type="stop">3</tremolo></ornaments></notations></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>eighth</normal-type></time-modification><stem>up</stem><notations><ornaments><tremolo type="start">1</tremolo></ornaments></notations></note>
+      <note><pitch><step>B</step><alter>-1</alter><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>eighth</normal-type></time-modification><stem>up</stem><notations><ornaments><tremolo type="stop">1</tremolo></ornaments></notations></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>eighth</normal-type></time-modification><stem>up</stem><notations><ornaments><tremolo type="start">1</tremolo></ornaments></notations></note>
+      <note><pitch><step>B</step><alter>-1</alter><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>eighth</normal-type></time-modification><stem>up</stem><notations><ornaments><tremolo type="stop">1</tremolo></ornaments></notations></note>
+      <note><rest/><duration>4</duration><voice>1</voice><type>quarter</type></note>
+      <note><rest/><duration>8</duration><voice>1</voice><type>half</type></note>
+    </measure>
+  </part>
+</score-partwise>

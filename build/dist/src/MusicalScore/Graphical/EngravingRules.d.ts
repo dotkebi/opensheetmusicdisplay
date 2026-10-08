@@ -442,6 +442,11 @@ export declare class EngravingRules {
      * as a fraction of the space between the stems (or noteheads for stemless notes).
      * (Gould - Behind Bars: the strokes span about two thirds of the space between the notes) */
     TremoloBetweenNotesMaxLengthFactor: number;
+    /** Length of the strokes of a tremolo between two notes written as quarters or longer, as a fraction of the space between
+     *  the stems: short strokes centred between the notes, clear of the stems (Gould), where the strokes of eighths and shorter
+     *  run like beams. Two thirds of the space (TremoloBetweenNotesMaxLengthFactor) looked like a beam between half notes
+     *  (Bellini, L'abbandono, piano m103-104). */
+    TremoloBetweenNotesLongNoteStrokeFactor: number;
     /** Maximum vertical rise/fall (slant) of the strokes of a tremolo between two notes, in units. */
     TremoloBetweenNotesMaxSlant: number;
     /** Vertical padding between the strokes of a tremolo between two notes and the notehead (edge), in units.
