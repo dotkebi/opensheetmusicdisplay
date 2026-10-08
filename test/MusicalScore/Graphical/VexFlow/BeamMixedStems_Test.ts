@@ -19,7 +19,7 @@ describe("Beam with stems in both directions", () => {
         await osmd.load(TestUtils.getScore("test_beam_mixed_stems.musicxml"));
         osmd.render();
         const measure: any = osmd.GraphicSheet.MeasureList[0][0];
-        const note = (i: number): any => (measure.staffEntries[i].graphicalVoiceEntries[0] as VexFlowVoiceEntry).vfStaveNote;
+        const note: (i: number) => any = (i: number): any => (measure.staffEntries[i].graphicalVoiceEntries[0] as VexFlowVoiceEntry).vfStaveNote;
         const bass: any = note(0), chord: any = note(1);
         expect(bass.getStemDirection(), "bass note stem up (XML)").to.equal(VF.Stem.UP);
         expect(chord.getStemDirection(), "chord stem down (XML)").to.equal(VF.Stem.DOWN);

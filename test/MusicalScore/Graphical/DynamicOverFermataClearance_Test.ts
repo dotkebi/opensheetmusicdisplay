@@ -16,7 +16,8 @@ describe("Dynamic over a fermata", () => {
 <measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time>
 <clef><sign>G</sign><line>2</line></clef></attributes>
 ${withDynamic ? "<direction placement=\"above\"><direction-type><dynamics><p/></dynamics></direction-type></direction>" : ""}
-<note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><stem>down</stem><notations><fermata type="upright"/></notations></note>
+<note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><stem>down</stem>
+<notations><fermata type="upright"/></notations></note>
 <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><stem>down</stem></note>
 <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><stem>down</stem></note>
 <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><stem>down</stem></note>
