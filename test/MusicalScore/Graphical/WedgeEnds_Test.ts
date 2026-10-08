@@ -26,6 +26,11 @@ describe("Wedge ends", () => {
         });
     }
 
+    function stopEntryBorderLeft(measure: GraphicalMeasure, ts: number): number {
+        const entry: any = measure.staffEntries.find((se: any) => Math.abs(se.relInMeasureTimestamp.RealValue - ts) < 1e-9);
+        return entry.PositionAndShape.BorderLeft;
+    }
+
     function wedges(osmd: OpenSheetMusicDisplay): GraphicalContinuousDynamicExpression[] {
         const result: GraphicalContinuousDynamicExpression[] = [];
         for (const system of osmd.GraphicSheet.MusicPages[0].MusicSystems) {
@@ -75,6 +80,76 @@ ${above("<wedge type=\"stop\" number=\"1\"/>")}
         expect(width(diminuendo)).to.be.greaterThan(0.8 * width(crescendo));
         const crescendoRight: number = Math.max(...crescendo.Lines.map(l => l.End.x));
         expect(Math.min(...diminuendo.Lines.map(l => l.End.x))).to.be.greaterThan(crescendoRight - 0.01);
+    });
+
+    /** Parisotti, Martini Piacer d'amor Canto m45 (renderer leftovers 2, decision C-6): a diminuendo over a quarter and an eighth,
+     *  stopped at the start of the next quarter. It reaches that quarter (WedgeHorizontalMargin before it), not just part of the
+     *  way from the eighth. */
+    const stopAtNextNote: string = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">${pianoPart}<part id="P1">
+<measure number="1"><attributes><divisions>2</divisions><time><beats>6</beats><beat-type>8</beat-type></time>
+<clef><sign>G</sign><line>2</line></clef></attributes>
+<direction placement="above"><direction-type><dynamics><mf/></dynamics></direction-type></direction>
+<direction placement="above"><direction-type><wedge type="crescendo" number="2"/></direction-type></direction>
+<note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+<note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+<note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+<direction placement="above"><direction-type><wedge type="stop" number="2"/></direction-type></direction>
+</measure>
+<measure number="2">
+<direction placement="above"><direction-type><wedge type="diminuendo" number="1"/></direction-type></direction>
+<note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+<note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+<direction placement="above"><direction-type><wedge type="stop" number="1"/></direction-type></direction>
+<note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+<note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+</measure></part></score-partwise>`;
+
+    it("reaches the note a stop is written at, a margin before it", async () => {
+        const osmd: OpenSheetMusicDisplay = await render(stopAtNextNote);
+        const diminuendo: GraphicalContinuousDynamicExpression = wedges(osmd).find(w => w.ContinuousDynamic.DynamicType === ContDynamicEnum.diminuendo);
+        expect(diminuendo).to.not.equal(undefined);
+        const measure: GraphicalMeasure = osmd.GraphicSheet.MeasureList[1][0];
+        const noteX: (ts: number) => number = (ts: number): number => {
+            const entry: any = measure.staffEntries.find((se: any) => Math.abs(se.relInMeasureTimestamp.RealValue - ts) < 1e-9);
+            return measure.PositionAndShape.RelativePosition.x + entry.PositionAndShape.RelativePosition.x;
+        };
+        const end: number = Math.max(...diminuendo.Lines.map((l: GraphicalLine) => Math.max(l.Start.x, l.End.x)));
+        // the left border of the quarter at the stop, WedgeHorizontalMargin before it (not 1/WedgeEndDistanceBetweenTimestampsFactor
+        //   of the way from the eighth)
+        const stopLeft: number = noteX(3 / 8) + stopEntryBorderLeft(measure, 3 / 8);
+        expect(end, `end ${end}, stop note's left border ${stopLeft}`).to.be.closeTo(stopLeft - osmd.EngravingRules.WedgeHorizontalMargin, 0.05);
+    });
+
+    /** Parisotti, Martini Piacer d'amor Canto m44-46 with its lyrics (test_wedge_stop_at_note_aligned.musicxml): the crescendo to
+     *  the barline and the diminuendo stopped at the third note of the next measure are close enough to be aligned as a group
+     *  (DynamicExpressionMaxDistance). The alignment squeezed each wedge by its neighbour's "overlap" even when that was a gap
+     *  wider than DynamicExpressionSpacer, and a negative value moved the other end: the diminuendo lost 2.9 of its length and
+     *  the crescendo 1.4 at its start (renderer leftovers 2, decision C-6). */
+    it("keeps the length of wedges aligned with a neighbour across a gap", async () => {
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        div.style.width = "1000px";
+        const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
+        await osmd.load(TestUtils.getScore("test_wedge_stop_at_note_aligned.musicxml"));
+        osmd.render();
+        const all: GraphicalContinuousDynamicExpression[] = wedges(osmd);
+        const right: (w: GraphicalContinuousDynamicExpression) => number = w => Math.max(...w.Lines.map(l => Math.max(l.Start.x, l.End.x)));
+        const left: (w: GraphicalContinuousDynamicExpression) => number = w => Math.min(...w.Lines.map(l => Math.min(l.Start.x, l.End.x)));
+        const crescendo: GraphicalContinuousDynamicExpression = all.find(w => w.ContinuousDynamic.DynamicType === ContDynamicEnum.crescendo);
+        // m45's diminuendo (the second measure of the extract; m46 has another)
+        const second: any = osmd.GraphicSheet.MeasureList[1][0].parentSourceMeasure;
+        const diminuendo: GraphicalContinuousDynamicExpression = all.find(w =>
+            w.ContinuousDynamic.DynamicType === ContDynamicEnum.diminuendo && w.ContinuousDynamic.StartMultiExpression.SourceMeasureParent === second);
+        const measure: GraphicalMeasure = osmd.GraphicSheet.MeasureList[1][0];
+        const entry: any = measure.staffEntries.find((se: any) => Math.abs(se.relInMeasureTimestamp.RealValue - 3 / 8) < 1e-9);
+        const stopLeft: number = measure.PositionAndShape.RelativePosition.x + entry.PositionAndShape.RelativePosition.x +
+            entry.PositionAndShape.BorderLeft;
+        expect(right(diminuendo), "the diminuendo reaches the stop note").to.be.closeTo(stopLeft - osmd.EngravingRules.WedgeHorizontalMargin, 0.05);
+        // the crescendo ends at the barline, WedgeHorizontalMargin before it
+        const barline: number = osmd.GraphicSheet.MeasureList[0][0].PositionAndShape.RelativePosition.x +
+            osmd.GraphicSheet.MeasureList[0][0].PositionAndShape.Size.width;
+        expect(right(crescendo), "the crescendo ends at the barline").to.be.closeTo(barline - osmd.EngravingRules.WedgeHorizontalMargin, 0.05);
+        expect(left(diminuendo) - right(crescendo), "the gap between them").to.be.greaterThan(osmd.EngravingRules.DynamicExpressionSpacer);
     });
 
     /** 21 m34-35 (the stop moved after the first note of the next system: a stop at the measure start ends the wedge at the

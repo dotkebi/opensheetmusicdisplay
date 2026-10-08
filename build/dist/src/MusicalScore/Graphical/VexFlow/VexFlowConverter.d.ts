@@ -116,6 +116,8 @@ export declare class VexFlowConverter {
      * (Opusis 02front), which calls this for it. As in osmd_dart (VexFlowStackedArticulation).
      */
     static stackOutsideOrnament(vfArt: VF.Articulation, gNote: GraphicalNote): void;
+    /** The staff entry's last voice entry (in the order they are converted) with a printed, non-rest note, or undefined. */
+    private static lastVoiceEntryWithPrintedNote;
     /**
      * One fermata at one place: another voice of the note's staff entry (same staff, same time) has the same fermata on
      * the same side, and its note is further out on that side (or as far, and it comes first). Couperin I Menuet en trio

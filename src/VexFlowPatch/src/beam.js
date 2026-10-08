@@ -650,11 +650,20 @@ export class Beam extends Element {
       const { topY: stemTipY } = note.getStemExtents();
       const beamedStemTipY = this.getSlopeY(stemX, firstStemX, firstStemTipY, slope) + y_shift;
       const preBeamExtension = note.getStem().getExtension();
-      const beamExtension = stem_direction === Stem.UP
+      // VexFlowPatch: a note whose stem points the other way than the beam (a beam with stems in both directions,
+      //   e.g. a low bass note with its stem up under a chord with its stem down, as in VexFlow 4's
+      //   applyStemExtensions): its stem is extended by its own direction, across the beam's thickness.
+      const noteStemDirection = note.getStemDirection();
+      const beamExtension = noteStemDirection === Stem.UP
         ? stemTipY - beamedStemTipY
         : beamedStemTipY - stemTipY;
+      let crossStemExtension = 0;
+      if (noteStemDirection !== stem_direction) {
+        const beamCount = note.getGlyph().beam_count;
+        crossStemExtension = (1 + (beamCount - 1) * 1.5) * beam_width;
+      }
 
-      note.stem.setExtension(preBeamExtension + beamExtension);
+      note.stem.setExtension(preBeamExtension + beamExtension + crossStemExtension);
       note.stem.renderHeightAdjustment = -Stem.WIDTH / 2;
 
       if (note.isRest() && show_stemlets) {

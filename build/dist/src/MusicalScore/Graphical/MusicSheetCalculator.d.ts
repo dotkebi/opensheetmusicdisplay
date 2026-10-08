@@ -181,8 +181,12 @@ export declare abstract class MusicSheetCalculator {
     protected calculateMeasureNumberPlacement(musicSystem: MusicSystem): void;
     private calculateSingleMeasureNumberPlacement;
     private calculateMeasureNumberSkyline;
-    /** Space between a measure number and a slur under it. */
-    private static readonly measureNumberSlurClearance;
+    /** Space between a measure number and a slur or other ink under it. */
+    static readonly measureNumberClearance: number;
+    /** Space between a dynamic above the staff and the ink it is placed over. */
+    static readonly dynamicOverInkClearance: number;
+    /** Space between a measure number and the ink beside it: the sky line this far on both sides of the number is read. */
+    static readonly measureNumberSideClearance: number;
     /**
      * Measure numbers are placed before the slurs (calculateMeasureNumberPlacement), from the sky line of the notes:
      * a slur above the staff over the barline ran through the number (Couperin, Concerts royaux IV Rigaudon m5, m30).

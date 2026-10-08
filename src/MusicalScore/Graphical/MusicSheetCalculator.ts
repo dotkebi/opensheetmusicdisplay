@@ -727,12 +727,20 @@ export abstract class MusicSheetCalculator {
         start -= staffLine.PositionAndShape.RelativePosition.x;
         end -= staffLine.PositionAndShape.RelativePosition.x;
 
-        // correct for hypersensitive collision checks, notes having skyline extend too far to left and right
-        const startCollisionCheck: number = start + 0.5;
-        const endCollisionCheck: number = end - 0.5;
+        // The number keeps measureNumberSideClearance from the ink beside it: the accent, the flat or the flag over the
+        //   measure's first note sat right next to the number at the same height (Parisotti, Pur dicesti Canto m137 "137>",
+        //   Stizzoso Canto m96 "96♭"; renderer leftovers 2, 2-1). Upstream shrank the range by 0.5 on each side instead
+        //   ("correct for hypersensitive collision checks, notes having skyline extend too far to left and right"), from the
+        //   days of the bounding-box sky line; the sky line is drawn ink now.
+        const startCollisionCheck: number = start - MusicSheetCalculator.measureNumberSideClearance;
+        const endCollisionCheck: number = end + MusicSheetCalculator.measureNumberSideClearance;
 
         // get the minimum corresponding SkyLine value
-        const skyLineMinValue: number = skyBottomLineCalculator.getSkyLineMinInRange(startCollisionCheck, endCollisionCheck);
+        let skyLineMinValue: number = skyBottomLineCalculator.getSkyLineMinInRange(startCollisionCheck, endCollisionCheck);
+        if (skyLineMinValue < 0) {
+            // raised over ink: clear of it by measureNumberClearance, as over a slur (raiseMeasureNumberOverSlurs)
+            skyLineMinValue -= MusicSheetCalculator.measureNumberClearance + graphicalLabel.PositionAndShape.BorderMarginBottom;
+        }
 
         if (measure === staffLine.Measures[0]) {
             // must take into account possible MusicSystem Brackets
@@ -770,8 +778,12 @@ export abstract class MusicSheetCalculator {
         }
     }
 
-    /** Space between a measure number and a slur under it. */
-    private static readonly measureNumberSlurClearance: number = 0.2;
+    /** Space between a measure number and a slur or other ink under it. */
+    public static readonly measureNumberClearance: number = 0.2;
+    /** Space between a dynamic above the staff and the ink it is placed over. */
+    public static readonly dynamicOverInkClearance: number = 0.25;
+    /** Space between a measure number and the ink beside it: the sky line this far on both sides of the number is read. */
+    public static readonly measureNumberSideClearance: number = 0.5;
 
     /**
      * Measure numbers are placed before the slurs (calculateMeasureNumberPlacement), from the sky line of the notes:
@@ -780,9 +792,11 @@ export abstract class MusicSheetCalculator {
      */
     private raiseMeasureNumberOverSlurs(label: GraphicalLabel, staffLine: StaffLine): void {
         const box: BoundingBox = label.PositionAndShape;
-        const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x;
-        const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x;
-        const clearance: number = MusicSheetCalculator.measureNumberSlurClearance;
+        const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x -
+            MusicSheetCalculator.measureNumberSideClearance;
+        const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x +
+            MusicSheetCalculator.measureNumberSideClearance;
+        const clearance: number = MusicSheetCalculator.measureNumberClearance;
         let slurTop: number = Number.POSITIVE_INFINITY;
         for (const slur of staffLine.GraphicalSlurs) {
             if (slur.placement !== PlacementEnum.Above || !slur.bezierStartPt || !slur.bezierEndPt ||
@@ -2568,6 +2582,8 @@ export abstract class MusicSheetCalculator {
         const stopTimestamp: Fraction = graphicalContinuousDynamic.ContinuousDynamic.StopTimestamp;
         const stopBeforeNote: boolean = stopTimestamp !== undefined &&
             endMeasure.staffEntries.some(se => !se.relInMeasureTimestamp.lt(stopTimestamp));
+        const stopAtNote: boolean = stopTimestamp !== undefined &&
+            endMeasure.staffEntries.some(se => se.relInMeasureTimestamp.Equals(stopTimestamp) && se.graphicalVoiceEntries.length > 0);
         const beginOfNextNote: Fraction = stopBeforeNote ?
             Fraction.plus(graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.SourceMeasureParent.AbsoluteTimestamp, stopTimestamp) :
             Fraction.plus(endAbsoluteTimestamp, maxNoteLength);
@@ -2600,6 +2616,13 @@ export abstract class MusicSheetCalculator {
             startPosInStaffline.x -= staffEntryWidth / 2 * sizeFactor + wedgePadding;
             endPosInStaffLine.x = startPosInStaffline.x + staffEntryWidth / 2 * sizeFactor;
         } else if (endBeforeStart && nextNotePosInStaffLine.x > startPosInStaffline.x) {
+            endPosInStaffLine.x = (nextNotePosInStaffLine.x < endOfMeasure ? nextNotePosInStaffLine.x : endOfMeasure) -
+                this.rules.WedgeHorizontalMargin;
+        } else if (stopAtNote && nextNotePosInStaffLine.x > endPosInStaffLine.x) {
+            // A stop written at the start of a note of the staff: the wedge reaches that note, WedgeHorizontalMargin before it,
+            //   not 1/WedgeEndDistanceBetweenTimestampsFactor of the way from its end note (Parisotti, Martini Piacer d'amor
+            //   Canto m45: the diminuendo over a quarter and an eighth, stopped at the next quarter, covered the first note only;
+            //   renderer leftovers 2, decision C-6). Same as osmd-dart.
             endPosInStaffLine.x = (nextNotePosInStaffLine.x < endOfMeasure ? nextNotePosInStaffLine.x : endOfMeasure) -
                 this.rules.WedgeHorizontalMargin;
         } else if (nextNotePosInStaffLine.x > endPosInStaffLine.x && nextNotePosInStaffLine.x < endOfMeasure) {
@@ -2964,6 +2987,10 @@ export abstract class MusicSheetCalculator {
         // calculate yPosition according to Placement
         if (graphicalInstantaneousDynamic.Placement === PlacementEnum.Above) {
             const skyLineValue: number = skyBottomLineCalculator.getSkyLineMinForLabel(left, right);
+            // Over ink above the staff (a fermata, a stem, a slur) the dynamic keeps dynamicOverInkClearance: its box sat on the
+            //   ink's top, and a glyph's descender (the app's "p") touched a fermata (Parisotti, Paisiello Chi vuol la zingarella
+            //   Canto m8; renderer leftovers 2, decision C-7). Same as osmd-dart.
+            const overInkClearance: number = skyLineValue < 0 ? MusicSheetCalculator.dynamicOverInkClearance : 0;
 
             // if StaffLine part of multiStaff Instrument and not the first one, ideal yPosition middle of distance between Staves
             if (staffLine.isPartOfMultiStaffInstrument() && staffLine.ParentStaff !== staffLine.ParentStaff.ParentInstrument.Staves[0]) {
@@ -2975,11 +3002,11 @@ export abstract class MusicSheetCalculator {
                     if (skyLineValue > -difference / 2) {
                         yPosition = -difference / 2;
                     } else {
-                        yPosition = skyLineValue - graphicalInstantaneousDynamic.PositionAndShape.BorderMarginBottom;
+                        yPosition = skyLineValue - graphicalInstantaneousDynamic.PositionAndShape.BorderMarginBottom - overInkClearance;
                     }
                 }
             } else {
-                yPosition = skyLineValue - graphicalInstantaneousDynamic.PositionAndShape.BorderMarginBottom;
+                yPosition = skyLineValue - graphicalInstantaneousDynamic.PositionAndShape.BorderMarginBottom - overInkClearance;
             }
 
             graphicalInstantaneousDynamic.PositionAndShape.RelativePosition = new PointF2D(startPosInStaffline.x, yPosition);
@@ -4738,11 +4765,12 @@ export abstract class MusicSheetCalculator {
         if (!staffLine || this.marksRaisedOverSlurs.length === 0) {
             return;
         }
-        const clearance: number = MusicSheetCalculator.measureNumberSlurClearance;
+        const clearance: number = MusicSheetCalculator.measureNumberClearance;
         for (const label of musicSystem.MeasureNumberLabels) {
             const box: BoundingBox = label.PositionAndShape;
-            const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x;
-            const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x;
+            const side: number = MusicSheetCalculator.measureNumberSideClearance;
+            const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x - side;
+            const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x + side;
             let markTop: number = Number.POSITIVE_INFINITY;
             for (const mark of this.marksRaisedOverSlurs) {
                 if (mark.staffLine !== staffLine || mark.right < left || mark.left > right) {
@@ -4760,7 +4788,7 @@ export abstract class MusicSheetCalculator {
             }
             const shift: number = box.RelativePosition.y + box.BorderMarginBottom - (markTop - clearance);
             box.RelativePosition = new PointF2D(box.RelativePosition.x, box.RelativePosition.y - shift);
-            staffLine.SkyBottomLineCalculator.updateSkyLineInRange(left, right, box.RelativePosition.y + box.BorderMarginTop);
+            staffLine.SkyBottomLineCalculator.updateSkyLineInRange(left + side, right - side, box.RelativePosition.y + box.BorderMarginTop);
         }
     }
 
@@ -5803,8 +5831,14 @@ export abstract class MusicSheetCalculator {
         if (!(voiceEntry.Notes.length > 0)) {
             return;
         }
-        // don't just set direction if undefined. if there's a note in the beam with a different stem direction, Vexflow draws it with an unending stem.
-        // if (voiceEntry.WantedStemDirection === StemDirectionType.Undefined) {
+        // Only without a direction of its own (from the XML): a beam with stems in both directions (a low bass note with
+        //   its stem up under a chord with its stem down, Parisotti, Vivaldi Un certo Piano m30; renderer leftovers 2,
+        //   2-2 P10-B3) keeps them, as osmd_dart does. Upstream set every note of the beam to the first direction found
+        //   because VexFlow drew the other direction's stem "unending"; VexFlowPatch beam.js extends such a stem across
+        //   the beam (as VexFlow 4).
+        if (voiceEntry.WantedStemDirection !== StemDirectionType.Undefined && voiceEntry.WantedStemDirection !== undefined) {
+            return;
+        }
         const beam: Beam = voiceEntry.Notes[0].NoteBeam;
         if (beam) {
             // if there is a beam, find any already set stemDirection in the beam:

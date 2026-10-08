@@ -102,8 +102,8 @@ function mergeableUnison(a, b, staggerSameWholeNotes) {
 //   The same rules as osmd-dart (VoiceUnisonFormatter):
 //   1. The rest clears the noteheads and stems of the other voices' notes by a quarter of a space, moving to its side
 //      (above or below those notes, where OSMD put it) in half lines, by at most six lines.
-//   2. It is at most two lines out of the staff (line 7 above, -1 below), unless the noteheads need it further: a stem
-//      that goes up (or down) through its side isn't cleared beyond that. OSMD put the rest of the voice above another
+//   2. It is at most two lines out of the staff (line 7 above, -1 below), unless the noteheads (or a beam, see below)
+//      need it further: a lone stem that goes up (or down) through its side isn't cleared beyond that. OSMD put the rest of the voice above another
 //      voice's note with an upward stem seven lines over that note, between the staves, where it read as a rest of
 //      the other staff (Couperin, Concerts royaux IV, Courante françoise m15, m16, m21).
 //   Not for a rest the MusicXML puts on a line (display-step), and invisible notes (print-object="no") don't count. OSMD
@@ -147,8 +147,12 @@ function osmdPlaceRests(notes, startLines) {
     }
     const limit = side === 1 ? OSMD_REST_LINE_MAX : OSMD_REST_LINE_MIN;
     if ((line - limit) * side > 0) {
+      // VexFlowPatch (OSMD): a lone stem isn't cleared beyond the limit (rule 2), but a beam is: the lower voice's rest,
+      //   kept two lines under the staff, sat on the upper voice's beam below the staff (Parisotti, Paisiello Il mio ben
+      //   Piano m24, Gluck O del mio dolce ardor Piano m26; renderer leftovers 2, 2-3). As osmd-dart (VoiceUnisonFormatter).
+      const beamed = others.map((note, i) => note.beam ? spans[i] : heads[i]);
       let near = limit;
-      for (let step = 0; step < 12 && collides(near, heads); step++) {
+      for (let step = 0; step < 12 && collides(near, beamed); step++) {
         near += 0.5 * side;
       }
       line = side === 1 ? Math.min(line, near) : Math.max(line, near);

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Parisotti, Paisiello Il mio ben quando verrà Piano m24, left hand (renderer leftovers 2, 2-3 P29-S1): the upper voice's
+     beamed eighths with their stems down, low in the staff, and the lower voice's eighth rests at the beat: the rest, kept at
+     most two lines under the staff, sat on the beam. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>2</divisions><key><fifths>-1</fifths></key><time><beats>3</beats><beat-type>4</beat-type></time><clef><sign>F</sign><line>4</line></clef></attributes>
+      <note><pitch><step>A</step><octave>2</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem><beam number="1">begin</beam></note>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem><beam number="1">end</beam></note>
+      <note><pitch><step>A</step><octave>2</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem><beam number="1">begin</beam></note>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem><beam number="1">end</beam></note>
+      <note><pitch><step>A</step><octave>2</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem><beam number="1">begin</beam></note>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem><beam number="1">end</beam></note>
+      <backup><duration>6</duration></backup>
+      <note><pitch><step>G</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice><type>quarter</type><stem>up</stem></note>
+      <note><rest/><duration>1</duration><voice>2</voice><type>eighth</type></note>
+      <note><rest/><duration>1</duration><voice>2</voice><type>eighth</type></note>
+      <note><rest/><duration>1</duration><voice>2</voice><type>eighth</type></note>
+      <note><rest/><duration>1</duration><voice>2</voice><type>eighth</type></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>
