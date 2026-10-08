@@ -166,9 +166,12 @@ describe("Lyrics on grace notes", () => {
             expect(lines[0][1]).to.be.greaterThan(entryX(mainEntry) + mainNote.RelativePosition.x + mainNote.BorderMarginRight + 1,
                 "the line goes on over the grace notes after the main note");
             const lastGrace: BoundingBox = mainEntry.graphicalVoiceEntries[mainEntry.graphicalVoiceEntries.length - 1].PositionAndShape;
-            expect(lines[0][1]).to.be.closeTo(entryX(mainEntry) + lastGrace.RelativePosition.x + lastGrace.BorderMarginRight, 1e-6,
-                "the line ends at the last grace note");
-            expect(lines[0][1]).to.be.lessThan(labelEdges(entryWithLyric(line, "mine"), "mine")[0], "before the next syllable");
+            // at the last grace note, or LyricExtendEndGap before the next syllable if that is nearer (Bellini fix A, R4)
+            const mineLeft: number = labelEdges(entryWithLyric(line, "mine"), "mine")[0];
+            expect(lines[0][1]).to.be.closeTo(Math.min(entryX(mainEntry) + lastGrace.RelativePosition.x + lastGrace.BorderMarginRight,
+                                                       mineLeft - osmd.EngravingRules.LyricExtendEndGap), 1e-6,
+                                              "the line ends at the last grace note");
+            expect(lines[0][1]).to.be.lessThan(mineLeft, "before the next syllable");
         });
     }
 

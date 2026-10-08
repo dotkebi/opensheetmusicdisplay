@@ -2588,10 +2588,10 @@ export abstract class MusicSheetCalculator {
     }
 
     /**
-     * The time a wedge stops, in the measure of its EndMultiExpression: the stop as written (StopTimestamp, else the end note)
-     * plus the stop's <offset> (UseEndOffsetForExpressions). A swell over one note written as directions at the measure's start
-     * with offsets (Bellini, L'allegro marinaro m46: cresc. 0 to an eighth, dim. an eighth to a quarter) stops, as read, at the
-     * measure's start; only the offset says where. Same as osmd-dart.
+     * The time a wedge stops, in the measure of its EndMultiExpression: the stop as written (StopTimestamp, which already has
+     * the stop's <offset> as the reader adds it; else the end note plus that offset, UseEndOffsetForExpressions), as the wedge's
+     * drawn end takes it. A swell over one note written as directions at the measure's start with offsets (Bellini, L'allegro
+     * marinaro m46: cresc. 0 to an eighth, dim. an eighth to a quarter) stops at its position plus the offset. Same as osmd-dart.
      */
     protected wedgeStopTime(wedge: ContinuousDynamicExpression): Fraction {
         const end: MultiExpression = wedge.EndMultiExpression;
@@ -2599,7 +2599,7 @@ export abstract class MusicSheetCalculator {
             return undefined;
         }
         let stop: Fraction = wedge.StopTimestamp ?? end.Timestamp;
-        if (wedge.EndOffsetFraction && this.rules.UseEndOffsetForExpressions) {
+        if (wedge.EndOffsetFraction && !wedge.StopTimestamp && this.rules.UseEndOffsetForExpressions) {
             stop = Fraction.plus(stop, wedge.EndOffsetFraction);
         }
         return stop;
