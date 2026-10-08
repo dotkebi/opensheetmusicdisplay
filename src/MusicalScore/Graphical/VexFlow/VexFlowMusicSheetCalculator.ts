@@ -104,6 +104,10 @@ interface ExpressionSlot {
   left: number;
   right: number;
   text: string;
+  /** for the first wedge of a pair (wedgeStartingAtStop()): the stop of the second one, in the measure. The pair is reserved as one. */
+  pairStop?: number;
+  /** the second wedge of a pair: reserved with the first one */
+  pairedPrevious?: boolean;
 }
 
 interface ExpressionPair {
@@ -1236,9 +1240,12 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     if (pairs.length === 0 && wedgePairs.length === 0) {
       return candidateWidth;
     }
+    // the staff entries' width the measures are formatted at (formatAt): the measure's end for a time after its last note (xAtTimestamp())
+    let formattedWidth: number = minimumWidth;
     const pairGrowth: (pair: ExpressionPair) => number = (pair: ExpressionPair): number => {
-      const x0: number = this.xAtTimestamp(pair.measure, pair.earlier.timestamp);
-      const x1: number = this.xAtTimestamp(pair.measure, pair.later.timestamp);
+      const endX: number = pair.measure.beginInstructionsWidth + formattedWidth;
+      const x0: number = this.xAtTimestamp(pair.measure, pair.earlier.timestamp, endX);
+      const x1: number = this.xAtTimestamp(pair.measure, pair.later.timestamp, endX);
       const gap: number = x1 - x0;
       const deficit: number = x0 + pair.earlier.right + pair.need - (x1 + pair.later.left);
       return gap <= 0.01 || deficit <= 0.01 ? 1 : (gap + deficit) / gap;
@@ -1252,6 +1259,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const visible: VexFlowMeasure[] = measures.filter(m => m instanceof VexFlowMeasure && m.isVisible()) as VexFlowMeasure[];
     const originalWidths: number[] = visible.map(m => m.PositionAndShape.Size.width);
     const formatAt: (width: number) => void = (width: number): void => {
+      formattedWidth = width;
       for (const measure of visible) {
         measure.setWidth(width + measure.beginInstructionsWidth + measure.endInstructionsWidth);
       }
@@ -1340,8 +1348,15 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         } else {
           const end: MultiExpression = continuous.EndMultiExpression;
           if (end && end.SourceMeasureParent === source) {
-            slots.push({ below, diminuendo: continuous.DynamicType === ContDynamicEnum.diminuendo, endTimestamp: end.Timestamp.RealValue,
-              isLabel: false, left: 0, right: 0, stopTimestamp: continuous.StopTimestamp?.RealValue, text: "wedge", timestamp });
+            const slot: ExpressionSlot = { below, diminuendo: continuous.DynamicType === ContDynamicEnum.diminuendo,
+              endTimestamp: end.Timestamp.RealValue, isLabel: false, left: 0, right: 0, stopTimestamp: continuous.StopTimestamp?.RealValue,
+              text: "wedge", timestamp };
+            const next: ContinuousDynamicExpression = this.wedgeStartingAtStop(continuous, staffIndex);
+            if (next && next.EndMultiExpression?.SourceMeasureParent === source) {
+              slot.pairStop = this.wedgeStopTime(next)?.RealValue;
+            }
+            slot.pairedPrevious = this.wedgeStoppingAtStart(continuous, staffIndex) !== undefined;
+            slots.push(slot);
           }
         }
       }
@@ -1390,10 +1405,17 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const need: number = this.rules.WedgeMinReservedLength + margin;
     const lastEntry: number = measure.staffEntries.length === 0 ? 0 :
       measure.staffEntries[measure.staffEntries.length - 1].relInMeasureTimestamp.RealValue;
+    const duration: number = measure.parentSourceMeasure?.Duration.RealValue ?? lastEntry;
     const pairs: ExpressionPair[] = [];
     for (const wedge of slots.filter(s => !s.isLabel)) {
-      const stop: number = wedge.stopTimestamp;
-      if (stop === undefined || stop <= wedge.timestamp || stop > lastEntry) {
+      // A pair (a swell "<>" over one note, wedgeStartingAtStop()) is reserved once, from the first wedge's start to the
+      // second one's stop; the second wedge is not reserved on its own.
+      const paired: boolean = wedge.pairStop !== undefined || wedge.pairedPrevious;
+      const stop: number = wedge.pairStop ?? wedge.stopTimestamp;
+      if (wedge.pairedPrevious && wedge.pairStop === undefined) {
+        continue;
+      }
+      if (stop === undefined || stop <= wedge.timestamp || stop > (paired ? duration : lastEntry)) {
         continue;
       }
       const borderLeftAt: (timestamp: number) => number = (timestamp: number): number =>
@@ -1402,7 +1424,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       const labels: ExpressionSlot[] = slots.filter(s => s.isLabel && s.below === wedge.below && s.timestamp === wedge.timestamp);
       const startRight: number = labels.length === 0 ? borderLeftAt(wedge.timestamp) :
         labels.reduce((r, s) => Math.max(r, s.right + margin), 0);
-      const stopLeft: number = wedge.diminuendo ? borderLeftAt(stop) : 0;
+      const stopLeft: number = wedge.diminuendo && !paired ? borderLeftAt(stop) : 0;
       pairs.push({
         earlier: { below: wedge.below, endTimestamp: wedge.timestamp, isLabel: true, left: 0, right: startRight, text: "",
                    timestamp: wedge.timestamp },
@@ -1414,8 +1436,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   }
 
   /** The x of timestamp (relative to its measure) between the measure's staff entries,
-   *  as getRelativePositionInStaffLineFromTimestamp() interpolates it. */
-  private xAtTimestamp(measure: VexFlowMeasure, timestamp: number): number {
+   *  as getRelativePositionInStaffLineFromTimestamp() interpolates it; after the last staff entry towards endX, the measure's end
+   *  (a pair's stop over the measure's last note). */
+  private xAtTimestamp(measure: VexFlowMeasure, timestamp: number, endX?: number): number {
     let left: GraphicalStaffEntry = undefined;
     let right: GraphicalStaffEntry = undefined;
     for (const staffEntry of measure.staffEntries) {
@@ -1427,6 +1450,16 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         right = staffEntry;
         break;
       }
+    }
+    if (left && !right && endX !== undefined) {
+      // after the last staff entry: towards the measure's end, where the next measure's first note is about (a pair's stop over the last note)
+      const lastT: number = left.relInMeasureTimestamp.RealValue;
+      const endT: number = measure.parentSourceMeasure?.Duration.RealValue ?? lastT;
+      const lastX: number = left.PositionAndShape.RelativePosition.x;
+      if (endT <= lastT || endX <= lastX) {
+        return lastX;
+      }
+      return lastX + (endX - lastX) * (Math.min(timestamp, endT) - lastT) / (endT - lastT);
     }
     left = left ?? right;
     right = right ?? left;

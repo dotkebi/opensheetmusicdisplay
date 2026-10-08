@@ -2505,6 +2505,79 @@ export abstract class MusicSheetCalculator {
         }
     }
 
+    /**
+     * The time a wedge stops, in the measure of its EndMultiExpression: the stop as written (StopTimestamp, else the end note)
+     * plus the stop's <offset> (UseEndOffsetForExpressions). A swell over one note written as directions at the measure's start
+     * with offsets (Bellini, L'allegro marinaro m46: cresc. 0 to an eighth, dim. an eighth to a quarter) stops, as read, at the
+     * measure's start; only the offset says where. Same as osmd-dart.
+     */
+    protected wedgeStopTime(wedge: ContinuousDynamicExpression): Fraction {
+        const end: MultiExpression = wedge.EndMultiExpression;
+        if (!end) {
+            return undefined;
+        }
+        let stop: Fraction = wedge.StopTimestamp ?? end.Timestamp;
+        if (wedge.EndOffsetFraction && this.rules.UseEndOffsetForExpressions) {
+            stop = Fraction.plus(stop, wedge.EndOffsetFraction);
+        }
+        return stop;
+    }
+
+    /**
+     * The wedge that starts where the wedge stops, on the same staff and side, both without text: a crescendo and a diminuendo
+     * paired as a swell "<>" (L'allegro marinaro m46, m87, over a dotted half). Undefined if there is none.
+     */
+    protected wedgeStartingAtStop(wedge: ContinuousDynamicExpression, staffIndex: number): ContinuousDynamicExpression {
+        const start: MultiExpression = wedge.StartMultiExpression;
+        const end: MultiExpression = wedge.EndMultiExpression;
+        const stop: Fraction = this.wedgeStopTime(wedge);
+        if (!start || !end || !stop || wedge.Label?.length > 0) {
+            return undefined;
+        }
+        const measure: SourceMeasure = end.SourceMeasureParent;
+        const stopAbsolute: Fraction = Fraction.plus(measure.AbsoluteTimestamp, stop);
+        if (!start.AbsoluteTimestamp.lt(stopAbsolute) || staffIndex >= measure.StaffLinkedExpressions.length) {
+            return undefined;
+        }
+        for (const multi of measure.StaffLinkedExpressions[staffIndex]) {
+            const next: ContinuousDynamicExpression = multi.StartingContinuousDynamic;
+            if (!next || next === wedge || next.StartMultiExpression !== multi || next.Label?.length > 0 ||
+                next.Placement !== wedge.Placement || next.StaffNumber !== wedge.StaffNumber || !next.EndMultiExpression) {
+                continue;
+            }
+            if (multi.Timestamp.Equals(stop)) {
+                return next;
+            }
+        }
+        return undefined;
+    }
+
+    /** The wedge whose stop is where the wedge starts (the first of the pair, wedgeStartingAtStop()), starting up to three measures before. */
+    protected wedgeStoppingAtStart(wedge: ContinuousDynamicExpression, staffIndex: number): ContinuousDynamicExpression {
+        const start: MultiExpression = wedge.StartMultiExpression;
+        if (!start || wedge.Label?.length > 0) {
+            return undefined;
+        }
+        const measures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+        const index: number = start.SourceMeasureParent.measureListIndex;
+        for (let i: number = index; i >= Math.max(0, index - 3) && i < measures.length; i--) {
+            const measure: SourceMeasure = measures[i];
+            if (staffIndex >= measure.StaffLinkedExpressions.length) {
+                continue;
+            }
+            for (const multi of measure.StaffLinkedExpressions[staffIndex]) {
+                const previous: ContinuousDynamicExpression = multi.StartingContinuousDynamic;
+                if (!previous || previous === wedge || previous.StartMultiExpression !== multi) {
+                    continue;
+                }
+                if (this.wedgeStartingAtStop(previous, staffIndex) === wedge) {
+                    return previous;
+                }
+            }
+        }
+        return undefined;
+    }
+
    /**
     * This method calculates the RelativePosition of a single GraphicalContinuousDynamic.
     * @param graphicalContinuousDynamic Graphical continous dynamic to be calculated
@@ -2593,12 +2666,44 @@ export abstract class MusicSheetCalculator {
         const endBeforeStart: boolean = startAbsoluteTimestamp !== undefined && sameStaffLine &&
             endAbsoluteTimestamp.RealValue <= startAbsoluteTimestamp.RealValue;
 
+        // A pair of wedges, the second starting where the first stops between the notes (a swell "<>" over one note,
+        // wedgeStartingAtStop()): the first ends where the second starts, the second at its own stop, both at the x of the time
+        // between the notes. Otherwise both went to the end of the measure (or to the next note) and lay over each other:
+        // stacked on the web, squeezed to the measure's width in the app (Bellini, L'allegro marinaro m46, m87: cresc. 0 to an
+        // eighth and dim. to a quarter over a dotted half; the print has a short swell over the note). Same as osmd-dart.
+        const continuousDynamic: ContinuousDynamicExpression = graphicalContinuousDynamic.ContinuousDynamic;
+        const pairedNext: ContinuousDynamicExpression = isSoftAccent ? undefined : this.wedgeStartingAtStop(continuousDynamic, staffIndex);
+        const pairedPrevious: ContinuousDynamicExpression = isSoftAccent || pairedNext ? undefined :
+            this.wedgeStoppingAtStart(continuousDynamic, staffIndex);
+        let pairEndX: number = undefined;
+        if (pairedNext || pairedPrevious) {
+            const stop: Fraction = this.wedgeStopTime(continuousDynamic);
+            const margin: number = this.rules.WedgeHorizontalMargin;
+            const endSourceMeasure: SourceMeasure = graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.SourceMeasureParent;
+            const entryAtStop: boolean = endMeasure.staffEntries.some(se => se.relInMeasureTimestamp.Equals(stop));
+            if (!stop.lt(endSourceMeasure.Duration)) {
+                // a stop at the measure's end (the second wedge): the end of the measure, as for a stop after the last note
+                if (endOfMeasure - margin > startPosInStaffline.x) {
+                    pairEndX = endOfMeasure - margin;
+                }
+            } else if (!entryAtStop) {
+                const stopPos: PointF2D = this.getRelativePositionInStaffLineFromTimestamp(
+                    Fraction.plus(endSourceMeasure.AbsoluteTimestamp, stop), staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0, false);
+                const x: number = Math.min(stopPos.x - (pairedNext ? margin : 0), endOfMeasure - margin);
+                if (x > startPosInStaffline.x) {
+                    pairEndX = x;
+                }
+            }
+        }
+
         //If the next note position is not on the next staffline
         //extend close to the next note
         if (isSoftAccent) {
             //startPosInStaffline.x -= 1;
             startPosInStaffline.x -= staffEntryWidth / 2 * sizeFactor + wedgePadding;
             endPosInStaffLine.x = startPosInStaffline.x + staffEntryWidth / 2 * sizeFactor;
+        } else if (pairEndX !== undefined) {
+            endPosInStaffLine.x = pairEndX;
         } else if (endBeforeStart && nextNotePosInStaffLine.x > startPosInStaffline.x) {
             endPosInStaffLine.x = (nextNotePosInStaffLine.x < endOfMeasure ? nextNotePosInStaffLine.x : endOfMeasure) -
                 this.rules.WedgeHorizontalMargin;
@@ -2886,6 +2991,24 @@ export abstract class MusicSheetCalculator {
 
         // now we have the correct placement Height for the Expression
         // the idealY is calculated relative to the currentStaffLine
+
+        // The pair shares one row: the one further from the staff (each was placed clear of the sky line under its own range).
+        if (pairedPrevious && sameStaffLine) {
+            for (const expression of staffLine.AbstractExpressions) {
+                if (!(expression instanceof GraphicalContinuousDynamicExpression) || expression.IsVerbal || expression.IsSplittedPart ||
+                    expression.Lines.length < 2 || expression.ContinuousDynamic !== pairedPrevious) {
+                    continue;
+                }
+                const rowY: number = expression.Lines[0].Start.y;
+                if (placement === PlacementEnum.Above ? rowY < idealY : rowY > idealY) {
+                    idealY = rowY;
+                } else if (Math.abs(rowY - idealY) > 0.0001) {
+                    expression.shiftYPosition(idealY - rowY);
+                    expression.calcPsi();
+                    expression.updateSkyBottomLine();
+                }
+            }
+        }
 
         graphicalContinuousDynamic.Lines.clear();
         // create wedges (crescendo / decrescendo lines)
