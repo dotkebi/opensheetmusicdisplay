@@ -5393,6 +5393,12 @@ export abstract class MusicSheetCalculator {
                     //   verse 2's line continued at the first system's row, at verse 1's height on the second, into its hyphens)
                     const secondY: number = this.lyricExtendYInStaffLine(endStaffLine, verseNumber, voice) ?? startY;
                     this.calculateSingleLyricWordWithUnderscore(endStaffLine, secondStartX, secondEndX, secondY);
+                    // The line is below the end staff line's notes, at a row of lyrics the staff line may not have (none of the
+                    //   verse's syllables there, e.g. on the last system's last note): reserve it in the bottom line, or the
+                    //   system's border (and the page's height) ended above it and the line was cut off (Medium High MH05-P2-1,
+                    //   Sebben, crudele m83 in the app at 834 px: "love." over the last system break).
+                    endStaffLine.SkyBottomLineCalculator.updateBottomLineInRange(secondStartX, secondEndX,
+                        secondY + this.rules.LyricUnderscoreLineWidth / 2);
                 }
             }
         }

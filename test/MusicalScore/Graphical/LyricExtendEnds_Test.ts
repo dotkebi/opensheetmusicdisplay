@@ -1,5 +1,6 @@
 import { expect } from "chai";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
+import { GraphicalLine } from "../../../src/MusicalScore/Graphical/GraphicalLine";
 import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
 import { GraphicalStaffEntry } from "../../../src/MusicalScore/Graphical/GraphicalStaffEntry";
 import { BoundingBox } from "../../../src/MusicalScore/Graphical/BoundingBox";
@@ -40,6 +41,13 @@ describe("Lyric extend ends", () => {
     const melismaOverSystemBreak: string = score([
         note("E", 16, "half", "er.", "start"),
         "<print new-system=\"yes\"/>" + note("F", 8, "quarter", undefined, "stop") + note("B", 8, "quarter", "Mut"),
+    ], "2", "4");
+
+    /** Sebben, crudele m82-83 (Medium High MH05-P2-1): the melisma of the last measure of a system ends on the only note
+     *  of the last system, which has no syllables */
+    const melismaOntoLastSystemWithoutLyrics: string = score([
+        note("E", 16, "half", "love.", "start"),
+        "<print new-system=\"yes\"/>" + note("G", 16, "half", undefined, "stop"),
     ], "2", "4");
 
     async function render(xml: string): Promise<OpenSheetMusicDisplay> {
@@ -112,5 +120,16 @@ describe("Lyric extend ends", () => {
         const noteX: number = lines[1].Measures[0].PositionAndShape.RelativePosition.x + firstEntry.PositionAndShape.RelativePosition.x;
         expect(extendLines(lines[1])[0][0]).to.be.at.most(noteX);
         expect(extendLines(lines[1])[0][1]).to.be.greaterThan(noteX);
+    });
+
+    it("keeps the continued extend line inside the bottom line of a system without syllables", async () => {
+        const osmd: OpenSheetMusicDisplay = await render(melismaOntoLastSystemWithoutLyrics);
+        const lines: StaffLine[] = staffLines(osmd);
+        expect(lines.length).to.equal(2);
+        expect(lines[1].LyricLines.length).to.equal(1, "the line continues on the last system");
+        const second: GraphicalLine = lines[1].LyricLines[0];
+        expect(second.Start.y).to.be.greaterThan(4, "below the staff, at the lyric row");
+        const bottom: number = lines[1].SkyBottomLineCalculator.getBottomLineMaxInRange(second.Start.x, second.End.x);
+        expect(bottom).to.be.at.least(second.Start.y - 1e-6, "the line is within the system's bottom line");
     });
 });
