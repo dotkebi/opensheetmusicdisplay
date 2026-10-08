@@ -4502,6 +4502,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     // order slurs that were saved to the Staffline
     for (const musicSystem of this.musicSystems) {
       for (const staffLine of musicSystem.StaffLines) {
+        // what is drawn at the notes (their articulations) before the slurs are placed, see GraphicalSlur.calculateStartAndEnd()
+        staffLine.SkyLineBeforeSlurs = staffLine.SkyLine.slice();
+        staffLine.BottomLineBeforeSlurs = staffLine.BottomLine.slice();
         // Sort all gSlurs in the staffline using the Compare function in class GraphicalSlurSorter
         const sortedGSlurs: GraphicalSlur[] = staffLine.GraphicalSlurs.sort(GraphicalSlur.Compare);
         for (const gSlur of sortedGSlurs) {

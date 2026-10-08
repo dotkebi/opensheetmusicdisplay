@@ -19,6 +19,7 @@ import { GraphicalVoiceEntry } from "./GraphicalVoiceEntry";
 import { MusicSheetCalculator } from "./MusicSheetCalculator";
 import { Tie } from "../VoiceData/Tie";
 import { GraphicalLabel } from "./GraphicalLabel";
+import { StaffLine } from "./StaffLine";
 import { SkyBottomLineCalculator } from "./SkyBottomLineCalculator";
 
 /**
@@ -327,6 +328,49 @@ export abstract class GraphicalStaffEntry extends GraphicalObject {
         }
         const [start, end] = this.getAbsoluteStartAndEnd();
         return skybottomcalculator.getSkyLineMinInRange(start, end);
+    }
+
+    /** The sky line's minimum over the staff entry before the slurs were calculated (StaffLine.SkyLineBeforeSlurs):
+     *  the top of what is drawn at the entry, its articulations included, without the slurs already there. */
+    public getSkylineMinBeforeSlurs(): number {
+        const staffLine: StaffLine = this.parentMeasure?.ParentStaffLine;
+        const skybottomcalculator: SkyBottomLineCalculator = staffLine?.SkyBottomLineCalculator;
+        const skyLine: number[] = staffLine?.SkyLineBeforeSlurs;
+        if (!skybottomcalculator || !skyLine) {
+            return this.getSkylineMin();
+        }
+        // the entry's box in the staff line from the relative positions (as osmd-dart, where the absolute positions
+        //   are not computed yet when the slurs are placed)
+        const x: number = this.parentMeasure.PositionAndShape.RelativePosition.x + this.PositionAndShape.RelativePosition.x;
+        const startIndex: number = Math.max(0, skybottomcalculator.getLeftIndexForPointX(x + this.PositionAndShape.BorderLeft, skyLine.length));
+        const endIndex: number = Math.min(skyLine.length,
+                                          skybottomcalculator.getRightIndexForPointX(x + this.PositionAndShape.BorderRight, skyLine.length));
+        let min: number = Infinity;
+        for (let i: number = startIndex; i < endIndex; i++) {
+            min = Math.min(min, skyLine[i]);
+        }
+        return min === Infinity ? this.getSkylineMin() : min;
+    }
+
+    /** The bottom line's maximum over the staff entry before the slurs were calculated, see getSkylineMinBeforeSlurs(). */
+    public getBottomlineMaxBeforeSlurs(): number {
+        const staffLine: StaffLine = this.parentMeasure?.ParentStaffLine;
+        const skybottomcalculator: SkyBottomLineCalculator = staffLine?.SkyBottomLineCalculator;
+        const bottomLine: number[] = staffLine?.BottomLineBeforeSlurs;
+        if (!skybottomcalculator || !bottomLine) {
+            return this.getBottomlineMax();
+        }
+        // the entry's box in the staff line from the relative positions (as osmd-dart, where the absolute positions
+        //   are not computed yet when the slurs are placed)
+        const x: number = this.parentMeasure.PositionAndShape.RelativePosition.x + this.PositionAndShape.RelativePosition.x;
+        const startIndex: number = Math.max(0, skybottomcalculator.getLeftIndexForPointX(x + this.PositionAndShape.BorderLeft, bottomLine.length));
+        const endIndex: number = Math.min(bottomLine.length,
+                                          skybottomcalculator.getRightIndexForPointX(x + this.PositionAndShape.BorderRight, bottomLine.length));
+        let max: number = -Infinity;
+        for (let i: number = startIndex; i < endIndex; i++) {
+            max = Math.max(max, bottomLine[i]);
+        }
+        return max === -Infinity ? this.getBottomlineMax() : max;
     }
 
     /** Highest Y around the staff entry and notes in OSMD units (pixels / 10). Note that negative y is up. */
