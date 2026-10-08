@@ -60,6 +60,20 @@ describe("Lyrics on grace notes", () => {
         grace("B", 4, "eighth", undefined, "continue") + note("A", 4, 8, "quarter", undefined, "stop") +
         note("F", 4, 8, "quarter", "re", undefined, "begin") + note("E", 4, 8, "quarter", "mo", undefined, "end"),
     ], "4", "4");
+    /** Lotti, Pur dicesti m59 (Medium High MH12-R05): "is" on the measure's last quarter, its extend stops on the last of the
+     *  grace notes after that quarter (a Nachschlag ending the measure, which shares its staff entry); the next syllable is in
+     *  the next measure */
+    const stopOnGraceNoteAfterMainNote: string = score([
+        note("G", 4, 8, "quarter", "mio") + note("F", 4, 8, "quarter", "is", "start") + grace("G", 4, "32nd") +
+        grace("F", 4, "32nd") + grace("E", 4, "32nd") + grace("F", 4, "32nd", undefined, "stop"),
+        note("E", 4, 16, "half", "mine"),
+    ], "2", "4");
+    /** the same with a note between: "is" on the first quarter, the second has no syllable, the grace notes after it carry the stop */
+    const stopOnGraceNoteAfterLaterNote: string = score([
+        note("F", 4, 8, "quarter", "is", "start") + note("G", 4, 8, "quarter") + grace("A", 4, "32nd") +
+        grace("G", 4, "32nd", undefined, "stop"),
+        note("E", 4, 16, "half", "mine"),
+    ], "2", "4");
     /** E10 m18: "in" on a slashed grace note right before "me" on a sixteenth, "re" on the eighth before */
     const syllableOnGraceNote: string = score([
         note("A", 4, 4, "eighth", "re") + grace("A", 4, "16th", "in", undefined, true) + note("A", 4, 2, "16th", "me") +
@@ -139,6 +153,24 @@ describe("Lyrics on grace notes", () => {
         expect(stopEntry.LyricsEntries.length).to.equal(0);
         expect(lines[0][1]).to.be.greaterThan(entryX(stopEntry), "the line covers the main note with the stop");
     });
+
+    for (const [name, xml] of [["on its own note", stopOnGraceNoteAfterMainNote], ["on a later note", stopOnGraceNoteAfterLaterNote]]) {
+        it(`draws the extend line to a grace note after its main note that carries the stop (${name})`, async () => {
+            const osmd: OpenSheetMusicDisplay = await render(xml);
+            const line: StaffLine = staffLine(osmd);
+            const lines: [number, number][] = extendLines(line);
+            expect(lines.length).to.equal(1, "one extend line");
+            expect(lines[0][0]).to.be.closeTo(labelEdges(entryWithLyric(line, "is"), "is")[1], 1e-6);
+            const mainEntry: GraphicalStaffEntry = line.Measures[0].staffEntries[1];
+            const mainNote: BoundingBox = mainEntry.graphicalVoiceEntries.find(gve => !gve.parentVoiceEntry.IsGrace).PositionAndShape;
+            expect(lines[0][1]).to.be.greaterThan(entryX(mainEntry) + mainNote.RelativePosition.x + mainNote.BorderMarginRight + 1,
+                "the line goes on over the grace notes after the main note");
+            const lastGrace: BoundingBox = mainEntry.graphicalVoiceEntries[mainEntry.graphicalVoiceEntries.length - 1].PositionAndShape;
+            expect(lines[0][1]).to.be.closeTo(entryX(mainEntry) + lastGrace.RelativePosition.x + lastGrace.BorderMarginRight, 1e-6,
+                "the line ends at the last grace note");
+            expect(lines[0][1]).to.be.lessThan(labelEdges(entryWithLyric(line, "mine"), "mine")[0], "before the next syllable");
+        });
+    }
 
     it("places a syllable on a grace note at the grace note, clear of the main note's syllable", async () => {
         const osmd: OpenSheetMusicDisplay = await render(syllableOnGraceNote);

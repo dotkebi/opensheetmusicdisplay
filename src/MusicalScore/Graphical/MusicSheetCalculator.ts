@@ -1124,7 +1124,60 @@ export abstract class MusicSheetCalculator {
                 if (lyricEntry.LyricsEntry.extend) {
                     this.calculateLyricExtend(lyricEntry);
                 }
+                if (lyricEntry.LyricsEntry.elisionToNext) {
+                    this.calculateLyricElisionToNext(lyricEntry, lyricsStaffEntries, idx);
+                }
             }
+        }
+    }
+
+    /**
+     * The elision curve from a syllable to the next one of its verse on the next note (LyricsEntry.elisionToNext: Se tu m'ami
+     * m21 and m67 "te‿a", Medium High MH17-U03), under the gap between them: from under the end of the syllable to under the
+     * start of the next, at the extend lines' height, sagging by about a third of a space. It is drawn as short lyric lines
+     * (StaffLine.LyricLines). Nothing is drawn when the next syllable is on another system. As in osmd-dart.
+     */
+    protected calculateLyricElisionToNext(lyricEntry: GraphicalLyricEntry, lyricsStaffEntries: GraphicalStaffEntry[], index: number): void {
+        const verseNumber: string = lyricEntry.LyricsEntry.VerseNumber;
+        const voice: Voice = lyricEntry.LyricsEntry.Parent?.ParentVoice;
+        let next: GraphicalLyricEntry = undefined;
+        for (let i: number = index + 1; i < lyricsStaffEntries.length && !next; i++) {
+            next = lyricsStaffEntries[i].LyricsEntries.find((lyric: GraphicalLyricEntry) =>
+                lyric.LyricsEntry.VerseNumber === verseNumber && lyric.LyricsEntry.Parent?.ParentVoice === voice);
+        }
+        const staffLine: StaffLine = lyricEntry.StaffEntryParent.parentMeasure.ParentStaffLine;
+        if (!next || !staffLine || next.StaffEntryParent.parentMeasure.ParentStaffLine !== staffLine) {
+            return;
+        }
+        const entryX: (entry: GraphicalStaffEntry) => number = (entry: GraphicalStaffEntry): number =>
+            entry.parentMeasure.PositionAndShape.RelativePosition.x + entry.PositionAndShape.RelativePosition.x;
+        const box: BoundingBox = lyricEntry.GraphicalLabel.PositionAndShape;
+        const nextBox: BoundingBox = next.GraphicalLabel.PositionAndShape;
+        const right: number = entryX(lyricEntry.StaffEntryParent) + box.RelativePosition.x + box.BorderRight;
+        const left: number = entryX(next.StaffEntryParent) + nextBox.RelativePosition.x + nextBox.BorderLeft;
+        // from under the last letter to under the first letter of the next one, at least a space wide
+        let startX: number = right - 0.3;
+        let endX: number = left + 0.3;
+        const minimumWidth: number = 1.0;
+        if (endX - startX < minimumWidth) {
+            const middle: number = (startX + endX) / 2;
+            startX = middle - minimumWidth / 2;
+            endX = middle + minimumWidth / 2;
+        }
+        const y: number = box.RelativePosition.y - box.Size.height / 4;
+        const sag: number = Math.min(0.45, Math.max(0.25, (endX - startX) * 0.15));
+        const segments: number = 12;
+        let previous: PointF2D = new PointF2D(startX, y);
+        for (let i: number = 1; i <= segments; i++) {
+            const t: number = i / segments;
+            const point: PointF2D = new PointF2D(startX + (endX - startX) * t, y + sag * Math.sin(Math.PI * t));
+            const line: GraphicalLine = new GraphicalLine(previous, point, this.rules.LyricUnderscoreLineWidth);
+            line.colorHex = this.rules.DefaultColorLyrics;
+            staffLine.LyricLines.push(line);
+            previous = point;
+        }
+        if (this.staffLinesWithLyricWords.indexOf(staffLine) === -1) {
+            this.staffLinesWithLyricWords.push(staffLine);
         }
     }
 
@@ -5490,14 +5543,26 @@ export abstract class MusicSheetCalculator {
         //   or "stop" in a lyric node without text: Gluck, O del mio dolce ardor m12, "fin" over eight grace notes). They
         //   share that note's staff entry, so the scan above found no end entry (or one before them): the line ends at the
         //   last of them (the notes of the extend's voice only, e.g. not at another voice's grace notes).
-        const endGraceEntry: GraphicalVoiceEntry = this.extendEndGraceEntry(nextLyricStaffEntry, verseNumber, voice);
+        let endGraceEntry: GraphicalVoiceEntry = this.extendEndGraceEntry(nextLyricStaffEntry, verseNumber, voice);
         if (endGraceEntry) {
             endStaffEntry = nextLyricStaffEntry;
             endStaffLine = nextLyricStaffEntry.parentMeasure.ParentStaffLine ?? startStaffLine;
-        } else if (stopStaffEntry) {
-            // the stop is on a walked note
-            endStaffEntry = stopStaffEntry;
-            endStaffLine = stopStaffEntry.parentMeasure.ParentStaffLine ?? endStaffLine;
+        } else {
+            // Grace notes after their main note (a Nachschlag ending the measure) share that note's staff entry: the stop
+            //   note's, else the last one the scan went over, or the extend's own when the next syllable comes right after it.
+            //   When they carry the extend, the line ends at the last of them (Lotti, Pur dicesti m59 and m72: "is" stops on
+            //   the last of four grace notes after its quarter; the line was not drawn, as the scan found no end entry).
+            const mainEntry: GraphicalStaffEntry = stopStaffEntry ?? endStaffEntry ?? startStaffEntry;
+            const afterGraceEntry: GraphicalVoiceEntry = this.extendEndGraceAfterMainNote(mainEntry, verseNumber, voice);
+            if (afterGraceEntry) {
+                endGraceEntry = afterGraceEntry;
+                endStaffEntry = mainEntry;
+                endStaffLine = mainEntry.parentMeasure.ParentStaffLine ?? startStaffLine;
+            } else if (stopStaffEntry) {
+                // the stop is on a walked note
+                endStaffEntry = stopStaffEntry;
+                endStaffLine = stopStaffEntry.parentMeasure.ParentStaffLine ?? endStaffLine;
+            }
         }
         if (!endStaffEntry || !endStaffLine) {
             return;
@@ -5556,8 +5621,17 @@ export abstract class MusicSheetCalculator {
                 if (secondEndX > secondStartX) {
                     // at the verse's row in the end staff line, which has rows of its own (Bellini, Vaga luna, voice m29:
                     //   verse 2's line continued at the first system's row, at verse 1's height on the second, into its hyphens)
-                    const secondY: number = this.lyricExtendYInStaffLine(endStaffLine, verseNumber, voice) ?? startY;
+                    const rowY: number = this.lyricExtendYInStaffLine(endStaffLine, verseNumber, voice);
+                    const secondY: number = rowY ?? startY;
                     this.calculateSingleLyricWordWithUnderscore(endStaffLine, secondStartX, secondEndX, secondY);
+                    // Without the verse's syllables in the end staff line (e.g. on the last system's last note) the line is at
+                    //   a row of lyrics the staff line doesn't have: reserve it in the bottom line, or the system's border (and the
+                    //   page's height) ended above it and the line was cut off (Medium High MH05-P2-1, Caldara, Sebben, crudele
+                    //   m83 in the app at 834 px: "love." over the last system break).
+                    if (rowY === undefined) {
+                        endStaffLine.SkyBottomLineCalculator.updateBottomLineInRange(secondStartX, secondEndX,
+                            secondY + this.rules.LyricUnderscoreLineWidth / 2);
+                    }
                 }
             }
         }
@@ -5602,6 +5676,21 @@ export abstract class MusicSheetCalculator {
         for (const gve of nextLyricStaffEntry.graphicalVoiceEntries) {
             const voiceEntry: VoiceEntry = gve.parentVoiceEntry;
             if (voiceEntry.IsGrace && !voiceEntry.GraceAfterMainNote && (!voice || voiceEntry.ParentVoice === voice) &&
+                voiceEntry.ExtendOnlyLyricVerses.includes(verseNumber)) {
+                endGraceEntry = gve;
+            }
+        }
+        return endGraceEntry;
+    }
+
+    /** The last of the grace notes after the main note of the staff entry (they share its staff entry) that carry the
+     *  verse's extend (VoiceEntry.ExtendOnlyLyricVerses) in the extend's voice, where the extend line ends.
+     *  Undefined if there is none. */
+    private extendEndGraceAfterMainNote(staffEntry: GraphicalStaffEntry, verseNumber: string, voice: Voice): GraphicalVoiceEntry {
+        let endGraceEntry: GraphicalVoiceEntry = undefined;
+        for (const gve of staffEntry.graphicalVoiceEntries) {
+            const voiceEntry: VoiceEntry = gve.parentVoiceEntry;
+            if (voiceEntry.IsGrace && voiceEntry.GraceAfterMainNote && (!voice || voiceEntry.ParentVoice === voice) &&
                 voiceEntry.ExtendOnlyLyricVerses.includes(verseNumber)) {
                 endGraceEntry = gve;
             }

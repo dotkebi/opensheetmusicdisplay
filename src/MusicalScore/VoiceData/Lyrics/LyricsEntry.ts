@@ -22,6 +22,10 @@ export class LyricsEntry {
     /** The syllabic value read from the XML (single/begin/middle/end).
      *  Kept to allow re-linking word chains across voices after reading. */
     public syllabic: string = "single";
+    /** Whether the syllable is joined to the next one of its verse by an elision across the two notes (<elision/> followed by
+     *  an empty <text/>, Se tu m'ami m21 "te‿a"): the elision curve is drawn from this syllable to the next
+     *  (MusicSheetCalculator.calculateLyricElisionToNext()). */
+    public elisionToNext: boolean = false;
     /** The language of the text: its xml:lang or the sheet's default for the lyric (MusicSheet.LyricLanguages), see Label.language. */
     public language: string;
 
