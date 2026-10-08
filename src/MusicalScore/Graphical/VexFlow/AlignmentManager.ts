@@ -102,13 +102,21 @@ export class AlignmentManager {
                     if ((expr as VexFlowContinuousDynamicExpression).squeeze) {
                         const nextExpression: AbstractGraphicalExpression = exprIdx < aes.length - 1 ? aes[exprIdx + 1] : undefined;
                         const prevExpression: AbstractGraphicalExpression = exprIdx > 0 ? aes[exprIdx - 1] : undefined;
+                        // Only a neighbour that overlaps the wedge or is closer than DynamicExpressionSpacer squeezes it: with a gap
+                        //   wider than the spacer the "overlap" is negative, and squeezing by it shortened the wedge by the gap
+                        //   (Parisotti, Martini Piacer d'amor Canto m45: the diminuendo after the crescendo ending at the barline
+                        //   lost 2.4 of its length; renderer leftovers 2, decision C-6). Same as osmd-dart.
                         if (nextExpression) {
                             const overlapRight: PointF2D = this.getOverlap(expr.PositionAndShape, nextExpression.PositionAndShape);
-                            (expr as VexFlowContinuousDynamicExpression).squeeze(-(overlapRight.x + this.rules.DynamicExpressionSpacer));
+                            if (overlapRight.x + this.rules.DynamicExpressionSpacer > 0) {
+                                (expr as VexFlowContinuousDynamicExpression).squeeze(-(overlapRight.x + this.rules.DynamicExpressionSpacer));
+                            }
                         }
                         if (prevExpression) {
                             const overlapLeft: PointF2D = this.getOverlap(prevExpression.PositionAndShape, expr.PositionAndShape);
-                            (expr as VexFlowContinuousDynamicExpression).squeeze(overlapLeft.x + this.rules.DynamicExpressionSpacer);
+                            if (overlapLeft.x + this.rules.DynamicExpressionSpacer > 0) {
+                                (expr as VexFlowContinuousDynamicExpression).squeeze(overlapLeft.x + this.rules.DynamicExpressionSpacer);
+                            }
                         }
                     }
                 }

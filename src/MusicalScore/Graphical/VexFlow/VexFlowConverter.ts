@@ -19,6 +19,7 @@ import {Fonts} from "../../../Common/Enums/Fonts";
 import {OutlineAndFillStyleEnum, OUTLINE_AND_FILL_STYLE_DICT} from "../DrawingEnums";
 import log from "loglevel";
 import { ArticulationEnum, StemDirectionType, VoiceEntry } from "../../VoiceData/VoiceEntry";
+import { SourceStaffEntry } from "../../VoiceData/SourceStaffEntry";
 import { BreathMarkValue } from "../../VoiceData/Articulation";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { SystemLinePosition } from "../SystemLinePosition";
@@ -1102,14 +1103,17 @@ export class VexFlowConverter {
                 }
                 case ArticulationEnum.invertedfermata: {
                     const pve: VoiceEntry = gNote.sourceNote.ParentVoiceEntry;
-                    const sourceNote: Note = gNote.sourceNote;
                     // find inverted fermata, push it to last voice entry in staffentry list,
                     //   so that it doesn't overlap notes (gets displayed right below higher note)
                     //   TODO this could maybe be moved elsewhere or done more elegantly,
                     //     but on the other hand here it only gets checked if we have an inverted fermata anyways, seems efficient.
-                    if (pve !== sourceNote.ParentVoiceEntry.ParentSourceStaffEntry.VoiceEntries.last()) {
+                    // Only to an entry with a printed note: pushed to a hidden rest (print-object="no", the lower voice's
+                    //   filler at that time) the fermata was never drawn (Parisotti, Traetta Ombra cara Piano m11, m35;
+                    //   renderer leftovers 2, 2-2 P25-S1). osmd_dart draws it under its own note.
+                    const lastPrinted: VoiceEntry = VexFlowConverter.lastVoiceEntryWithPrintedNote(pve.ParentSourceStaffEntry);
+                    if (lastPrinted && pve !== lastPrinted) {
                         pve.Articulations = pve.Articulations.slice(pve.Articulations.indexOf(articulation));
-                        pve.ParentSourceStaffEntry.VoiceEntries.last().Articulations.push(articulation);
+                        lastPrinted.Articulations.push(articulation);
                         continue;
                     }
                     vfArtPosition = VF.Modifier.Position.BELOW;
@@ -1193,6 +1197,17 @@ export class VexFlowConverter {
         if (vfArt.getPosition() === ornamentPosition) {
             (vfArt as any).stackedOutsideOrnament = true;
         }
+    }
+
+    /** The staff entry's last voice entry (in the order they are converted) with a printed, non-rest note, or undefined. */
+    private static lastVoiceEntryWithPrintedNote(staffEntry: SourceStaffEntry): VoiceEntry {
+        let last: VoiceEntry = undefined;
+        for (const entry of staffEntry.VoiceEntries) {
+            if (!entry.IsGrace && entry.Notes.some(note => note.PrintObject && !note.isRest())) {
+                last = entry;
+            }
+        }
+        return last;
     }
 
     /**
