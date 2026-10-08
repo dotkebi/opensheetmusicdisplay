@@ -727,12 +727,20 @@ export abstract class MusicSheetCalculator {
         start -= staffLine.PositionAndShape.RelativePosition.x;
         end -= staffLine.PositionAndShape.RelativePosition.x;
 
-        // correct for hypersensitive collision checks, notes having skyline extend too far to left and right
-        const startCollisionCheck: number = start + 0.5;
-        const endCollisionCheck: number = end - 0.5;
+        // The number keeps measureNumberSideClearance from the ink beside it: the accent, the flat or the flag over the
+        //   measure's first note sat right next to the number at the same height (Parisotti, Pur dicesti Canto m137 "137>",
+        //   Stizzoso Canto m96 "96♭"; renderer leftovers 2, 2-1). Upstream shrank the range by 0.5 on each side instead
+        //   ("correct for hypersensitive collision checks, notes having skyline extend too far to left and right"), from the
+        //   days of the bounding-box sky line; the sky line is drawn ink now.
+        const startCollisionCheck: number = start - MusicSheetCalculator.measureNumberSideClearance;
+        const endCollisionCheck: number = end + MusicSheetCalculator.measureNumberSideClearance;
 
         // get the minimum corresponding SkyLine value
-        const skyLineMinValue: number = skyBottomLineCalculator.getSkyLineMinInRange(startCollisionCheck, endCollisionCheck);
+        let skyLineMinValue: number = skyBottomLineCalculator.getSkyLineMinInRange(startCollisionCheck, endCollisionCheck);
+        if (skyLineMinValue < 0) {
+            // raised over ink: clear of it by measureNumberClearance, as over a slur (raiseMeasureNumberOverSlurs)
+            skyLineMinValue -= MusicSheetCalculator.measureNumberClearance + graphicalLabel.PositionAndShape.BorderMarginBottom;
+        }
 
         if (measure === staffLine.Measures[0]) {
             // must take into account possible MusicSystem Brackets
@@ -770,8 +778,10 @@ export abstract class MusicSheetCalculator {
         }
     }
 
-    /** Space between a measure number and a slur under it. */
-    private static readonly measureNumberSlurClearance: number = 0.2;
+    /** Space between a measure number and a slur or other ink under it. */
+    public static readonly measureNumberClearance: number = 0.2;
+    /** Space between a measure number and the ink beside it: the sky line this far on both sides of the number is read. */
+    public static readonly measureNumberSideClearance: number = 0.5;
 
     /**
      * Measure numbers are placed before the slurs (calculateMeasureNumberPlacement), from the sky line of the notes:
@@ -780,9 +790,11 @@ export abstract class MusicSheetCalculator {
      */
     private raiseMeasureNumberOverSlurs(label: GraphicalLabel, staffLine: StaffLine): void {
         const box: BoundingBox = label.PositionAndShape;
-        const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x;
-        const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x;
-        const clearance: number = MusicSheetCalculator.measureNumberSlurClearance;
+        const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x -
+            MusicSheetCalculator.measureNumberSideClearance;
+        const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x +
+            MusicSheetCalculator.measureNumberSideClearance;
+        const clearance: number = MusicSheetCalculator.measureNumberClearance;
         let slurTop: number = Number.POSITIVE_INFINITY;
         for (const slur of staffLine.GraphicalSlurs) {
             if (slur.placement !== PlacementEnum.Above || !slur.bezierStartPt || !slur.bezierEndPt ||
@@ -4738,11 +4750,12 @@ export abstract class MusicSheetCalculator {
         if (!staffLine || this.marksRaisedOverSlurs.length === 0) {
             return;
         }
-        const clearance: number = MusicSheetCalculator.measureNumberSlurClearance;
+        const clearance: number = MusicSheetCalculator.measureNumberClearance;
         for (const label of musicSystem.MeasureNumberLabels) {
             const box: BoundingBox = label.PositionAndShape;
-            const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x;
-            const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x;
+            const side: number = MusicSheetCalculator.measureNumberSideClearance;
+            const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x - side;
+            const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x + side;
             let markTop: number = Number.POSITIVE_INFINITY;
             for (const mark of this.marksRaisedOverSlurs) {
                 if (mark.staffLine !== staffLine || mark.right < left || mark.left > right) {
@@ -4760,7 +4773,7 @@ export abstract class MusicSheetCalculator {
             }
             const shift: number = box.RelativePosition.y + box.BorderMarginBottom - (markTop - clearance);
             box.RelativePosition = new PointF2D(box.RelativePosition.x, box.RelativePosition.y - shift);
-            staffLine.SkyBottomLineCalculator.updateSkyLineInRange(left, right, box.RelativePosition.y + box.BorderMarginTop);
+            staffLine.SkyBottomLineCalculator.updateSkyLineInRange(left + side, right - side, box.RelativePosition.y + box.BorderMarginTop);
         }
     }
 
