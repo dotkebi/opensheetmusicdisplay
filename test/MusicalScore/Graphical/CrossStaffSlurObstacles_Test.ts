@@ -5,6 +5,7 @@ import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexF
 import { CrossStaffCurve, CrossStaffCurveDrawGeometry, CrossStaffCurveNote } from "../../../src/MusicalScore/Graphical/VexFlow/CrossStaffCurve";
 import { GraphicalNote } from "../../../src/MusicalScore/Graphical/GraphicalNote";
 import { GraphicalSlur } from "../../../src/MusicalScore/Graphical/GraphicalSlur";
+import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
 import { PlacementEnum } from "../../../src/MusicalScore/VoiceData/Expressions/AbstractExpression";
 import { PointF2D } from "../../../src/Common/DataObjects/PointF2D";
 import { Pitch } from "../../../src/Common/DataObjects/Pitch";
@@ -19,8 +20,9 @@ import { Pitch } from "../../../src/Common/DataObjects/Pitch";
  * all its notes on the left hand: an ordinary slur; m3->m5 a slur placed below from the right hand's A4 to the left
  * hand's D4 on the first beat of m5, on a ledger line between the staves, its voice's F4 E4 D#4 half notes (stems up,
  * ledger lines) on the left hand between (Torna, vezzosa Fillide m2->5): the curve runs between the staves, under the
- * right hand and over those notes, to the top of the D4 (R7); m6->m8 the same over a system break before m7 (the web
- * layout of Torna): the end piece on the left hand from m7, above it, to the D4 (R7, web).
+ * right hand and over those notes, to the top of the D4 (R7); m6->m9 the same over a system break before m7 (the web
+ * layout of Torna m17->20): the start piece within m6, the end piece on the left hand from m7, above it, to the D4 (R7,
+ * web).
  */
 describe("Slurs whose obstacles lie on the other staff", () => {
     let container: HTMLElement;
@@ -141,5 +143,54 @@ describe("Slurs whose obstacles lie on the other staff", () => {
         expect(gSlur.placement).to.equal(PlacementEnum.Above);
         expect(measureAt(1, 1).crossStaffCurves.length).to.equal(0);
         expect(measureAt(1, 0).crossStaffCurves.length).to.equal(0);
+    });
+
+    it("a slur placed toward its end staff, ending on a note between the staves: between them, over the end staff's notes of its " +
+       "voice, to the top of the end note", () => {
+        const curve: CrossStaffCurve = curveStartingIn(2);
+        expect(curve.placement).to.equal(PlacementEnum.Below);
+        // under the right hand
+        for (const note of [...notesOf(2, 0), ...notesOf(3, 0)]) {
+            expect(yAt(curve, headX(note)), `under ${note.sourceNote.Pitch.ToString()}`).to.be.greaterThan(headY(note) + 0.5);
+        }
+        // over the left hand's F4, E4, D#4 of its voice
+        for (const note of [...notesOf(2, 1, 6), ...notesOf(3, 1, 6)]) {
+            expect(yAt(curve, headX(note)), `over ${note.sourceNote.Pitch.ToString()}`).to.be.lessThan(headY(note) - 0.4);
+            // and over their up stems, as in the source
+            const h: CrossStaffCurveNote = head(note);
+            expect(h.stem).to.equal(1);
+            expect(yAt(curve, h.stemX), `over the stem of ${note.sourceNote.Pitch.ToString()}`).to.be.lessThan(h.stemTip - 0.1);
+        }
+        // to the top of the D4 (its stem points up, the curve comes from above: the end of its stem)
+        const d4: GraphicalNote = noteOf(4, 1, "D4", 6);
+        expect(curve.endPoint.y).to.be.lessThan(headY(d4) - 0.3);
+        expect(Math.abs(curve.endPoint.x - headX(d4))).to.be.lessThan(1.5);
+    });
+
+    it("such a slur over a system break: the start piece to the end of its system, the end piece on the end staff from the next " +
+       "system's start, above it, to the end note", () => {
+        const pieces: GraphicalSlur[] = slursStartingIn(5);
+        const where: (gSlur: GraphicalSlur) => string = (gSlur: GraphicalSlur) => {
+            const staffLine: StaffLine = gSlur.staffEntries[0].parentMeasure.ParentStaffLine;
+            const s: number = osmd.GraphicSheet.MusicPages[0].MusicSystems.indexOf(staffLine.ParentMusicSystem);
+            const l: number = staffLine.ParentMusicSystem.StaffLines.indexOf(staffLine);
+            const measures: number[] = [];
+            for (const entry of gSlur.staffEntries) {
+                if (measures.indexOf(entry.parentMeasure.MeasureNumber) < 0) {
+                    measures.push(entry.parentMeasure.MeasureNumber);
+                }
+            }
+            return `${s}:${l}:${measures.join(",")}`;
+        };
+        expect(pieces.map(where)).to.deep.equal(["0:0:6", "1:1:7,8,9"]);
+        const endPiece: GraphicalSlur = pieces[pieces.length - 1];
+        expect(endPiece.isCrossStaffPiece).to.equal(true);
+        expect(endPiece.placement).to.equal(PlacementEnum.Above);
+        const d4: GraphicalNote = noteOf(8, 1, "D4", 6);
+        const line: StaffLine = endPiece.staffEntries[0].parentMeasure.ParentStaffLine;
+        const d4X: number = headX(d4) - line.PositionAndShape.AbsolutePosition.x;
+        expect(Math.abs(endPiece.bezierEndPt.x - d4X), "to the D4").to.be.lessThan(1.5);
+        expect(endPiece.bezierStartPt.x, "from the system start").to.be.lessThan(d4X - 10);
+        expect(endPiece.bezierEndPt.y, "to the top of the D4").to.be.lessThan(headY(d4) - line.PositionAndShape.AbsolutePosition.y - 0.3);
     });
 });

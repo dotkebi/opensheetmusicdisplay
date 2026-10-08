@@ -4243,17 +4243,80 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   }
 
   /**
+   * Whether a slur between two staves, drawn as two pieces (crossStaffSlurIsSplit()), runs between the staves
+   * (CrossStaffCurve.runsBetweenStaves(), the same rule on the layout's boxes: placed below, ending on the lower staff
+   * above its top line): its end piece on the lower staff then lies above it (GraphicalSlur.pieceSide), where the one
+   * curve of the same slur in one system ends (Bellini, Torna vezzosa Fillide m2-5 on the web: over the left hand to
+   * the top of its D4). Not between two notes of one beam (Myrthen 1 m8).
+   */
+  private slurRunsBetweenStaves(slur: Slur): boolean {
+    const startNote: Note = slur.StartNote;
+    const endNote: Note = slur.EndNote;
+    const xml: PlacementEnum = slur.PlacementXml;
+    if (!startNote || !endNote || !this.rules.SlurPlacementFromXML || xml !== PlacementEnum.Above && xml !== PlacementEnum.Below) {
+      return false;
+    }
+    const end: GraphicalNote = this.rules.GNote(endNote);
+    if (!end) {
+      return false;
+    }
+    const endIsLower: boolean = endNote.ParentStaff.idInMusicSheet > startNote.ParentStaff.idInMusicSheet;
+    if (xml !== PlacementEnum.Below || !endIsLower || startNote.NoteBeam && startNote.NoteBeam === endNote.NoteBeam) {
+      return false;
+    }
+    return VexFlowMusicSheetCalculator.noteYOnStaffLine(end) < -0.25;
+  }
+
+  /** The note's y relative to its staff line's top line, in units (the layout's boxes). */
+  private static noteYOnStaffLine(note: GraphicalNote): number {
+    const line: BoundingBox = note.parentVoiceEntry?.parentStaffEntry?.parentMeasure?.ParentStaffLine?.PositionAndShape;
+    let y: number = 0;
+    for (let box: BoundingBox = note.PositionAndShape; box && box !== line; box = box.Parent) {
+      y += box.RelativePosition.y;
+    }
+    return y;
+  }
+
+  /**
+   * Whether the end piece of a slur drawn as two pieces needs the measure before its end note's: the end note sounds at
+   * the start of its measure, which does not begin its staff line (Bellini, Torna vezzosa Fillide m2→5 on the web, m4
+   * beginning the system: a piece within m5 alone would be one point; a measure beginning its system has the piece from
+   * the system's start).
+   */
+  private endPieceNeedsMeasureBefore(slur: Slur): boolean {
+    const endNote: Note = slur.EndNote;
+    if (endNote.getAbsoluteTimestamp().RealValue > endNote.SourceMeasure.AbsoluteTimestamp.RealValue) {
+      return false;
+    }
+    const measure: GraphicalMeasure = this.rules.GNote(endNote)?.parentVoiceEntry?.parentStaffEntry?.parentMeasure;
+    const line: StaffLine = measure?.ParentStaffLine;
+    return !!line && line.Measures[0] !== measure;
+  }
+
+  /**
    * The measure index after which a slur drawn as two pieces (see crossStaffSlurIsSplit()) changes staff: the start piece
    * goes from the start note to the end of that measure on the start note's staff, the end piece from the start of the
    * next measure to the end note on the end note's staff. The long piece goes on the staff where the start note's voice
    * has more of its notes between the two: Myrthen 14 m12-14 (voice 5 moves to the left hand: 4 notes on the right, 8 on
    * the left) changes staff after the start note's measure, the slur running under the left hand; Myrthen 15 m5-7 and
    * m41-43 (the right hand melody, all its notes on the right) before the end note's measure, the slur running over the
-   * right hand and reaching the left hand's last note in the end measure. Equal counts go to the end staff.
+   * right hand and reaching the left hand's last note in the end measure. Equal counts go to the end staff. An end note
+   * on the first beat of a measure within its system (Bellini, Torna vezzosa Fillide m5 on the web) takes the measure
+   * before it as well (endPieceNeedsMeasureBefore()). A slur running between the staves (slurRunsBetweenStaves())
+   * changes staff at the end of the start note's system: its end piece runs over the end staff from the next system's
+   * start to the end note, as the one curve of that slur in one system ends (Bellini, Torna vezzosa Fillide m17-20 on
+   * the web: m17 ending its system, the piece over the left hand's m18-20).
    */
   private crossStaffSlurSplitMeasureIndex(slur: Slur): number {
     const startIndex: number = slur.StartNote.SourceMeasure.measureListIndex;
     const endIndex: number = slur.EndNote.SourceMeasure.measureListIndex;
+    if (this.slurRunsBetweenStaves(slur)) {
+      const startLine: StaffLine = this.rules.GNote(slur.StartNote)?.parentVoiceEntry?.parentStaffEntry?.parentMeasure?.ParentStaffLine;
+      const last: number = startLine?.Measures[startLine.Measures.length - 1]?.parentSourceMeasure?.measureListIndex;
+      if (last !== undefined && last >= startIndex && last < endIndex) {
+        return last;
+      }
+    }
     const from: number = slur.StartNote.getAbsoluteTimestamp().RealValue;
     const to: number = slur.EndNote.getAbsoluteTimestamp().RealValue;
     let onStartStaff: number = 0;
@@ -4270,7 +4333,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         onEndStaff++;
       }
     }
-    return onStartStaff > onEndStaff ? Math.max(startIndex, endIndex - 1) : startIndex;
+    const before: number = this.endPieceNeedsMeasureBefore(slur) ? 2 : 1;
+    return onStartStaff > onEndStaff ? Math.max(startIndex, endIndex - before) : startIndex;
   }
 
   /**
@@ -4363,6 +4427,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const crossStaffEndPieces: { [staffId: number]: { slur: Slur, fromMeasureIndex: number }[] } = {};
     // the measure index after which each of these slurs changes staff (see crossStaffSlurSplitMeasureIndex())
     const crossStaffSplitAfter: Map<Slur, number> = new Map<Slur, number>();
+    // the side of the end piece of those running between the staves (see slurRunsBetweenStaves()): facing the start staff
+    const crossStaffPieceSide: Map<Slur, PlacementEnum> = new Map<Slur, PlacementEnum>();
     for (const musicSystem of this.musicSystems) {
       for (const staffLine of musicSystem.StaffLines) {
         for (const graphicalMeasure of staffLine.Measures) {
@@ -4376,7 +4442,14 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
                   const endStaffId: number = this.rules.GNote(slur.EndNote).parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaff.idInMusicSheet;
                   const splitAfter: number = this.crossStaffSlurSplitMeasureIndex(slur);
                   crossStaffSplitAfter.set(slur, splitAfter);
-                  (crossStaffEndPieces[endStaffId] ??= []).push({ slur, fromMeasureIndex: splitAfter + 1 });
+                  // (the end piece from the measure after the start piece's last — from the measure before an end note
+                  //   on its first beat at the latest, see crossStaffSlurSplitMeasureIndex())
+                  const endIndex: number = slur.EndNote.SourceMeasure.measureListIndex;
+                  const fromMeasureIndex: number = this.endPieceNeedsMeasureBefore(slur) ? Math.min(splitAfter + 1, endIndex - 1) : splitAfter + 1;
+                  (crossStaffEndPieces[endStaffId] ??= []).push({ slur, fromMeasureIndex });
+                  if (this.slurRunsBetweenStaves(slur)) {
+                    crossStaffPieceSide.set(slur, slur.PlacementXml === PlacementEnum.Below ? PlacementEnum.Above : PlacementEnum.Below);
+                  }
                 }
               }
             }
@@ -4405,6 +4478,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
             const oldGSlur: GraphicalSlur = openGraphicalSlurs[slurIndex];
             const newGSlur: GraphicalSlur = new GraphicalSlur(oldGSlur.slur, this.rules); //Graphicalslur.createFromSlur(oldSlur);
             newGSlur.isCrossStaffPiece = oldGSlur.isCrossStaffPiece;
+            newGSlur.pieceSide = oldGSlur.pieceSide;
             staffLine.addSlurToStaffline(newGSlur); // every VFSlur is added to the array in the VFStaffline!
             openGraphicalSlurs[slurIndex] = newGSlur;
           }
@@ -4433,6 +4507,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
               }
               const endPiece: GraphicalSlur = new GraphicalSlur(endPieces[pieceIndex].slur, this.rules);
               endPiece.isCrossStaffPiece = true;
+              endPiece.pieceSide = crossStaffPieceSide.get(endPieces[pieceIndex].slur);
               staffLine.addSlurToStaffline(endPiece);
               openGraphicalSlurs.push(endPiece);
               endPieces.splice(pieceIndex, 1);
