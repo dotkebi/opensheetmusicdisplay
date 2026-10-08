@@ -94,8 +94,14 @@ export declare class CrossStaffCurve {
     readonly tieDirection: PlacementEnum | undefined;
     /** the measures from the start note's to the end note's, on both staves */
     readonly participants: GraphicalMeasure[];
+    /** For a slur whose two notes lie on one staff while its voice's notes between them lie on the other staff of the
+     *  same system (Bellini, Sogno d'infanzia m36: the left hand's E3 to its G3 over the right hand's E4 C4 under a
+     *  cross-staff beam): that other staff. The curve runs between the two staves as a slur from one to the other does,
+     *  over (under) those notes and the beam, its ends at the ends of the notes' stems on the beam as the source's slur
+     *  over the beam (VexFlowMusicSheetCalculator.sameStaffSlurInnerLine()). Undefined otherwise. */
+    readonly innerLine: StaffLine | undefined;
     private constructor();
-    static slur(graphicalSlur: GraphicalSlur, startNote: GraphicalNote, endNote: GraphicalNote, participants: GraphicalMeasure[]): CrossStaffCurve;
+    static slur(graphicalSlur: GraphicalSlur, startNote: GraphicalNote, endNote: GraphicalNote, participants: GraphicalMeasure[], innerLine?: StaffLine | undefined): CrossStaffCurve;
     static tie(startNote: GraphicalNote, endNote: GraphicalNote, direction: PlacementEnum, participants: GraphicalMeasure[]): CrossStaffCurve;
     get isTie(): boolean;
     get startPoint(): PointF2D;
@@ -122,7 +128,11 @@ export declare class CrossStaffCurve {
      * notehead or, when the stem points to the slur's side, the stem's end (as on one staff) — each of the four pairs is
      * tried, the curve clearing all obstacles with one arch wins, the usual ends first (Myrthen 1 m4: the slur under the
      * beam ends at the right-hand note's stem; 3 m3: the slur over the arpeggio starts at the left-hand notehead,
-     * beside its stem).
+     * beside its stem). A slur placed toward its end staff whose end note lies between the staves runs between them
+     * (runsBetweenStaves(): Bellini, Torna vezzosa Fillide m2-5, from under the right hand's A4 to the top of the left
+     * hand's D4 on a ledger line): under (over) the start staff, over (under) the end staff's notes of its voice —
+     * passed on their facing side, the curve's bow kept short of them (bowCap()) — to the facing side of the end note.
+     * A slur on one staff over its voice's notes on the other (innerLine) is fitted upright (see fitSlur()).
      */
     private calculateSlur;
     /** The slur's curve on one side: the best of its end pairs (calculateSlur()), or for a steep one from its notes'
@@ -172,6 +182,26 @@ export declare class CrossStaffCurve {
     /** The XML placement, else away from the slur's own notes between its ends (most of them above the line from end
      *  to end: below), else as upstream (a slur up to the upper staff above, down to the lower one below). */
     private placementOf;
+    /** Whether a slur between two staves runs between them rather than around the end staff: the XML places it below,
+     *  it ends on the lower staff, and the end note lies above that staff's top line (Bellini, Torna vezzosa Fillide
+     *  m2-5: the right hand's A4 to the left hand's D4 on a ledger line, its voice's F4 E4 D#4 on ledger lines between
+     *  — the source runs between the staves, over them, to the top of the D4). A slur to a note inside its staff goes
+     *  around that staff as before (Schumann, Myrthen 14 m12-14: under the left hand to its D3). Not for a steep slur,
+     *  nor from beside the start's stem (isSteep(), besideStem(): Myrthen 17's rule — a pair of slurs between the same
+     *  notes placed above and below would end alike), nor between two notes of one beam (a figure beamed across the
+     *  staves, Myrthen 1 m8: the slur under the beam as before). endIsLower: the end staff is the lower one; endOrigin:
+     *  its origin (top line, left end). */
+    private runsBetweenStaves;
+    /** The most a slur between the staves may bow from the line between its ends before reaching one of facing, the
+     *  end staff's notes of its voice passed on their side facing the curve (their noteheads and the ends of their
+     *  stems pointing to the curve, by the clearance: Bellini, Torna vezzosa Fillide m3-4, the source passes over the
+     *  up stems of the left hand's half notes); unbounded without them, below zero when the line between the ends
+     *  already runs through one of them. */
+    private static bowCap;
+    /** The end choices at a slur's end note between the staves, reached from its facing side: its notehead, or the end
+     *  of its stem pointing to the curve (Bellini, Torna vezzosa Fillide m5: the D4's up stem, the curve coming over
+     *  the up stems of the notes before it). */
+    private static facingEndChoices;
     /** The slur's end at the note: at its stem's end (atStem) or beside its notehead on the slur's side. */
     private static endPointOf;
     /** The notes of the curve's measures on both staves, any voice, across its width — but its own two. */
@@ -179,7 +209,7 @@ export declare class CrossStaffCurve {
     /** Whether one of the notes has its notehead between the curve's two ends (across, a third of a space in). */
     private static headsBetween;
     /** The notes of the slur's voices (its start note's and end note's) strictly between its two notes: in its measures
-     *  on both staves. */
+     *  on both staves, or on one of them (on). */
     private voiceNotesBetween;
     /** A note's ink on the slur's side: its notehead, and its stem's end when the stem points that way. */
     private static noteObstacles;
@@ -208,6 +238,10 @@ export declare class CrossStaffCurve {
     /** The height of hullCurve()'s highest corner over the line from p0 to p3: the highest obstacle (with its
      *  clearance), or the least bow. */
     private static hullHeight;
+    /** How far the point lies beyond the line from p0 to p3 on the curve's side (n: its normal): square to the line,
+     *  or, upright, vertically. */
+    private static beyond;
+    /** The slur's bow (EngravingRules.SlurCrossStaff*), at most cap (bowCap(); a fifth of a space at least). */
     private static bow;
     private static distance;
     /** How far the curve reaches from the line between p0 and p3. */

@@ -378,8 +378,9 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      */
     private crossStaffSlurIsSplit;
     /**
-     * The CrossStaffCurve of a slur from the start entry's note to a note on another staff of the same system, held by
-     * the measures it spans on both staves; undefined when its end note is not placed in this system.
+     * The CrossStaffCurve of a slur from the start entry's note to a note on another staff of the same system — or, both
+     * notes on one staff, over its voice's notes on innerLine (sameStaffSlurInnerLine()) — held by the measures it spans
+     * on both staves; undefined when its end note is not placed in this system.
      */
     private crossStaffCurveOf;
     /** Forgets the curves between staves of the last layout: the measures are kept from one layout to the next. */
@@ -394,13 +395,49 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      *  between the placed staves (CrossStaffCurve). */
     protected reserveCrossStaffCurves(): void;
     /**
+     * For a slur placed above whose two notes lie on one staff while its voice's notes between them lie on the staff
+     * above (Bellini, Sogno d'infanzia m36 and 41 more, L'allegro marinaro m33-41: the left hand's E3 to its G3 over the
+     * right hand's E4 C4 under a cross-staff beam — the source arches over the beam and those notes, an ordinary slur,
+     * clearing its own staff only, ran under the beam across the stems; decision Q1 10-08, A), the staff line of those
+     * notes: the slur is one curve over them and the beam as a slur between the staves (CrossStaffCurve, innerLine).
+     * Undefined for an ordinary slur: its voice's notes between on its own staff or on a staff below, placed below or
+     * not placed (below the left hand is right as it is), or its notes in different systems (two pieces as usual). Only
+     * a note beamed with a note of the slur's staff counts — the voice itself crossing over: a voice number used on both
+     * staves for two lines at once (Parisotti E03 m12: the left hand's D3-D2 under the right hand's C4s of "voice 2") or
+     * a figure beamed staff by staff (Myrthen 3 m2: the left hand's run, the right hand's own beam, the source's slur
+     * under the right hand) stays an ordinary slur. Same as osmd-dart.
+     */
+    private sameStaffSlurInnerLine;
+    /**
+     * Whether a slur between two staves, drawn as two pieces (crossStaffSlurIsSplit()), runs between the staves
+     * (CrossStaffCurve.runsBetweenStaves(), the same rule on the layout's boxes: placed below, ending on the lower staff
+     * above its top line): its end piece on the lower staff then lies above it (GraphicalSlur.pieceSide), where the one
+     * curve of the same slur in one system ends (Bellini, Torna vezzosa Fillide m2-5 on the web: over the left hand to
+     * the top of its D4). Not between two notes of one beam (Myrthen 1 m8).
+     */
+    private slurRunsBetweenStaves;
+    /** The note's y relative to its staff line's top line, in units (the layout's boxes). */
+    private static noteYOnStaffLine;
+    /**
+     * Whether the end piece of a slur drawn as two pieces needs the measure before its end note's: the end note sounds at
+     * the start of its measure, which does not begin its staff line (Bellini, Torna vezzosa Fillide m2→5 on the web, m4
+     * beginning the system: a piece within m5 alone would be one point; a measure beginning its system has the piece from
+     * the system's start).
+     */
+    private endPieceNeedsMeasureBefore;
+    /**
      * The measure index after which a slur drawn as two pieces (see crossStaffSlurIsSplit()) changes staff: the start piece
      * goes from the start note to the end of that measure on the start note's staff, the end piece from the start of the
      * next measure to the end note on the end note's staff. The long piece goes on the staff where the start note's voice
      * has more of its notes between the two: Myrthen 14 m12-14 (voice 5 moves to the left hand: 4 notes on the right, 8 on
      * the left) changes staff after the start note's measure, the slur running under the left hand; Myrthen 15 m5-7 and
      * m41-43 (the right hand melody, all its notes on the right) before the end note's measure, the slur running over the
-     * right hand and reaching the left hand's last note in the end measure. Equal counts go to the end staff.
+     * right hand and reaching the left hand's last note in the end measure. Equal counts go to the end staff. An end note
+     * on the first beat of a measure within its system (Bellini, Torna vezzosa Fillide m5 on the web) takes the measure
+     * before it as well (endPieceNeedsMeasureBefore()). A slur running between the staves (slurRunsBetweenStaves())
+     * changes staff at the end of the start note's system: its end piece runs over the end staff from the next system's
+     * start to the end note, as the one curve of that slur in one system ends (Bellini, Torna vezzosa Fillide m17-20 on
+     * the web: m17 ending its system, the piece over the left hand's m18-20).
      */
     private crossStaffSlurSplitMeasureIndex;
     /**
