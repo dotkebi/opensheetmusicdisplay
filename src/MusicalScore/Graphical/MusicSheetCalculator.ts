@@ -1118,7 +1118,60 @@ export abstract class MusicSheetCalculator {
                 if (lyricEntry.LyricsEntry.extend) {
                     this.calculateLyricExtend(lyricEntry);
                 }
+                if (lyricEntry.LyricsEntry.elisionToNext) {
+                    this.calculateLyricElisionToNext(lyricEntry, lyricsStaffEntries, idx);
+                }
             }
+        }
+    }
+
+    /**
+     * The elision curve from a syllable to the next one of its verse on the next note (LyricsEntry.elisionToNext: Se tu m'ami
+     * m21 and m67 "te‿a", Medium High MH17-U03), under the gap between them: from under the end of the syllable to under the
+     * start of the next, at the extend lines' height, sagging by about a third of a space. It is drawn as short lyric lines
+     * (StaffLine.LyricLines). Nothing is drawn when the next syllable is on another system. As in osmd-dart.
+     */
+    protected calculateLyricElisionToNext(lyricEntry: GraphicalLyricEntry, lyricsStaffEntries: GraphicalStaffEntry[], index: number): void {
+        const verseNumber: string = lyricEntry.LyricsEntry.VerseNumber;
+        const voice: Voice = lyricEntry.LyricsEntry.Parent?.ParentVoice;
+        let next: GraphicalLyricEntry = undefined;
+        for (let i: number = index + 1; i < lyricsStaffEntries.length && !next; i++) {
+            next = lyricsStaffEntries[i].LyricsEntries.find((lyric: GraphicalLyricEntry) =>
+                lyric.LyricsEntry.VerseNumber === verseNumber && lyric.LyricsEntry.Parent?.ParentVoice === voice);
+        }
+        const staffLine: StaffLine = lyricEntry.StaffEntryParent.parentMeasure.ParentStaffLine;
+        if (!next || !staffLine || next.StaffEntryParent.parentMeasure.ParentStaffLine !== staffLine) {
+            return;
+        }
+        const entryX: (entry: GraphicalStaffEntry) => number = (entry: GraphicalStaffEntry): number =>
+            entry.parentMeasure.PositionAndShape.RelativePosition.x + entry.PositionAndShape.RelativePosition.x;
+        const box: BoundingBox = lyricEntry.GraphicalLabel.PositionAndShape;
+        const nextBox: BoundingBox = next.GraphicalLabel.PositionAndShape;
+        const right: number = entryX(lyricEntry.StaffEntryParent) + box.RelativePosition.x + box.BorderRight;
+        const left: number = entryX(next.StaffEntryParent) + nextBox.RelativePosition.x + nextBox.BorderLeft;
+        // from under the last letter to under the first letter of the next one, at least a space wide
+        let startX: number = right - 0.3;
+        let endX: number = left + 0.3;
+        const minimumWidth: number = 1.0;
+        if (endX - startX < minimumWidth) {
+            const middle: number = (startX + endX) / 2;
+            startX = middle - minimumWidth / 2;
+            endX = middle + minimumWidth / 2;
+        }
+        const y: number = box.RelativePosition.y - box.Size.height / 4;
+        const sag: number = Math.min(0.45, Math.max(0.25, (endX - startX) * 0.15));
+        const segments: number = 12;
+        let previous: PointF2D = new PointF2D(startX, y);
+        for (let i: number = 1; i <= segments; i++) {
+            const t: number = i / segments;
+            const point: PointF2D = new PointF2D(startX + (endX - startX) * t, y + sag * Math.sin(Math.PI * t));
+            const line: GraphicalLine = new GraphicalLine(previous, point, this.rules.LyricUnderscoreLineWidth);
+            line.colorHex = this.rules.DefaultColorLyrics;
+            staffLine.LyricLines.push(line);
+            previous = point;
+        }
+        if (this.staffLinesWithLyricWords.indexOf(staffLine) === -1) {
+            this.staffLinesWithLyricWords.push(staffLine);
         }
     }
 

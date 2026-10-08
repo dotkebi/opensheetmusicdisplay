@@ -38,7 +38,18 @@ export class LyricsReader {
                         if (textNode) {
                             let text: string = "";
                             const textAndElisionNodes: IXmlElement[] = lyricNode.elements();
-                            for (const node of textAndElisionNodes) {
+                            // An elision with no text after it joins this syllable to the next note's (Se tu m'ami m21 "te‿a":
+                            //   two notes, which an elision on one note can't show): the renderer draws its curve to the next
+                            //   syllable, so its character (if any) is left out of the text.
+                            let lastElision: number = -1;
+                            textAndElisionNodes.forEach((node: IXmlElement, i: number) => {
+                                if (node.name === "elision") {
+                                    lastElision = i;
+                                }
+                            });
+                            const elisionToNext: boolean = lastElision >= 0 && textAndElisionNodes.slice(lastElision + 1)
+                                .filter((node: IXmlElement) => node.name === "text").every((node: IXmlElement) => !node.value?.trim());
+                            for (const node of elisionToNext ? textAndElisionNodes.slice(0, lastElision) : textAndElisionNodes) {
                                 if (node.name === "text" || node.name === "elision") {
                                     text += node.value;
                                 }
@@ -131,6 +142,7 @@ export class LyricsReader {
                             // add each LyricEntry to currentVoiceEntry
                             if (lyricsEntry) {
                                 lyricsEntry.syllabic = syllabic;
+                                lyricsEntry.elisionToNext = elisionToNext;
                                 lyricsEntry.language = this.readLanguage(lyricNode, currentLyricVerseNumber);
                                 // only add the lyric entry if not another entry has already been given:
                                 if (!currentVoiceEntry.LyricsEntries[currentLyricVerseNumber]) {
