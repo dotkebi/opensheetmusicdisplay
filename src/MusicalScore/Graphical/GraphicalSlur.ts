@@ -728,9 +728,10 @@ export class GraphicalSlur extends GraphicalCurve {
     /** Whether the note's voice entry has an articulation other than a fermata or a breath mark on `side`: as the XML
      *  places it, else as VexFlow positioned it (the modifiers of the note). */
     private static hasArticulationOnSide(note: GraphicalNote, side: PlacementEnum): boolean {
+        // (accents and marcatos go outside the slur instead, see goesOutsideSlurs())
         const ownPlace: (a: Articulation) => boolean = (a: Articulation): boolean =>
             a.articulationEnum === ArticulationEnum.fermata || a.articulationEnum === ArticulationEnum.invertedfermata ||
-            a.articulationEnum === ArticulationEnum.breathmark;
+            a.articulationEnum === ArticulationEnum.breathmark || GraphicalSlur.goesOutsideSlurs(a.articulationEnum);
         const articulations: Articulation[] = note.parentVoiceEntry?.parentVoiceEntry?.Articulations?.filter(a => !ownPlace(a)) ?? [];
         if (articulations.length === 0) {
             return false;
@@ -746,11 +747,26 @@ export class GraphicalSlur extends GraphicalCurve {
         const vfSide: number = side === PlacementEnum.Above ? VF.Modifier.Position.ABOVE : VF.Modifier.Position.BELOW;
         for (const modifier of modifiers || []) {
             if (modifier.getCategory?.() === VF.Articulation.CATEGORY && modifier.position === vfSide &&
-                !modifier.isBreathMark?.() && modifier.type !== "a@a" && modifier.type !== "a@u") {
+                !modifier.isBreathMark?.() && modifier.type !== "a@a" && modifier.type !== "a@u" && !modifier.goesOutsideSlurs) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Whether an articulation goes outside a slur on its side instead of the slur going over it: accents and marcatos
+     * (LilyPond's avoid-slur 'around'; staccatos and tenutos stay inside, the slur clears them). The slur starts and ends
+     * at their notes, without SlurEndArticulationYOffset or the clearance over the articulation (upstream: "for accents
+     * (>) it's even counter productive"); VexFlowMusicSheetCalculator.layoutFermatasOverSlurs() moves the accent beyond
+     * the slur. Taking the slur over the accent bent it into a steep stroke from beyond the accent (Bononcini, Deh piu a
+     * me, piano m1, m5, m28; Cesti, Intorno all'idol mio, voice m5; solo vocal verification 2, 10-08). Same as osmd-dart
+     * (VexFlowMeasure.goesOutsideSlurs).
+     */
+    public static goesOutsideSlurs(articulation: ArticulationEnum): boolean {
+        return articulation === ArticulationEnum.accent || articulation === ArticulationEnum.strongaccent ||
+            articulation === ArticulationEnum.marcatoup || articulation === ArticulationEnum.marcatodown ||
+            articulation === ArticulationEnum.invertedstrongaccent;
     }
 
     private calculateStartAndEnd(   slurStartNote: GraphicalNote,
@@ -843,6 +859,9 @@ export class GraphicalSlur extends GraphicalCurve {
             //   TODO alternatively, we could fix the bounding box of the note to include the ornament, but that seems tricky
             let articulationPlacement: PlacementEnum = PlacementEnum.NotYetDefined; // whether there's an articulation and where
             for (const articulation of slurEndVE.parentVoiceEntry.Articulations) {
+                if (GraphicalSlur.goesOutsideSlurs(articulation.articulationEnum)) {
+                    continue;
+                }
                 articulationPlacement = articulation.placement;
                 if (articulation.placement === PlacementEnum.NotYetDefined) {
                     const vfNotes: any[] = (slurEndNote as VexFlowGraphicalNote).vfnote;

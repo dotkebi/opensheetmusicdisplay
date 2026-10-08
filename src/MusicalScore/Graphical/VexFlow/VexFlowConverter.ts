@@ -12,6 +12,7 @@ import {AccidentalEnum} from "../../../Common/DataObjects/Pitch";
 import {NoteEnum} from "../../../Common/DataObjects/Pitch";
 import {VexFlowGraphicalNote} from "./VexFlowGraphicalNote";
 import {GraphicalNote} from "../GraphicalNote";
+import { GraphicalSlur } from "../GraphicalSlur";
 import {SystemLinesEnum} from "../SystemLinesEnum";
 import {FontStyles} from "../../../Common/Enums/FontStyles";
 import {Fonts} from "../../../Common/Enums/Fonts";
@@ -1161,6 +1162,10 @@ export class VexFlowConverter {
             }
             if (vfArt) {
                 vfArt.setPosition(vfArtPosition);
+                if (GraphicalSlur.goesOutsideSlurs(articulationEnum)) {
+                    // an accent or a marcato goes beyond a slur on its side (VexFlowMusicSheetCalculator.layoutFermatasOverSlurs())
+                    (vfArt as any).goesOutsideSlurs = true;
+                }
                 (vfnote as StaveNote).addModifier(0, vfArt);
                 if (articulationEnum === ArticulationEnum.fermata || articulationEnum === ArticulationEnum.invertedfermata) {
                     VexFlowConverter.stackOutsideOrnament(vfArt, gNote);

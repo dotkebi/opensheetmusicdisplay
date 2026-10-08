@@ -2731,13 +2731,45 @@ export class VexFlowMeasure extends GraphicalMeasure {
         }));
     }
 
-    /** Forget the raises (drops) of the ornaments and fermatas over (under) slurs from a previous layout. */
+    /** The accents and marcatos of the notes, which go beyond a slur on their side (goesOutsideSlurs, VexFlowConverter). */
+    private accentsOutsideSlurs(): any[] {
+        const accents: any[] = [];
+        for (const staffEntry of this.staffEntries) {
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                for (const modifier of ((gve as VexFlowVoiceEntry).vfStaveNote as any)?.getModifiers?.() ?? []) {
+                    if (modifier instanceof VF.Articulation && (modifier as any).goesOutsideSlurs) {
+                        accents.push(modifier);
+                    }
+                }
+            }
+        }
+        return accents;
+    }
+
+    /** Where the accents and marcatos were drawn, without a move beyond a slur, like [[FermataInk]]; `above` for those above
+     *  their notes. As in osmd-dart (VexFlowMeasure.accentInk). */
+    public get AccentInk(): { accent: any, above: boolean, left: number, right: number, top: number, bottom: number }[] {
+        const x: number = this.PositionAndShape.RelativePosition.x;
+        return this.accentsOutsideSlurs().filter(accent => accent.layoutInk).map(accent => ({
+            accent,
+            above: accent.getPosition() === VF.Modifier.Position.ABOVE,
+            left: x + accent.layoutInk.left / unitInPixels,
+            right: x + accent.layoutInk.right / unitInPixels,
+            top: accent.layoutInk.top / unitInPixels,
+            bottom: accent.layoutInk.bottom / unitInPixels,
+        }));
+    }
+
+    /** Forget the raises (drops) of the ornaments, fermatas and accents over (under) slurs from a previous layout. */
     public resetOrnamentSlurClearance(): void {
         for (const ornament of [...this.ornamentsAt(VF.Modifier.Position.ABOVE), ...this.ornamentsAt(VF.Modifier.Position.BELOW)]) {
             ornament.slurClearanceYShift = 0;
         }
         for (const fermata of this.fermatasAbove()) {
             fermata.slurClearanceYShift = 0;
+        }
+        for (const accent of this.accentsOutsideSlurs()) {
+            accent.slurClearanceYShift = 0;
         }
     }
 
