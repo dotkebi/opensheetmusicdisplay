@@ -162,7 +162,8 @@ describe("Lyrics on grace notes", () => {
             expect(lines.length).to.equal(1, "one extend line");
             expect(lines[0][0]).to.be.closeTo(labelEdges(entryWithLyric(line, "is"), "is")[1], 1e-6);
             const mainEntry: GraphicalStaffEntry = line.Measures[0].staffEntries[1];
-            expect(lines[0][1]).to.be.greaterThan(entryX(mainEntry) + mainEntry.PositionAndShape.BorderMarginRight + 1,
+            const mainNote: BoundingBox = mainEntry.graphicalVoiceEntries.find(gve => !gve.parentVoiceEntry.IsGrace).PositionAndShape;
+            expect(lines[0][1]).to.be.greaterThan(entryX(mainEntry) + mainNote.RelativePosition.x + mainNote.BorderMarginRight + 1,
                 "the line goes on over the grace notes after the main note");
             const lastGrace: BoundingBox = mainEntry.graphicalVoiceEntries[mainEntry.graphicalVoiceEntries.length - 1].PositionAndShape;
             expect(lines[0][1]).to.be.closeTo(entryX(mainEntry) + lastGrace.RelativePosition.x + lastGrace.BorderMarginRight, 1e-6,
