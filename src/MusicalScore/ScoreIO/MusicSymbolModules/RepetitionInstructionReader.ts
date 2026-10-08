@@ -150,10 +150,12 @@ export class RepetitionInstructionReader {
    *   Its dacapo, dalsegno, fine, tocoda, segno and coda attributes say which instruction the direction is when its words
    *   don't name one themselves, e.g. "Fin", "Da Capo bis Ende" or "D.C. senza replica".
    * @param symbolPlacement the staff and the timestamp in the measure of the direction, where a segno sign is drawn
+   * @param hasCodaSign whether the direction also has a coda sign (<coda>): a coda read from its words is then drawn as the sign
    * @returns true if the direction is a repetition instruction, false if it is drawn as text
    */
   public handleRepetitionInstructionsFromWordsOrSymbols(directionTypeNode: IXmlElement, relativeMeasurePosition: number,
-                                                        soundNode?: IXmlElement, symbolPlacement?: RepetitionSymbolPlacement): boolean {
+                                                        soundNode?: IXmlElement, symbolPlacement?: RepetitionSymbolPlacement,
+                                                        hasCodaSign: boolean = false): boolean {
     const wordsNode: IXmlElement = directionTypeNode.element("words");
     const measureIndex: number = this.currentMeasureIndex;
     if (wordsNode) {
@@ -181,6 +183,11 @@ export class RepetitionInstructionReader {
         if (words.length > 0 && type !== RepetitionInstructionEnum.Segno && type !== RepetitionInstructionEnum.Coda) {
           drawnWords = words.replace(/\s+/g, " "); // drawn in one line
         }
+      }
+      if (type === RepetitionInstructionEnum.Coda && !hasCodaSign && words.length > 0) {
+        // a coda written only as words, e.g. the section heading "CODA." (Schumann, Romance Op. 94 III m69): drawn as written,
+        //   without a coda sign that the score doesn't have. It still is the coda of a D.C. or D.S. al Coda.
+        drawnWords = words.replace(/\s+/g, " ");
       }
       const newInstruction: RepetitionInstruction = new RepetitionInstruction(measureIndex, type);
       newInstruction.Words = drawnWords;
@@ -430,6 +437,9 @@ export class RepetitionInstructionReader {
       if (newInstruction.equals(repetitionInstruction)) {
         addInstruction = false;
         this.addSymbolPlacements(repetitionInstruction, newInstruction);
+        if (repetitionInstruction.type === RepetitionInstructionEnum.Coda && newInstruction.Words === undefined) {
+          repetitionInstruction.Words = undefined; // a coda sign in the measure, e.g. next to the words "Coda": drawn as the sign
+        }
         if (!(repetitionInstruction.Times > 0) && newInstruction.Times > 0) {
           repetitionInstruction.Times = newInstruction.Times; // e.g. only a later part writes the repeat's times
         }

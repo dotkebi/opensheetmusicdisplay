@@ -59,9 +59,38 @@ describe("RepetitionInstructionReader", () => {
                 expect(handleWords(testCase.text), "words are handled as repetition instruction").to.equal(true);
                 expect(reader.repetitionInstructions.length).to.equal(1);
                 expect(reader.repetitionInstructions[0].type).to.equal(testCase.expectedType);
-                expect(reader.repetitionInstructions[0].Words, "drawn as its label").to.equal(undefined);
+                // (a coda written only as words is drawn as written, without a coda sign)
+                expect(reader.repetitionInstructions[0].Words, "drawn as its label")
+                    .to.equal(testCase.expectedType === RepetitionInstructionEnum.Coda ? testCase.text : undefined);
             });
         }
+
+        // A coda written only as words is drawn as the words, e.g. the section heading "CODA." (Schumann, Romance Op. 94 III
+        //   m69), without a coda sign that the score doesn't have. With a coda sign in the direction it is drawn as the sign.
+        it("draws a coda written only as words as written, and a coda with a coda sign as the sign", () => {
+            expect(handleWords("CODA.")).to.equal(true);
+            expect(reader.repetitionInstructions[0].type).to.equal(RepetitionInstructionEnum.Coda);
+            expect(reader.repetitionInstructions[0].Words).to.equal("CODA.");
+
+            reader.repetitionInstructions.length = 0;
+            const doc: Document = new DOMParser().parseFromString(
+                "<direction><direction-type><words>Coda</words></direction-type><direction-type><coda/></direction-type></direction>",
+                "text/xml");
+            const direction: IXmlElement = new IXmlElement(doc.documentElement);
+            expect(reader.handleRepetitionInstructionsFromWordsOrSymbols(direction.element("direction-type"), 0, undefined, undefined, true))
+                .to.equal(true);
+            expect(reader.repetitionInstructions[0].Words, "drawn as the coda sign").to.equal(undefined);
+        });
+
+        it("draws the coda sign of a measure that also has the words \"Coda\" in another direction", () => {
+            handleWords("Coda");
+            const doc: Document = new DOMParser().parseFromString(
+                "<direction><direction-type><coda/></direction-type></direction>", "text/xml");
+            const direction: IXmlElement = new IXmlElement(doc.documentElement);
+            reader.handleRepetitionInstructionsFromWordsOrSymbols(direction.element("direction-type"), 0);
+            expect(reader.repetitionInstructions.length, "one coda").to.equal(1);
+            expect(reader.repetitionInstructions[0].Words, "drawn as the coda sign").to.equal(undefined);
+        });
 
         // text that merely mentions an instruction is not an instruction and should be rendered as text (see #1687):
         const plainTextCases: string[] = [

@@ -418,6 +418,8 @@ export class RepetitionCalculator {
                                                 RepetitionInstructionEnum.ToCoda,
                                                 AlignmentType.End,
                                                 currentRepetition.RepetitonUnderConstruction);
+                    // (a coda written as words is drawn as written)
+                    currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.Words = currentRepetitionInstruction.Words;
                     this.currentMeasure.LastRepetitionInstructions.push(currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction);
                 } else {
                     this.addDrawnOnlyInstruction(currentRepetitionInstruction);
@@ -556,6 +558,10 @@ export class RepetitionCalculator {
                           new RepetitionInstruction(measureIndex, RepetitionInstructionEnum.ToCoda,
                                                     AlignmentType.Begin, currentRepetition.RepetitonUnderConstruction);
                         this.removeDrawnOnlyCoda(measureIndex); // the coda sign is drawn as the To Coda
+                        // (a coda written as words is drawn as written, see RepetitionInstructionReader)
+                        currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.Words =
+                          this.repetitionInstructions.find(read => read.measureIndex === measureIndex &&
+                                                           read.type === RepetitionInstructionEnum.Coda)?.Words;
                         this.musicSheet.SourceMeasures[measureIndex].LastRepetitionInstructions.
                           splice(0, 0, currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction);
                         currentRepetition.ToCodaFound = true;
@@ -606,6 +612,10 @@ export class RepetitionCalculator {
                           new RepetitionInstruction(measureIndex, RepetitionInstructionEnum.ToCoda,
                                                     AlignmentType.Begin, currentRepetition.RepetitonUnderConstruction);
                         this.removeDrawnOnlyCoda(measureIndex); // the coda sign is drawn as the To Coda
+                        // (a coda written as words is drawn as written, see RepetitionInstructionReader)
+                        currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.Words =
+                          this.repetitionInstructions.find(read => read.measureIndex === measureIndex &&
+                                                           read.type === RepetitionInstructionEnum.Coda)?.Words;
                         this.musicSheet.SourceMeasures[measureIndex].LastRepetitionInstructions.
                           splice(0, 0, currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction);
                         currentRepetition.ToCodaFound = true;

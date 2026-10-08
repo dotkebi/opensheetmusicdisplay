@@ -508,7 +508,9 @@ export class InstrumentReader {
             handeled = this.repetitionInstructionReader.handleRepetitionInstructionsFromWordsOrSymbols( directionTypeNode,
                                                                                                         relativePositionInMeasure,
                                                                                                         xmlNode.element("sound"),
-                                                                                                        symbolPlacement);
+                                                                                                        symbolPlacement,
+                                                                                                        directionTypeNodes.some(
+                                                                                                          dt => dt.element("coda")));
           }
           if (!handeled) {
            let expressionReader: ExpressionReader = this.expressionReaders[0];
