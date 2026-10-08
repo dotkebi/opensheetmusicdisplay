@@ -913,6 +913,12 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         let strokeLength: number = Math.min(
             availableSpace - 2 * this.rules.TremoloBetweenNotesXPadding,
             availableSpace * this.rules.TremoloBetweenNotesMaxLengthFactor);
+        // between notes written as quarters or longer the strokes are short and centred, clear of the stems
+        //   (TremoloBetweenNotesLongNoteStrokeFactor). Same as osmd-dart.
+        const longNotes: boolean = tremolo.startNote.TypeLength.RealValue >= 0.25 && tremolo.stopNote.TypeLength.RealValue >= 0.25;
+        if (longNotes) {
+            strokeLength = Math.min(strokeLength, availableSpace * this.rules.TremoloBetweenNotesLongNoteStrokeFactor);
+        }
         const minimumStrokeLength: number = 1.0;
         strokeLength = Math.max(strokeLength, Math.min(minimumStrokeLength, availableSpace - 0.2)); // tight layout: allow less padding
         if (strokeLength < 0.5) {

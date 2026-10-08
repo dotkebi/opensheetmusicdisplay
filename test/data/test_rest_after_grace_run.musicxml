@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- An eighth rest right after a slashed grace run (stems up, beamed) in a staff with a second voice (m1): the grace notes
+     are drawn as a GraceNoteGroup of the rest, and counted as another voice's notes with up stems they put the rest seven
+     lines over the staff on the web (Bellini, Torna vezzosa Fillide, voice m91). m3 has the same rest without grace notes. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Voice</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>2</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>8</duration><voice>1</voice><type>whole</type></note>
+      <backup><duration>8</duration></backup>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>8</duration><voice>2</voice><type>whole</type></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+      <note><grace slash="yes"/><pitch><step>E</step><octave>4</octave></pitch><voice>1</voice><type>eighth</type><stem>up</stem><beam number="1">begin</beam></note>
+      <note><grace slash="yes"/><pitch><step>F</step><alter>1</alter><octave>4</octave></pitch><voice>1</voice><type>eighth</type><stem>up</stem><beam number="1">continue</beam></note>
+      <note><grace slash="yes"/><pitch><step>G</step><alter>1</alter><octave>4</octave></pitch><voice>1</voice><type>eighth</type><stem>up</stem><beam number="1">end</beam></note>
+      <note><rest/><duration>1</duration><voice>1</voice><type>eighth</type></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+    <measure number="3">
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+      <note><rest/><duration>1</duration><voice>1</voice><type>eighth</type></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>

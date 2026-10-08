@@ -215,6 +215,10 @@ export class EngravingRules {
     public MeasureNumberLabelHeight: number;
     public MeasureNumberLabelOffset: number;
     public MeasureNumberLabelXOffset: number;
+    /** A measure number clears the ink of a fermata, an ornament or a slur beside it (at its height) by this much: the number goes
+     *  over ink closer to its right (or left) margin than this (Bellini, Per pietà, bell'idol mio, piano m63: "63" touched the
+     *  fermata over the whole note after it). */
+    public MeasureNumberInkGap: number;
     /** Whether tuplets should display ratio (3:2 instead of 3 for triplet). Default false. */
     public TupletsRatioed: boolean;
     /** Whether to show a ratio when the XML says "show-number: both". Otherwise uses the default TupletsRatioed. */
@@ -448,6 +452,11 @@ export class EngravingRules {
      * as a fraction of the space between the stems (or noteheads for stemless notes).
      * (Gould - Behind Bars: the strokes span about two thirds of the space between the notes) */
     public TremoloBetweenNotesMaxLengthFactor: number;
+    /** Length of the strokes of a tremolo between two notes written as quarters or longer, as a fraction of the space between
+     *  the stems: short strokes centred between the notes, clear of the stems (Gould), where the strokes of eighths and shorter
+     *  run like beams. Two thirds of the space (TremoloBetweenNotesMaxLengthFactor) looked like a beam between half notes
+     *  (Bellini, L'abbandono, piano m103-104). */
+    public TremoloBetweenNotesLongNoteStrokeFactor: number;
     /** Maximum vertical rise/fall (slant) of the strokes of a tremolo between two notes, in units. */
     public TremoloBetweenNotesMaxSlant: number;
     /** Vertical padding between the strokes of a tremolo between two notes and the notehead (edge), in units.
@@ -925,6 +934,7 @@ export class EngravingRules {
         this.MeasureNumberLabelHeight = 1.5 * EngravingRules.unit;
         this.MeasureNumberLabelOffset = 2;
         this.MeasureNumberLabelXOffset = -0.5;
+        this.MeasureNumberInkGap = 0.5;
         this.TupletsRatioed = false;
         this.TupletsRatioedUseXMLValue = true;
         this.TupletsBracketed = false;
@@ -1077,6 +1087,7 @@ export class EngravingRules {
         this.TremoloBetweenNotesStrokeGap = 0.4;
         this.TremoloBetweenNotesXPadding = 0.55;
         this.TremoloBetweenNotesMaxLengthFactor = 0.667; // Gould (Behind Bars) recommends the tremolo strokes to take up 2/3 of the space between notes
+        this.TremoloBetweenNotesLongNoteStrokeFactor = 0.4;
         this.TremoloBetweenNotesMaxSlant = 1.0;
         this.TremoloBetweenNotesYPadding = 0.45;
         this.StemWidth = 0.15; // originally 0.13. vexflow default 0.15. should probably be adjusted when increasing vexFlowDefaultNotationFontScale,
