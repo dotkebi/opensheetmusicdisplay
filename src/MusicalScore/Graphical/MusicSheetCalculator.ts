@@ -2576,11 +2576,18 @@ export abstract class MusicSheetCalculator {
         if (endOffsetFraction && this.rules.UseEndOffsetForExpressions) {
             placementFraction.Add(endOffsetFraction);
         }
+        // The grace notes before the next note are drawn left of it, inside its staff entry's box: a wedge ending at that
+        //   note ends before them, where a wedge starting there starts (Gluck, O del mio dolce ardor, Canto m13: the
+        //   crescendo ran over the grace note to the note, into the diminuendo starting at the grace note, which was then
+        //   stacked above it). Same as osmd-dart.
+        const graceBeforeNextNote: boolean = endMeasure.staffEntries.some(se =>
+            Math.abs(se.getAbsoluteTimestamp().RealValue - placementFraction.RealValue) < 1e-9 &&
+            se.graphicalVoiceEntries.some(gve => gve.parentVoiceEntry.IsGrace && !gve.parentVoiceEntry.GraceAfterMainNote));
         // TODO for the last note of the piece (wedge ending after last note), this timestamp is incorrect, being after the last note
         //   but there's a workaround in getRelativePositionInStaffLineFromTimestamp() via the variable endAfterRightStaffEntry
         const nextNotePosInStaffLine: PointF2D = this.getRelativePositionInStaffLineFromTimestamp(
             placementFraction, staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0,
-            graphicalContinuousDynamic.ContinuousDynamic.DynamicType === ContDynamicEnum.diminuendo);
+            graphicalContinuousDynamic.ContinuousDynamic.DynamicType === ContDynamicEnum.diminuendo || graceBeforeNextNote);
         const wedgePadding: number = this.rules.SoftAccentWedgePadding;
         const staffEntryWidth: number = container.getFirstNonNullStaffEntry().PositionAndShape.Size.width; // staff entry widths for whole notes is too long
         const sizeFactor: number = this.rules.SoftAccentSizeFactor;
