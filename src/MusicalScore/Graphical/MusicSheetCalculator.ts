@@ -1373,9 +1373,18 @@ export abstract class MusicSheetCalculator {
             }
         }
 
+        // The words keep their label's margin (LabelMarginBorderFactor, about 0.2 units) clear of the sky (bottom) line, as a
+        //   verbal dynamic's box does (calculateGraphicalVerbalContinuousDynamic()) and as osmd-dart places words: with the
+        //   text itself at the line, words kept inside their measure (keepWordsBeforeStrongBarline()) moved onto the breath
+        //   mark of their note and onto a slur and touched them (Bellini, Vaga luna, voice and piano m11 "più cresc.").
+        if (!this.rules.PlaceWordsInsideStafflineFromXml || !(defaultYXml < 0 && defaultYXml > -50)) {
+            graphLabel.PositionAndShape.RelativePosition.y -= placement === PlacementEnum.Below ?
+                graphLabel.PositionAndShape.BorderMarginTop : graphLabel.PositionAndShape.BorderMarginBottom;
+        }
         // registers itself in staffLine.AbstractExpressions (pushing it there again drew the words twice)
-        new GraphicalUnknownExpression(
+        const unknownExpression: GraphicalUnknownExpression = new GraphicalUnknownExpression(
             staffLine, graphLabel, placement, measures[staffIndex]?.parentSourceMeasure, multiExpression);
+        unknownExpression.updateSkyBottomLine();
         //    multiExpression); // TODO would be nice to hand over and save reference to original expression,
         //                         but MultiExpression is not an AbstractExpression.
         if (lastEntry?.expression) {
