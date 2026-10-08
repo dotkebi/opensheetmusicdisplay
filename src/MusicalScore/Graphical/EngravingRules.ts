@@ -215,6 +215,10 @@ export class EngravingRules {
     public MeasureNumberLabelHeight: number;
     public MeasureNumberLabelOffset: number;
     public MeasureNumberLabelXOffset: number;
+    /** A measure number clears the ink of a fermata, an ornament or a slur beside it (at its height) by this much: the number goes
+     *  over ink closer to its right (or left) margin than this (Bellini, Per pietà, bell'idol mio, piano m63: "63" touched the
+     *  fermata over the whole note after it). */
+    public MeasureNumberInkGap: number;
     /** Whether tuplets should display ratio (3:2 instead of 3 for triplet). Default false. */
     public TupletsRatioed: boolean;
     /** Whether to show a ratio when the XML says "show-number: both". Otherwise uses the default TupletsRatioed. */
@@ -920,6 +924,7 @@ export class EngravingRules {
         this.MeasureNumberLabelHeight = 1.5 * EngravingRules.unit;
         this.MeasureNumberLabelOffset = 2;
         this.MeasureNumberLabelXOffset = -0.5;
+        this.MeasureNumberInkGap = 0.5;
         this.TupletsRatioed = false;
         this.TupletsRatioedUseXMLValue = true;
         this.TupletsBracketed = false;

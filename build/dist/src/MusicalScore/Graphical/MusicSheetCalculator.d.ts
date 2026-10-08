@@ -43,6 +43,7 @@ import { InstantaneousTempoExpression } from "../VoiceData/Expressions/Instantan
 import { FontStyles } from "../../Common/Enums/FontStyles";
 import { AbstractTempoExpression } from "../VoiceData/Expressions/AbstractTempoExpression";
 import { GraphicalInstantaneousDynamicExpression } from "./GraphicalInstantaneousDynamicExpression";
+import { ContinuousDynamicExpression } from "../VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
 import { GraphicalContinuousDynamicExpression } from "./GraphicalContinuousDynamicExpression";
 import { IStafflineNoteCalculator } from "../Interfaces/IStafflineNoteCalculator";
 import { CooperativeYielder } from "../../Util/CooperativeYielder";
@@ -428,6 +429,20 @@ export declare abstract class MusicSheetCalculator {
      */
     protected calculateGraphicalVerbalContinuousDynamic(graphicalContinuousDynamic: GraphicalContinuousDynamicExpression, startPosInStaffline: PointF2D): void;
     /**
+     * The time a wedge stops, in the measure of its EndMultiExpression: the stop as written (StopTimestamp, else the end note)
+     * plus the stop's <offset> (UseEndOffsetForExpressions). A swell over one note written as directions at the measure's start
+     * with offsets (Bellini, L'allegro marinaro m46: cresc. 0 to an eighth, dim. an eighth to a quarter) stops, as read, at the
+     * measure's start; only the offset says where. Same as osmd-dart.
+     */
+    protected wedgeStopTime(wedge: ContinuousDynamicExpression): Fraction;
+    /**
+     * The wedge that starts where the wedge stops, on the same staff and side, both without text: a crescendo and a diminuendo
+     * paired as a swell "<>" (L'allegro marinaro m46, m87, over a dotted half). Undefined if there is none.
+     */
+    protected wedgeStartingAtStop(wedge: ContinuousDynamicExpression, staffIndex: number): ContinuousDynamicExpression;
+    /** The wedge whose stop is where the wedge starts (the first of the pair, wedgeStartingAtStop()), starting up to three measures before. */
+    protected wedgeStoppingAtStart(wedge: ContinuousDynamicExpression, staffIndex: number): ContinuousDynamicExpression;
+    /**
      * This method calculates the RelativePosition of a single GraphicalContinuousDynamic.
      * @param graphicalContinuousDynamic Graphical continous dynamic to be calculated
      * @param startPosInStaffline Starting point in staff line
@@ -555,10 +570,24 @@ export declare abstract class MusicSheetCalculator {
         bottom: number;
     }[];
     /**
+     * The ink of the fermatas and ornaments above the notes of the staff line where they are drawn (raised over a slur or not),
+     * in units relative to the staff line, for raiseMeasureNumbersOverRaisedMarks(). The VexFlow calculator knows the ink; none here.
+     */
+    protected measureMarkInk(staffLine: StaffLine): {
+        staffLine: StaffLine;
+        left: number;
+        right: number;
+        top: number;
+        bottom: number;
+    }[];
+    /**
      * Measure numbers are placed before the ornaments (calculateMeasureNumberPlacement(), calculateMeasureNumberSkyline()),
      * so a fermata or an ornament raised over a slur at the measure's start could go into the number (Giordani, Caro mio
      * ben, voice m29: the fermata over the slur from its note). Raise the number over such ink under it, by
      * [[measureNumberSlurClearance]], as over a slur (raiseMeasureNumberOverSlurs()), and reserve its new place.
+     * The number is placed at the measure's start, where the ink of a fermata over the measure's first note can stand beside it
+     * at its height, touching it (Bellini, Per pietà, bell'idol mio, piano m63): ink within MeasureNumberInkGap of the number's
+     * margins counts too (measureMarkInk()). Same as osmd-dart.
      */
     private raiseMeasureNumbersOverRaisedMarks;
     private getFingeringPlacement;

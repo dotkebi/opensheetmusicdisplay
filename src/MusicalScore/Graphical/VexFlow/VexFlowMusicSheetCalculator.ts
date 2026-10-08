@@ -4030,6 +4030,26 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
    * ends at its note's stem, where the fermata is (Torelli, Tu lo sai, piano m38 and m44; Giordani, Caro mio ben, voice m29:
    * the slur from the fermata's note). The sky line reserves the fermata's new place.
    */
+  /** The fermatas and above-staff ornaments of the staff line's measures where they are drawn (with their raise over a slur),
+   *  for the measure numbers (raiseMeasureNumbersOverRaisedMarks()). */
+  protected measureMarkInk(staffLine: StaffLine): { staffLine: StaffLine, left: number, right: number, top: number, bottom: number }[] {
+    const marks: { staffLine: StaffLine, left: number, right: number, top: number, bottom: number }[] = [];
+    for (const measure of staffLine.Measures) {
+      if (!(measure instanceof VexFlowMeasure)) {
+        continue;
+      }
+      for (const ink of measure.FermataInk) {
+        const shift: number = (ink.fermata.slurClearanceYShift ?? 0) / unitInPixels;
+        marks.push({ staffLine, left: ink.left, right: ink.right, top: ink.top + shift, bottom: ink.bottom + shift });
+      }
+      for (const ink of measure.OrnamentInk) {
+        const shift: number = (ink.ornament.slurClearanceYShift ?? 0) / unitInPixels;
+        marks.push({ staffLine, left: ink.left, right: ink.right, top: ink.top + shift, bottom: ink.bottom + shift });
+      }
+    }
+    return marks;
+  }
+
   protected layoutFermatasOverSlurs(measure: GraphicalMeasure): void {
     const staffLine: StaffLine = measure.ParentStaffLine;
     if (!staffLine || !(measure instanceof VexFlowMeasure)) {

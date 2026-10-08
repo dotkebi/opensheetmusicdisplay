@@ -780,8 +780,10 @@ export abstract class MusicSheetCalculator {
      */
     private raiseMeasureNumberOverSlurs(label: GraphicalLabel, staffLine: StaffLine): void {
         const box: BoundingBox = label.PositionAndShape;
-        const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x;
-        const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x;
+        // a slur beside the number, within MeasureNumberInkGap, counts too
+        const gap: number = this.rules.MeasureNumberInkGap;
+        const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x - gap;
+        const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x + gap;
         const clearance: number = MusicSheetCalculator.measureNumberSlurClearance;
         let slurTop: number = Number.POSITIVE_INFINITY;
         for (const slur of staffLine.GraphicalSlurs) {
@@ -4851,24 +4853,43 @@ export abstract class MusicSheetCalculator {
     protected marksRaisedOverSlurs: { staffLine: StaffLine, left: number, right: number, top: number, bottom: number }[] = [];
 
     /**
+     * The ink of the fermatas and ornaments above the notes of the staff line where they are drawn (raised over a slur or not),
+     * in units relative to the staff line, for raiseMeasureNumbersOverRaisedMarks(). The VexFlow calculator knows the ink; none here.
+     */
+    protected measureMarkInk(staffLine: StaffLine): { staffLine: StaffLine, left: number, right: number, top: number, bottom: number }[] {
+        return [];
+    }
+
+    /**
      * Measure numbers are placed before the ornaments (calculateMeasureNumberPlacement(), calculateMeasureNumberSkyline()),
      * so a fermata or an ornament raised over a slur at the measure's start could go into the number (Giordani, Caro mio
      * ben, voice m29: the fermata over the slur from its note). Raise the number over such ink under it, by
      * [[measureNumberSlurClearance]], as over a slur (raiseMeasureNumberOverSlurs()), and reserve its new place.
+     * The number is placed at the measure's start, where the ink of a fermata over the measure's first note can stand beside it
+     * at its height, touching it (Bellini, Per pietà, bell'idol mio, piano m63): ink within MeasureNumberInkGap of the number's
+     * margins counts too (measureMarkInk()). Same as osmd-dart.
      */
     private raiseMeasureNumbersOverRaisedMarks(musicSystem: MusicSystem): void {
         const staffLine: StaffLine = musicSystem.StaffLines[0];
-        if (!staffLine || this.marksRaisedOverSlurs.length === 0) {
+        if (!staffLine) {
+            return;
+        }
+        const marks: { staffLine: StaffLine, left: number, right: number, top: number, bottom: number }[] = [
+            ...this.marksRaisedOverSlurs.filter(mark => mark.staffLine === staffLine),
+            ...this.measureMarkInk(staffLine),
+        ];
+        if (marks.length === 0) {
             return;
         }
         const clearance: number = MusicSheetCalculator.measureNumberSlurClearance;
+        const gap: number = this.rules.MeasureNumberInkGap;
         for (const label of musicSystem.MeasureNumberLabels) {
             const box: BoundingBox = label.PositionAndShape;
             const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffLine.PositionAndShape.RelativePosition.x;
             const right: number = box.RelativePosition.x + box.BorderMarginRight - staffLine.PositionAndShape.RelativePosition.x;
             let markTop: number = Number.POSITIVE_INFINITY;
-            for (const mark of this.marksRaisedOverSlurs) {
-                if (mark.staffLine !== staffLine || mark.right < left || mark.left > right) {
+            for (const mark of marks) {
+                if (mark.right < left - gap || mark.left > right + gap) {
                     continue;
                 }
                 // a number clear over the mark or clear under it stays

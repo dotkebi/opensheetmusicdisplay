@@ -125,7 +125,8 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      *  WedgeMinReservedLength and the end margin it is drawn with. */
     private wedgeLengthPairs;
     /** The x of timestamp (relative to its measure) between the measure's staff entries,
-     *  as getRelativePositionInStaffLineFromTimestamp() interpolates it. */
+     *  as getRelativePositionInStaffLineFromTimestamp() interpolates it; after the last staff entry towards endX, the measure's end
+     *  (a pair's stop over the measure's last note). */
     private xAtTimestamp;
     private computeContainerOverflows;
     protected createGraphicalTie(tie: Tie, startGse: GraphicalStaffEntry, endGse: GraphicalStaffEntry, startNote: GraphicalNote, endNote: GraphicalNote): GraphicalTie;
@@ -338,6 +339,15 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      * ends at its note's stem, where the fermata is (Torelli, Tu lo sai, piano m38 and m44; Giordani, Caro mio ben, voice m29:
      * the slur from the fermata's note). The sky line reserves the fermata's new place.
      */
+    /** The fermatas and above-staff ornaments of the staff line's measures where they are drawn (with their raise over a slur),
+     *  for the measure numbers (raiseMeasureNumbersOverRaisedMarks()). */
+    protected measureMarkInk(staffLine: StaffLine): {
+        staffLine: StaffLine;
+        left: number;
+        right: number;
+        top: number;
+        bottom: number;
+    }[];
     protected layoutFermatasOverSlurs(measure: GraphicalMeasure): void;
     /**
      * Add articulations to the given vexflow staff entry.
