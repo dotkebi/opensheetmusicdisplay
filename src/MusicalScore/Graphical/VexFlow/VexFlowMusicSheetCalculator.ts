@@ -4064,8 +4064,6 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         ornamentsOfEntry.push(...((gve as VexFlowVoiceEntry).vfStaveNote as any)?.getModifiers?.() ?? []);
       }
     }
-    const clearance: number = GraphicalSlur.ornamentClearance;
-    const over: number = clearance + GraphicalSlur.thickness;
     for (const ink of measure.OrnamentInk) {
       if (ornamentsOfEntry.indexOf(ink.ornament) < 0) {
         continue;
@@ -4083,32 +4081,40 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (ornamentsOfEntry.indexOf(ink.ornament) < 0) {
         continue;
       }
-      let drop: number = 0;
-      for (const slur of staffLine.GraphicalSlurs) {
-        if (slur.placement !== PlacementEnum.Below || !slur.bezierStartPt) {
-          continue;
-        }
-        let curveBottom: number = Number.NEGATIVE_INFINITY;
-        let touches: boolean = false;
-        for (let i: number = 0; i <= 128; i++) {
-          const point: PointF2D = slur.calculateCurvePointAtIndex(i / 128);
-          if (point.x < ink.left || point.x > ink.right) {
-            continue;
-          }
-          curveBottom = Math.max(curveBottom, point.y);
-          if (point.y > ink.top - over + 0.1 && point.y < ink.bottom + clearance - 0.1) {
-            touches = true;
-          }
-        }
-        if (touches) {
-          drop = Math.max(drop, curveBottom + over - ink.top);
-        }
-      }
+      const drop: number = VexFlowMusicSheetCalculator.dropUnderSlursBelow(ink, staffLine);
       if (drop > 0) {
         ink.ornament.slurClearanceYShift = drop * unitInPixels;
         staffLine.SkyBottomLineCalculator.updateBottomLineInRange(ink.left, ink.right, ink.bottom + drop);
       }
     }
+  }
+
+  /** How far ink below the notes goes down to clear the slurs below that would touch it (0: none), like raiseOverSlursAbove(). */
+  private static dropUnderSlursBelow(ink: { left: number, right: number, top: number, bottom: number }, staffLine: StaffLine): number {
+    const clearance: number = GraphicalSlur.ornamentClearance;
+    const over: number = clearance + GraphicalSlur.thickness;
+    let drop: number = 0;
+    for (const slur of staffLine.GraphicalSlurs) {
+      if (slur.placement !== PlacementEnum.Below || !slur.bezierStartPt) {
+        continue;
+      }
+      let curveBottom: number = Number.NEGATIVE_INFINITY;
+      let touches: boolean = false;
+      for (let i: number = 0; i <= 128; i++) {
+        const point: PointF2D = slur.calculateCurvePointAtIndex(i / 128);
+        if (point.x < ink.left || point.x > ink.right) {
+          continue;
+        }
+        curveBottom = Math.max(curveBottom, point.y);
+        if (point.y > ink.top - over + 0.1 && point.y < ink.bottom + clearance - 0.1) {
+          touches = true;
+        }
+      }
+      if (touches) {
+        drop = Math.max(drop, curveBottom + over - ink.top);
+      }
+    }
+    return drop;
   }
 
   /** How far ink above the notes goes up to clear the slurs above that would touch it (0: none), see layoutOrnament(). */
@@ -4156,6 +4162,24 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         ink.fermata.slurClearanceYShift = -raise * unitInPixels;
         staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
         this.marksRaisedOverSlurs.push({ staffLine, left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise });
+      }
+    }
+    // Accents and marcatos go outside a slur on their side that would touch them (GraphicalSlur.goesOutsideSlurs()): the
+    //   slur starts and ends at its notes, the accent moves over (under) it. As in osmd-dart.
+    for (const ink of measure.AccentInk) {
+      if (ink.above) {
+        const raise: number = VexFlowMusicSheetCalculator.raiseOverSlursAbove(ink, staffLine);
+        if (raise > 0) {
+          ink.accent.slurClearanceYShift = -raise * unitInPixels;
+          staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
+          this.marksRaisedOverSlurs.push({ staffLine, left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise });
+        }
+      } else {
+        const drop: number = VexFlowMusicSheetCalculator.dropUnderSlursBelow(ink, staffLine);
+        if (drop > 0) {
+          ink.accent.slurClearanceYShift = drop * unitInPixels;
+          staffLine.SkyBottomLineCalculator.updateBottomLineInRange(ink.left, ink.right, ink.bottom + drop);
+        }
       }
     }
   }

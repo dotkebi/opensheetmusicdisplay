@@ -254,7 +254,8 @@ export class Articulation extends Modifier {
 
     //VexFlowPatch
     this.breathMarkDistance = 0.8; // % distance to next note or end of stave (0.8 = 80%)
-    // VexFlowPatch: a fermata's raise over a slur above it, in pixels (VexFlowMusicSheetCalculator.layoutFermatasOverSlurs())
+    // VexFlowPatch: a fermata's raise over a slur above it, or an accent's move beyond a slur on its side, in pixels
+    //   (VexFlowMusicSheetCalculator.layoutFermatasOverSlurs())
     this.slurClearanceYShift = 0;
     this.articulation = Flow.articulationCodes(this.type);
     if (this.isBreathMark()) { // breath mark. we could put this in tables.js:articulationCodes()
@@ -412,7 +413,9 @@ export class Articulation extends Modifier {
     this.drawnInk = { left: x - width / 2, top, right: x + width / 2, bottom: top + height };
     // VexFlowPatch: a fermata's ink without its raise over a slur, relative to the stave's left and top line (see
     //   VexFlowMeasure.FermataInk)
-    if (this.type === 'a@a' && position === ABOVE) {
+    //   An accent or a marcato (goesOutsideSlurs, VexFlowConverter) records it above or below its note, to go beyond a
+    //   slur on its side (VexFlowMeasure.AccentInk).
+    if ((this.type === 'a@a' && position === ABOVE) || this.goesOutsideSlurs) {
       this.layoutInk = {
         left: this.drawnInk.left - stave.getX(),
         right: this.drawnInk.right - stave.getX(),
