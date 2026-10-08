@@ -780,6 +780,8 @@ export abstract class MusicSheetCalculator {
 
     /** Space between a measure number and a slur or other ink under it. */
     public static readonly measureNumberClearance: number = 0.2;
+    /** Space between a dynamic above the staff and the ink it is placed over. */
+    public static readonly dynamicOverInkClearance: number = 0.25;
     /** Space between a measure number and the ink beside it: the sky line this far on both sides of the number is read. */
     public static readonly measureNumberSideClearance: number = 0.5;
 
@@ -2580,6 +2582,8 @@ export abstract class MusicSheetCalculator {
         const stopTimestamp: Fraction = graphicalContinuousDynamic.ContinuousDynamic.StopTimestamp;
         const stopBeforeNote: boolean = stopTimestamp !== undefined &&
             endMeasure.staffEntries.some(se => !se.relInMeasureTimestamp.lt(stopTimestamp));
+        const stopAtNote: boolean = stopTimestamp !== undefined &&
+            endMeasure.staffEntries.some(se => se.relInMeasureTimestamp.Equals(stopTimestamp) && se.graphicalVoiceEntries.length > 0);
         const beginOfNextNote: Fraction = stopBeforeNote ?
             Fraction.plus(graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.SourceMeasureParent.AbsoluteTimestamp, stopTimestamp) :
             Fraction.plus(endAbsoluteTimestamp, maxNoteLength);
@@ -2612,6 +2616,13 @@ export abstract class MusicSheetCalculator {
             startPosInStaffline.x -= staffEntryWidth / 2 * sizeFactor + wedgePadding;
             endPosInStaffLine.x = startPosInStaffline.x + staffEntryWidth / 2 * sizeFactor;
         } else if (endBeforeStart && nextNotePosInStaffLine.x > startPosInStaffline.x) {
+            endPosInStaffLine.x = (nextNotePosInStaffLine.x < endOfMeasure ? nextNotePosInStaffLine.x : endOfMeasure) -
+                this.rules.WedgeHorizontalMargin;
+        } else if (stopAtNote && nextNotePosInStaffLine.x > endPosInStaffLine.x) {
+            // A stop written at the start of a note of the staff: the wedge reaches that note, WedgeHorizontalMargin before it,
+            //   not 1/WedgeEndDistanceBetweenTimestampsFactor of the way from its end note (Parisotti, Martini Piacer d'amor
+            //   Canto m45: the diminuendo over a quarter and an eighth, stopped at the next quarter, covered the first note only;
+            //   renderer leftovers 2, decision C-6). Same as osmd-dart.
             endPosInStaffLine.x = (nextNotePosInStaffLine.x < endOfMeasure ? nextNotePosInStaffLine.x : endOfMeasure) -
                 this.rules.WedgeHorizontalMargin;
         } else if (nextNotePosInStaffLine.x > endPosInStaffLine.x && nextNotePosInStaffLine.x < endOfMeasure) {
@@ -2976,6 +2987,10 @@ export abstract class MusicSheetCalculator {
         // calculate yPosition according to Placement
         if (graphicalInstantaneousDynamic.Placement === PlacementEnum.Above) {
             const skyLineValue: number = skyBottomLineCalculator.getSkyLineMinForLabel(left, right);
+            // Over ink above the staff (a fermata, a stem, a slur) the dynamic keeps dynamicOverInkClearance: its box sat on the
+            //   ink's top, and a glyph's descender (the app's "p") touched a fermata (Parisotti, Paisiello Chi vuol la zingarella
+            //   Canto m8; renderer leftovers 2, decision C-7). Same as osmd-dart.
+            const overInkClearance: number = skyLineValue < 0 ? MusicSheetCalculator.dynamicOverInkClearance : 0;
 
             // if StaffLine part of multiStaff Instrument and not the first one, ideal yPosition middle of distance between Staves
             if (staffLine.isPartOfMultiStaffInstrument() && staffLine.ParentStaff !== staffLine.ParentStaff.ParentInstrument.Staves[0]) {
@@ -2987,11 +3002,11 @@ export abstract class MusicSheetCalculator {
                     if (skyLineValue > -difference / 2) {
                         yPosition = -difference / 2;
                     } else {
-                        yPosition = skyLineValue - graphicalInstantaneousDynamic.PositionAndShape.BorderMarginBottom;
+                        yPosition = skyLineValue - graphicalInstantaneousDynamic.PositionAndShape.BorderMarginBottom - overInkClearance;
                     }
                 }
             } else {
-                yPosition = skyLineValue - graphicalInstantaneousDynamic.PositionAndShape.BorderMarginBottom;
+                yPosition = skyLineValue - graphicalInstantaneousDynamic.PositionAndShape.BorderMarginBottom - overInkClearance;
             }
 
             graphicalInstantaneousDynamic.PositionAndShape.RelativePosition = new PointF2D(startPosInStaffline.x, yPosition);
