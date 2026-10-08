@@ -2737,7 +2737,8 @@ export abstract class MusicSheetCalculator {
             Fraction.plus(endAbsoluteTimestamp, maxNoteLength);
         const placementFraction: Fraction = beginOfNextNote.clone();
         const endOffsetFraction: Fraction = graphicalContinuousDynamic.ContinuousDynamic.EndOffsetFraction;
-        if (endOffsetFraction && this.rules.UseEndOffsetForExpressions) {
+        // A stop time already has the stop's <offset> (the reader adds it).
+        if (endOffsetFraction && !stopTimestamp && this.rules.UseEndOffsetForExpressions) {
             placementFraction.Add(endOffsetFraction);
         }
         // The grace notes before the next note are drawn left of it, inside its staff entry's box: a wedge ending at that

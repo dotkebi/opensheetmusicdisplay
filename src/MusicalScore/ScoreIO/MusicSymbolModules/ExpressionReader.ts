@@ -64,6 +64,8 @@ export class ExpressionReader {
     private openOctaveShifts: Map<number, OctaveShift> = new Map();
     private pendingOctaveShiftStops: Map<number, {measure: SourceMeasure, endTimestamp: Fraction}> = new Map();
     private lastWedge: ContinuousDynamicExpression;
+    /** Wedge stops with an <offset> read in the current measure, closed at its end (resolvePendingWedgeStops()). */
+    private pendingWedgeStops: {wedge: ContinuousDynamicExpression, measure: SourceMeasure, stopAt: Fraction, endOffset: Fraction}[] = [];
     private WedgeYPosXml: number;
     private openPedal: Pedal;
     private openWavyLine: WavyLine;
@@ -1000,6 +1002,23 @@ export class ExpressionReader {
                 this.addWedge(wedgeNode, previousEnd.measure, previousEnd.timestamp, endOffset);
                 return;
             }
+            // A stop with an <offset> is at its position plus the offset. It is often written at the start of the measure,
+            //   before the notes it ends after (Medium High 24 Italian Songs: 138 of 152 such stops), so the note it ends under
+            //   is only known once the measure is read: it is closed then (resolvePendingWedgeStops()). Read at its position, the
+            //   wedge ended under the measure's first note and was drawn from there by the first note's length plus the offset:
+            //   past its stop (Caccini, Amarilli; Giordani, Caro mio ben), or, with the next note's position before its start,
+            //   as a 2-space ">" (Gasparini, Il mio bel foco m53). Same as osmd-dart.
+            if (this.offsetDivisions !== 0 && stopReadAt) {
+                const stopAt: Fraction = Fraction.plus(stopReadAt, endOffset);
+                if (stopAt.RealValue > 0) {
+                    const open: ContinuousDynamicExpression = this.openContinuousDynamicExpressions.find(dyn => dyn.NumberXml === wedgeNumberXml);
+                    if (open) {
+                        this.openContinuousDynamicExpressions = this.openContinuousDynamicExpressions.filter(dyn => dyn !== open);
+                        this.pendingWedgeStops.push({ wedge: open, measure: currentMeasure, stopAt, endOffset });
+                    }
+                    return;
+                }
+            }
             inSourceMeasureCurrentFraction = this.wedgeStopTimestamp(currentMeasure, stopReadAt, inSourceMeasureCurrentFraction);
             this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml, inSourceMeasureCurrentFraction);
             this.addWedge(wedgeNode, currentMeasure, inSourceMeasureCurrentFraction, endOffset, stopReadAt);
@@ -1008,6 +1027,18 @@ export class ExpressionReader {
         this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml, undefined, this.soundDynamicTimestamp);
         this.addWedge(wedgeNode, currentMeasure, inSourceMeasureCurrentFraction);
         // Keep the outer <direction> context for later <direction-type> siblings.
+    }
+    /** Closes the wedges whose stop had an <offset> (see interpretWedge()), once the notes of their measure are read: each ends
+     *  under the last staff entry of this staff before the stop, and its StopTimestamp is the stop with its offset.
+     *  Called by the InstrumentReader at the end of every measure. Same as osmd-dart. */
+    public resolvePendingWedgeStops(): void {
+        for (const pending of this.pendingWedgeStops) {
+            const end: Fraction = this.wedgeStopTimestamp(pending.measure, pending.stopAt, new Fraction(0, 1));
+            pending.wedge.EndOffsetFraction = pending.endOffset;
+            pending.wedge.StopTimestamp = end.lt(pending.stopAt) ? pending.stopAt.clone() : undefined;
+            this.closeOpenContinuousDynamic(pending.wedge, pending.measure, end);
+        }
+        this.pendingWedgeStops = [];
     }
     /** Where a wedge stop read at the very start of a measure (`readAt` 0, no later <offset>) ends: at the last staff entry of
      *  this staff in the previous measure, if the wedge started before this measure. Such a stop closes the wedge at the barline
