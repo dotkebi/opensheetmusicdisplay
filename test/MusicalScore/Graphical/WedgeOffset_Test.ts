@@ -15,6 +15,9 @@ import { TestUtils } from "../../Util/TestUtils";
  *   wedge, not to it (the second wedge's stop offset lengthened the first one);
  * - 19 m5-6: a stop at the start of a measure ends the wedge at the end of the previous measure, not under the first note of
  *   the next measure (and in the next system at a system break).
+ * - Medium High 24 Italian Songs (Gasparini, Il mio bel foco m52-53; Caccini, Amarilli m44): a stop written at the start of
+ *   the measure, before its notes, with the <offset> of its time ends the wedge under the last note before that time, not
+ *   under the measure's first note.
  * Same as osmd-dart test/wedge_offset_measure_stop_test.dart.
  */
 describe("Wedge offsets and stops at a measure start", () => {
@@ -165,5 +168,42 @@ ${below(wedge("stop"), offset)}${note("D", 5, 8, "whole")}
         const osmd: OpenSheetMusicDisplay = await render(stopAtMeasureStart(false, 2));
         const all: GraphicalContinuousDynamicExpression[] = wedges(osmd);
         expect(all[0].ContinuousDynamic.EndMultiExpression.SourceMeasureParent.MeasureNumberXML).to.equal(2);
+    });
+
+    /** Il mio bel foco m52-53: every direction at the measure start, with the offset of its time. Measure 1: < from the start
+     *  to beat 1; measure 2: > from beat 2 to the end of the measure (both before four quarters). */
+    const stopsBeforeTheirNotes: string = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">${pianoPart}<part id="P1">
+<measure number="1">${attributes}
+${below(wedge("crescendo"))}${below(wedge("stop"), 2)}
+${note("C", 5, 2, "quarter")}${note("D", 5, 2, "quarter")}${note("E", 5, 2, "quarter")}${note("F", 5, 2, "quarter")}
+</measure>
+<measure number="2">
+${below(wedge("diminuendo"), 4)}${below(wedge("stop"), 8)}
+${note("G", 5, 2, "quarter")}${note("F", 5, 2, "quarter")}${note("E", 5, 2, "quarter")}${note("D", 5, 2, "quarter")}
+</measure>
+<measure number="3">${note("C", 5, 8, "whole")}</measure>
+</part></score-partwise>`;
+
+    it("ends a wedge whose stop is written before its notes with an offset before the note at its time", async () => {
+        const osmd: OpenSheetMusicDisplay = await render(stopsBeforeTheirNotes);
+        const all: GraphicalContinuousDynamicExpression[] = wedges(osmd);
+        const crescendo: GraphicalContinuousDynamicExpression = all.find(w => w.ContinuousDynamic.DynamicType === ContDynamicEnum.crescendo);
+        const diminuendo: GraphicalContinuousDynamicExpression = all.find(w => w.ContinuousDynamic.DynamicType === ContDynamicEnum.diminuendo);
+        // < : ends under the first quarter, stops at beat 1 (offset included)
+        expect(crescendo.ContinuousDynamic.EndMultiExpression.Timestamp.RealValue).to.be.closeTo(0, 1e-9);
+        expect(crescendo.ContinuousDynamic.StopTimestamp.RealValue).to.be.closeTo(1 / 4, 1e-9);
+        expect(crescendo.ContinuousDynamic.EndOffsetFraction.RealValue).to.be.closeTo(1 / 4, 1e-9);
+        expect(right(crescendo)).to.be.lessThan(entryX(osmd, 0, 1 / 4));
+        expect(right(crescendo)).to.be.greaterThan(entryX(osmd, 0, 0));
+        // > : starts at beat 2, ends under the last quarter at the barline
+        const dim: any = diminuendo.ContinuousDynamic;
+        expect(dim.StartMultiExpression.Timestamp.RealValue).to.be.closeTo(1 / 2, 1e-9);
+        expect(dim.EndMultiExpression.SourceMeasureParent.MeasureNumberXML).to.equal(2);
+        expect(dim.EndMultiExpression.Timestamp.RealValue).to.be.closeTo(3 / 4, 1e-9);
+        expect(dim.StopTimestamp.RealValue).to.be.closeTo(1, 1e-9);
+        expect(right(diminuendo)).to.be.greaterThan(entryX(osmd, 1, 3 / 4));
+        expect(right(diminuendo)).to.be.at.most(measures(osmd)[2].PositionAndShape.RelativePosition.x + 0.01);
+        expect(right(diminuendo) - left(diminuendo)).to.be.greaterThan(4);
     });
 });

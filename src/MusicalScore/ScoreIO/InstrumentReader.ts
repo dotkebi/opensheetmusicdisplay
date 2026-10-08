@@ -606,6 +606,9 @@ export class InstrumentReader {
         }
       }
       this.attachGraceNotesAfterMainNote();
+      for (const reader of this.expressionReaders) {
+        reader?.resolvePendingWedgeStops();
+      }
       if (this.currentXmlMeasureIndex === this.xmlMeasureList.length - 1) {
         for (let i: number = 0; i < this.instrument.Staves.length; i++) {
           if (!this.activeClefsHaveBeenInitialized[i]) {
