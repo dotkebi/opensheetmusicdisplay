@@ -41,6 +41,8 @@ export declare class GraphicalLyricEntry {
     hasDashFromLyricWord(): boolean;
     get LyricsEntry(): LyricsEntry;
     get ParentLyricWord(): GraphicalLyricWord;
+    /** The word this entry begins with the second syllable of its elision (LyricsEntry.NextWord), if any. */
+    NextLyricWord: GraphicalLyricWord;
     set ParentLyricWord(value: GraphicalLyricWord);
     get GraphicalLabel(): GraphicalLabel;
     set GraphicalLabel(value: GraphicalLabel);

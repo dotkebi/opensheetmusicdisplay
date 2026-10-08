@@ -14,6 +14,7 @@ export class LyricsEntry {
     }
     private text: string;
     private word: LyricWord;
+    private nextWord: LyricWord;
     private parent: VoiceEntry;
     private verseNumber: string;
     private syllableIndex: number;
@@ -35,6 +36,15 @@ export class LyricsEntry {
     }
     public set Word(value: LyricWord) {
         this.word = value;
+    }
+    /** The word this entry begins when its text has an elision whose second syllable begins a word ("ve a-mi-che":
+     *  "ve" ends one word, "a" begins the next, both on this note): this entry is the first syllable of NextWord
+     *  as well as the last of Word, and gets the dash to the next syllable of NextWord. */
+    public get NextWord(): LyricWord {
+        return this.nextWord;
+    }
+    public set NextWord(value: LyricWord) {
+        this.nextWord = value;
     }
     public get Parent(): VoiceEntry {
         return this.parent;

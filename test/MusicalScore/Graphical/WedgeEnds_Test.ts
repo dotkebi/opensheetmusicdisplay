@@ -3,6 +3,7 @@ import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSh
 import { GraphicalContinuousDynamicExpression } from "../../../src/MusicalScore/Graphical/GraphicalContinuousDynamicExpression";
 import { ContDynamicEnum } from "../../../src/MusicalScore/VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
 import { GraphicalLine } from "../../../src/MusicalScore/Graphical/GraphicalLine";
+import { GraphicalMeasure } from "../../../src/MusicalScore/Graphical/GraphicalMeasure";
 import { TestUtils } from "../../Util/TestUtils";
 
 /**
@@ -112,5 +113,45 @@ ${above("<wedge type=\"stop\" number=\"1\"/>")}
         expect(upper.Start.y).to.be.lessThan(lower.Start.y);
         expect(lower.Start.y - upper.Start.y).to.be.lessThan(lower.End.y - upper.End.y);
         expect((upper.Start.y + lower.Start.y) / 2).to.be.closeTo((upper.End.y + lower.End.y) / 2, 1e-6);
+    });
+
+    /** Zingarella Canto m62: "cres." on the second eighth (beat 1.5), the crescendo wedge starting on the fourth eighth
+     *  (beat 1.75, a start with <offset>) and its stop at the start of m64. The reader read the wedge before the words and,
+     *  taking the last multi expression for an open verbal dynamic, closed the wedge at the words: a 2-space stub. */
+    const wedgeAfterCresWords: string = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Canto</part-name></score-part></part-list><part id="P1">
+<measure number="1">
+<attributes><divisions>4</divisions><time><beats>2</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+<direction placement="above"><direction-type><wedge type="crescendo" number="1"/></direction-type><offset>3</offset></direction>
+<note><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>eighth</type></note>
+<direction placement="above"><direction-type><words>cres.</words></direction-type></direction>
+<note><pitch><step>B</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>eighth</type></note>
+<note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>eighth</type></note>
+<note><pitch><step>D</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>eighth</type></note>
+</measure>
+<measure number="2">
+<note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>eighth</type></note>
+<note><pitch><step>D</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>eighth</type></note>
+<note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>eighth</type></note>
+<note><pitch><step>B</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>eighth</type></note>
+</measure>
+<measure number="3">
+<direction placement="above"><direction-type><wedge type="stop" number="1"/></direction-type></direction>
+<direction placement="above"><direction-type><dynamics><f/></dynamics></direction-type></direction>
+<note><pitch><step>A</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice><type>half</type></note>
+</measure></part></score-partwise>`;
+
+    it("keeps the stop of a wedge read before a crescendo word at an earlier time", async () => {
+        const osmd: OpenSheetMusicDisplay = await render(wedgeAfterCresWords);
+        const all: GraphicalContinuousDynamicExpression[] = wedges(osmd);
+        expect(all.length).to.equal(1);
+        const wedge: GraphicalContinuousDynamicExpression = all[0];
+        const xs: number[] = wedge.Lines.flatMap((l) => [l.Start.x, l.End.x]);
+        const m2: GraphicalMeasure = osmd.GraphicSheet.MeasureList[1][0];
+        expect(Math.min(...xs), "starts before m2").to.be.lessThan(m2.PositionAndShape.RelativePosition.x);
+        expect(Math.max(...xs), "reaches the end of m2").to.be.greaterThan(
+            m2.PositionAndShape.RelativePosition.x + m2.PositionAndShape.Size.width * 0.9);
+        // (its stop at the start of m3 ends it at the end of m2, see WedgeOffset_Test)
+        expect(wedge.ContinuousDynamic.EndMultiExpression.SourceMeasureParent.MeasureNumber).to.equal(2);
     });
 });

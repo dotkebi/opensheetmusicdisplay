@@ -30,6 +30,11 @@ export class LyricsReader {
                         if (lyricNode.element("syllabic")) {
                             syllabic = lyricNode.element("syllabic").value;
                         }
+                        // an elision joins syllables of different words on one note ("ve a-mi-che"): the last
+                        //   <syllabic> says whether a word is open after this note
+                        const syllabics: string[] = lyricNode.elements("syllabic").map((node: IXmlElement) => node.value);
+                        const lastSyllabic: string = syllabics.length > 0 ? syllabics[syllabics.length - 1] : syllabic;
+                        const hasElision: boolean = lyricNode.element("elision") !== undefined;
                         if (textNode) {
                             let text: string = "";
                             const textAndElisionNodes: IXmlElement[] = lyricNode.elements();
@@ -107,6 +112,21 @@ export class LyricsReader {
                                     // in case the wrong syllabel information is given, create a single Entry and add it to currentVoiceEntry
                                     lyricsEntry = new LyricsEntry(text, currentLyricVerseNumber, undefined, currentVoiceEntry);
                                 }
+                            }
+                            // the second syllable of an elision begins a new word (Parisotti, Selve amiche m5
+                            //   "Sel-ve a-mi-che": "ve" ends a word, "a" begins the next, both on one note): the entry
+                            //   is the last syllable of the one and the first of the other, which gets the dashes
+                            //   to "mi" and "che"
+                            if (lyricsEntry && hasElision && syllabics.length > 1 && lastSyllabic !== syllabic &&
+                                (lastSyllabic === "begin" || (lastSyllabic === "middle" && (syllabic === "single" || syllabic === "end")))) {
+                                if (this.openLyricWords[currentLyricVerseNumber]) { // "begin" after a "begin"/"middle": the open word ends here
+                                    delete this.openLyricWords[currentLyricVerseNumber];
+                                }
+                                const nextWord: LyricWord = new LyricWord();
+                                nextWord.Syllables.push(lyricsEntry);
+                                lyricsEntry.NextWord = nextWord;
+                                this.openLyricWords[currentLyricVerseNumber] = nextWord;
+                                this.currentLyricWord = nextWord;
                             }
                             // add each LyricEntry to currentVoiceEntry
                             if (lyricsEntry) {

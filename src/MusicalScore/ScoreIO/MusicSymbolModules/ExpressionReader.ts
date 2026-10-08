@@ -1002,7 +1002,7 @@ export class ExpressionReader {
             }
             inSourceMeasureCurrentFraction = this.wedgeStopTimestamp(currentMeasure, stopReadAt, inSourceMeasureCurrentFraction);
             this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml, inSourceMeasureCurrentFraction);
-            this.addWedge(wedgeNode, currentMeasure, inSourceMeasureCurrentFraction, endOffset);
+            this.addWedge(wedgeNode, currentMeasure, inSourceMeasureCurrentFraction, endOffset, stopReadAt);
             return;
         }
         this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml, undefined, this.soundDynamicTimestamp);
@@ -1129,7 +1129,7 @@ export class ExpressionReader {
         }
     }
     private addWedge(wedgeNode: IXmlElement, currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction,
-                     endOffset: Fraction = undefined): void {
+                     endOffset: Fraction = undefined, stopTimestamp: Fraction = undefined): void {
         if (wedgeNode !== undefined && wedgeNode.hasAttributes) {
             const numberXml: number = this.readNumber(wedgeNode);
             const type: string = wedgeNode.attribute("type").value.toLowerCase();
@@ -1160,6 +1160,8 @@ export class ExpressionReader {
                         if (openCont.NumberXml === numberXml) {
                             // if (openCont.NumberXml === numberXml) { // was there supposed to be another check here? someone wrote the same check twice.
                             openCont.EndOffsetFraction = endOffset;
+                            openCont.StopTimestamp = stopTimestamp && inSourceMeasureCurrentFraction.lt(stopTimestamp) ?
+                                stopTimestamp.clone() : undefined;
                             this.closeOpenContinuousDynamic(openCont, currentMeasure, inSourceMeasureCurrentFraction);
                         }
                     }
@@ -1297,9 +1299,13 @@ export class ExpressionReader {
                     stringTrimmed);
             continuousDynamicExpression.ColorXML = fontColor;
             continuousDynamicExpression.language = language;
-            const openWordContinuousDynamic: MultiExpression = this.getMultiExpression;
-            if (openWordContinuousDynamic) {
-                this.closeOpenContinuousDynamic(openWordContinuousDynamic.StartingContinuousDynamic, currentMeasure, inSourceMeasureCurrentFraction);
+            // Close the word dynamic ("cresc.") still open at the last multi expression. A wedge is ended by its stop only:
+            //   the last multi expression may be a wedge read before this text (Parisotti, Zingarella Canto m62: the wedge
+            //   at beat 1.75 is read before "cres." at beat 1.5 and was closed before it began, a 2-space stub), or an already
+            //   closed one (Legrenzi, Che fiero costume, piano m16: the diminuendo stopped on its first note ran on to the "cresc." of m17).
+            const openWordContinuousDynamic: ContinuousDynamicExpression = this.getMultiExpression?.StartingContinuousDynamic;
+            if (openWordContinuousDynamic?.Label && this.openContinuousDynamicExpressions.includes(openWordContinuousDynamic)) {
+                this.closeOpenContinuousDynamic(openWordContinuousDynamic, currentMeasure, inSourceMeasureCurrentFraction);
             }
             this.createNewMultiExpressionIfNeeded(currentMeasure, -1);
             if (this.activeInstantaneousDynamic !== undefined && this.activeInstantaneousDynamic.StaffNumber === continuousDynamicExpression.StaffNumber) {
@@ -1308,6 +1314,8 @@ export class ExpressionReader {
             this.openContinuousDynamicExpressions.push(continuousDynamicExpression);
             continuousDynamicExpression.StartMultiExpression = this.getMultiExpression;
             this.getMultiExpression.addExpression(continuousDynamicExpression, prefix);
+            // a verbal dynamic is a text too: "cres. - - - -" (Parisotti, Selve amiche m26 "cres. - - assai")
+            this.addWordExpressionForDashes(continuousDynamicExpression, inSourceMeasureCurrentFraction);
             return true;
         }
         if (MoodExpression.isInputStringMood(stringTrimmed)) {
@@ -1427,7 +1435,7 @@ export class ExpressionReader {
             if (dashes.expression) {
                 this.finishDashesIfComplete(dashes);
             } else {
-                this.openDashes.splice(this.openDashes.indexOf(dashes), 1); // e.g. dashes after "cresc."
+                this.openDashes.splice(this.openDashes.indexOf(dashes), 1); // no text before them in their measure
             }
         }
         this.dashesMeasure = measure;

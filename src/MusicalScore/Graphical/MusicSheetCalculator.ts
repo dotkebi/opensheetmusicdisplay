@@ -69,8 +69,9 @@ import { ContinuousTempoExpression } from "../VoiceData/Expressions/ContinuousEx
 import { FontStyles } from "../../Common/Enums/FontStyles";
 import { AbstractTempoExpression } from "../VoiceData/Expressions/AbstractTempoExpression";
 import { GraphicalInstantaneousDynamicExpression } from "./GraphicalInstantaneousDynamicExpression";
-import { ContDynamicEnum } from "../VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
+import { ContDynamicEnum, ContinuousDynamicExpression } from "../VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
 import { GraphicalContinuousDynamicExpression } from "./GraphicalContinuousDynamicExpression";
+import { AbstractGraphicalExpression } from "./AbstractGraphicalExpression";
 import { FillEmptyMeasuresWithWholeRests } from "../../OpenSheetMusicDisplay/OSMDOptions";
 import { IStafflineNoteCalculator } from "../Interfaces/IStafflineNoteCalculator";
 import { GraphicalUnknownExpression } from "./GraphicalUnknownExpression";
@@ -123,7 +124,7 @@ export abstract class MusicSheetCalculator {
     protected musicSystems: MusicSystem[];
     /** Dashed lines after expression texts, collected while the texts are placed (see calculateExpressionDashes()). */
     private pendingExpressionDashes: {
-        expression: AbstractExpression; label: GraphicalLabel; placement: PlacementEnum;
+        expression: AbstractExpression; textBox: BoundingBox; color: string; placement: PlacementEnum;
         staffLine: StaffLine; staffIndex: number; measureIndex: number;
     }[] = [];
     /** Sky- and bottomline of each staffline before expressions are placed. */
@@ -984,6 +985,12 @@ export abstract class MusicSheetCalculator {
      * Collects lyricVerseNumberFirstEntries: per instrument with two or more verse lines, the first syllable (in time)
      * of each verse whose number is an integer string. Chorus/translation lines get no label, and neither does a verse
      * whose first syllable already starts with "N.", "N)" or a bare number (Finale and Sibelius exports embed the number in the text).
+     *
+     * Lines in different languages are language lines, not verses (Schirmer's Italian text with its English singing
+     * translation, both number="1"/"2"): when every verse line of the instrument has a language (LyricsEntry.language:
+     * the xml:lang of its syllables, else the sheet's lyric-language default) and the lines do not all share one,
+     * the instrument gets no label. A line's language is the most frequent one among its syllables; a line without
+     * any language leaves the labels as they are.
      */
     private collectLyricVerseNumberFirstEntries(): void {
         this.lyricVerseNumberFirstEntries.clear();
@@ -1001,6 +1008,9 @@ export abstract class MusicSheetCalculator {
             return;
         }
         const seenVerses: Map<Instrument, Set<string>> = new Map<Instrument, Set<string>>();
+        const firstEntries: Map<Instrument, LyricsEntry[]> = new Map<Instrument, LyricsEntry[]>();
+        // instrument -> verse number -> language -> syllable count
+        const lineLanguages: Map<Instrument, Map<string, Map<string, number>>> = new Map<Instrument, Map<string, Map<string, number>>>();
         for (const measure of sheet.SourceMeasures) {
             for (const container of measure.VerticalSourceStaffEntryContainers) {
                 for (const staffEntry of container.StaffEntries) {
@@ -1010,24 +1020,67 @@ export abstract class MusicSheetCalculator {
                     }
                     if (!seenVerses.has(instrument)) {
                         seenVerses.set(instrument, new Set<string>());
+                        firstEntries.set(instrument, []);
+                        lineLanguages.set(instrument, new Map<string, Map<string, number>>());
                     }
                     const seen: Set<string> = seenVerses.get(instrument);
+                    const lines: Map<string, Map<string, number>> = lineLanguages.get(instrument);
                     for (const voiceEntry of staffEntry.VoiceEntries) {
                         for (const entry of voiceEntry.LyricsEntries.values()) {
+                            const isVerse: boolean = MusicSheetCalculator.integerVerseNumber.test(entry.VerseNumber) &&
+                                !entry.IsChorus && !entry.IsTranslation;
+                            if (isVerse) {
+                                if (!lines.has(entry.VerseNumber)) {
+                                    lines.set(entry.VerseNumber, new Map<string, number>());
+                                }
+                                if (entry.language) {
+                                    const counts: Map<string, number> = lines.get(entry.VerseNumber);
+                                    counts.set(entry.language, (counts.get(entry.language) ?? 0) + 1);
+                                }
+                            }
                             if (seen.has(entry.VerseNumber)) {
                                 continue;
                             }
                             seen.add(entry.VerseNumber);
-                            if (MusicSheetCalculator.integerVerseNumber.test(entry.VerseNumber) &&
-                                !entry.IsChorus && !entry.IsTranslation &&
-                                !MusicSheetCalculator.embeddedVerseNumberPrefix.test(entry.Text)) {
-                                this.lyricVerseNumberFirstEntries.add(entry);
+                            if (isVerse && !MusicSheetCalculator.embeddedVerseNumberPrefix.test(entry.Text)) {
+                                firstEntries.get(instrument).push(entry);
                             }
                         }
                     }
                 }
             }
         }
+        for (const [instrument, entries] of firstEntries) {
+            if (MusicSheetCalculator.verseLinesAreLanguageLines(lineLanguages.get(instrument))) {
+                continue;
+            }
+            for (const entry of entries) {
+                this.lyricVerseNumberFirstEntries.add(entry);
+            }
+        }
+    }
+
+    /** True when every verse line has a language and the lines do not all share one. lines: verse number -> language -> syllable count. */
+    private static verseLinesAreLanguageLines(lines: Map<string, Map<string, number>>): boolean {
+        if (lines.size < 2) {
+            return false;
+        }
+        const languages: Set<string> = new Set<string>();
+        for (const counts of lines.values()) {
+            let best: string = undefined;
+            let bestCount: number = 0;
+            for (const [language, count] of counts) {
+                if (count > bestCount) {
+                    best = language;
+                    bestCount = count;
+                }
+            }
+            if (best === undefined) {
+                return false;
+            }
+            languages.add(best);
+        }
+        return languages.size > 1;
     }
 
     protected calculateLyricsExtendsAndDashes(lyricsStaffEntries: GraphicalStaffEntry[]): void {
@@ -1041,6 +1094,11 @@ export abstract class MusicSheetCalculator {
                 if (lyricEntry.ParentLyricWord &&
                     lyricEntry.ParentLyricWord.GraphicalLyricsEntries[lyricEntry.ParentLyricWord.GraphicalLyricsEntries.length - 1] !== lyricEntry) {
                     this.calculateSingleLyricWord(lyricEntry);
+                }
+                // and of the word begun by the second syllable of its elision ("ve a-mi-che": the dash to "mi")
+                if (lyricEntry.NextLyricWord &&
+                    lyricEntry.NextLyricWord.GraphicalLyricsEntries[lyricEntry.NextLyricWord.GraphicalLyricsEntries.length - 1] !== lyricEntry) {
+                    this.calculateSingleLyricWord(lyricEntry, lyricEntry.NextLyricWord);
                 }
                 // calculate the underscore line extend if needed
                 if (lyricEntry.LyricsEntry.extend) {
@@ -1321,22 +1379,32 @@ export abstract class MusicSheetCalculator {
         //    multiExpression); // TODO would be nice to hand over and save reference to original expression,
         //                         but MultiExpression is not an AbstractExpression.
         if (lastEntry?.expression) {
-            this.addExpressionDashes(lastEntry.expression, graphLabel, placement, staffLine, staffIndex, measureIndex);
+            this.addExpressionDashes(lastEntry.expression, graphLabel.PositionAndShape, graphLabel.ColorXML, placement, staffLine, staffIndex, measureIndex);
         }
     }
 
     /**
      * Notes a dashed line (MusicXML <dashes>, e.g. "rit. - - - -") to be calculated after its text,
      * see calculateExpressionDashes().
-     * @param label the expression's text, already positioned on staffLine
+     * @param textBox the box of the expression's text, positioned relative to staffLine (a words label, or the box of
+     *                a verbal dynamic, whose label is at (0, 0) in it)
      * @param staffIndex index of staffLine's staff in a MeasureList entry
      * @param measureIndex MeasureList index of the measure the expression belongs to
      */
-    protected addExpressionDashes(expression: AbstractExpression, label: GraphicalLabel, placement: PlacementEnum,
+    protected addExpressionDashes(expression: AbstractExpression, textBox: BoundingBox, color: string, placement: PlacementEnum,
                                   staffLine: StaffLine, staffIndex: number, measureIndex: number): void {
-        if (expression?.DashesEndMeasure && expression.DashesEndTimestamp && label) {
-            this.pendingExpressionDashes.push({expression, label, placement, staffLine, staffIndex, measureIndex});
+        if (expression?.DashesEndMeasure && expression.DashesEndTimestamp && textBox) {
+            this.pendingExpressionDashes.push({expression, textBox, color, placement, staffLine, staffIndex, measureIndex});
         }
+    }
+
+    /** The box of an expression's text, relative to its staffline: a verbal dynamic's label is at (0, 0) in the
+     *  expression's box, the other expressions position their label. */
+    private expressionTextBox(expression: AbstractGraphicalExpression): BoundingBox {
+        if (expression instanceof GraphicalContinuousDynamicExpression && expression.IsVerbal) {
+            return expression.PositionAndShape;
+        }
+        return expression.Label?.PositionAndShape;
     }
 
     /** Where the dashed line after an expression's text ends on staffLine (its end, or the end of staffLine if it
@@ -1422,7 +1490,7 @@ export abstract class MusicSheetCalculator {
                     staffLines.push(parentStaffLine);
                 }
             }
-            const box: BoundingBox = pending.label.PositionAndShape;
+            const box: BoundingBox = pending.textBox;
             const textY: number = box.RelativePosition.y + (box.BorderTop + box.BorderBottom) / 2;
             const below: boolean = pending.placement === PlacementEnum.Below;
             for (let i: number = 0; i < staffLines.length; i++) {
@@ -1453,7 +1521,7 @@ export abstract class MusicSheetCalculator {
                         Math.max(y, skyBottomLine.getMaxInRangeOf(before[1], startX, endX) + distance) :
                         Math.min(y, skyBottomLine.getMinInRangeOf(before[0], startX, endX) - distance);
                 }
-                endX = this.firstExpressionDashesObstacleX(line, pending.label, below, startX, endX, y) - distance;
+                endX = this.firstExpressionDashesObstacleX(line, pending.textBox, below, startX, endX, y) - distance;
                 if (endX - startX < this.rules.ExpressionDashesDashLength) {
                     continue;
                 }
@@ -1464,7 +1532,7 @@ export abstract class MusicSheetCalculator {
                 }
                 const dashes: GraphicalExpressionDashes = new GraphicalExpressionDashes(
                     expression, new PointF2D(startX, y), new PointF2D(endX, y), lineWidth);
-                dashes.Color = pending.label.ColorXML;
+                dashes.Color = pending.color;
                 line.ExpressionDashes.push(dashes);
             }
         }
@@ -1474,7 +1542,7 @@ export abstract class MusicSheetCalculator {
 
     /** The first x in [startX, endX) where something on staffLine reaches a dashed line at height y, else endX.
      *  See calculateExpressionDashes(). */
-    private firstExpressionDashesObstacleX(staffLine: StaffLine, ownLabel: GraphicalLabel, below: boolean,
+    private firstExpressionDashesObstacleX(staffLine: StaffLine, ownBox: BoundingBox, below: boolean,
                                            startX: number, endX: number, y: number): number {
         const clearance: number = this.rules.ExpressionDashesTextDistance;
         const limitY: number = below ? y - clearance : y + clearance;
@@ -1482,17 +1550,23 @@ export abstract class MusicSheetCalculator {
         const before: [number[], number[]] = this.skyBottomLinesBeforeExpressions?.get(staffLine);
         const labelBoxes: BoundingBox[] = [];
         for (const expression of staffLine.AbstractExpressions) {
-            const label: GraphicalLabel = expression.Label;
-            if (label && label !== ownLabel && !labelBoxes.includes(label.PositionAndShape)) {
-                labelBoxes.push(label.PositionAndShape);
+            const textBox: BoundingBox = this.expressionTextBox(expression);
+            if (textBox && textBox !== ownBox && !labelBoxes.includes(textBox)) {
+                labelBoxes.push(textBox);
             }
         }
         const reaches: (value: number) => boolean = (value: number) => below ? value > limitY : value < limitY;
+        // The own text's reservation of the sky-/bottomline rounds out past its margins: next to the text, what was
+        //   there before the expressions counts (Parisotti, Ah mio cor m10 "sempre crescendo - - -" on the app: its
+        //   reservation reached the start of the line and ended it at once).
+        const ownLeft: number = ownBox.RelativePosition.x + ownBox.BorderMarginLeft - 1;
+        const ownRight: number = ownBox.RelativePosition.x + ownBox.BorderMarginRight + 1;
         const step: number = 0.1;
         for (let x: number = startX; x < endX; x += step) {
-            const current: number = below ?
-                skyBottomLine.getBottomLineMaxInRange(x, x + step) :
-                skyBottomLine.getSkyLineMinInRange(x, x + step);
+            const besideOwnText: boolean = before !== undefined && x < ownRight && x + step > ownLeft;
+            const current: number = besideOwnText ?
+                (below ? skyBottomLine.getMaxInRangeOf(before[1], x, x + step) : skyBottomLine.getMinInRangeOf(before[0], x, x + step)) :
+                (below ? skyBottomLine.getBottomLineMaxInRange(x, x + step) : skyBottomLine.getSkyLineMinInRange(x, x + step));
             if (!reaches(current)) {
                 continue;
             }
@@ -2405,20 +2479,30 @@ export abstract class MusicSheetCalculator {
         const left: number = startPosInStaffline.x + box.BorderMarginLeft;
         const right: number = startPosInStaffline.x + box.BorderMarginRight;
         // placement always below the currentStaffLine, with the exception of Voice Instrument (-> above)
-        const placement: PlacementEnum = graphicalContinuousDynamic.ContinuousDynamic.Placement;
+        const continuousDynamic: ContinuousDynamicExpression = graphicalContinuousDynamic.ContinuousDynamic;
+        const placement: PlacementEnum = continuousDynamic.Placement;
         const staffLine: StaffLine = graphicalContinuousDynamic.ParentStaffLine;
         const skyBottomLineCalculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        // a text followed by a dashed line ("cres. - - - -") must also clear what is under the line, like calculateLabel()
+        const staffIndex: number = staffLine.ParentStaff.idInMusicSheet;
+        const dashesEndX: number = this.expressionDashesEndX(continuousDynamic, staffLine, staffIndex);
+        const rangeRight: number = dashesEndX > right ? dashesEndX : right;
 
         let drawingHeight: number;
         if (placement === PlacementEnum.Below) {
-            drawingHeight = skyBottomLineCalculator.getBottomLineMaxForLabel(left, right);    // Bottom line
+            drawingHeight = skyBottomLineCalculator.getBottomLineMaxForLabel(left, rangeRight);    // Bottom line
             box.RelativePosition = new PointF2D(startPosInStaffline.x, drawingHeight - box.BorderMarginTop);
         } else {
-            drawingHeight = skyBottomLineCalculator.getSkyLineMinForLabel(left, right);
+            drawingHeight = skyBottomLineCalculator.getSkyLineMinForLabel(left, rangeRight);
             box.RelativePosition = new PointF2D(startPosInStaffline.x, drawingHeight - box.BorderMarginBottom);
         }
         // so that the dynamics placed after it don't overlap it (instantaneous dynamics and wedges update it when placed too)
         graphicalContinuousDynamic.updateSkyBottomLine();
+        const measureIndex: number = graphicalContinuousDynamic.StartMeasure?.parentSourceMeasure?.measureListIndex;
+        if (measureIndex !== undefined) {
+            this.addExpressionDashes(continuousDynamic, box, graphicalContinuousDynamic.Label?.ColorXML, placement,
+                                     staffLine, staffIndex, measureIndex);
+        }
     }
 
    /**
@@ -2477,7 +2561,16 @@ export abstract class MusicSheetCalculator {
             endAbsoluteTimestamp, staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0,
             useStaffEntryBorderLeft);
 
-        const beginOfNextNote: Fraction = Fraction.plus(endAbsoluteTimestamp, maxNoteLength);
+        // The drawn end goes towards the stop as written, if a note of the staff follows it in the measure. The end note's start plus
+        // the longest note of the staff there is the stop only in one voice (see ContinuousDynamicExpression.StopTimestamp); a stop
+        // after the last note keeps it (the end of the measure), and so does a staff without notes there, whose position at the
+        // stop would be the start of the measure.
+        const stopTimestamp: Fraction = graphicalContinuousDynamic.ContinuousDynamic.StopTimestamp;
+        const stopBeforeNote: boolean = stopTimestamp !== undefined &&
+            endMeasure.staffEntries.some(se => !se.relInMeasureTimestamp.lt(stopTimestamp));
+        const beginOfNextNote: Fraction = stopBeforeNote ?
+            Fraction.plus(graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.SourceMeasureParent.AbsoluteTimestamp, stopTimestamp) :
+            Fraction.plus(endAbsoluteTimestamp, maxNoteLength);
         const placementFraction: Fraction = beginOfNextNote.clone();
         const endOffsetFraction: Fraction = graphicalContinuousDynamic.ContinuousDynamic.EndOffsetFraction;
         if (endOffsetFraction && this.rules.UseEndOffsetForExpressions) {
@@ -2493,12 +2586,22 @@ export abstract class MusicSheetCalculator {
         const sizeFactor: number = this.rules.SoftAccentSizeFactor;
         //const standardWidth: number = 2;
 
+        // A wedge that starts and ends on one note (its stop before the next note, or a start with a negative offset after
+        // its end note) reaches the next note: 1/WedgeEndDistanceBetweenTimestampsFactor of the way drew a short ">" over the
+        // note (Gluck, O del mio dolce ardor m6; Monteverdi, Lasciatemi morire m19). Same as osmd-dart.
+        const startAbsoluteTimestamp: Fraction = graphicalContinuousDynamic.ContinuousDynamic.StartMultiExpression?.AbsoluteTimestamp;
+        const endBeforeStart: boolean = startAbsoluteTimestamp !== undefined && sameStaffLine &&
+            endAbsoluteTimestamp.RealValue <= startAbsoluteTimestamp.RealValue;
+
         //If the next note position is not on the next staffline
         //extend close to the next note
         if (isSoftAccent) {
             //startPosInStaffline.x -= 1;
             startPosInStaffline.x -= staffEntryWidth / 2 * sizeFactor + wedgePadding;
             endPosInStaffLine.x = startPosInStaffline.x + staffEntryWidth / 2 * sizeFactor;
+        } else if (endBeforeStart && nextNotePosInStaffLine.x > startPosInStaffline.x) {
+            endPosInStaffLine.x = (nextNotePosInStaffLine.x < endOfMeasure ? nextNotePosInStaffLine.x : endOfMeasure) -
+                this.rules.WedgeHorizontalMargin;
         } else if (nextNotePosInStaffLine.x > endPosInStaffLine.x && nextNotePosInStaffLine.x < endOfMeasure) {
             endPosInStaffLine.x += (nextNotePosInStaffLine.x - endPosInStaffLine.x) / this.rules.WedgeEndDistanceBetweenTimestampsFactor;
         } else { //Otherwise extend to the end of the measure
@@ -3111,7 +3214,8 @@ export abstract class MusicSheetCalculator {
                     //   time (as before) made the drawer draw the label twice.
                     new GraphicalInstantaneousTempoExpression(entry.Expression, graphLabel);
                 }
-                this.addExpressionDashes(entry.Expression, graphLabel, entry.Expression.Placement, staffLine, verticalIndex, measureIndex);
+                this.addExpressionDashes(entry.Expression, graphLabel.PositionAndShape, graphLabel.ColorXML, entry.Expression.Placement, staffLine,
+                                         verticalIndex, measureIndex);
             }
         }
     }
@@ -4943,9 +5047,8 @@ export abstract class MusicSheetCalculator {
      * This method calculates the dashes within the syllables of a LyricWord
      * @param lyricEntry
      */
-    private calculateSingleLyricWord(lyricEntry: GraphicalLyricEntry): void {
+    private calculateSingleLyricWord(lyricEntry: GraphicalLyricEntry, graphicalLyricWord: GraphicalLyricWord = lyricEntry.ParentLyricWord): void {
         // const skyBottomLineCalculator: SkyBottomLineCalculator = new SkyBottomLineCalculator (this.rules);
-        const graphicalLyricWord: GraphicalLyricWord = lyricEntry.ParentLyricWord;
         const index: number = graphicalLyricWord.GraphicalLyricsEntries.indexOf(lyricEntry);
         let nextLyricEntry: GraphicalLyricEntry = undefined;
         if (index >= 0) {

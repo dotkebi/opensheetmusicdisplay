@@ -4,6 +4,8 @@ import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
 import { GraphicalInstantaneousTempoExpression } from "../../../src/MusicalScore/Graphical/GraphicalInstantaneousTempoExpression";
 import { GraphicalUnknownExpression } from "../../../src/MusicalScore/Graphical/GraphicalUnknownExpression";
 import { GraphicalExpressionDashes } from "../../../src/MusicalScore/Graphical/GraphicalExpressionDashes";
+import { GraphicalContinuousDynamicExpression } from "../../../src/MusicalScore/Graphical/GraphicalContinuousDynamicExpression";
+import { ContinuousDynamicExpression } from "../../../src/MusicalScore/VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
 import { GraphicalMeasure } from "../../../src/MusicalScore/Graphical/GraphicalMeasure";
 import { GraphicalStaffEntry } from "../../../src/MusicalScore/Graphical/GraphicalStaffEntry";
 import { TestUtils } from "../../Util/TestUtils";
@@ -186,16 +188,44 @@ describe("Expression dashes", () => {
         expectDashesToTheEndOfTheFirstSystem(osmd);
     });
 
-    it("draws no dashes for a start without a stop, or for dashes after a crescendo word", async () => {
+    it("draws no dashes for a start without a stop", async () => {
         const open: string = "<direction placement=\"above\"><direction-type><words>rit.</words></direction-type>" +
             "<direction-type><dashes type=\"start\" number=\"1\"/></direction-type></direction>";
-        let osmd: OpenSheetMusicDisplay = await render(singleStaffScore(open + filler));
+        const osmd: OpenSheetMusicDisplay = await render(singleStaffScore(open + filler));
         expect(staffLines(osmd)[0].ExpressionDashes.length).to.equal(0);
+    });
+
+    // Parisotti, Selve amiche m26-27 "cres. - - - assai", Ogni pena m34 "cres. - - -": a verbal dynamic is a text too
+    it("draws dashes after a crescendo word up to their stop", async () => {
         const cresc: string = "<direction placement=\"below\"><direction-type><words>cresc.</words></direction-type>" +
             "<direction-type><dashes type=\"start\" number=\"1\"/></direction-type></direction>";
         const stop: string = "<direction placement=\"below\"><direction-type><dashes type=\"stop\" number=\"1\"/></direction-type>" +
             "<offset>6</offset></direction>";
-        osmd = await render(singleStaffScore(cresc + stop + filler));
-        expect(staffLines(osmd)[0].ExpressionDashes.length).to.equal(0);
+        const osmd: OpenSheetMusicDisplay = await render(singleStaffScore(cresc + m17Notes.replace("__WORDS__", stop)));
+        const staffLine: StaffLine = staffLines(osmd)[0];
+        expect(staffLine.ExpressionDashes.length).to.equal(1);
+        const dashes: GraphicalExpressionDashes = staffLine.ExpressionDashes[0];
+        expect(dashes.Expression).to.be.instanceOf(ContinuousDynamicExpression);
+        const verbal: GraphicalContinuousDynamicExpression = staffLine.AbstractExpressions.find(
+            (e) => e instanceof GraphicalContinuousDynamicExpression) as GraphicalContinuousDynamicExpression;
+        const textRight: number = verbal.PositionAndShape.RelativePosition.x + verbal.PositionAndShape.BorderMarginRight;
+        expect(dashes.Start.x).to.be.greaterThan(textRight);
+        // the stop is 6 divisions (the dotted quarter's start) after the words: the line ends before that note
+        const stopX: number = staffEntryX(staffLine, 2, 3);
+        expect(dashes.End.x).to.be.lessThan(stopX);
+        expect(dashes.End.x).to.be.greaterThan(stopX - 3);
+        expect(dashes.Start.y).to.be.closeTo(verbal.PositionAndShape.RelativePosition.y, 1.5);
+    });
+
+    // the dashes written in a separate direction before "cres." (Ogni pena m34 writes them in the words' direction)
+    it("attaches dashes of a separate direction at the time of a crescendo word", async () => {
+        const dashesStart: string = "<direction placement=\"below\"><direction-type><dashes type=\"start\" number=\"1\"/>" +
+            "</direction-type></direction>";
+        const cresc: string = "<direction placement=\"below\"><direction-type><words>cres.</words></direction-type></direction>";
+        const stop: string = "<direction placement=\"below\"><direction-type><dashes type=\"stop\" number=\"1\"/></direction-type>" +
+            "<offset>6</offset></direction>";
+        const osmd: OpenSheetMusicDisplay = await render(singleStaffScore(dashesStart + cresc + m17Notes.replace("__WORDS__", stop)));
+        expect(staffLines(osmd)[0].ExpressionDashes.length).to.equal(1);
+        expect(staffLines(osmd)[0].ExpressionDashes[0].Expression).to.be.instanceOf(ContinuousDynamicExpression);
     });
 });

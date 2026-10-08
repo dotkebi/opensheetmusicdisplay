@@ -5,6 +5,7 @@ export declare class LyricsEntry {
     constructor(text: string, verseNumber: string, word: LyricWord, parent: VoiceEntry, syllableNumber?: number);
     private text;
     private word;
+    private nextWord;
     private parent;
     private verseNumber;
     private syllableIndex;
@@ -18,6 +19,11 @@ export declare class LyricsEntry {
     set Text(value: string);
     get Word(): LyricWord;
     set Word(value: LyricWord);
+    /** The word this entry begins when its text has an elision whose second syllable begins a word ("ve a-mi-che":
+     *  "ve" ends one word, "a" begins the next, both on this note): this entry is the first syllable of NextWord
+     *  as well as the last of Word, and gets the dash to the next syllable of NextWord. */
+    get NextWord(): LyricWord;
+    set NextWord(value: LyricWord);
     get Parent(): VoiceEntry;
     set Parent(value: VoiceEntry);
     get VerseNumber(): string;

@@ -220,8 +220,16 @@ export declare abstract class MusicSheetCalculator {
      * Collects lyricVerseNumberFirstEntries: per instrument with two or more verse lines, the first syllable (in time)
      * of each verse whose number is an integer string. Chorus/translation lines get no label, and neither does a verse
      * whose first syllable already starts with "N.", "N)" or a bare number (Finale and Sibelius exports embed the number in the text).
+     *
+     * Lines in different languages are language lines, not verses (Schirmer's Italian text with its English singing
+     * translation, both number="1"/"2"): when every verse line of the instrument has a language (LyricsEntry.language:
+     * the xml:lang of its syllables, else the sheet's lyric-language default) and the lines do not all share one,
+     * the instrument gets no label. A line's language is the most frequent one among its syllables; a line without
+     * any language leaves the labels as they are.
      */
     private collectLyricVerseNumberFirstEntries;
+    /** True when every verse line has a language and the lines do not all share one. lines: verse number -> language -> syllable count. */
+    private static verseLinesAreLanguageLines;
     protected calculateLyricsExtendsAndDashes(lyricsStaffEntries: GraphicalStaffEntry[]): void;
     /**
      * Calculate a single OctaveShift for a [[MultiExpression]].
@@ -294,11 +302,15 @@ export declare abstract class MusicSheetCalculator {
     /**
      * Notes a dashed line (MusicXML <dashes>, e.g. "rit. - - - -") to be calculated after its text,
      * see calculateExpressionDashes().
-     * @param label the expression's text, already positioned on staffLine
+     * @param textBox the box of the expression's text, positioned relative to staffLine (a words label, or the box of
+     *                a verbal dynamic, whose label is at (0, 0) in it)
      * @param staffIndex index of staffLine's staff in a MeasureList entry
      * @param measureIndex MeasureList index of the measure the expression belongs to
      */
-    protected addExpressionDashes(expression: AbstractExpression, label: GraphicalLabel, placement: PlacementEnum, staffLine: StaffLine, staffIndex: number, measureIndex: number): void;
+    protected addExpressionDashes(expression: AbstractExpression, textBox: BoundingBox, color: string, placement: PlacementEnum, staffLine: StaffLine, staffIndex: number, measureIndex: number): void;
+    /** The box of an expression's text, relative to its staffline: a verbal dynamic's label is at (0, 0) in the
+     *  expression's box, the other expressions position their label. */
+    private expressionTextBox;
     /** Where the dashed line after an expression's text ends on staffLine (its end, or the end of staffLine if it
      *  continues on a later system), or undefined if the expression has no dashed line.
      *  A stop at the end of the end measure (MusicXML: after its last note) is the time of the next measure's first note.
