@@ -436,8 +436,10 @@ export declare abstract class MusicSheetCalculator {
      */
     protected wedgeStopTime(wedge: ContinuousDynamicExpression): Fraction;
     /**
-     * The wedge that starts where the wedge stops, on the same staff and side, both without text: a crescendo and a diminuendo
-     * paired as a swell "<>" (L'allegro marinaro m46, m87, over a dotted half). Undefined if there is none.
+     * The wedge that starts where the wedge stops between the notes of the staff, on the same staff and side, both without text:
+     * a crescendo and a diminuendo paired as a swell "<>" over one note (L'allegro marinaro m46, m87, over a dotted half).
+     * Undefined if there is none, or if a note of the staff starts at the stop: that pair keeps the note-based ends and the
+     * reservation of each wedge (hairpins D1).
      */
     protected wedgeStartingAtStop(wedge: ContinuousDynamicExpression, staffIndex: number): ContinuousDynamicExpression;
     /** The wedge whose stop is where the wedge starts (the first of the pair, wedgeStartingAtStop()), starting up to three measures before. */

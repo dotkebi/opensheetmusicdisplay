@@ -2526,8 +2526,10 @@ export abstract class MusicSheetCalculator {
     }
 
     /**
-     * The wedge that starts where the wedge stops, on the same staff and side, both without text: a crescendo and a diminuendo
-     * paired as a swell "<>" (L'allegro marinaro m46, m87, over a dotted half). Undefined if there is none.
+     * The wedge that starts where the wedge stops between the notes of the staff, on the same staff and side, both without text:
+     * a crescendo and a diminuendo paired as a swell "<>" over one note (L'allegro marinaro m46, m87, over a dotted half).
+     * Undefined if there is none, or if a note of the staff starts at the stop: that pair keeps the note-based ends and the
+     * reservation of each wedge (hairpins D1).
      */
     protected wedgeStartingAtStop(wedge: ContinuousDynamicExpression, staffIndex: number): ContinuousDynamicExpression {
         const start: MultiExpression = wedge.StartMultiExpression;
@@ -2540,6 +2542,11 @@ export abstract class MusicSheetCalculator {
         const stopAbsolute: Fraction = Fraction.plus(measure.AbsoluteTimestamp, stop);
         if (!start.AbsoluteTimestamp.lt(stopAbsolute) || staffIndex >= measure.StaffLinkedExpressions.length) {
             return undefined;
+        }
+        for (const container of measure.VerticalSourceStaffEntryContainers) {
+            if (container.Timestamp.Equals(stop) && container.StaffEntries[staffIndex]) {
+                return undefined;
+            }
         }
         for (const multi of measure.StaffLinkedExpressions[staffIndex]) {
             const next: ContinuousDynamicExpression = multi.StartingContinuousDynamic;
