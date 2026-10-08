@@ -1299,11 +1299,12 @@ export class ExpressionReader {
                     stringTrimmed);
             continuousDynamicExpression.ColorXML = fontColor;
             continuousDynamicExpression.language = language;
-            // Close the word dynamic ("cresc.") still open at the last multi expression. A wedge starting there may already be
-            // closed: its stop on the note it starts on shares that multi expression, and closing it again moved its end to these
-            // words (Legrenzi, Che fiero costume, piano m16: the diminuendo ran on to the "cresc." of m17).
+            // Close the word dynamic ("cresc.") still open at the last multi expression. A wedge is ended by its stop only:
+            //   the last multi expression may be a wedge read before this text (Parisotti, Zingarella Canto m62: the wedge
+            //   at beat 1.75 is read before "cres." at beat 1.5 and was closed before it began, a 2-space stub), or an already
+            //   closed one (Legrenzi, Che fiero costume, piano m16: the diminuendo stopped on its first note ran on to the "cresc." of m17).
             const openWordContinuousDynamic: ContinuousDynamicExpression = this.getMultiExpression?.StartingContinuousDynamic;
-            if (openWordContinuousDynamic && this.openContinuousDynamicExpressions.includes(openWordContinuousDynamic)) {
+            if (openWordContinuousDynamic?.Label && this.openContinuousDynamicExpressions.includes(openWordContinuousDynamic)) {
                 this.closeOpenContinuousDynamic(openWordContinuousDynamic, currentMeasure, inSourceMeasureCurrentFraction);
             }
             this.createNewMultiExpressionIfNeeded(currentMeasure, -1);
@@ -1313,6 +1314,8 @@ export class ExpressionReader {
             this.openContinuousDynamicExpressions.push(continuousDynamicExpression);
             continuousDynamicExpression.StartMultiExpression = this.getMultiExpression;
             this.getMultiExpression.addExpression(continuousDynamicExpression, prefix);
+            // a verbal dynamic is a text too: "cres. - - - -" (Parisotti, Selve amiche m26 "cres. - - assai")
+            this.addWordExpressionForDashes(continuousDynamicExpression, inSourceMeasureCurrentFraction);
             return true;
         }
         if (MoodExpression.isInputStringMood(stringTrimmed)) {
@@ -1432,7 +1435,7 @@ export class ExpressionReader {
             if (dashes.expression) {
                 this.finishDashesIfComplete(dashes);
             } else {
-                this.openDashes.splice(this.openDashes.indexOf(dashes), 1); // e.g. dashes after "cresc."
+                this.openDashes.splice(this.openDashes.indexOf(dashes), 1); // no text before them in their measure
             }
         }
         this.dashesMeasure = measure;

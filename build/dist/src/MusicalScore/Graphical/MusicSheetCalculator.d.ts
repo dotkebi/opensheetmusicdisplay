@@ -301,11 +301,15 @@ export declare abstract class MusicSheetCalculator {
     /**
      * Notes a dashed line (MusicXML <dashes>, e.g. "rit. - - - -") to be calculated after its text,
      * see calculateExpressionDashes().
-     * @param label the expression's text, already positioned on staffLine
+     * @param textBox the box of the expression's text, positioned relative to staffLine (a words label, or the box of
+     *                a verbal dynamic, whose label is at (0, 0) in it)
      * @param staffIndex index of staffLine's staff in a MeasureList entry
      * @param measureIndex MeasureList index of the measure the expression belongs to
      */
-    protected addExpressionDashes(expression: AbstractExpression, label: GraphicalLabel, placement: PlacementEnum, staffLine: StaffLine, staffIndex: number, measureIndex: number): void;
+    protected addExpressionDashes(expression: AbstractExpression, textBox: BoundingBox, color: string, placement: PlacementEnum, staffLine: StaffLine, staffIndex: number, measureIndex: number): void;
+    /** The box of an expression's text, relative to its staffline: a verbal dynamic's label is at (0, 0) in the
+     *  expression's box, the other expressions position their label. */
+    private expressionTextBox;
     /** Where the dashed line after an expression's text ends on staffLine (its end, or the end of staffLine if it
      *  continues on a later system), or undefined if the expression has no dashed line.
      *  A stop at the end of the end measure (MusicXML: after its last note) is the time of the next measure's first note.

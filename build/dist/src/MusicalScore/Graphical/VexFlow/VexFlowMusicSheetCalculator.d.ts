@@ -318,6 +318,9 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      */
     protected handleBeam(graphicalNote: GraphicalNote, beam: Beam, openBeams: Beam[]): void;
     protected handleVoiceEntryLyrics(voiceEntry: VoiceEntry, graphicalStaffEntry: GraphicalStaffEntry, lyricWords: LyricWord[]): void;
+    /** Enters graphicalLyricEntry into the GraphicalLyricWord of word (created when word is new), which is kept in
+     *  this.graphicalLyricWords, in step with the open lyricWords, until every syllable has its graphical entry. */
+    private registerGraphicalLyricWord;
     protected handleVoiceEntryOrnaments(ornamentContainer: OrnamentContainer, voiceEntry: VoiceEntry, graphicalStaffEntry: GraphicalStaffEntry): void;
     /**
      * Raise an ornament above the notes over a slur above that would touch it, after the slurs are laid out.

@@ -84,6 +84,8 @@ export class GraphicalLyricEntry {
     public get ParentLyricWord(): GraphicalLyricWord {
         return this.graphicalLyricWord;
     }
+    /** The word this entry begins with the second syllable of its elision (LyricsEntry.NextWord), if any. */
+    public NextLyricWord: GraphicalLyricWord;
     public set ParentLyricWord(value: GraphicalLyricWord) {
         this.graphicalLyricWord = value;
     }
