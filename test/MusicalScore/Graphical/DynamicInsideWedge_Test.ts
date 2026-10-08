@@ -9,8 +9,8 @@ import { TestUtils } from "../../Util/TestUtils";
  * Legrenzi, Che fiero costume, voice m26 (solo vocal verification 2, X2): a p written at the second note of a dim. wedge
  * above the staff sat on the wedge's lines over its middle - the wedge was placed first, at the notes, and the p over it.
  * As in the print the p is placed at the notes and the wedge goes over it (m1). A dynamic at the wedge's start keeps its place
- * before the wedge (m2), and a dynamic in the wedge's second half, its goal, stays beyond it as before (m3; Cesti, Intorno
- * all'idol mio, piano m49). The XML of osmd-dart test/fixtures/test_dynamic_inside_wedge.musicxml. Same as osmd-dart
+ * before the wedge (m2), and a dynamic in the wedge's second half, its goal, goes beyond it, over the wedge, which keeps its
+ * length (m3; Cesti, Intorno all'idol mio, piano m49). The XML of osmd-dart test/fixtures/test_dynamic_inside_wedge.musicxml. Same as osmd-dart
  * test/dynamic_inside_wedge_test.dart.
  */
 describe("Dynamic inside a wedge", () => {
@@ -101,9 +101,16 @@ describe("Dynamic inside a wedge", () => {
         expect(shape.RelativePosition.x + shape.BorderMarginRight, `f, wedge from ${startX}`).to.be.at.most(startX);
     });
 
-    it("keeps a dynamic in the wedge's second half, its goal, beyond it", () => {
+    it("places a dynamic in the wedge's second half, its goal, over the wedge, which is not shortened", () => {
         const f: GraphicalInstantaneousDynamicExpression = dynamics()[2];
-        const ys: number[] = wedgeYs(wedges()[2]);
-        expect(box(f).top, `f top ${box(f).top.toFixed(2)}, wedge bottom ${Math.max(...ys).toFixed(2)}`).to.be.at.most(Math.max(...ys));
+        const wedge: GraphicalContinuousDynamicExpression = wedges()[2];
+        const ys: number[] = wedgeYs(wedge);
+        const wedgeRight: number = Math.max(...wedge.Lines.map(l => Math.max(l.Start.x, l.End.x)));
+        const shape: any = f.PositionAndShape;
+        const left: number = shape.RelativePosition.x + shape.BorderMarginLeft;
+        const reason: string = `f ${box(f).top.toFixed(2)}..${box(f).bottom.toFixed(2)} from x ${left.toFixed(2)}, wedge from y ` +
+            `${Math.min(...ys).toFixed(2)} to x ${wedgeRight.toFixed(2)}`;
+        expect(box(f).bottom, reason).to.be.at.most(Math.min(...ys) + 1e-6);
+        expect(wedgeRight, reason).to.be.greaterThan(left);
     });
 });
