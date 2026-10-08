@@ -74,7 +74,7 @@ describe("Lyric extend lines", () => {
     function nextSyllableLimit(measure: GraphicalMeasure, entry: GraphicalStaffEntry): number {
         const box: { RelativePosition: { x: number }, BorderMarginLeft: number } = entry.LyricsEntries[0].GraphicalLabel.PositionAndShape;
         return measure.PositionAndShape.RelativePosition.x + entry.PositionAndShape.RelativePosition.x +
-            box.RelativePosition.x + box.BorderMarginLeft - osmd.EngravingRules.HorizontalBetweenLyricsDistance;
+            box.RelativePosition.x + box.BorderMarginLeft - osmd.EngravingRules.LyricExtendEndGap;
     }
 
     function staffEntryOfSyllable(measure: GraphicalMeasure, text: string): GraphicalStaffEntry {
@@ -130,7 +130,9 @@ describe("Lyric extend lines", () => {
         const tiedNoteRight: number = measure.PositionAndShape.RelativePosition.x +
             tiedNote.PositionAndShape.RelativePosition.x + tiedNote.PositionAndShape.BorderMarginRight;
         const limit: number = nextSyllableLimit(measure, mar);
-        expect(line.End.x, "line reaches at least the tied note's right border").to.be.at.least(tiedNoteRight - 0.01);
+        // the line goes past the tied note, unless the next syllable's label (less LyricExtendEndGap) is in the way
+        expect(line.End.x, "line reaches at least the tied note's right border, or the room before the next syllable")
+            .to.be.at.least(Math.min(tiedNoteRight, limit) - 0.01);
         expect(line.End.x, "line ends before the next syllable").to.be.at.most(limit + 0.01);
         expect(line.End.x - line.Start.x, "line is at least the minimum length, or as long as the room allows")
             .to.be.at.least(Math.min(minimumLength, limit - line.Start.x) - 0.01);
