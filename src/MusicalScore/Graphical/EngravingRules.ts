@@ -126,9 +126,17 @@ export class EngravingRules {
      *  the XML gives no stems. A beam whose XML stems differ keeps them. Default true: the Myrthen engraving (Breitkopf
      *  RS 120) beams 61 of its 63 cross-staff measures between the staves although its MusicXML (music21) stems every
      *  note of the voice one way; corpus wave 1 has one such uniform beam among 77. False follows the XML stems (the
-     *  beam above or below the notes of both staves, as MuseScore 3 exports such a beam). Layout only.
+     *  beam above or below the notes of both staves, as MuseScore 3 exports such a beam). Layout only. A beam whose XML
+     *  stems are all up keeps them unless CrossStaffBeamsFollowUniformUpXmlStems is false.
      *  Same as osmd-dart. */
     public CrossStaffBeamsCenterUniformXmlStems: boolean;
+    /** A cross-staff beam whose XML stems are all up keeps them even with CrossStaffBeamsCenterUniformXmlStems: the beam
+     *  above the highest note (the notes of the upper staff with their own stem length), the stems of the lower staff
+     *  up to it. Default true: the Bellini engraving (Ricordi, Sogno d'infanzia m110–117 and its 69 such beams, Dolente
+     *  immagine m24–25) and Myrthen 6 m10 (Breitkopf) beam them so, as their MusicXML (music21) stems them; the uniform
+     *  beams whose engraving lies between the staves (Myrthen 1, 12 m28, 25) all have their stems down in the XML, and
+     *  stay centred. False centres an all-up beam too (the rule before 2026-10-08). Layout only. Same as osmd-dart. */
+    public CrossStaffBeamsFollowUniformUpXmlStems: boolean;
     /** The drawer moves a text expression (a dynamic, a verbal dynamic, words, a tempo text) that the cross-staff beams
      *  or curves come to lie over, up or down within 1.5 staff spaces, to a free place (CrossStaffExpressionClearance;
      *  the layout is not changed). Default true. Drawing only. Same as osmd-dart. */
@@ -863,6 +871,7 @@ export class EngravingRules {
         this.StemMinAllowedDistanceBetweenNoteHeadAndBeamLine = 1.0;
         this.SetWantedStemDirectionByXml = true;
         this.CrossStaffBeamsCenterUniformXmlStems = true;
+        this.CrossStaffBeamsFollowUniformUpXmlStems = true;
         this.AutoStemSecondaryVoicesWhenAloneInMeasure = false;
         this.CrossStaffTextClearance = true;
         // also see stemwidth further below

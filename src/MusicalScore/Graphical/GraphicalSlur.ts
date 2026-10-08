@@ -38,6 +38,10 @@ export class GraphicalSlur extends GraphicalCurve {
      *  (see VexFlowMusicSheetCalculator.crossStaffSlurIsSplit()): its start piece ends at the end of the start note's
      *  measure, its end piece starts at the start of the following measure, instead of at the staff line's ends. */
     public isCrossStaffPiece: boolean = false;
+    /** The side of a cross-staff piece (isCrossStaffPiece) on the end note's staff of a slur that runs between the
+     *  staves (the side facing the start staff: CrossStaffCurve.runsBetweenStaves(), Bellini Torna vezzosa Fillide
+     *  m2-5 on the web), before the XML's placement. Undefined otherwise. */
+    public pieceSide: PlacementEnum | undefined;
     /** The one curve of a slur between two staves of one system (drawn by the drawer with its measures, not with this
      *  slur's staff line). */
     public crossStaffCurve: CrossStaffCurve;
@@ -1056,6 +1060,10 @@ export class GraphicalSlur extends GraphicalCurve {
         //     return;
         // }
 
+        if (this.pieceSide !== undefined) {
+            this.placement = this.pieceSide;
+            return;
+        }
         if (this.rules.SlurPlacementFromXML && this.slur.PlacementXml !== PlacementEnum.NotYetDefined) {
             this.placement = this.slur.PlacementXml;
             return;
