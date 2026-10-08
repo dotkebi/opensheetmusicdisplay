@@ -15,7 +15,8 @@ import { StemDirectionType, VoiceEntry } from "../../VoiceData/VoiceEntry";
  *
  * Stems: the notes keep the direction the layout gave them — the XML `<stem>` when given, else the centred default
  * {@link CrossStaffBeam.centerStemDirection} (notes of the upper staff down, of the lower staff up: the beam between
- * the staves; also for XML stems all one way, EngravingRules.CrossStaffBeamsCenterUniformXmlStems). When the
+ * the staves; also for XML stems all down, EngravingRules.CrossStaffBeamsCenterUniformXmlStems — XML stems all up
+ * are kept, EngravingRules.CrossStaffBeamsFollowUniformUpXmlStems: the beam above the notes of both staves). When the
  * directions differ ("mixed", the centred beam) the beam is placed by placeMixed() — VexFlow 1.2.93 cannot place
  * such a beam (it extends every stem as if it went the first note's way), so it is placed here, the same way as in
  * osmd-dart (VexFlow 5). When all stems go one way the beam is VexFlow's own.
@@ -87,6 +88,7 @@ export declare class CrossStaffBeam extends VF.Beam {
     static staffIndexOf(note: Note): number;
     /** The centred stem direction of a voice entry in a cross-staff beam segment: down on the segment's top staff, up
      *  below it (the beam between the staves). Undefined: not in such a segment (or, with onlyIfXmlStemsUniform, not
-     *  every note of it has the same XML stem). */
-    static centerStemDirection(voiceEntry: VoiceEntry, onlyIfXmlStemsUniform?: boolean): StemDirectionType;
+     *  every note of it has the same XML stem; with keepUniformUp too, that stem is up —
+     *  EngravingRules.CrossStaffBeamsFollowUniformUpXmlStems). */
+    static centerStemDirection(voiceEntry: VoiceEntry, onlyIfXmlStemsUniform?: boolean, keepUniformUp?: boolean): StemDirectionType;
 }
