@@ -77,6 +77,26 @@ export declare class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
      *  barline). The label ends MusicSheetCalculator.wordsBarlineMargin() before the barline. Same rule as osmd-dart. */
     private trailingWordsMinimumWidth;
     protected calculateMeasureXLayout(measures: GraphicalMeasure[]): number;
+    /**
+     * Keeps the main note's syllable clear of the syllable sung on a grace note before it, in the same verse and voice
+     * (Legrenzi, Che fiero costume m18: "in" on the slashed grace note, "me" on the sixteenth; the grace note's syllable is
+     * placed at the grace note by VexFlowStaffEntry.placeGraceLyrics()). The two notes share a staff entry and the gap
+     * between them is the grace note group's, which stretching the measure (calculateElongationFactor()) doesn't widen:
+     * the missing distance is added to the group's spacing before the main note (VexFlowPatch GraceNoteGroup.spacing),
+     * like the right padding a long syllable's note gets in osmd-dart (lyricClearance). The measure's minimum width grows by
+     * what the formatter's minimum total width gains, and the voices are formatted again at that width to read the new
+     * positions (the main note's own modifier context keeps the extra shift until the voices are joined again, when
+     * GraceNoteGroup.format() reads the spacing).
+     * @returns the minimum staff entries width (units), unchanged without such syllables
+     */
+    private fitGraceLyricsToFormattedEntries;
+    /**
+     * The staff entry's syllables in the order they are spaced, with the verse slot of each (its index in the last entry
+     * dict of calculateElongationFactor()): a syllable on a grace note goes before the main note's syllable of the same
+     * verse and voice and shares its slot, so the previous syllable is spaced from it and the next one from the main
+     * note's. Without grace notes each lyric entry has its own slot, as before.
+     */
+    private static lyricsInSpacingOrder;
     private calculateElongationFactor;
     /**
      * @param previousLyricOverflows Per-verse-index array (`[verseIndex]`) holding how far the

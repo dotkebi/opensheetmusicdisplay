@@ -5269,6 +5269,15 @@ export abstract class MusicSheetCalculator {
             endStaffLine = anyVerseEndStaffLine;
             nextLyricStaffEntry = anyVerseNextStaffEntry;
         }
+        // The extend goes on over the grace notes before the next syllable's note that carry it (<extend type="continue"/>
+        //   or "stop" in a lyric node without text: Gluck, O del mio dolce ardor m12, "fin" over eight grace notes). They
+        //   share that note's staff entry, so the scan above found no end entry (or one before them): the line ends at the
+        //   last of them (the notes of the extend's voice only, e.g. not at another voice's grace notes).
+        const endGraceEntry: GraphicalVoiceEntry = this.extendEndGraceEntry(nextLyricStaffEntry, verseNumber, voice);
+        if (endGraceEntry) {
+            endStaffEntry = nextLyricStaffEntry;
+            endStaffLine = nextLyricStaffEntry.parentMeasure.ParentStaffLine ?? startStaffLine;
+        }
         if (!endStaffEntry || !endStaffLine) {
             return;
         }
@@ -5285,7 +5294,7 @@ export abstract class MusicSheetCalculator {
             // + startStaffLine.PositionAndShape.AbsolutePosition.x; // doesn't work, done in drawer
             let endX: number = endStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
                 endStaffEntry.PositionAndShape.RelativePosition.x +
-                endStaffEntry.PositionAndShape.BorderMarginRight;
+                this.extendEndRightInStaffEntry(endStaffEntry, endGraceEntry);
             // + endStaffLine.PositionAndShape.AbsolutePosition.x; // doesn't work, done in drawer
             endX = this.extendLyricLineToMinimumLength(startX, endX, nextLyricStaffEntry, startStaffLine);
             endX = Math.min(endX, this.lyricLineLimitBeforeNextSyllable(nextLyricStaffEntry, startStaffLine));
@@ -5321,7 +5330,7 @@ export abstract class MusicSheetCalculator {
                     firstEntry.PositionAndShape.RelativePosition.x + firstEntry.PositionAndShape.BorderMarginLeft;
                 let secondEndX: number = endStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
                     endStaffEntry.PositionAndShape.RelativePosition.x +
-                    endStaffEntry.PositionAndShape.BorderMarginRight;
+                    this.extendEndRightInStaffEntry(endStaffEntry, endGraceEntry);
                 secondEndX = Math.min(secondEndX, this.lyricLineLimitBeforeNextSyllable(nextLyricStaffEntry, endStaffLine));
                 if (secondEndX > secondStartX) {
                     this.calculateSingleLyricWordWithUnderscore(endStaffLine, secondStartX, secondEndX, startY);
@@ -5332,6 +5341,32 @@ export abstract class MusicSheetCalculator {
 
     private hasLyricsOfVerse(staffEntry: GraphicalStaffEntry, verseNumber: string): boolean {
         return staffEntry.LyricsEntries.some(entry => entry.LyricsEntry.VerseNumber === verseNumber);
+    }
+
+    /** The last of the grace notes before the main note of the next syllable's staff entry that carry the verse's extend
+     *  (VoiceEntry.ExtendOnlyLyricVerses) in the extend's voice, where the extend line ends. Undefined if there is none. */
+    private extendEndGraceEntry(nextLyricStaffEntry: GraphicalStaffEntry, verseNumber: string, voice: Voice): GraphicalVoiceEntry {
+        if (!nextLyricStaffEntry) {
+            return undefined;
+        }
+        let endGraceEntry: GraphicalVoiceEntry = undefined;
+        for (const gve of nextLyricStaffEntry.graphicalVoiceEntries) {
+            const voiceEntry: VoiceEntry = gve.parentVoiceEntry;
+            if (voiceEntry.IsGrace && !voiceEntry.GraceAfterMainNote && (!voice || voiceEntry.ParentVoice === voice) &&
+                voiceEntry.ExtendOnlyLyricVerses.includes(verseNumber)) {
+                endGraceEntry = gve;
+            }
+        }
+        return endGraceEntry;
+    }
+
+    /** The right end of a lyric extend line relative to its end staff entry: the entry's right border, or that of the
+     *  grace note the extend ends at (placed where it is drawn, see VexFlowStaffEntry.positionGraceEntries()). */
+    protected extendEndRightInStaffEntry(endStaffEntry: GraphicalStaffEntry, endGraceEntry: GraphicalVoiceEntry): number {
+        if (endGraceEntry) {
+            return endGraceEntry.PositionAndShape.RelativePosition.x + endGraceEntry.PositionAndShape.BorderMarginRight;
+        }
+        return endStaffEntry.PositionAndShape.BorderMarginRight;
     }
 
     /** Whether the voice has syllables of other verses in the measure, but none of the given verse. */

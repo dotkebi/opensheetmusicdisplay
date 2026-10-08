@@ -60,6 +60,11 @@ export class VoiceEntry {
     private articulations: Articulation[] = [];
     private technicalInstructions: TechnicalInstruction[] = [];
     private lyricsEntries: Dictionary<string, LyricsEntry> = new Dictionary<string, LyricsEntry>();
+    /** The verse numbers of the <lyric> nodes of this note that hold only an <extend> (continue or stop) and no text: the
+     *  melisma of the verse's previous syllable goes on over this note. Read for every note, used for a grace note, whose
+     *  extend would otherwise be lost: it shares the staff entry of the next syllable's note (see
+     *  MusicSheetCalculator.calculateLyricExtend()). */
+    private extendOnlyLyricVerses: string[] = [];
     /** The Arpeggio consisting of this VoiceEntry's notes. Undefined if no arpeggio exists. */
     private arpeggio: Arpeggio;
     private ornamentContainer: OrnamentContainer;
@@ -103,6 +108,9 @@ export class VoiceEntry {
     }
     public get GraceAfterMainNote(): boolean {
         return this.graceAfterMainNote;
+    }
+    public get ExtendOnlyLyricVerses(): string[] {
+        return this.extendOnlyLyricVerses;
     }
     public set GraceAfterMainNote(value: boolean) {
         this.graceAfterMainNote = value;

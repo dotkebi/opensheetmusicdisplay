@@ -146,6 +146,16 @@ export class LyricsReader {
                                 }
                             }
                         }
+                    } else if (lyricNode.element("extend") !== undefined && lyricNode.element("extend").attribute("type")?.value !== "start") {
+                        // a lyric node without text that only continues or stops the previous syllable's extend line, e.g. on the
+                        //   grace notes before the next syllable's note (Gluck, O del mio dolce ardor m12: "fin" over 8 grace notes)
+                        let verseNumber: string = "1";
+                        if (lyricNode.attributes() !== undefined && lyricNode.attribute("number")) {
+                            verseNumber = lyricNode.attribute("number").value;
+                        }
+                        if (!currentVoiceEntry.ExtendOnlyLyricVerses.includes(verseNumber)) {
+                            currentVoiceEntry.ExtendOnlyLyricVerses.push(verseNumber);
+                        }
                     }
                 } catch (err) {
                     const errorMsg: string = ITextTranslation.translateText("ReaderErrorMessages/LyricError", "Error while reading lyric entry.");
