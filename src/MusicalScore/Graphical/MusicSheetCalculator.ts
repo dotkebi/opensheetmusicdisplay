@@ -5317,10 +5317,22 @@ export abstract class MusicSheetCalculator {
         //   or "stop" in a lyric node without text: Gluck, O del mio dolce ardor m12, "fin" over eight grace notes). They
         //   share that note's staff entry, so the scan above found no end entry (or one before them): the line ends at the
         //   last of them (the notes of the extend's voice only, e.g. not at another voice's grace notes).
-        const endGraceEntry: GraphicalVoiceEntry = this.extendEndGraceEntry(nextLyricStaffEntry, verseNumber, voice);
+        let endGraceEntry: GraphicalVoiceEntry = this.extendEndGraceEntry(nextLyricStaffEntry, verseNumber, voice);
         if (endGraceEntry) {
             endStaffEntry = nextLyricStaffEntry;
             endStaffLine = nextLyricStaffEntry.parentMeasure.ParentStaffLine ?? startStaffLine;
+        } else {
+            // Grace notes after their main note (a Nachschlag ending the measure) share that note's staff entry: the last one
+            //   the scan went over, or the extend's own when the next syllable comes right after it. When they carry the extend,
+            //   the line ends at the last of them (Lotti, Pur dicesti m59 and m72: "is" stops on the last of four grace notes
+            //   after its quarter; the line was not drawn, as the scan found no end entry).
+            const mainEntry: GraphicalStaffEntry = endStaffEntry ?? startStaffEntry;
+            const afterGraceEntry: GraphicalVoiceEntry = this.extendEndGraceAfterMainNote(mainEntry, verseNumber, voice);
+            if (afterGraceEntry) {
+                endGraceEntry = afterGraceEntry;
+                endStaffEntry = mainEntry;
+                endStaffLine = mainEntry.parentMeasure.ParentStaffLine ?? startStaffLine;
+            }
         }
         if (!endStaffEntry || !endStaffLine) {
             return;
@@ -5418,6 +5430,21 @@ export abstract class MusicSheetCalculator {
         for (const gve of nextLyricStaffEntry.graphicalVoiceEntries) {
             const voiceEntry: VoiceEntry = gve.parentVoiceEntry;
             if (voiceEntry.IsGrace && !voiceEntry.GraceAfterMainNote && (!voice || voiceEntry.ParentVoice === voice) &&
+                voiceEntry.ExtendOnlyLyricVerses.includes(verseNumber)) {
+                endGraceEntry = gve;
+            }
+        }
+        return endGraceEntry;
+    }
+
+    /** The last of the grace notes after the main note of the staff entry (they share its staff entry) that carry the
+     *  verse's extend (VoiceEntry.ExtendOnlyLyricVerses) in the extend's voice, where the extend line ends.
+     *  Undefined if there is none. */
+    private extendEndGraceAfterMainNote(staffEntry: GraphicalStaffEntry, verseNumber: string, voice: Voice): GraphicalVoiceEntry {
+        let endGraceEntry: GraphicalVoiceEntry = undefined;
+        for (const gve of staffEntry.graphicalVoiceEntries) {
+            const voiceEntry: VoiceEntry = gve.parentVoiceEntry;
+            if (voiceEntry.IsGrace && voiceEntry.GraceAfterMainNote && (!voice || voiceEntry.ParentVoice === voice) &&
                 voiceEntry.ExtendOnlyLyricVerses.includes(verseNumber)) {
                 endGraceEntry = gve;
             }
