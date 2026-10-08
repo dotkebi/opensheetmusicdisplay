@@ -534,7 +534,8 @@ export class InstrumentReader {
                  // Normal case: last note was a real note, use previousFraction
                  endFraction = previousFraction.clone();
                }
-               expressionReader.addOctaveShift(xmlNode, this.currentMeasure, endFraction, endVoiceEntryCount);
+               expressionReader.addOctaveShift(xmlNode, this.currentMeasure, endFraction, endVoiceEntryCount,
+                                               this.voiceEntryCountAt(this.readExpressionStaffNumber(xmlNode), currentFraction));
              }
              if (directionTypeNodes.some(dt => dt.element("pedal"))) {
               // the Ped. is at its position plus its <offset>, as the stop (pedalStopTimestamp) and osmd-dart read it (Gluck,
@@ -1295,6 +1296,23 @@ export class InstrumentReader {
         this.abstractInstructions.push([1, senzaMisuraRhythm, currentFraction]);
       }
     }
+  }
+
+  /**
+   * How many VoiceEntries the staff (1-based, of this instrument) already has at the timestamp of the current measure:
+   * the grace notes read before a direction at their timestamp (an octave shift starting after them).
+   */
+  private voiceEntryCountAt(staffNumber: number, timestamp: Fraction): number {
+    if (!this.currentMeasure) {
+      return 0;
+    }
+    const staffIndex: number = this.inSourceMeasureInstrumentIndex + staffNumber - 1;
+    for (const container of this.currentMeasure.VerticalSourceStaffEntryContainers) {
+      if (container.Timestamp.Equals(timestamp)) {
+        return container.StaffEntries[staffIndex]?.VoiceEntries.length ?? 0;
+      }
+    }
+    return 0;
   }
 
   /**

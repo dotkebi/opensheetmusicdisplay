@@ -6,6 +6,7 @@ import { BoundingBox } from "../BoundingBox";
 import { GraphicalStaffEntry } from "../GraphicalStaffEntry";
 import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
 import { VexFlowVoiceEntry } from "./VexFlowVoiceEntry";
+import { VoiceEntry } from "../../VoiceData/VoiceEntry";
 import log from "loglevel";
 
 /**
@@ -62,11 +63,17 @@ export class VexFlowOctaveShift extends GraphicalOctaveShift {
      * Set a start note using a staff entry
      * @param graphicalStaffEntry the staff entry that holds the start note
      */
-    public setStartNote(graphicalStaffEntry: GraphicalStaffEntry): boolean {
+    public setStartNote(graphicalStaffEntry: GraphicalStaffEntry, minVoiceEntryIndex: number = 0): boolean {
         if (!graphicalStaffEntry) {
             return false;
         }
+        const sourceVoiceEntries: VoiceEntry[] = graphicalStaffEntry.sourceStaffEntry?.VoiceEntries ?? [];
         for (const gve of graphicalStaffEntry.graphicalVoiceEntries) {
+            // grace notes read before an octave shift start at their timestamp are not under the bracket
+            if (minVoiceEntryIndex > 0 && gve.parentVoiceEntry?.IsGrace &&
+                sourceVoiceEntries.indexOf(gve.parentVoiceEntry) < minVoiceEntryIndex) {
+                continue;
+            }
             const vve: VexFlowVoiceEntry = (gve as VexFlowVoiceEntry);
             if (vve?.vfStaveNote) {
                 this.startNote = vve.vfStaveNote;

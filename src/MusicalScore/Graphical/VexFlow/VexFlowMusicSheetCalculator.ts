@@ -2348,7 +2348,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         endStaffEntry = this.findBoundaryNoteEntry(endNoteMeasures, true);
       }
       if (startStaffEntry) {
-        graphicalOctaveShift.setStartNote(startStaffEntry);
+        // grace notes before the start direction at its timestamp are not under the bracket
+        const startVoiceEntryIndex: number = !startIsClipped && octaveShift.ParentStartMultiExpression &&
+          startStaffEntry.relInMeasureTimestamp?.Equals(startTimeStamp) ? octaveShift.startVoiceEntryIndex : 0;
+        graphicalOctaveShift.setStartNote(startStaffEntry, startVoiceEntryIndex);
       }
 
       if (endStaffLine !== startStaffLine) {

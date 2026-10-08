@@ -13,6 +13,11 @@ export class OctaveShift {
      *  Used when a stop falls between grace notes sharing the same timestamp.
      *  0 means no VoiceEntries at the end timestamp are covered. */
     public endVoiceEntryIndex: number = 0;
+    /** Number of VoiceEntries of the shift's staff that were read at the start timestamp before the start direction.
+     *  Grace notes have no duration, so grace notes written before the `<octave-shift type="up|down">` share its
+     *  timestamp; the ones among the first startVoiceEntryIndex entries are not covered (Widmung, Auer violin m45:
+     *  26 grace notes, then 8va from G6). 0 means every VoiceEntry at the start timestamp is covered. */
+    public startVoiceEntryIndex: number = 0;
     private startMultiExpression: MultiExpression;
     private endMultiExpression: MultiExpression;
 

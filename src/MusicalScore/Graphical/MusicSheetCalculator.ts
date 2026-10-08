@@ -4669,14 +4669,22 @@ export abstract class MusicSheetCalculator {
                         octaveShiftValue = OctaveEnum.NONE;
                         activeOctaveShift = undefined;
                     }
+                    // Grace notes written before the octave shift start share its timestamp (no duration) but come
+                    //   before it: not covered (startVoiceEntryIndex set by the ExpressionReader).
+                    const graceBeforeStart: boolean = octaveShiftValue !== OctaveEnum.NONE && activeOctaveShift &&
+                        voiceEntry.IsGrace && idx < activeOctaveShift.startVoiceEntryIndex &&
+                        activeOctaveShift.ParentStartMultiExpression?.AbsoluteTimestamp.Equals(sourceStaffEntry.AbsoluteTimestamp);
                     // Normal Notes...
-                    octaveShiftValue = this.handleVoiceEntry(
+                    const entryOctaveShiftValue: OctaveEnum = this.handleVoiceEntry(
                         voiceEntry, graphicalStaffEntry,
                         accidentalCalculator, openLyricWords,
                         graceNotesClef && voiceEntry.IsGrace ? graceNotesClef : activeClefs[staffIndex], openTuplets,
-                        openBeams, octaveShiftValue, staffIndex,
+                        openBeams, graceBeforeStart ? OctaveEnum.NONE : octaveShiftValue, staffIndex,
                         linkedNotes, sourceStaffEntry
                     );
+                    if (!graceBeforeStart) {
+                        octaveShiftValue = entryOctaveShiftValue;
+                    }
                 }
                 // SourceStaffEntry has inStaff ClefInstruction -> create graphical clef
                 for (const instruction of sourceStaffEntry.Instructions) {
@@ -4715,6 +4723,11 @@ export abstract class MusicSheetCalculator {
             if (activeOctaveShift && activeOctaveShift.endVoiceEntryIndex > 0 &&
                 activeOctaveShift.ParentEndMultiExpression?.AbsoluteTimestamp.Equals(drawnTimestamp) &&
                 indexAfterMainNote >= activeOctaveShift.endVoiceEntryIndex) {
+                octaveShiftValue = OctaveEnum.NONE;
+            }
+            // they follow their main note, so they come before an octave shift starting where they are drawn
+            //   (as grace notes before the start at its timestamp, see above; osmd-dart shifts them with their main note)
+            if (activeOctaveShift?.ParentStartMultiExpression?.AbsoluteTimestamp.Equals(drawnTimestamp)) {
                 octaveShiftValue = OctaveEnum.NONE;
             }
             this.handleVoiceEntry(
