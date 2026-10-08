@@ -183,6 +183,8 @@ export declare abstract class MusicSheetCalculator {
     private calculateMeasureNumberSkyline;
     /** Space between a measure number and a slur or other ink under it. */
     static readonly measureNumberClearance: number;
+    /** Space between a dynamic above the staff and the ink it is placed over. */
+    static readonly dynamicOverInkClearance: number;
     /** Space between a measure number and the ink beside it: the sky line this far on both sides of the number is read. */
     static readonly measureNumberSideClearance: number;
     /**
