@@ -5340,10 +5340,31 @@ export abstract class MusicSheetCalculator {
                     endStaffEntry.PositionAndShape.BorderMarginRight;
                 secondEndX = Math.min(secondEndX, this.lyricLineLimitBeforeNextSyllable(nextLyricStaffEntry, endStaffLine));
                 if (secondEndX > secondStartX) {
-                    this.calculateSingleLyricWordWithUnderscore(endStaffLine, secondStartX, secondEndX, startY);
+                    // at the verse's row in the end staff line, which has rows of its own (Bellini, Vaga luna, voice m29:
+                    //   verse 2's line continued at the first system's row, at verse 1's height on the second, into its hyphens)
+                    const secondY: number = this.lyricExtendYInStaffLine(endStaffLine, verseNumber, voice) ?? startY;
+                    this.calculateSingleLyricWordWithUnderscore(endStaffLine, secondStartX, secondEndX, secondY);
                 }
             }
         }
+    }
+
+    /** The y of a lyric extend line of the verse in the staff line: the row of the verse's syllables there, as
+     *  calculateLyricExtend() takes it from the extend's own syllable (its label's y, lined up with the text's bottom).
+     *  Each staff line's lyric rows start under its own lowest notes (calculateLyricsPosition()), so the row of the
+     *  first system is not the row of the second. Undefined when the verse has no syllable in the staff line. */
+    private lyricExtendYInStaffLine(staffLine: StaffLine, verseNumber: string, voice: Voice): number {
+        for (const measure of staffLine.Measures) {
+            for (const entry of measure.staffEntries) {
+                for (const lyric of entry.LyricsEntries) {
+                    if (lyric.LyricsEntry.VerseNumber === verseNumber && (!voice || lyric.LyricsEntry.Parent?.ParentVoice === voice)) {
+                        const box: BoundingBox = lyric.GraphicalLabel.PositionAndShape;
+                        return box.RelativePosition.y - box.Size.height / 4;
+                    }
+                }
+            }
+        }
+        return undefined;
     }
 
     private hasLyricsOfVerse(staffEntry: GraphicalStaffEntry, verseNumber: string): boolean {
