@@ -92,6 +92,17 @@ describe("MusicPartManagerIterator measure order with repetitions", () => {
         ]);
     });
 
+    /**
+     * A repeat with more lyric verses under it than two is played once per verse.
+     * The verses were never counted (LyricsEntries.keys is a method, its length is 0), so it was played twice.
+     *
+     * Sample: measures 1-2 repeated, with three lyric verses, then measure 3.
+     */
+    it("plays a repeat once per lyric verse under it", async () => {
+        expect(await playedMeasures("test_repeat_three_lyric_verses.musicxml")).to.deep.equal([0, 1, 0, 1, 0, 1, 2]);
+        expect(osmd.Sheet.Repetitions[0].DefaultNumberOfRepetitions).to.equal(3);
+    });
+
     /** The types of the repetition instructions drawn at the end of the measure. */
     function lastInstructionTypes(measureIndex: number): RepetitionInstructionEnum[] {
         return osmd.Sheet.SourceMeasures[measureIndex].LastRepetitionInstructions.map(
