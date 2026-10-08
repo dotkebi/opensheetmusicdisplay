@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Parisotti, Vivaldi Un certo non so che Piano m30, left hand (renderer leftovers 2, 2-2 P10-B3): a beam over a low bass
+     note with its stem up and a chord above it with its stem down (the print's mixed-direction beam). -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>2</divisions><key><fifths>-1</fifths></key><time><beats>2</beats><beat-type>4</beat-type></time><clef><sign>F</sign><line>4</line></clef></attributes>
+      <note><pitch><step>C</step><octave>2</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>up</stem><beam number="1">begin</beam></note>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem><beam number="1">end</beam></note>
+      <note><chord/><pitch><step>E</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem></note>
+      <note><chord/><pitch><step>A</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem></note>
+      <note><pitch><step>D</step><octave>2</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>up</stem><beam number="1">begin</beam></note>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem><beam number="1">end</beam></note>
+      <note><chord/><pitch><step>B</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><stem>down</stem></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>

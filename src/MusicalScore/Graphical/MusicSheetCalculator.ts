@@ -5816,8 +5816,14 @@ export abstract class MusicSheetCalculator {
         if (!(voiceEntry.Notes.length > 0)) {
             return;
         }
-        // don't just set direction if undefined. if there's a note in the beam with a different stem direction, Vexflow draws it with an unending stem.
-        // if (voiceEntry.WantedStemDirection === StemDirectionType.Undefined) {
+        // Only without a direction of its own (from the XML): a beam with stems in both directions (a low bass note with
+        //   its stem up under a chord with its stem down, Parisotti, Vivaldi Un certo Piano m30; renderer leftovers 2,
+        //   2-2 P10-B3) keeps them, as osmd_dart does. Upstream set every note of the beam to the first direction found
+        //   because VexFlow drew the other direction's stem "unending"; VexFlowPatch beam.js extends such a stem across
+        //   the beam (as VexFlow 4).
+        if (voiceEntry.WantedStemDirection !== StemDirectionType.Undefined && voiceEntry.WantedStemDirection !== undefined) {
+            return;
+        }
         const beam: Beam = voiceEntry.Notes[0].NoteBeam;
         if (beam) {
             // if there is a beam, find any already set stemDirection in the beam:
