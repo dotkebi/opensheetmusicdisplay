@@ -109,6 +109,21 @@ export declare class GraphicalSlur extends GraphicalCurve {
      * down stem (slur below); otherwise under (over) the notehead's centre.
      */
     private calculateHeadToHeadStartAndEnd;
+    /** The clearance a slur keeps from an articulation at its start or end note on its side (in units). */
+    private static readonly articulationClearance;
+    /**
+     * Where a slur on `side` starts or ends at `note` when the note has an articulation on that side: beyond the
+     * articulation, with articulationClearance, read from the sky (bottom) line before the slurs were placed
+     * (StaffLine.SkyLineBeforeSlurs). The slur's end point at the note's box plus SlurEndArticulationYOffset ran through an
+     * accent put on the stem side for a second voice (Caccini, Amarilli, piano m11, m25, m42; Bellini, Vaga luna, piano
+     * m13 and m49: an accent between the end of one slur and the start of the next), and the start had no offset at all.
+     * Fermatas and breath marks keep their own place (a fermata is raised over the slur, VexFlowMusicSheetCalculator.
+     * layoutFermatasOverSlurs()). Returns Infinity (above) or -Infinity (below) without such an articulation. Same as osmd-dart.
+     */
+    private static yOverArticulation;
+    /** Whether the note's voice entry has an articulation other than a fermata or a breath mark on `side`: as the XML
+     *  places it, else as VexFlow positioned it (the modifiers of the note). */
+    private static hasArticulationOnSide;
     private calculateStartAndEnd;
     /** Y of a slur-above end point: no lower than 1.5 while the point is within the staff. */
     private static clampEndPointAbove;

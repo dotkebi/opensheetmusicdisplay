@@ -106,6 +106,11 @@ export declare abstract class GraphicalStaffEntry extends GraphicalObject {
      */
     hasOnlyRests(): boolean;
     getSkylineMin(): number;
+    /** The sky line's minimum over the staff entry before the slurs were calculated (StaffLine.SkyLineBeforeSlurs):
+     *  the top of what is drawn at the entry, its articulations included, without the slurs already there. */
+    getSkylineMinBeforeSlurs(): number;
+    /** The bottom line's maximum over the staff entry before the slurs were calculated, see getSkylineMinBeforeSlurs(). */
+    getBottomlineMaxBeforeSlurs(): number;
     /** Highest Y around the staff entry and notes in OSMD units (pixels / 10). Note that negative y is up. */
     getHighestYAtEntry(): number;
     /** Lowest Y around the staff entry and notes in OSMD units (pixels / 10). Note that positive y is down. */

@@ -68,6 +68,10 @@ export declare abstract class StaffLine extends GraphicalObject {
      *  layout (CrossStaffCurve), which go over (under) the notes, not the expressions. */
     NotesSkyLine: number[];
     NotesBottomLine: number[];
+    /** The sky line before the slurs were calculated (VexFlowMusicSheetCalculator.calculateSlurs()): what is drawn at a
+     *  note (its articulations) without the slurs already placed there, for GraphicalSlur.calculateStartAndEnd(). */
+    SkyLineBeforeSlurs: number[];
+    BottomLineBeforeSlurs: number[];
     get OctaveShifts(): GraphicalOctaveShift[];
     set OctaveShifts(value: GraphicalOctaveShift[]);
     Pedals: GraphicalPedal[];

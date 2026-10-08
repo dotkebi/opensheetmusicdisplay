@@ -594,6 +594,11 @@ export declare abstract class MusicSheetCalculator {
      * @param {GraphicalLyricEntry} lyricEntry
      */
     private calculateLyricExtend;
+    /** The y of a lyric extend line of the verse in the staff line: the row of the verse's syllables there, as
+     *  calculateLyricExtend() takes it from the extend's own syllable (its label's y, lined up with the text's bottom).
+     *  Each staff line's lyric rows start under its own lowest notes (calculateLyricsPosition()), so the row of the
+     *  first system is not the row of the second. Undefined when the verse has no syllable in the staff line. */
+    private lyricExtendYInStaffLine;
     private hasLyricsOfVerse;
     /** Whether the voice has syllables of other verses in the measure, but none of the given verse. */
     private isSungOnlyInOtherVerses;
