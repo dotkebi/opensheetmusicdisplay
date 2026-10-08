@@ -464,6 +464,11 @@ export class EngravingRules {
     public LyricUnderscoreLineWidth: number;
     /** Minimum length of a lyric extend line. When the last melisma note sits under the syllable, the line reaches toward the next syllable instead. */
     public LyricExtendMinimumLength: number;
+    /** Gap between the end of a lyric extend line and the next syllable's label when the line is cut before that label (the melisma's
+     *  last note sits under it, or the line is lengthened to LyricExtendMinimumLength toward it). Larger than
+     *  HorizontalBetweenLyricsDistance (the gap between neighbouring syllables): a line ending right at a label reads as part of it
+     *  (Bellini, Almen se non poss'io m27 "voi ___ non", the source leaves about two spaces). */
+    public LyricExtendEndGap: number;
     public SystemThinLineWidth: number;
     public SystemBoldLineWidth: number;
     public SystemRepetitionEndingLineWidth: number;
@@ -1084,6 +1089,7 @@ export class EngravingRules {
         this.TupletLineWidth = 0.12;
         this.LyricUnderscoreLineWidth = 0.12;
         this.LyricExtendMinimumLength = 1.5;
+        this.LyricExtendEndGap = 1.0;
         this.SystemThinLineWidth = 0.12;
         this.SystemBoldLineWidth = EngravingRules.unit / 2.0;
         this.SystemRepetitionEndingLineWidth = 0.12;

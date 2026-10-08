@@ -5224,6 +5224,14 @@ export abstract class MusicSheetCalculator {
         let anyVerseEndStaffEntry: GraphicalStaffEntry = undefined;
         let anyVerseEndStaffLine: StaffLine = undefined;
         let anyVerseNextStaffEntry: GraphicalStaffEntry = undefined;
+        let anyVerseNextIndex: number = -1;
+        // The note the extend stops on: the last of the walked notes whose <lyric> of the verse holds only an <extend> (type "stop",
+        //   or the last "continue" when the stop is missing; VoiceEntry.ExtendOnlyLyricVerses, read from text-less lyric nodes).
+        //   The line ends there, not at the note before the next syllable: after the stop can come grace notes and a rest without
+        //   lyrics (Bellini, Torna vezzosa Fillide m91 "sta." stops on the G4 before a slashed grace group, "Il" follows after a
+        //   rest). Inputs without continue/stop nodes fall back to the note before the next syllable, as before.
+        let stopStaffEntry: GraphicalStaffEntry = undefined;
+        let stopIndex: number = -1;
         let foundAnyVerseSyllable: boolean = false;
         let foundOwnVerseSyllable: boolean = false;
         let measure: GraphicalMeasure = startStaffEntry.parentMeasure;
@@ -5255,11 +5263,16 @@ export abstract class MusicSheetCalculator {
                 anyVerseEndStaffEntry = endStaffEntry;
                 anyVerseEndStaffLine = endStaffLine;
                 anyVerseNextStaffEntry = gse;
+                anyVerseNextIndex = index;
             }
             endStaffEntry = gse;
             endStaffLine = endStaffEntry.parentMeasure.ParentStaffLine;
             if (!endStaffLine) {
                 endStaffLine = startStaffEntry.parentMeasure.ParentStaffLine;
+            }
+            if (this.voiceCarriesExtendInStaffEntry(gse, verseNumber, voice)) {
+                stopStaffEntry = gse;
+                stopIndex = index;
             }
         }
         // If the verse isn't sung again (e.g. it ends before the other verses do),
@@ -5268,6 +5281,9 @@ export abstract class MusicSheetCalculator {
             endStaffEntry = anyVerseEndStaffEntry;
             endStaffLine = anyVerseEndStaffLine;
             nextLyricStaffEntry = anyVerseNextStaffEntry;
+            if (stopIndex >= anyVerseNextIndex) {
+                stopStaffEntry = undefined; // past the end used instead
+            }
         }
         // The extend goes on over the grace notes before the next syllable's note that carry it (<extend type="continue"/>
         //   or "stop" in a lyric node without text: Gluck, O del mio dolce ardor m12, "fin" over eight grace notes). They
@@ -5277,6 +5293,10 @@ export abstract class MusicSheetCalculator {
         if (endGraceEntry) {
             endStaffEntry = nextLyricStaffEntry;
             endStaffLine = nextLyricStaffEntry.parentMeasure.ParentStaffLine ?? startStaffLine;
+        } else if (stopStaffEntry) {
+            // the stop is on a walked note
+            endStaffEntry = stopStaffEntry;
+            endStaffLine = stopStaffEntry.parentMeasure.ParentStaffLine ?? endStaffLine;
         }
         if (!endStaffEntry || !endStaffLine) {
             return;
@@ -5341,6 +5361,13 @@ export abstract class MusicSheetCalculator {
 
     private hasLyricsOfVerse(staffEntry: GraphicalStaffEntry, verseNumber: string): boolean {
         return staffEntry.LyricsEntries.some(entry => entry.LyricsEntry.VerseNumber === verseNumber);
+    }
+
+    /** Whether a note of the voice in the staff entry carries the verse's extend in a text-less lyric node (continue or stop,
+     *  VoiceEntry.ExtendOnlyLyricVerses). Any voice when the extend's voice is unknown. */
+    private voiceCarriesExtendInStaffEntry(staffEntry: GraphicalStaffEntry, verseNumber: string, voice: Voice): boolean {
+        return staffEntry.sourceStaffEntry.VoiceEntries.some(voiceEntry => (!voice || voiceEntry.ParentVoice === voice) &&
+            voiceEntry.ExtendOnlyLyricVerses.includes(verseNumber));
     }
 
     /** The last of the grace notes before the main note of the next syllable's staff entry that carry the verse's extend
@@ -5410,9 +5437,11 @@ export abstract class MusicSheetCalculator {
      * syllable instead, up to EngravingRules.LyricExtendMinimumLength, but never into its label.
      * Lines that are already long enough are returned unchanged.
      */
-    /** The x a lyric extend line in the staff line must end before: the left of the next syllable's label, if it is in the
-     *  staff line (else the staff line's end). The last note of a melisma can sit under that label when the measure is
-     *  narrow, so the line ended inside it (Schumann, Myrthen 10 m14 in the app: "weh!" into the E of "Ein"). */
+    /** The x a lyric extend line in the staff line must end before: the left of the next syllable's label less
+     *  EngravingRules.LyricExtendEndGap, if it is in the staff line (else the staff line's end). The last note of a melisma can
+     *  sit under that label when the measure is narrow, so the line ended inside it (Schumann, Myrthen 10 m14 in the app:
+     *  "weh!" into the E of "Ein"), and a line ending right at the label reads as part of it (Bellini, Almen se non poss'io
+     *  m27 "voi ___ non"). */
     private lyricLineLimitBeforeNextSyllable(nextLyricStaffEntry: GraphicalStaffEntry, staffLine: StaffLine): number {
         if (nextLyricStaffEntry?.parentMeasure.ParentStaffLine !== staffLine || nextLyricStaffEntry.LyricsEntries.length === 0) {
             return Number.MAX_VALUE;
@@ -5424,24 +5453,15 @@ export abstract class MusicSheetCalculator {
         }
         return nextLyricStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
             nextLyricStaffEntry.PositionAndShape.RelativePosition.x +
-            nextLabelLeft - this.rules.HorizontalBetweenLyricsDistance;
+            nextLabelLeft - this.rules.LyricExtendEndGap;
     }
     private extendLyricLineToMinimumLength(startX: number, endX: number, nextLyricStaffEntry: GraphicalStaffEntry, staffLine: StaffLine): number {
         const minimumLength: number = this.rules.LyricExtendMinimumLength;
         if (!(minimumLength > 0) || endX - startX >= minimumLength) {
             return endX;
         }
-        let limitX: number = staffLine.PositionAndShape.Size.width;
-        if (nextLyricStaffEntry?.parentMeasure.ParentStaffLine === staffLine) {
-            let nextLabelLeft: number = Number.MAX_VALUE;
-            for (const nextEntry of nextLyricStaffEntry.LyricsEntries) {
-                const nextBox: BoundingBox = nextEntry.GraphicalLabel.PositionAndShape;
-                nextLabelLeft = Math.min(nextLabelLeft, nextBox.RelativePosition.x + nextBox.BorderMarginLeft);
-            }
-            limitX = nextLyricStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
-                nextLyricStaffEntry.PositionAndShape.RelativePosition.x +
-                nextLabelLeft - this.rules.HorizontalBetweenLyricsDistance;
-        }
+        const limitX: number = Math.min(staffLine.PositionAndShape.Size.width,
+                                        this.lyricLineLimitBeforeNextSyllable(nextLyricStaffEntry, staffLine));
         return Math.max(endX, Math.min(startX + minimumLength, limitX));
     }
 
