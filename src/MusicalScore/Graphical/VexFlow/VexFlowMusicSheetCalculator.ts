@@ -837,6 +837,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         (<VexFlowStaffEntry>staffEntry).calculateXPosition();
       }
     }
+    if (allVoices.length > 0) {
+      minStaffEntriesWidth = this.fitGraceLyricsToFormattedEntries(measures, minStaffEntriesWidth, formatter, allVoices);
+    }
     //Can't quite figure out why, but this is the calculation that needs redone to have consistent rendering.
     //The first render of a sheet vs. subsequent renders are calculated differently by vexflow without this re-joining of the voices
     for (const measure of measures) {
@@ -864,14 +867,150 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     return minStaffEntriesWidth;
   }
 
+  /**
+   * Keeps the main note's syllable clear of the syllable sung on a grace note before it, in the same verse and voice
+   * (Legrenzi, Che fiero costume m18: "in" on the slashed grace note, "me" on the sixteenth; the grace note's syllable is
+   * placed at the grace note by VexFlowStaffEntry.placeGraceLyrics()). The two notes share a staff entry and the gap
+   * between them is the grace note group's, which stretching the measure (calculateElongationFactor()) doesn't widen:
+   * the missing distance is added to the group's spacing before the main note (VexFlowPatch GraceNoteGroup.spacing),
+   * like the right padding a long syllable's note gets in osmd-dart (lyricClearance). The measure's minimum width grows by
+   * what the formatter's minimum total width gains, and the voices are formatted again at that width to read the new
+   * positions (the main note's own modifier context keeps the extra shift until the voices are joined again, when
+   * GraceNoteGroup.format() reads the spacing).
+   * @returns the minimum staff entries width (units), unchanged without such syllables
+   */
+  private fitGraceLyricsToFormattedEntries(measures: GraphicalMeasure[], minimumWidth: number, formatter: VF.Formatter,
+                                           allVoices: VF.Voice[]): number {
+    if (!this.rules.RenderLyrics) {
+      return minimumWidth;
+    }
+    const visible: VexFlowMeasure[] = measures.filter(m => m instanceof VexFlowMeasure && m.isVisible()) as VexFlowMeasure[];
+    interface GracePair { entry: VexFlowStaffEntry, grace: GraphicalLyricEntry, main: GraphicalLyricEntry }
+    const pairs: GracePair[] = [];
+    for (const measure of visible) {
+      for (const entry of measure.staffEntries as VexFlowStaffEntry[]) {
+        for (const grace of entry.LyricsEntries) {
+          const voiceEntry: VoiceEntry = grace.LyricsEntry.Parent;
+          if (!voiceEntry?.IsGrace || voiceEntry.GraceAfterMainNote) {
+            continue;
+          }
+          const main: GraphicalLyricEntry = entry.LyricsEntries.find((lyric: GraphicalLyricEntry): boolean =>
+            lyric !== grace && lyric.LyricsEntry.VerseNumber === grace.LyricsEntry.VerseNumber &&
+            !lyric.LyricsEntry.Parent?.IsGrace && lyric.LyricsEntry.Parent?.ParentVoice === voiceEntry.ParentVoice);
+          if (main) {
+            pairs.push({ entry, grace, main });
+          }
+        }
+      }
+    }
+    if (pairs.length === 0) {
+      return minimumWidth;
+    }
+    // what the main note's label lacks to clear the grace note's, by their margin boxes as the skyline sees them (units)
+    const deficit: (pair: GracePair) => number = (pair: GracePair): number => {
+      const graceBox: BoundingBox = pair.grace.GraphicalLabel.PositionAndShape;
+      const mainBox: BoundingBox = pair.main.GraphicalLabel.PositionAndShape;
+      return graceBox.RelativePosition.x + graceBox.BorderMarginRight + this.rules.HorizontalBetweenLyricsDistance -
+        (mainBox.RelativePosition.x + mainBox.BorderMarginLeft);
+    };
+    let width: number = minimumWidth;
+    for (let pass: number = 0; pass < 8; pass++) {
+      const minTotalWidthBefore: number = formatter.preCalculateMinTotalWidth(allVoices);
+      let widened: boolean = false;
+      for (const pair of pairs) {
+        const missing: number = deficit(pair);
+        if (missing <= 0.01) {
+          continue;
+        }
+        const graceGve: VexFlowVoiceEntry = pair.entry.graphicalVoiceEntries.find(
+          (gve: GraphicalVoiceEntry): boolean => gve.parentVoiceEntry === pair.grace.LyricsEntry.Parent) as VexFlowVoiceEntry;
+        const mainGve: VexFlowVoiceEntry = pair.entry.graphicalVoiceEntries.find(
+          (gve: GraphicalVoiceEntry): boolean => gve.parentVoiceEntry === pair.main.LyricsEntry.Parent) as VexFlowVoiceEntry;
+        const mainNote: any = mainGve?.vfStaveNote;
+        const group: any = mainNote?.modifiers?.find((modifier: any): boolean =>
+          modifier instanceof VF.GraceNoteGroup && (modifier as any).getGraceNotes().includes(graceGve?.vfStaveNote));
+        const modifierContext: any = mainNote?.getModifierContext?.();
+        if (!group || !modifierContext?.state) {
+          continue;
+        }
+        const px: number = missing * unitInPixels;
+        group.spacing = (group.spacing ?? 0) + px;
+        // the already formatted context: GraceNoteGroup.format() has added the spacing to the left shift
+        modifierContext.state.left_shift += px;
+        modifierContext.width += px;
+        widened = true;
+      }
+      if (!widened) {
+        break;
+      }
+      // the formatter's minimum total width with the wider groups, from new tick contexts (the cached ones keep their widths)
+      (formatter as any).tickContexts = undefined;
+      (formatter as any).hasMinTotalWidth = false;
+      const minTotalWidthAfter: number = formatter.preCalculateMinTotalWidth(allVoices);
+      width += Math.max(0, minTotalWidthAfter - minTotalWidthBefore) / unitInPixels * this.rules.VoiceSpacingMultiplierVexflow;
+      MusicSheetCalculator.setMeasuresMinStaffEntriesWidth(measures, width);
+      for (const measure of visible) {
+        measure.setWidth(width + measure.beginInstructionsWidth + measure.endInstructionsWidth);
+      }
+      visible[0].formatVoices?.(width * unitInPixels, visible[0]);
+      for (const measure of visible) {
+        for (const staffEntry of measure.staffEntries) {
+          (staffEntry as VexFlowStaffEntry).calculateXPosition();
+        }
+      }
+    }
+    return width;
+  }
+
+  /**
+   * The staff entry's syllables in the order they are spaced, with the verse slot of each (its index in the last entry
+   * dict of calculateElongationFactor()): a syllable on a grace note goes before the main note's syllable of the same
+   * verse and voice and shares its slot, so the previous syllable is spaced from it and the next one from the main
+   * note's. Without grace notes each lyric entry has its own slot, as before.
+   */
+  private static lyricsInSpacingOrder(lyrics: GraphicalLyricEntry[]): [GraphicalLyricEntry[], number[]] {
+    const isOnGraceNote: (lyric: GraphicalLyricEntry) => boolean = (lyric: GraphicalLyricEntry): boolean =>
+      lyric.LyricsEntry.Parent?.IsGrace && !lyric.LyricsEntry.Parent.GraceAfterMainNote;
+    const graces: GraphicalLyricEntry[] = lyrics.filter(isOnGraceNote);
+    if (graces.length === 0) {
+      return [lyrics, lyrics.map((lyric: GraphicalLyricEntry, i: number): number => i)];
+    }
+    const ordered: GraphicalLyricEntry[] = [];
+    const slots: number[] = [];
+    const mains: GraphicalLyricEntry[] = lyrics.filter((lyric: GraphicalLyricEntry): boolean => !isOnGraceNote(lyric));
+    mains.forEach((main: GraphicalLyricEntry, mainSlot: number): void => {
+      for (const grace of graces) {
+        if (!ordered.includes(grace) && grace.LyricsEntry.VerseNumber === main.LyricsEntry.VerseNumber &&
+            grace.LyricsEntry.Parent.ParentVoice === main.LyricsEntry.Parent?.ParentVoice) {
+          ordered.push(grace);
+          slots.push(mainSlot);
+        }
+      }
+      ordered.push(main);
+      slots.push(mainSlot);
+    });
+    let nextSlot: number = mains.length;
+    for (const grace of graces) {
+      if (!ordered.includes(grace)) {
+        ordered.push(grace);
+        slots.push(nextSlot++);
+      }
+    }
+    return [ordered, slots];
+  }
+
   private calculateElongationFactor(containers: (GraphicalLyricEntry|GraphicalChordSymbolContainer)[], staffEntry: GraphicalStaffEntry, lastEntryDict: any,
                                     oldMinimumStaffEntriesWidth: number, elongationFactorForMeasureWidth: number,
-                                    measureNumber: number, oldMinSpacing: number, nextMeasureOverlap: number): number {
+                                    measureNumber: number, oldMinSpacing: number, nextMeasureOverlap: number,
+                                    slotIndices?: number[]): number {
     let newElongationFactorForMeasureWidth: number = elongationFactorForMeasureWidth;
     let currentContainerIndex: number = 0;
 
     let needsDashSpaceAtEnd: boolean = false;
-    for (const container of containers) {
+    for (let position: number = 0; position < containers.length; position++) {
+      const container: GraphicalLyricEntry|GraphicalChordSymbolContainer = containers[position];
+      // the verse slot: shared by a syllable on a grace note and the main note's syllable (lyricsInSpacingOrder())
+      currentContainerIndex = slotIndices ? slotIndices[position] : position;
       const alignment: TextAlignmentEnum = container.GraphicalLabel.Label.textAlignment;
       let minSpacing: number = oldMinSpacing;
 
@@ -911,6 +1050,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       // const notePosition: number = (staffEntry.graphicalVoiceEntries[0] as VexFlowVoiceEntry).vfStaveNote.getBoundingBox().getX() / unitInPixels;
       const staffEntryXPosition: number = vexStaffEntry.PositionAndShape.RelativePosition.x;
       let xPosition: number = staffEntryXPosition + bBox.BorderLeft;
+      if (container instanceof GraphicalLyricEntry) {
+        xPosition += container.GraceXShift; // a syllable on a grace note is left of the staff entry (at the main note)
+      }
       // vexStaffEntry.calculateXPosition();
       if (container instanceof GraphicalChordSymbolContainer && container.PositionAndShape.Parent.DataObject instanceof GraphicalMeasure) {
         // the parent is only the measure for whole measure rest notes with chord symbols,
@@ -970,7 +1112,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       let elongationFactorNeededForLastContainer: number = 1;
 
       if (container instanceof GraphicalLyricEntry && container.LyricsEntry) {
-        if (lastEntryDict[currentContainerIndex]) { // if previous lyric needs more spacing than measure end, take that spacing
+        if (lastEntryDict[currentContainerIndex]?.graceNoteStaffEntry === staffEntry) {
+          // the main note's syllable after the one on its grace note: the grace note group's spacing made room for it
+          //   (fitGraceLyricsToFormattedEntries()), stretching the measure wouldn't
+          elongationFactorNeededForLastContainer = 1;
+        } else if (lastEntryDict[currentContainerIndex]) { // if previous lyric needs more spacing than measure end, take that spacing
           const lastNoteDuration: Fraction = lastEntryDict[currentContainerIndex].sourceNoteDuration;
           elongationFactorNeededForLastContainer = spacingNeededToLastContainer / currentSpacingToLastContainer;
           if ((lastNoteDuration.Denominator) > 4) {
@@ -1004,6 +1150,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       lastEntryDict[currentContainerIndex] = {
         cumulativeOverlap: overlap,
         extend: container instanceof GraphicalLyricEntry ? container.LyricsEntry.extend : false,
+        // the staff entry, if the syllable is on a grace note before its main note (then at the grace note)
+        graceNoteStaffEntry: container instanceof GraphicalLyricEntry && container.GraceXShift !== 0 ? staffEntry : undefined,
         labelWidth: labelWidth,
         measureNumber: measureNumber,
         needsDashSpaceAtEnd: needsDashSpaceAtEnd,
@@ -1011,8 +1159,6 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         text: container instanceof GraphicalLyricEntry ? container.LyricsEntry.Text : container.GraphicalLabel.Label.text,
         xPosition: xPosition,
       };
-
-      currentContainerIndex++;
     }
 
     return newElongationFactorForMeasureWidth;
@@ -1099,9 +1245,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     // for all staffEntries i, each containing the lyric entry for all verses at that timestamp in the measure
     for (const staffEntry of staffEntries) {
       if (staffEntry.LyricsEntries.length > 0 && this.rules.RenderLyrics) {
+        const [lyrics, slots]: [GraphicalLyricEntry[], number[]] = VexFlowMusicSheetCalculator.lyricsInSpacingOrder(staffEntry.LyricsEntries);
         newElongationFactorForMeasureWidth =
           this.calculateElongationFactor(
-            staffEntry.LyricsEntries,
+            lyrics,
             staffEntry,
             lastLyricEntryDict,
             oldMinimumStaffEntriesWidth,
@@ -1109,6 +1256,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
             measureNumber,
             this.rules.HorizontalBetweenLyricsDistance,
             this.rules.LyricOverlapAllowedIntoNextMeasure,
+            slots,
           );
       }
       if (staffEntry.graphicalChordContainers.length > 0 && this.rules.RenderChordSymbols) {
