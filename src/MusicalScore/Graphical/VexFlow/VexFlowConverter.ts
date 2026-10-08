@@ -485,6 +485,12 @@ export class VexFlowConverter {
                     let highestOther: number = undefined;
                     let lowestOther: number = undefined;
                     for (const staffGve of staffGves) {
+                        // The grace notes before a rest (drawn as a GraceNoteGroup of the rest) are not another voice's notes: they
+                        //   counted as notes with up stems and put the rest 7 lines over the staff (Bellini, Torna vezzosa Fillide,
+                        //   voice m91: the eighth rest after a slashed grace run). Same as osmd-dart.
+                        if (staffGve.parentVoiceEntry?.IsGrace) {
+                            continue;
+                        }
                         for (const gveNote of staffGve.notes) {
                             if (gveNote !== note && !gveNote.sourceNote.isRest() && gveNote.sourceNote.PrintObject && gveNote.sourceNote.Pitch) {
                                 const halftone: number = gveNote.sourceNote.Pitch.getHalfTone();
@@ -506,6 +512,9 @@ export class VexFlowConverter {
                     let maxHalftone: number;
                     let linesShift: number;
                     for (const staffGve of staffGves) {
+                        if (staffGve.parentVoiceEntry?.IsGrace) {
+                            continue; // see above
+                        }
                         for (const gveNote of staffGve.notes) {
                             if (gveNote === note || gveNote.sourceNote.isRest() || !gveNote.sourceNote.PrintObject) {
                                 continue;
