@@ -62,10 +62,35 @@ describe("Wedge pair over one note", () => {
   </part>
 </score-partwise>`;
 
+    /** The pair over the last note of the piece (D. Scarlatti, Consolati e spera Canto m94; osmd-dart
+     *  test/fixtures/test_wedge_pair_last_note.musicxml): no staff entry follows the note, so its stop and the diminuendo's start
+     *  were at the note's x. */
+    const lastNoteXml: string = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Voice</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>4</divisions><time><beats>2</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>3</duration><voice>1</voice><type>eighth</type><dot/></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type></note>
+      <direction placement="above"><direction-type><wedge type="crescendo" number="1"/></direction-type></direction>
+      <direction placement="above"><direction-type><wedge type="stop" number="1"/></direction-type><offset>2</offset></direction>
+      <direction placement="above"><direction-type><wedge type="diminuendo" number="1"/></direction-type><offset>2</offset></direction>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type></note>
+      <direction placement="above"><direction-type><wedge type="stop" number="1"/></direction-type></direction>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>`;
+
     let container: HTMLElement;
     let osmd: OpenSheetMusicDisplay;
 
-    async function render(reservedLength?: number): Promise<void> {
+    async function render(reservedLength?: number, source: string = xml): Promise<void> {
         container = TestUtils.getDivElement(document);
         container.style.width = "1600px";
         osmd = TestUtils.createOpenSheetMusicDisplay(container);
@@ -73,7 +98,7 @@ describe("Wedge pair over one note", () => {
         if (reservedLength !== undefined) {
             osmd.EngravingRules.WedgeMinReservedLength = reservedLength;
         }
-        await osmd.load(xml);
+        await osmd.load(source);
         osmd.render();
     }
     afterEach(() => {
@@ -175,5 +200,20 @@ describe("Wedge pair over one note", () => {
         expect(span, `pair span ${span}`).to.be.at.least(5.0);
         expect(reservedWidth, `measure ${reservedWidth}, without the reservation ${unreservedWidth}`).to.be.greaterThan(unreservedWidth + 1);
         expect(span, `pair span ${span}`).to.be.lessThan(10.0);
+    });
+
+    it("the pair over the last note of the piece is drawn between the note and the barline", async () => {
+        await render(undefined, lastNoteXml);
+        const cresc: GraphicalContinuousDynamicExpression = wedge(2, ContDynamicEnum.crescendo);
+        const dim: GraphicalContinuousDynamicExpression = wedge(2, ContDynamicEnum.diminuendo);
+        const noteX: number = entryX(2, 0.25);
+        const end: number = measureEnd(2);
+        expect(rowY(cresc)).to.be.closeTo(rowY(dim), 0.01);
+        expect(left(cresc)).to.be.closeTo(noteX, 1.0);
+        // the stop at half the quarter: halfway between the note and the barline, the diminuendo after it to the end of the measure
+        expect(right(cresc), `cresc ${left(cresc)}..${right(cresc)}, note ${noteX}, measure end ${end}`)
+            .to.be.closeTo(noteX + (end - noteX) * 0.5, 1.0);
+        expect(right(cresc)).to.be.lessThan(left(dim));
+        expect(left(dim), `dim ${left(dim)}..${right(dim)}`).to.be.greaterThan(noteX + (end - noteX) * 0.4);
     });
 });

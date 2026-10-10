@@ -199,8 +199,10 @@ describe("Expression dashes", () => {
     it("draws dashes after a crescendo word up to their stop", async () => {
         const cresc: string = "<direction placement=\"below\"><direction-type><words>cresc.</words></direction-type>" +
             "<direction-type><dashes type=\"start\" number=\"1\"/></direction-type></direction>";
+        // the stop is written after the quarter (4 divisions): its offset 2 is the dotted quarter's start. (With offset 6 it was inside
+        //   that last note of the piece, which was drawn at the note's x before times inside a last note were placed towards the barline.)
         const stop: string = "<direction placement=\"below\"><direction-type><dashes type=\"stop\" number=\"1\"/></direction-type>" +
-            "<offset>6</offset></direction>";
+            "<offset>2</offset></direction>";
         const osmd: OpenSheetMusicDisplay = await render(singleStaffScore(cresc + m17Notes.replace("__WORDS__", stop)));
         const staffLine: StaffLine = staffLines(osmd)[0];
         expect(staffLine.ExpressionDashes.length).to.equal(1);

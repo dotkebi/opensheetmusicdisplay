@@ -3987,6 +3987,21 @@ export abstract class MusicSheetCalculator {
             const endAfterRightStaffEntry: boolean = timestamp.RealValue > rightStaffEntry.getAbsoluteTimestamp().RealValue;
             // endAfterRightStaffEntry is an unfortunate case where the timestamp isn't correct for the last note in the piece,
             //   see test_wedge_diminuendo_duplicated.musicxml
+            // A time inside the last note of the piece (no staff entry after it to interpolate to) lies between that note and the
+            //   end of its measure: it was the note's x, so a swell "<>" over the last note, its stop and the diminuendo's start
+            //   between the note and the barline, was drawn as two wedges from the note's x over each other (Parisotti, D.
+            //   Scarlatti Consolati e spera Canto m94). The end of the measure itself keeps the workaround above. Same as osmd-dart.
+            const leftMeasure: GraphicalMeasure = leftStaffEntry.parentMeasure;
+            const leftMeasureEnd: Fraction = leftMeasure.parentSourceMeasure ?
+                Fraction.plus(leftMeasure.parentSourceMeasure.AbsoluteTimestamp, leftMeasure.parentSourceMeasure.Duration) : undefined;
+            const insideLastNote: boolean = leftStaffEntry === rightStaffEntry && endAfterRightStaffEntry && firstVisibleMeasureRelativeX <= 0 &&
+                leftMeasureEnd !== undefined && timestamp.lt(leftMeasureEnd);
+            if (insideLastNote) {
+                const leftTimestamp: Fraction = leftStaffEntry.getAbsoluteTimestamp();
+                const measureEndX: number = leftMeasure.PositionAndShape.RelativePosition.x + leftMeasure.PositionAndShape.BorderRight;
+                const quotient: number = Fraction.minus(timestamp, leftTimestamp).RealValue / Fraction.minus(leftMeasureEnd, leftTimestamp).RealValue;
+                return new PointF2D(leftX + (measureEndX - leftX) * quotient, 0.0);
+            }
             if (firstVisibleMeasureRelativeX > 0) {
                 rightX = rightStaffEntry.PositionAndShape.RelativePosition.x + measureRelativeX;
             } else if (useLeftStaffEntryBorder &&
