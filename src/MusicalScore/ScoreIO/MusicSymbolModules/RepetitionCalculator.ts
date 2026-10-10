@@ -19,6 +19,8 @@ export class RepetitionCalculator {
   private movementStartIndex: number = 0;
   /** The first measures of the movements after the first one (where the measure numbers restart). */
   private movementStartIndices: number[] = [];
+  /** The segno names that D.S. go back to (see RepetitionInstruction.SegnoLabel). */
+  private dalSegnoLabels: Set<string> = new Set<string>();
   private currentMeasure: SourceMeasure;
   private currentMeasureIndex: number;
 
@@ -39,6 +41,9 @@ export class RepetitionCalculator {
     this.movementStartIndex = 0;
 
     const sourceMeasures: SourceMeasure[] = this.musicSheet.SourceMeasures;
+    this.dalSegnoLabels = new Set<string>(this.repetitionInstructions
+      .filter(instruction => RepetitionCalculator.isDalSegno(instruction.type) && instruction.SegnoLabel !== undefined)
+      .map(instruction => instruction.SegnoLabel));
     // Detect movement boundaries where measure numbers reset (e.g. multi-movement pieces without explicit <movement> tags).
     // Repetitions should not cross these boundaries.
     this.movementStartIndices = [];
@@ -256,7 +261,7 @@ export class RepetitionCalculator {
       case RepetitionInstructionEnum.DalSegno: {
         // A Fine or To Coda before the segno isn't reached after the jump.
         //   Without a segno, the D.S. goes back like a backward repeat without a forward repeat, and plays on to the end.
-        const segnoMeasureIndex: number = this.findInstructionInMainListBackwards(RepetitionInstructionEnum.Segno, instruction.measureIndex);
+        const segnoMeasureIndex: number = this.findSegnoBackwards(instruction.measureIndex, instruction.SegnoLabel);
         if (segnoMeasureIndex < 0) {
           return instruction.type;
         }
@@ -340,6 +345,11 @@ export class RepetitionCalculator {
             }
             break;
         case RepetitionInstructionEnum.Segno:
+            if (this.isDrawnOnlySegno(currentRepetitionInstruction)) {
+                // a named segno that no D.S. names: drawn where it is, no repetition starts there (see RepetitionInstruction.SegnoLabel)
+                this.currentMeasure.FirstRepetitionInstructions.push(currentRepetitionInstruction);
+                break;
+            }
             currentRepetition = this.getCurrentRepetition(true);
             if (currentRepetition !== undefined &&
                 currentRepetition.SegnoFound &&
@@ -407,7 +417,8 @@ export class RepetitionCalculator {
                 currentRepetition.RepetitonUnderConstruction.setEndingStartIndex(2, this.currentMeasureIndex);
                 this.currentMeasure.LastRepetitionInstructions.push(currentRepetitionInstruction);
                 this.finalizeRepetition(currentRepetition);
-                if (this.currentMeasureIndex > 0) {
+                // (a coda that prints nothing, read from a <sound> of the measure, doesn't start a new system)
+                if (this.currentMeasureIndex > 0 && !currentRepetitionInstruction.Implicit) {
                     this.musicSheet.SourceMeasures[this.currentMeasureIndex - 1].printNewSystemXml = true;
                 }
             } else if (!currentRepetition.ToCodaFound) {
@@ -459,7 +470,7 @@ export class RepetitionCalculator {
                                             currentRepetition.RepetitonUnderConstruction);
             }
             currentRepetitionInstruction.parentRepetition = currentRepetition.RepetitonUnderConstruction;
-            this.startAtSegnoBackwards(currentRepetition);
+            this.startAtSegnoBackwards(currentRepetition, currentRepetitionInstruction.SegnoLabel);
             if (currentRepetition.RepetitonUnderConstruction.EndingIndexDict.hasOwnProperty(1)) {
                 currentRepetition.RepetitonUnderConstruction.setEndingEndIndex(1, this.currentMeasureIndex);
             }
@@ -469,12 +480,12 @@ export class RepetitionCalculator {
         case RepetitionInstructionEnum.DalSegnoAlFine:
             // (the segno's repetition may have been closed already, e.g. by a repeat sign after the segno: see startAtSegnoBackwards())
             if (this.openRepetitions.length === 0 &&
-                this.findInstructionInMainListBackwards(RepetitionInstructionEnum.Segno, this.currentMeasureIndex) < 0) {
+                this.findSegnoBackwards(this.currentMeasureIndex, currentRepetitionInstruction.SegnoLabel) < 0) {
                 break;
             }
             currentRepetition = this.getOrCreateCurrentRepetition2(true);
             currentRepetitionInstruction.parentRepetition = currentRepetition.RepetitonUnderConstruction;
-            this.startAtSegnoBackwards(currentRepetition);
+            this.startAtSegnoBackwards(currentRepetition, currentRepetitionInstruction.SegnoLabel);
             if (!currentRepetition.FineFound) {
                 // (a Fine before the segno isn't reached after the jump)
                 const fineMeasureIndex: number = this.findInstructionInMainListBackwards(RepetitionInstructionEnum.Fine,
@@ -531,12 +542,12 @@ export class RepetitionCalculator {
         case RepetitionInstructionEnum.DalSegnoAlCoda:
             // (the segno's repetition may have been closed already, e.g. by a repeat sign after the segno: see startAtSegnoBackwards())
             if (this.openRepetitions.length === 0 &&
-                this.findInstructionInMainListBackwards(RepetitionInstructionEnum.Segno, this.currentMeasureIndex) < 0) {
+                this.findSegnoBackwards(this.currentMeasureIndex, currentRepetitionInstruction.SegnoLabel) < 0) {
                 break;
             }
             currentRepetition = this.getOrCreateCurrentRepetition2(true);
             currentRepetitionInstruction.parentRepetition = currentRepetition.RepetitonUnderConstruction;
-            this.startAtSegnoBackwards(currentRepetition);
+            this.startAtSegnoBackwards(currentRepetition, currentRepetitionInstruction.SegnoLabel);
             if (!currentRepetition.ToCodaFound) {
                 // (a To Coda before the segno isn't reached after the jump)
                 const segnoMeasureIndex: number = currentRepetition.RepetitonUnderConstruction.StartIndex;
@@ -649,7 +660,7 @@ export class RepetitionCalculator {
       for (let i: number = this.repetitionInstructions.length - 1; i >= 0; i--) {
           const repetitionInstruction: RepetitionInstruction = this.repetitionInstructions[i];
           if (repetitionInstruction.measureIndex <= startMeasureIndex && repetitionInstruction.measureIndex >= minMeasureIndex &&
-              repetitionInstruction.type === instruction) {
+              repetitionInstruction.type === instruction && !this.isDrawnOnlySegno(repetitionInstruction)) {
               return repetitionInstruction.measureIndex;
           }
       }
@@ -710,23 +721,54 @@ export class RepetitionCalculator {
    * (e.g. a repeat sign after the segno closed it, see getOrCreateCurrentRepetition2()).
    * The segno's instruction is reused, so that the segno isn't drawn twice.
    */
-  private startAtSegnoBackwards(repContainer: RepetitionBuildingContainer): void {
+  private startAtSegnoBackwards(repContainer: RepetitionBuildingContainer, segnoLabel?: string): void {
       if (repContainer.SegnoFound) {
           return;
       }
-      const segnoMeasureIndex: number = this.findInstructionInMainListBackwards(RepetitionInstructionEnum.Segno, this.currentMeasureIndex);
+      const segnoMeasureIndex: number = this.findSegnoBackwards(this.currentMeasureIndex, segnoLabel);
       if (segnoMeasureIndex < 0) {
           return;
       }
       repContainer.SegnoFound = true;
       const firstInstructions: RepetitionInstruction[] = this.musicSheet.SourceMeasures[segnoMeasureIndex].FirstRepetitionInstructions;
-      let segno: RepetitionInstruction = firstInstructions.find(instruction => instruction.type === RepetitionInstructionEnum.Segno);
+      let segno: RepetitionInstruction = firstInstructions.find(instruction => instruction.type === RepetitionInstructionEnum.Segno &&
+        !this.isDrawnOnlySegno(instruction) &&
+        (segnoLabel === undefined || instruction.SegnoLabel === undefined || instruction.SegnoLabel === segnoLabel));
       if (!segno) {
           segno = new RepetitionInstruction(segnoMeasureIndex, RepetitionInstructionEnum.Segno, AlignmentType.Begin);
           firstInstructions.splice(0, 0, segno);
       }
       segno.parentRepetition = repContainer.RepetitonUnderConstruction;
       repContainer.RepetitonUnderConstruction.startMarker = segno;
+  }
+
+  /**
+   * Returns the measure index of the segno a D.S. at or before startMeasureIndex goes back to, or -1:
+   * the segno of the name the D.S. gives (<sound dalsegno>, see RepetitionInstruction.SegnoLabel), else the last segno before it.
+   */
+  private findSegnoBackwards(startMeasureIndex: number, segnoLabel: string): number {
+      if (segnoLabel !== undefined) {
+          for (let i: number = this.repetitionInstructions.length - 1; i >= 0; i--) {
+              const instruction: RepetitionInstruction = this.repetitionInstructions[i];
+              if (instruction.type === RepetitionInstructionEnum.Segno && instruction.SegnoLabel === segnoLabel &&
+                  instruction.measureIndex <= startMeasureIndex && instruction.measureIndex >= this.movementStartIndex) {
+                  return instruction.measureIndex;
+              }
+          }
+      }
+      return this.findInstructionInMainListBackwards(RepetitionInstructionEnum.Segno, startMeasureIndex);
+  }
+
+  /** Whether the instruction is a named segno that no D.S. names while D.S. name their segno: drawn only (see RepetitionInstruction.SegnoLabel). */
+  private isDrawnOnlySegno(instruction: RepetitionInstruction): boolean {
+      return instruction.type === RepetitionInstructionEnum.Segno && instruction.SegnoLabel !== undefined &&
+        this.dalSegnoLabels.size > 0 && !this.dalSegnoLabels.has(instruction.SegnoLabel);
+  }
+
+  /** Whether the instruction type is a D.S. (with or without al Fine / al Coda). */
+  private static isDalSegno(type: RepetitionInstructionEnum): boolean {
+      return type === RepetitionInstructionEnum.DalSegno || type === RepetitionInstructionEnum.DalSegnoAlFine ||
+        type === RepetitionInstructionEnum.DalSegnoAlCoda;
   }
 
   /**

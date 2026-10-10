@@ -3414,6 +3414,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
    * @param measureIndex
    */
   protected calculateWordRepetitionInstruction(repetitionInstruction: RepetitionInstruction, measureIndex: number): void {
+    if (repetitionInstruction.Implicit) {
+      return; // played, but nothing is printed for it (e.g. read from a <sound> of the measure, see RepetitionInstruction.Implicit)
+    }
     const measures: VexFlowMeasure[] = <VexFlowMeasure[]>this.graphicalMusicSheet.MeasureList[measureIndex];
     if (repetitionInstruction.type === RepetitionInstructionEnum.Segno && repetitionInstruction.SymbolPlacements.length > 0 &&
         this.calculateSegnoSigns(repetitionInstruction, measures)) {

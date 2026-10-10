@@ -34,6 +34,19 @@ describe("MusicPartManagerIterator measure order with repetitions", () => {
     }
 
     /**
+     * The <sound> of a direction says how it is played, before its words, and names the segno a D.S. goes back to
+     * (Arban, Fantaisie brillante, cornet: "D.C." with <sound dalsegno> goes back to the segno of its variation, "FIN." with
+     * <sound tocoda> ends the repetition, which goes on after the D.C. at the <sound coda> of the next measure; the edition
+     * prints a segno above each D.C. barline too, a named segno that no D.S. names).
+     *
+     * Sample: segno s0 in measure 2, "FIN." in 3, "D.C." back to s0 in 4 (with a segno m4 at its barline), coda in 5;
+     * segno s1 in 6, "FIN." in 7, "D.C." back to s1 in 8, coda in 9.
+     */
+    it("follows the <sound> of jump words and the segno a D.S. names", async () => {
+        expect(await playedMeasures("test_repeat_sound_jump_sections.musicxml")).to.deep.equal([0, 1, 2, 3, 1, 2, 4, 5, 6, 7, 5, 6, 8, 9]);
+    });
+
+    /**
      * A first ending with no second ending written after it is played on the first pass only: the last pass goes on after it.
      * It used to be played on both passes, since a repetition with fewer endings than passes plays its first ending on the extra ones.
      *

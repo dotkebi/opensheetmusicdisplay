@@ -136,6 +136,16 @@ describe("RepetitionInstructionReader", () => {
               expectedWords: "D.S. al Coda (with repeats)" },
             // words that name an instruction still say which one it is, and are drawn as its label
             { text: "D.C. al Fine", sound: "dacapo=\"yes\"", expectedType: RepetitionInstructionEnum.DaCapoAlFine, expectedWords: undefined },
+            { text: "D.S. al Coda", sound: "dalsegno=\"s\"", expectedType: RepetitionInstructionEnum.DalSegnoAlCoda, expectedWords: undefined },
+            // words that name another instruction than the sound: the sound says which one it is (MusicXML: the sound is the
+            //   playback), the words are drawn as written, with their al Fine / al Coda (Arban, Fantaisie brillante: "D.C." goes
+            //   back to the segno of the variation)
+            { text: "D.C.", sound: "dalsegno=\"s0\"", expectedType: RepetitionInstructionEnum.DalSegno, expectedWords: "D.C." },
+            { text: "D.C. al Fine", sound: "dalsegno=\"s0\"", expectedType: RepetitionInstructionEnum.DalSegnoAlFine,
+              expectedWords: "D.C. al Fine" },
+            { text: "D.S.", sound: "dacapo=\"yes\"", expectedType: RepetitionInstructionEnum.DaCapo, expectedWords: "D.S." },
+            { text: "Fine", sound: "tocoda=\"c0\"", expectedType: RepetitionInstructionEnum.ToCoda, expectedWords: "Fine" },
+            { text: "FIN.", sound: "tocoda=\"c0\"", expectedType: RepetitionInstructionEnum.ToCoda, expectedWords: "FIN." },
         ];
         for (const testCase of soundCases) {
             it("reads \"" + testCase.text + "\" with <sound " + testCase.sound + "/> as repetition instruction", () => {
@@ -145,6 +155,15 @@ describe("RepetitionInstructionReader", () => {
                 expect(reader.repetitionInstructions[0].Words, "drawn words").to.equal(testCase.expectedWords);
             });
         }
+
+        it("names the segno a D.S. goes back to with <sound dalsegno>, and a segno with <sound segno>", () => {
+            expect(handleWords("D.C.", "dalsegno=\"s1\"")).to.equal(true);
+            expect(reader.repetitionInstructions[0].SegnoLabel).to.equal("s1");
+            expect(handleWords("Segno", "segno=\"s1\"")).to.equal(true);
+            expect(reader.repetitionInstructions[0].SegnoLabel).to.equal("s1");
+            expect(handleWords("Fine", "fine=\"yes\"")).to.equal(true);
+            expect(reader.repetitionInstructions[0].SegnoLabel, "no segno").to.equal(undefined);
+        });
 
         // a segno read from the sound is a D.S. target, like a segno sign with <sound segno>, so it isn't taken for a D.S.
         it("marks a segno read from <sound segno> as the target of a D.S.", () => {

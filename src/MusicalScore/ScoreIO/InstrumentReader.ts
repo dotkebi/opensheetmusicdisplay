@@ -575,6 +575,7 @@ export class InstrumentReader {
           // TODO do we need to process bars with left location too?
         } else if (xmlNode.name === "sound") {
           // (*) MetronomeReader.readTempoInstruction(xmlNode, this.musicSheet, this.currentXmlMeasureIndex);
+          this.repetitionInstructionReader?.handleMeasureSoundRepetitionInstructions(xmlNode);
           try {
             if (xmlNode.attribute("tempo")) { // can be null, not just undefined!
 
