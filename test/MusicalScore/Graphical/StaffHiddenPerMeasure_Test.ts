@@ -49,6 +49,16 @@ describe("A staff the MusicXML hides in some measures", () => {
             [[0], [0], [0, 1], [0]]);
     });
 
+    /** MuseScore 4 hides staves that have notes ("hide when empty"): a staff is left out of a system only where it has no notes
+     * (OpenScore Beethoven, String Quartet Op. 135: violin 2 hidden in 701 measures with notes). */
+    it("draws a hidden staff where it has notes", async () => {
+        osmd.clear();
+        await osmd.load(TestUtils.getScore("test_staff_hidden_with_notes.musicxml"));
+        osmd.render();
+        expect(osmd.Sheet.SourceMeasures.map(measure => measure.HiddenStaffIndices)).to.deep.equal([[], [], [1], [1]]);
+        expect(systems().map(system => system.StaffLines.map(line => line.ParentStaff.idInMusicSheet))).to.deep.equal([[0, 1], [0]]);
+    });
+
     it("draws no placeholder name for the empty part name", () => {
         const texts: string[] = Array.from(container.querySelectorAll("text")).map(element => element.textContent);
         expect(texts.filter(text => text.startsWith("Instr")).length).to.equal(0);

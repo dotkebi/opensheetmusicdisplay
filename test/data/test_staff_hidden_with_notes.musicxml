@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic (written for this repository): a violin and a second violin hidden by <staff-details print-object="no">
+     from measure 1 on, with notes in measures 1-2 and rests in measures 3-4 (new system at measure 3), as MuseScore 4
+     exports a staff set to hide when empty (OpenScore Beethoven, String Quartet Op. 135: violin 2 hidden in 701
+     measures with notes). A staff is left out of a system only where it has no notes: drawn in the first system,
+     not in the second. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Violin 1</part-name></score-part><score-part id="P2"><part-name>Violin 2</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1"><attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>
+    <measure number="2"><note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>
+    <measure number="3"><print new-system="yes"/><note><pitch><step>E</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>
+    <measure number="4"><note><pitch><step>F</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>
+  </part>
+  <part id="P2">
+    <measure number="1"><attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef><staff-details print-object="no"/></attributes><note><pitch><step>A</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>
+    <measure number="2"><note><pitch><step>B</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>
+    <measure number="3"><print new-system="yes"/><note><rest measure="yes"/><duration>4</duration><voice>1</voice></note></measure>
+    <measure number="4"><note><rest measure="yes"/><duration>4</duration><voice>1</voice></note></measure>
+  </part>
+</score-partwise>

@@ -693,7 +693,13 @@ export class InstrumentReader {
     this.pendingTieStops.resolve(this.instrument);
     this.linkArpeggiosAcrossStaves(this.currentMeasure);
     this.hiddenStaves.forEach((staff: number): void => {
-      this.currentMeasure.HiddenStaffIndices.push(this.musicSheet.getGlobalStaffIndexOfFirstStaff(this.instrument) + staff);
+      const staffIndex: number = this.musicSheet.getGlobalStaffIndexOfFirstStaff(this.instrument) + staff;
+      // only where the staff has no notes drawn: exporters hide staves that have notes, meaning "hide when empty"
+      //   (MuseScore 4: Beethoven, Op. 135, violin 2 hidden in 701 measures with notes; Beethoven, Symphony No. 9 IV, the
+      //   percussion in all measures)
+      if (!InstrumentReader.staffHasDrawnNotes(this.currentMeasure, staffIndex)) {
+        this.currentMeasure.HiddenStaffIndices.push(staffIndex);
+      }
     });
     this.previousMeasure = this.currentMeasure;
     this.currentXmlMeasureIndex += 1;
@@ -1430,6 +1436,17 @@ export class InstrumentReader {
     }
     const lowest: number = Math.min(...timeNodes.map(node => staffNumberOf(node)));
     return timeNodes.filter(node => staffNumberOf(node) === lowest);
+  }
+
+  /** Whether the staff (index in the music sheet) has a note drawn in the measure (not a rest, not print-object="no"). */
+  private static staffHasDrawnNotes(measure: SourceMeasure, staffIndex: number): boolean {
+    for (const container of measure.VerticalSourceStaffEntryContainers) {
+      const staffEntry: SourceStaffEntry = container.StaffEntries[staffIndex];
+      if (staffEntry?.VoiceEntries.some(voiceEntry => voiceEntry.Notes.some(note => !note.isRest() && note.PrintObject))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
