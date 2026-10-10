@@ -1563,7 +1563,17 @@ export abstract class MusicSheetCalculator {
         const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
         const distance: number = this.rules.ExpressionDashesTextDistance;
         const lineWidth: number = this.rules.ExpressionDashesLineWidth;
-        for (const pending of this.pendingExpressionDashes) {
+        // In the order of the texts in the music (by measure, then x): the words in a line move onto it (moveWordsOntoExpressionDashes()),
+        //   so a later text's own line is calculated from where the text was moved, not before it (Parisotti, Traetta Ombra cara Piano
+        //   m60-61: "cres. - - -" moved onto the line of "animato - - -" kept its line at its old height; the dynamics' texts are
+        //   collected before the words). A stable sort keeps the order of the rest.
+        const pendings: typeof this.pendingExpressionDashes = this.pendingExpressionDashes
+            .map((pending, index) => ({pending, index}))
+            .sort((a, b) => a.pending.measureIndex - b.pending.measureIndex ||
+                (a.pending.staffLine === b.pending.staffLine ? a.pending.textBox.RelativePosition.x - b.pending.textBox.RelativePosition.x : 0) ||
+                a.index - b.index)
+            .map(entry => entry.pending);
+        for (const pending of pendings) {
             const expression: AbstractExpression = pending.expression;
             const endMeasureIndex: number = Math.min(sourceMeasures.indexOf(expression.DashesEndMeasure), this.graphicalMusicSheet.MeasureList.length - 1);
             if (endMeasureIndex < pending.measureIndex) {
@@ -1607,23 +1617,106 @@ export abstract class MusicSheetCalculator {
                         Math.max(y, skyBottomLine.getMaxInRangeOf(before[1], startX, endX) + distance) :
                         Math.min(y, skyBottomLine.getMinInRangeOf(before[0], startX, endX) - distance);
                 }
-                endX = this.firstExpressionDashesObstacleX(line, pending.textBox, below, startX, endX, y) - distance;
-                if (endX - startX < this.rules.ExpressionDashesDashLength) {
-                    continue;
+                // the words in the line go on it, the line broken around them
+                const words: BoundingBox[] = this.moveWordsOntoExpressionDashes(line, pending.textBox, pending.placement, startX,
+                                                                                endX + 2 * distance, y);
+                const segments: [number, number][] = [];
+                let segmentStart: number = startX;
+                for (const word of words) {
+                    const wordLeft: number = word.RelativePosition.x + word.BorderMarginLeft;
+                    if (wordLeft < endX) {
+                        segments.push([segmentStart, wordLeft]);
+                        segmentStart = Math.max(segmentStart, word.RelativePosition.x + word.BorderMarginRight + distance);
+                    }
                 }
-                if (below) {
-                    skyBottomLine.updateBottomLineInRange(startX, endX, y + lineWidth);
-                } else {
-                    skyBottomLine.updateSkyLineInRange(startX, endX, y - lineWidth);
+                segments.push([segmentStart, endX]);
+                for (const [segmentStartX, segmentEndX] of segments) {
+                    const lineEndX: number =
+                        this.firstExpressionDashesObstacleX(line, pending.textBox, below, segmentStartX, segmentEndX, y) - distance;
+                    if (lineEndX - segmentStartX < this.rules.ExpressionDashesDashLength) {
+                        continue;
+                    }
+                    if (below) {
+                        skyBottomLine.updateBottomLineInRange(segmentStartX, lineEndX, y + lineWidth);
+                    } else {
+                        skyBottomLine.updateSkyLineInRange(segmentStartX, lineEndX, y - lineWidth);
+                    }
+                    const dashes: GraphicalExpressionDashes = new GraphicalExpressionDashes(
+                        expression, new PointF2D(segmentStartX, y), new PointF2D(lineEndX, y), lineWidth);
+                    dashes.Color = pending.color;
+                    line.ExpressionDashes.push(dashes);
                 }
-                const dashes: GraphicalExpressionDashes = new GraphicalExpressionDashes(
-                    expression, new PointF2D(startX, y), new PointF2D(endX, y), lineWidth);
-                dashes.Color = pending.color;
-                line.ExpressionDashes.push(dashes);
             }
         }
         this.pendingExpressionDashes = [];
         this.skyBottomLinesBeforeExpressions = undefined;
+    }
+
+    /**
+     * Moves the words of staffLine on the side of a dashed line that start in it (from startX up to its end, endX) onto the line
+     * (the height y of its text), as printed: "cres: - - - ed - - - accel." in one row between the staves (Parisotti, A. Scarlatti
+     * Se tu della mia morte Piano m18–20). The text of the line was placed clear of everything under the whole line, the words
+     * only of what is under them, so they were nearer the staff. A word moves only away from the staff, and only if the notes
+     * (the sky-/bottomline before the expressions) and the other texts leave room for it there.
+     * @returns the text boxes of the moved words, by their x
+     */
+    private moveWordsOntoExpressionDashes(staffLine: StaffLine, ownBox: BoundingBox, placement: PlacementEnum,
+                                          startX: number, endX: number, y: number): BoundingBox[] {
+        const below: boolean = placement === PlacementEnum.Below;
+        const before: [number[], number[]] = this.skyBottomLinesBeforeExpressions?.get(staffLine);
+        const skyBottomLine: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        const boxes: BoundingBox[] = [];
+        for (const expression of staffLine.AbstractExpressions) {
+            const textBox: BoundingBox = this.expressionTextBox(expression);
+            if (textBox && textBox !== ownBox && !boxes.includes(textBox)) {
+                boxes.push(textBox);
+            }
+        }
+        const moved: BoundingBox[] = [];
+        for (const expression of staffLine.AbstractExpressions) {
+            const textBox: BoundingBox = this.expressionTextBox(expression);
+            if (!textBox || textBox === ownBox || moved.includes(textBox) || expression.SourceExpression?.Placement !== placement ||
+                expression instanceof GraphicalInstantaneousDynamicExpression) {
+                continue;
+            }
+            const left: number = textBox.RelativePosition.x + textBox.BorderMarginLeft;
+            const right: number = textBox.RelativePosition.x + textBox.BorderMarginRight;
+            if (left < startX || left > endX) {
+                continue;
+            }
+            const center: number = textBox.RelativePosition.y + (textBox.BorderTop + textBox.BorderBottom) / 2;
+            const shift: number = y - center;
+            if (below ? shift <= 0.01 : shift >= -0.01) {
+                continue;
+            }
+            const top: number = textBox.RelativePosition.y + textBox.BorderMarginTop + shift;
+            const bottom: number = textBox.RelativePosition.y + textBox.BorderMarginBottom + shift;
+            if (before && (below ? skyBottomLine.getMaxInRangeOf(before[1], left, right) > top :
+                                   skyBottomLine.getMinInRangeOf(before[0], left, right) < bottom)) {
+                continue; // the notes reach the line there
+            }
+            const hitsOtherText: boolean = boxes.some(other => {
+                if (other === textBox) {
+                    return false;
+                }
+                const otherLeft: number = other.RelativePosition.x + other.BorderMarginLeft;
+                const otherRight: number = other.RelativePosition.x + other.BorderMarginRight;
+                const otherTop: number = other.RelativePosition.y + other.BorderMarginTop;
+                const otherBottom: number = other.RelativePosition.y + other.BorderMarginBottom;
+                return otherLeft < right && left < otherRight && otherTop < bottom && top < otherBottom;
+            });
+            if (hitsOtherText) {
+                continue;
+            }
+            textBox.RelativePosition.y += shift;
+            if (below) {
+                skyBottomLine.updateBottomLineInRange(left, right, bottom);
+            } else {
+                skyBottomLine.updateSkyLineInRange(left, right, top);
+            }
+            moved.push(textBox);
+        }
+        return moved.sort((a, b) => (a.RelativePosition.x + a.BorderMarginLeft) - (b.RelativePosition.x + b.BorderMarginLeft));
     }
 
     /** The first x in [startX, endX) where something on staffLine reaches a dashed line at height y, else endX.
