@@ -53,7 +53,8 @@ export class AlignmentManager {
                 //   second wedge stayed stacked above the first (Parisotti, Traetta Ombra cara Canto m67: the crescendo stopping at the
                 //   note where the diminuendo starts, from its border left). Same as osmd-dart (AlignmentManager._isClose).
                 const gap: number = this.getHorizontalGap(currentExpression.PositionAndShape, nextExpression.PositionAndShape);
-                if (gap < this.rules.DynamicExpressionMaxDistance && !this.textsOverlap(currentExpression, nextExpression)) {
+                if (gap < this.rules.DynamicExpressionMaxDistance && !this.textsOverlap(currentExpression, nextExpression) &&
+                    !this.textInsideWedge(currentExpression, nextExpression)) {
                     // Prevent last found expression to be added twice. e.g. p<f as three close expressions
                     if (tmpList.indexOf(currentExpression) === -1) {
                         tmpList.push(currentExpression);
@@ -200,6 +201,24 @@ export class AlignmentManager {
             }
         }
         return limitedShift;
+    }
+
+    /**
+     * Whether a verbal continuous dynamic ("cres.") starts inside a wedge, after its start and before its stop: the print has them on two rows
+     * (Parisotti, A. Scarlatti Se Florindo è fedele Piano m4: "cres." over a crescendo from its second eighth). Aligned into one row,
+     * the wedge was squeezed to the text's start (a stub "<" before "cres.") or the text lay on the wedge's lines. Each keeps the row it
+     * was placed in, clear of the other by the bottom/sky line. Same as osmd-dart.
+     * @param a First expression
+     * @param b Second expression
+     */
+    private textInsideWedge(a: AbstractGraphicalExpression, b: AbstractGraphicalExpression): boolean {
+        const wedge: AbstractGraphicalExpression = this.isWedge(a) ? a : this.isWedge(b) ? b : undefined;
+        const text: AbstractGraphicalExpression = wedge === a ? b : a;
+        if (!wedge || !(text instanceof GraphicalContinuousDynamicExpression) || !text.IsVerbal) {
+            return false;
+        }
+        return GraphicalContinuousDynamicExpression.textStartsInsideWedge(text.ContinuousDynamic,
+                                                                         (wedge as GraphicalContinuousDynamicExpression).ContinuousDynamic);
     }
 
     /** Negative if a starts before b, positive if after, 0 if at the same time or a time is unknown (only dynamics have one here).

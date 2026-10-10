@@ -26,6 +26,9 @@ export class GraphicalContinuousDynamicExpression extends AbstractGraphicalExpre
     private endMeasure: GraphicalMeasure;
     //public StartIsEnd: boolean;
     public IsSoftAccent: boolean;
+    /** The bottom line's maximum (placement below) or the sky line's minimum (above) under the wedge before it was placed there:
+     *  how near the staff a text inside the wedge can go (MusicSheetCalculator.placeTextInsideWedge()). */
+    public LineBeforeWedge: number;
 
     /**
      * Create a new instance of the GraphicalContinuousDynamicExpression
@@ -53,6 +56,22 @@ export class GraphicalContinuousDynamicExpression extends AbstractGraphicalExpre
     public get IsSplittedPart(): boolean { return this.isSplittedPart; }
     public set IsSplittedPart(value: boolean) { this.isSplittedPart = value; }
     /**  Is true if the dynamic is not a symbol but a text instruction. E.g. "decrescendo" */
+    /**
+     * Whether the text (a verbal continuous dynamic, "cres.") starts inside the wedge in time: after the wedge's start, before its
+     * stop (StopTimestamp, else its end note). A text at the stop follows the wedge ("< cres.", Vivaldi, Un certo non so che Canto
+     * m24). See MusicSheetCalculator.placeTextInsideWedge(). Same as osmd-dart.
+     */
+    public static textStartsInsideWedge(text: ContinuousDynamicExpression, wedge: ContinuousDynamicExpression): boolean {
+        const textStart: number = text.StartMultiExpression?.AbsoluteTimestamp?.RealValue;
+        const wedgeStart: number = wedge.StartMultiExpression?.AbsoluteTimestamp?.RealValue;
+        const end: SourceMeasure = wedge.EndMultiExpression?.SourceMeasureParent;
+        if (textStart === undefined || wedgeStart === undefined || !end) {
+            return false;
+        }
+        const stop: number = end.AbsoluteTimestamp.RealValue + (wedge.StopTimestamp ?? wedge.EndMultiExpression.Timestamp).RealValue;
+        return textStart > wedgeStart + 1e-9 && textStart < stop - 1e-9;
+    }
+
     public get IsVerbal(): boolean { return this.ContinuousDynamic.Label && this.ContinuousDynamic.Label.length > 0; }
     /** True if this expression should not be removed if re-rendered */
     public get NotToBeRemoved(): boolean { return this.notToBeRemoved; }

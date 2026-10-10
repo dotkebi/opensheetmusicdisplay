@@ -2582,12 +2582,86 @@ export abstract class MusicSheetCalculator {
             drawingHeight = skyBottomLineCalculator.getSkyLineMinForLabel(left, rangeRight);
             box.RelativePosition = new PointF2D(startPosInStaffline.x, drawingHeight - box.BorderMarginBottom);
         }
+        this.placeTextInsideWedge(graphicalContinuousDynamic, staffLine, placement);
         // so that the dynamics placed after it don't overlap it (instantaneous dynamics and wedges update it when placed too)
         graphicalContinuousDynamic.updateSkyBottomLine();
         const measureIndex: number = graphicalContinuousDynamic.StartMeasure?.parentSourceMeasure?.measureListIndex;
         if (measureIndex !== undefined) {
             this.addExpressionDashes(continuousDynamic, box, graphicalContinuousDynamic.Label?.ColorXML, placement,
                                      staffLine, staffIndex, measureIndex);
+        }
+    }
+
+    /**
+     * A verbal continuous dynamic ("cres.") starting inside a wedge of its side, after the wedge's start, goes between the staff and
+     * the wedge, as printed (Parisotti, A. Scarlatti Se Florindo è fedele Piano m4: "cres." from the second eighth over a crescendo
+     * from the first, below the right hand). Placed by the bottom/sky line after the wedge, the text went on the wedge's lines.
+     * If there is no room there (the wedge's LineBeforeWedge), the text goes there and the wedge further out. The alignment keeps them
+     * on their rows (AlignmentManager.textInsideWedge()). Same as osmd-dart.
+     */
+    protected placeTextInsideWedge(text: GraphicalContinuousDynamicExpression, staffLine: StaffLine, placement: PlacementEnum): void {
+        if (placement !== PlacementEnum.Below && placement !== PlacementEnum.Above) {
+            return;
+        }
+        const box: BoundingBox = text.PositionAndShape;
+        const textLeft: number = box.RelativePosition.x + box.BorderMarginLeft;
+        const textRight: number = box.RelativePosition.x + box.BorderMarginRight;
+        const height: number = box.BorderMarginBottom - box.BorderMarginTop;
+        const gap: number = this.rules.DynamicExpressionSpacer;
+        let wedge: GraphicalContinuousDynamicExpression = undefined;
+        for (let i: number = staffLine.AbstractExpressions.length - 1; i >= 0 && !wedge; i--) {
+            const e: AbstractGraphicalExpression = staffLine.AbstractExpressions[i];
+            if (!(e instanceof GraphicalContinuousDynamicExpression) || e === text || e.IsVerbal || e.IsSoftAccent ||
+                e.Lines.length < 2 || e.LineBeforeWedge === undefined || e.Placement !== placement) {
+                continue;
+            }
+            const xs: number[] = e.Lines.flatMap(l => [l.Start.x, l.End.x]);
+            if (textLeft > Math.min(...xs) && textLeft < Math.max(...xs) &&
+                GraphicalContinuousDynamicExpression.textStartsInsideWedge(text.ContinuousDynamic, e.ContinuousDynamic)) {
+                wedge = e;
+            }
+        }
+        if (!wedge) {
+            return;
+        }
+        const ys: number[] = wedge.Lines.flatMap(l => [l.Start.y, l.End.y]);
+        // Beyond the wedge's end the room is that of the bottom (sky) line there. If what is there reaches the wedge's row, the text
+        //   stays where it is, the wedge too (Vivaldi, Un certo non so che Piano m13-14: "crescendo" from inside a short wedge,
+        //   moved between them, went onto the beamed notes after the wedge).
+        // (from a little after the wedge's end, whose own opening is in the line there)
+        const wedgeRight: number = Math.max(...wedge.Lines.flatMap(l => [l.Start.x, l.End.x])) + gap;
+        const beyond: boolean = textRight > wedgeRight;
+        const skyBottomLine: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        if (placement === PlacementEnum.Below) {
+            const wedgeTop: number = Math.min(...ys);
+            const lineBeyond: number = beyond ? skyBottomLine.getBottomLineMaxInRange(wedgeRight, textRight) : -Infinity;
+            if (lineBeyond > wedgeTop) {
+                return;
+            }
+            const lineBefore: number = Math.max(wedge.LineBeforeWedge, lineBeyond);
+            if (wedgeTop - gap - lineBefore >= height) {
+                box.RelativePosition.y = wedgeTop - gap - box.BorderMarginBottom;
+            } else {
+                box.RelativePosition.y = lineBefore - box.BorderMarginTop;
+                wedge.shiftYPosition(box.RelativePosition.y + box.BorderMarginBottom + gap - wedgeTop);
+                wedge.calcPsi();
+                wedge.updateSkyBottomLine();
+            }
+        } else {
+            const wedgeBottom: number = Math.max(...ys);
+            const lineBeyond: number = beyond ? skyBottomLine.getSkyLineMinInRange(wedgeRight, textRight) : Infinity;
+            if (lineBeyond < wedgeBottom) {
+                return;
+            }
+            const lineBefore: number = Math.min(wedge.LineBeforeWedge, lineBeyond);
+            if (lineBefore - gap - wedgeBottom >= height) {
+                box.RelativePosition.y = wedgeBottom + gap - box.BorderMarginTop;
+            } else {
+                box.RelativePosition.y = lineBefore - box.BorderMarginBottom;
+                wedge.shiftYPosition(box.RelativePosition.y + box.BorderMarginTop - gap - wedgeBottom);
+                wedge.calcPsi();
+                wedge.updateSkyBottomLine();
+            }
         }
     }
 
@@ -2953,6 +3027,7 @@ export abstract class MusicSheetCalculator {
             // must check BottomLine for possible collisions within the Length of the Expression
             // find the corresponding max value for the given Length
             let maxBottomLineValueForExpressionLength: number = skyBottomLineCalculator.getBottomLineMaxInRange(upperStartX, upperEndX);
+            graphicalContinuousDynamic.LineBeforeWedge = maxBottomLineValueForExpressionLength;
 
             // if collisions, then set the Height accordingly
             if (maxBottomLineValueForExpressionLength > idealY) {
@@ -3042,6 +3117,7 @@ export abstract class MusicSheetCalculator {
             // must check SkyLine for possible collisions within the Length of the Expression
             // find the corresponding min value for the given Length
             let minSkyLineValueForExpressionLength: number = skyBottomLineCalculator.getSkyLineMinInRange(upperStartX, upperEndX);
+            graphicalContinuousDynamic.LineBeforeWedge = minSkyLineValueForExpressionLength;
 
             // if collisions, then set the Height accordingly
             if (minSkyLineValueForExpressionLength < idealY) {
