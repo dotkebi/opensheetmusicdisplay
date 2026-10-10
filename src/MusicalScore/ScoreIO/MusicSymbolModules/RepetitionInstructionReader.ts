@@ -13,11 +13,14 @@ export class RepetitionInstructionReader {
   public xmlMeasureList: IXmlElement[][];
   private musicSheet: MusicSheet;
   private currentMeasureIndex: number;
+  /** The words read for each D.C. or D.S. instruction, and whether a <sound> decided its kind (see keepOneJumpOfWords()). */
+  private jumpWords: Map<RepetitionInstruction, { text: string, fromSound: boolean }> = new Map();
 
   public set MusicSheet(value: MusicSheet) {
     this.musicSheet = value;
     this.xmlMeasureList = new Array(this.musicSheet.Instruments.length);
     this.repetitionInstructions = [];
+    this.jumpWords = new Map();
   }
 
   /**
@@ -204,6 +207,9 @@ export class RepetitionInstructionReader {
       newInstruction.Words = drawnWords;
       newInstruction.MarkedAsTarget = type === RepetitionInstructionEnum.Segno && !!soundNode?.attribute("segno");
       newInstruction.SegnoLabel = RepetitionInstructionReader.segnoLabel(type, soundNode);
+      if (!this.keepOneJumpOfWords(newInstruction, words, soundType !== undefined)) {
+        return true;
+      }
       this.addInstruction(this.repetitionInstructions, newInstruction);
       return true;
     } else if (directionTypeNode.element("segno")) {
@@ -258,6 +264,41 @@ export class RepetitionInstructionReader {
     if (soundNode.attribute("dacapo")?.value === "yes") {
       add(RepetitionInstructionEnum.DaCapo);
     }
+  }
+
+  /**
+   * The same jump words in the directions of several parts of a measure are one instruction: if only some of them have a
+   * <sound> that makes them another kind of jump (e.g. "Menuetto D.C." with <sound dalsegno> in the first part, without a
+   * sound in another), the one the sound decides is kept. Returns false if the new instruction is not to be added.
+   * (The words read for each jump instruction of the piece are kept in jumpWords.)
+   */
+  private keepOneJumpOfWords(instruction: RepetitionInstruction, words: string, fromSound: boolean): boolean {
+    const kind: string = RepetitionInstructionReader.kind(instruction.type);
+    if (kind !== "D.C." && kind !== "D.S.") {
+      return true;
+    }
+    const text: string = words.replace(/\s+/g, " ").toLowerCase();
+    for (const [other, read] of this.jumpWords) {
+      if (!this.repetitionInstructions.some(listed => listed === other || listed.equals(other))) {
+        this.jumpWords.delete(other); // (no longer read)
+        continue;
+      }
+      if (other.measureIndex !== instruction.measureIndex || read.text !== text ||
+          RepetitionInstructionReader.kind(other.type) === kind || read.fromSound === fromSound) {
+        continue;
+      }
+      if (read.fromSound) {
+        return false; // another part's sound decided these words
+      }
+      const index: number = this.repetitionInstructions.indexOf(other);
+      if (index >= 0) {
+        this.repetitionInstructions.splice(index, 1);
+      }
+      this.jumpWords.delete(other);
+      break;
+    }
+    this.jumpWords.set(instruction, { text: text, fromSound: fromSound });
+    return true;
   }
 
   /** D.C. and D.S. with or without al Fine / al Coda are one kind each; the other instructions are their own kind. */

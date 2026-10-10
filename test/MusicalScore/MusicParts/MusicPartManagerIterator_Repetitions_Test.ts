@@ -47,6 +47,21 @@ describe("MusicPartManagerIterator measure order with repetitions", () => {
     });
 
     /**
+     * The same jump words in another part without a sound are the same instruction as the ones the sound decides.
+     *
+     * Sample: a march (bars 1-3, segno s in bar 1, "Fine" with <sound fine> in bar 3) and a trio (bars 4-5) with
+     * "Marcia D.C. al Fine" and <sound dalsegno="s"> in the first part, the same words without a sound in the second.
+     */
+    it("reads the jump words of two parts, one with a <sound>, as one instruction", async () => {
+        expect(await playedMeasures("test_repeat_sound_jump_words_two_parts.musicxml")).to.deep.equal([0, 1, 2, 3, 4, 0, 1, 2]);
+        const jumps: RepetitionInstruction[] = osmd.Sheet.SourceMeasures[4].LastRepetitionInstructions
+            .filter(instruction => instruction.type !== RepetitionInstructionEnum.BackJumpLine);
+        expect(jumps.map(instruction => instruction.type)).to.deep.equal([RepetitionInstructionEnum.DalSegnoAlFine]);
+        expect(osmd.Sheet.SourceMeasures[2].LastRepetitionInstructions
+            .filter(instruction => instruction.type === RepetitionInstructionEnum.Fine).length, "the Fine drawn once").to.equal(1);
+    });
+
+    /**
      * A first ending with no second ending written after it is played on the first pass only: the last pass goes on after it.
      * It used to be played on both passes, since a repetition with fewer endings than passes plays its first ending on the extra ones.
      *
