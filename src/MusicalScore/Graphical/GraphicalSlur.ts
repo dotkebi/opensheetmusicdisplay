@@ -524,13 +524,20 @@ export class GraphicalSlur extends GraphicalCurve {
      */
     private liftOverOrnaments(staffLine: StaffLine, rangeStartX: number, rangeEndX: number): void {
         let lift: number = 0;
+        let numberLift: number = 0;
         for (const measure of staffLine.Measures) {
             if (!(measure instanceof VexFlowMeasure)) {
                 continue;
             }
-            for (const ink of measure.OrnamentInk) {
+            const inks: { left: number, right: number, top: number, number: boolean }[] = [
+                ...measure.OrnamentInk.map(ink => ({ left: ink.left, right: ink.right, top: ink.top, number: false })),
+                ...GraphicalSlur.tupletNumbersInside(measure, true).map(ink => ({ left: ink.left, right: ink.right, top: ink.top, number: true })),
+            ];
+            for (const ink of inks) {
                 const centre: number = (ink.left + ink.right) / 2;
-                if (centre < rangeStartX || centre > rangeEndX ||
+                // (a tuplet number by the curve alone: the staff entries' boxes that bound the sky line range take in
+                //   their lyrics)
+                if ((!ink.number && (centre < rangeStartX || centre > rangeEndX)) ||
                     !GraphicalSlur.isInMiddleOfSlur(centre, this.bezierStartPt.x, this.bezierEndPt.x)) {
                     continue;
                 }
@@ -541,18 +548,38 @@ export class GraphicalSlur extends GraphicalCurve {
                         continue;
                     }
                     const below: number = point.y - (ink.top - GraphicalSlur.ornamentClearance);
-                    if (below > 0) {
+                    if (below <= 0) {
+                        continue;
+                    }
+                    if (ink.number) {
+                        numberLift = Math.max(numberLift, below / (3 * t * (1 - t)));
+                    } else {
                         lift = Math.max(lift, below / (3 * t * (1 - t)));
                     }
                 }
             }
         }
-        const maxLift: number = Math.min(1.5, 0.35 * (this.bezierEndPt.x - this.bezierStartPt.x));
-        if (lift === 0 || lift > maxLift) {
+        lift = this.allowedLift(lift, numberLift);
+        if (lift === 0) {
             return;
         }
         this.bezierStartControlPt = new PointF2D(this.bezierStartControlPt.x, this.bezierStartControlPt.y - lift);
         this.bezierEndControlPt = new PointF2D(this.bezierEndControlPt.x, this.bezierEndControlPt.y - lift);
+    }
+
+    /**
+     * How far liftOverOrnaments() (lowerUnderOrnaments()) moves the control points: the larger of the moves the
+     * ornaments and the tuplet numbers need, each when it is modest. An ornament takes up to 1.5 units and 0.35 of the
+     * slur's width; a tuplet number in the slur's middle goes inside it even under a short slur over three notes, so it
+     * takes up to 3 units and 0.75 of the width (a higher, still smooth arch; Vivaldi, Un certo non so che m24: four
+     * slurred sixteenth triplets, each number under its slur). Beyond that the ornament or number goes over the slur
+     * instead. As in osmd-dart.
+     */
+    private allowedLift(ornamentLift: number, numberLift: number): number {
+        const width: number = this.bezierEndPt.x - this.bezierStartPt.x;
+        const ornament: number = ornamentLift <= Math.min(1.5, 0.35 * width) ? ornamentLift : 0;
+        const number: number = numberLift <= Math.min(3, 0.75 * width) ? numberLift : 0;
+        return Math.max(ornament, number);
     }
 
     /**
@@ -562,13 +589,20 @@ export class GraphicalSlur extends GraphicalCurve {
      */
     private lowerUnderOrnaments(staffLine: StaffLine, rangeStartX: number, rangeEndX: number): void {
         let drop: number = 0;
+        let numberDrop: number = 0;
         for (const measure of staffLine.Measures) {
             if (!(measure instanceof VexFlowMeasure)) {
                 continue;
             }
-            for (const ink of measure.BelowOrnamentInk) {
+            const inks: { left: number, right: number, bottom: number, number: boolean }[] = [
+                ...measure.BelowOrnamentInk.map(ink => ({ left: ink.left, right: ink.right, bottom: ink.bottom, number: false })),
+                ...GraphicalSlur.tupletNumbersInside(measure, false).map(ink => ({ left: ink.left, right: ink.right, bottom: ink.bottom, number: true })),
+            ];
+            for (const ink of inks) {
                 const centre: number = (ink.left + ink.right) / 2;
-                if (centre < rangeStartX || centre > rangeEndX ||
+                // (a tuplet number by the curve alone: the staff entries' boxes that bound the sky line range take in
+                //   their lyrics)
+                if ((!ink.number && (centre < rangeStartX || centre > rangeEndX)) ||
                     !GraphicalSlur.isInMiddleOfSlur(centre, this.bezierStartPt.x, this.bezierEndPt.x)) {
                     continue;
                 }
@@ -579,18 +613,34 @@ export class GraphicalSlur extends GraphicalCurve {
                         continue;
                     }
                     const above: number = ink.bottom + GraphicalSlur.ornamentClearance - point.y;
-                    if (above > 0) {
+                    if (above <= 0) {
+                        continue;
+                    }
+                    if (ink.number) {
+                        numberDrop = Math.max(numberDrop, above / (3 * t * (1 - t)));
+                    } else {
                         drop = Math.max(drop, above / (3 * t * (1 - t)));
                     }
                 }
             }
         }
-        const maxDrop: number = Math.min(1.5, 0.35 * (this.bezierEndPt.x - this.bezierStartPt.x));
-        if (drop === 0 || drop > maxDrop) {
+        drop = this.allowedLift(drop, numberDrop);
+        if (drop === 0) {
             return;
         }
         this.bezierStartControlPt = new PointF2D(this.bezierStartControlPt.x, this.bezierStartControlPt.y + drop);
         this.bezierEndControlPt = new PointF2D(this.bezierEndControlPt.x, this.bezierEndControlPt.y + drop);
+    }
+
+    /**
+     * The numbers of the unbracketed tuplets of the measure on the slur's side (above), which a slur over them clears
+     * like an ornament: the number goes inside the slur, under its arc (Bellini, Per pietà, bell'idol mio m58, Torna,
+     * vezzosa Fillide m102–105; Leo, Dal tuo soglio luminoso m1–7). A bracketed tuplet goes outside the slur, bracket
+     * and number (Torna m104, L'allegro marinaro m37; VexFlowMusicSheetCalculator.layoutFermatasOverSlurs()), as does a
+     * number the slur can't clear. As in osmd-dart.
+     */
+    private static tupletNumbersInside(measure: VexFlowMeasure, above: boolean): { left: number, right: number, top: number, bottom: number }[] {
+        return measure.TupletNumberInk.filter(ink => ink.above === above && !ink.bracketed);
     }
 
     /**

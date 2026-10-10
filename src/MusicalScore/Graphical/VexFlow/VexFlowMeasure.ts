@@ -2700,11 +2700,11 @@ export class VexFlowMeasure extends GraphicalMeasure {
 
     /**
      * Where the tuplet numbers drawn are, as VF.Tuplet.draw() puts them, in units relative to the staff line (x) and its
-     * top line (y), like [[OrnamentInk]]; above for those over their notes. Read after the measure's notes are formatted
-     * and their stems built (its first draw).
+     * top line (y), like [[OrnamentInk]]; above for those over their notes. A bracketed tuplet's ink covers its bracket
+     * too. Read after the measure's notes are formatted and their stems built (its first draw).
      */
-    public get TupletNumberInk(): { tuplet: any, above: boolean, left: number, right: number, top: number, bottom: number }[] {
-        const inks: { tuplet: any, above: boolean, left: number, right: number, top: number, bottom: number }[] = [];
+    public get TupletNumberInk(): { tuplet: any, above: boolean, bracketed: boolean, left: number, right: number, top: number, bottom: number }[] {
+        const inks: { tuplet: any, above: boolean, bracketed: boolean, left: number, right: number, top: number, bottom: number }[] = [];
         if (this.isTabMeasure && !this.rules.TupletNumbersInTabs) {
             return inks;
         }
@@ -2723,7 +2723,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
                 const ink: { left: number, right: number, top: number, bottom: number } = this.tupletNumberInk(vftuplet);
                 if (ink) {
                     inks.push({
-                        tuplet: vftuplet, above: vftuplet.location === VF.Tuplet.LOCATION_TOP,
+                        tuplet: vftuplet, above: vftuplet.location === VF.Tuplet.LOCATION_TOP, bracketed: !!vftuplet.bracketed,
                         left: x + ink.left, right: x + ink.right, top: ink.top, bottom: ink.bottom,
                     });
                 }
@@ -2763,6 +2763,15 @@ export class VexFlowMeasure extends GraphicalMeasure {
             }
             if (!isFinite(left)) {
                 return undefined;
+            }
+            if (vftuplet.bracketed) {
+                // the bracket's line at the tuplet's y, its ends 10 px towards the notes
+                const yPos: number = vftuplet.getYPosition();
+                const hookEnd: number = yPos + vftuplet.location * 10;
+                left = Math.min(left, xPos);
+                right = Math.max(right, xPos + width + 1);
+                top = Math.min(top, yPos, hookEnd);
+                bottom = Math.max(bottom, yPos + 1, hookEnd);
             }
             const stave: any = first.getStave();
             const line: number = stave.getYForLine(0);
