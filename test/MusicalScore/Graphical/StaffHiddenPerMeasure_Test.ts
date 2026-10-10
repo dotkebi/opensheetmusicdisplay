@@ -40,6 +40,15 @@ describe("A staff the MusicXML hides in some measures", () => {
         expect(osmd.GraphicSheet.MeasureList[4][1].isVisible(), "the shown measure").to.equal(true);
     });
 
+    /** Laid out again in place (a new zoom): the measures still had the hidden staffline of the first layout and were left out
+     * of the new systems (Canon in D in osmd-dart: an empty staffline). */
+    it("lays the hidden staves out again in place", () => {
+        osmd.Zoom = 0.8;
+        osmd.render();
+        expect(systems().map(system => system.StaffLines.map(line => line.ParentStaff.idInMusicSheet))).to.deep.equal(
+            [[0], [0], [0, 1], [0]]);
+    });
+
     it("draws no placeholder name for the empty part name", () => {
         const texts: string[] = Array.from(container.querySelectorAll("text")).map(element => element.textContent);
         expect(texts.filter(text => text.startsWith("Instr")).length).to.equal(0);

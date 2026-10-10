@@ -1764,7 +1764,9 @@ export abstract class MusicSheetCalculator {
             for (let idx2: number = 0, len2: number = graphicalMeasures.length; idx2 < len2; ++idx2) {
                 const graphicalMeasure: GraphicalMeasure = allMeasures[idx][idx2];
 
-                if (graphicalMeasure?.isVisible()) {
+                // (the staff's visibility, not isVisible(): a measure re-laid out in place still has the staffline of the last
+                //   layout, which may be hidden in its system, see StaffLine.hiddenInSystem)
+                if (graphicalMeasure?.ParentStaff.isVisible()) {
                     visiblegraphicalMeasures.push(graphicalMeasure);
 
                     if (this.rules.ColoringEnabled) {
@@ -1978,7 +1980,9 @@ export abstract class MusicSheetCalculator {
             const visiblegraphicalMeasures: GraphicalMeasure[] = [];
             for (let idx2: number = 0, len2: number = graphicalMeasures.length; idx2 < len2; ++idx2) {
                 const graphicalMeasure: GraphicalMeasure = allMeasures[idx][idx2];
-                if (graphicalMeasure?.isVisible()) {
+                // (the staff's visibility, not isVisible(): a measure re-laid out in place still has the staffline of the last
+                //   layout, which may be hidden in its system, see StaffLine.hiddenInSystem)
+                if (graphicalMeasure?.ParentStaff.isVisible()) {
                     visiblegraphicalMeasures.push(graphicalMeasure);
                     if (this.rules.ColoringEnabled) {
                         for (const staffEntry of graphicalMeasure.staffEntries) {
