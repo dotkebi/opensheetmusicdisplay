@@ -108,6 +108,9 @@ interface ExpressionSlot {
   pairStop?: number;
   /** the second wedge of a pair: reserved with the first one */
   pairedPrevious?: boolean;
+  /** the measure of the column whose staff entries place the slot, if not the pair's (a pedal mark at a time only another
+   *  staff plays, drawn at that staff's note) */
+  placedBy?: VexFlowMeasure;
 }
 
 interface ExpressionPair {
@@ -142,6 +145,8 @@ interface PedalReleaseAnchor {
   entry: GraphicalStaffEntry;
   after: GraphicalStaffEntry;
   fraction: number;
+  /** a staff entry of another staff of the measure at exactly the time, where the mark is drawn instead of interpolating */
+  atTime?: GraphicalStaffEntry;
 }
 
 export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
@@ -1384,6 +1389,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         pairs.push(...this.expressionPairs(measure, slots));
       }
       wedgePairs.push(...this.wedgeLengthPairs(measure, slots));
+      wedgePairs.push(...this.pedalMarkPairs(measure, staffIndex, measures));
     }
     if (pairs.length === 0 && wedgePairs.length === 0) {
       return candidateWidth;
@@ -1392,8 +1398,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     let formattedWidth: number = minimumWidth;
     const pairGrowth: (pair: ExpressionPair) => number = (pair: ExpressionPair): number => {
       const endX: number = pair.measure.beginInstructionsWidth + formattedWidth;
-      const x0: number = this.xAtTimestamp(pair.measure, pair.earlier.timestamp, endX);
-      const x1: number = this.xAtTimestamp(pair.measure, pair.later.timestamp, endX);
+      const x0: number = this.xAtTimestamp(pair.earlier.placedBy ?? pair.measure, pair.earlier.timestamp, endX);
+      const x1: number = this.xAtTimestamp(pair.later.placedBy ?? pair.measure, pair.later.timestamp, endX);
       const gap: number = x1 - x0;
       const deficit: number = x0 + pair.earlier.right + pair.need - (x1 + pair.later.left);
       return gap <= 0.01 || deficit <= 0.01 ? 1 : (gap + deficit) / gap;
@@ -1434,8 +1440,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         candidateWidth = next;
         formatAt(candidateWidth);
       }
-      // The wedges get the least width they fit in: the note gaps grow faster than the measure, so growing it by the gap's
-      // deficit factor, as for the dynamics above, widened a measure with one short wedge by half.
+      // The wedges (and the pedal marks) get the least width they fit in: the note gaps grow faster than the measure, so
+      // growing it by the gap's deficit factor, as for the dynamics above, widened a measure with one short wedge by half.
       if (!fits(wedgePairs)) {
         let tight: number = candidateWidth;
         let wide: number = maxWidth;
@@ -1451,7 +1457,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
             }
           }
         } else {
-          log.debug(`measure ${visible[0].MeasureNumber}: wedges still shorter than WedgeMinReservedLength at ${wide.toFixed(2)} ` +
+          log.debug(`measure ${visible[0].MeasureNumber}: wedges or pedal marks still don't fit at ${wide.toFixed(2)} ` +
             "(MaximumDynamicsElongationFactor)");
         }
         candidateWidth = wide;
@@ -1579,6 +1585,78 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         later: { below: wedge.below, endTimestamp: stop, isLabel: true, left: stopLeft, right: 0, text: "", timestamp: stop },
         measure, need,
       });
+    }
+    return pairs;
+  }
+
+  /** The Ped. and * marks of the symbol pedals on the staff of staffIndex in measure, each paired with the next mark at a later
+   *  time, which must keep PedalMarking's text margin to it (in the glyphs' borders as calculateSinglePedal() and VexFlowPatch
+   *  PedalMarking.drawText() place them: the Ped. x_shift left of its note, the * at its note or interpolated release time, a
+   *  release at the measure's end right-aligned before the barline). Without them a Ped., its * and the next Ped. in a narrow
+   *  measure were pushed right of each other's notes, the * past the next note and over the barline (Schumann, Myrthen 24
+   *  m14-15, R-24-1). A change (* Ped. at one time) keeps its own gap. Same as osmd-dart. */
+  private pedalMarkPairs(measure: VexFlowMeasure, staffIndex: number, column: GraphicalMeasure[]): ExpressionPair[] {
+    const source: SourceMeasure = measure.parentSourceMeasure;
+    if (!source || staffIndex >= source.StaffLinkedExpressions.length) {
+      return [];
+    }
+    const marking: any = (Vex.Flow as any).PedalMarking;
+    const point: number = 40; // PedalMarking's default glyph_point_size, as getPedalMarking() leaves it
+    const margin: number = 6; // its default text_margin_right
+    const gap: number = marking.CHANGE_GAP ?? 3;
+    const depressWidth: number = marking.depressGlyphWidth ? marking.depressGlyphWidth(point) : 20;
+    const releaseWidth: number = marking.releaseGlyphWidth ? marking.releaseGlyphWidth(point) : 10;
+    const depressShift: number = marking.GLYPHS?.pedal_depress?.x_shift ?? -10;
+    const releaseShift: number = marking.GLYPHS?.pedal_release?.x_shift ?? -2;
+    const duration: number = source.Duration.RealValue;
+    const isSymbol: (pedal: Pedal) => boolean = (pedal: Pedal): boolean => pedal && !pedal.IsLine && pedal.IsSign;
+    // borders in VexFlow px relative to the x of the mark's time
+    const marks: { timestamp: number, left: number, right: number, order: number }[] = [];
+    for (const multiExpression of source.StaffLinkedExpressions[staffIndex]) {
+      const timestamp: number = multiExpression.Timestamp.RealValue;
+      const ended: Pedal = multiExpression.PedalEnd;
+      if (isSymbol(ended)) {
+        // the release calculateSinglePedal() leaves out: sign="no", or retaken by the next Ped. at the same time
+        const next: Pedal = ended.ParentEndMultiExpression?.PedalStart;
+        const hidden: boolean = ended.ReleaseHidden || next !== undefined && next !== ended && !ended.ChangeEnd;
+        if (!hidden) {
+          if (timestamp >= duration) {
+            marks.push({ left: -margin - releaseWidth, order: 0, right: -margin, timestamp: duration });
+          } else if (ended.ChangeEnd) {
+            marks.push({ left: -gap - releaseWidth, order: 0, right: -gap, timestamp });
+          } else {
+            marks.push({ left: releaseShift, order: 0, right: releaseShift + releaseWidth, timestamp });
+          }
+        }
+      }
+      const started: Pedal = multiExpression.PedalStart;
+      if (isSymbol(started) && timestamp < duration) {
+        const left: number = started.ChangeBegin ? gap : depressShift;
+        marks.push({ left, order: 1, right: left + depressWidth, timestamp });
+      }
+    }
+    marks.sort((a, b) => a.timestamp - b.timestamp || a.order - b.order);
+    // a mark between the staff's notes is drawn at another staff's note at its time (otherStaffEntryAtTime())
+    const placedBy: (timestamp: number) => VexFlowMeasure = (timestamp: number): VexFlowMeasure => {
+      const has: (m: GraphicalMeasure) => boolean = (m: GraphicalMeasure): boolean =>
+        m.staffEntries.some(se => se.relInMeasureTimestamp.RealValue === timestamp && this.hasVexFlowNote(se));
+      if (timestamp >= duration || has(measure)) {
+        return measure;
+      }
+      return column.find(m => m instanceof VexFlowMeasure && m !== measure && m.isVisible() && has(m)) as VexFlowMeasure ?? measure;
+    };
+    const pairs: ExpressionPair[] = [];
+    for (let i: number = 1; i < marks.length; i++) {
+      const earlier: { timestamp: number, left: number, right: number } = marks[i - 1];
+      const later: { timestamp: number, left: number, right: number } = marks[i];
+      if (later.timestamp <= earlier.timestamp) {
+        continue;
+      }
+      const slot: (mark: { timestamp: number, left: number, right: number }) => ExpressionSlot = mark => ({
+        below: true, endTimestamp: mark.timestamp, isLabel: true, left: mark.left / unitInPixels, placedBy: placedBy(mark.timestamp),
+        right: mark.right / unitInPixels, text: "pedal", timestamp: mark.timestamp,
+      });
+      pairs.push({ earlier: slot(earlier), later: slot(later), measure, need: margin / unitInPixels });
     }
     return pairs;
   }
@@ -2491,7 +2569,26 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const spanEnd: Fraction = after ? after.relInMeasureTimestamp : endMeasure.parentSourceMeasure.Duration;
     const span: number = Fraction.minus(spanEnd, before.relInMeasureTimestamp).RealValue;
     const fraction: number = span <= 0 ? 0 : Fraction.minus(stop, before.relInMeasureTimestamp).RealValue / span;
-    return { entry: before, after: after, fraction: Math.min(1, Math.max(0, fraction)) };
+    return { atTime: this.otherStaffEntryAtTime(endMeasure, stop), entry: before, after: after,
+             fraction: Math.min(1, Math.max(0, fraction)) };
+  }
+
+  /** A staff entry with a note at exactly the time in another visible staff of the measure's column: a pedal mark at a
+   *  time only the other hand plays is drawn at that note, where the engraver puts it, not interpolated by time between
+   *  its own staff's notes, which the formatter does not space in proportion (Schumann, Myrthen 24 m15, R-24-1: the * of
+   *  the stop at the right hand's sixteenth was drawn after it). Same as osmd-dart. */
+  private otherStaffEntryAtTime(measure: GraphicalMeasure, time: Fraction): GraphicalStaffEntry {
+    const column: GraphicalMeasure[] = this.graphicalMusicSheet.MeasureList[measure.parentSourceMeasure?.measureListIndex] ?? [];
+    for (const other of column) {
+      if (!other || other === measure || !other.isVisible()) {
+        continue;
+      }
+      const entry: GraphicalStaffEntry = other.staffEntries.find(se => se.relInMeasureTimestamp?.Equals(time));
+      if (entry && this.hasVexFlowNote(entry)) {
+        return entry;
+      }
+    }
+    return undefined;
   }
 
   /** VexFlow px from anchorNote (the entry before the time) to the time-proportional point between it and the next
@@ -2502,6 +2599,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       return undefined;
     }
     const x0: number = anchorNote.getAbsoluteX();
+    const atTimeNote: Vex.Flow.StemmableNote = (anchor.atTime?.graphicalVoiceEntries
+      .find(gve => (gve as VexFlowVoiceEntry).vfStaveNote) as VexFlowVoiceEntry)?.vfStaveNote;
+    if (atTimeNote) {
+      return atTimeNote.getAbsoluteX() - x0;
+    }
     let x1: number;
     if (anchor.after) {
       const afterNote: Vex.Flow.StemmableNote = (anchor.after.graphicalVoiceEntries
