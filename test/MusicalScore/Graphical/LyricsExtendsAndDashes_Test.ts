@@ -33,7 +33,8 @@ describe("Lyrics extend lines and dashes", () => {
         osmd.render();
         const staffLines: StaffLine[] = staffLinesOf(osmd);
         expect(staffLines.length, "one system with four staves").to.equal(4);
-        expect(staffLines[3].LyricLines.length, "extend lines in the last staff (\"hmm\")").to.equal(1);
+        // "hmm" in m1, and the "hmm" on the last note of the piece (a single-note extend, LyricExtendSingleNote_Test)
+        expect(staffLines[3].LyricLines.length, "extend lines in the last staff (\"hmm\" twice)").to.equal(2);
         staffLines.forEach((staffLine, index) => {
             const lines: string[] = staffLine.LyricLines.map(line => `${line.Start.x},${line.Start.y},${line.End.x},${line.End.y}`);
             expect(new Set(lines).size, `different extend lines in staff ${index + 1}`).to.equal(lines.length);

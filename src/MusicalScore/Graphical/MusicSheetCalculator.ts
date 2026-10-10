@@ -5753,6 +5753,15 @@ export abstract class MusicSheetCalculator {
                 endStaffLine = stopStaffEntry.parentMeasure.ParentStaffLine ?? endStaffLine;
             }
         }
+        // An extend on the last note before a rest (or a measure its verse skips, or the end of the piece) has no later note
+        //   to reach: the scan stopped at once. The line still shows the held syllable, from its own note, so at least
+        //   LyricExtendMinimumLength after the label, within the staff line and before the verse's next syllable (Schumann,
+        //   Myrthen 3 m44: "stern," before the rest that starts the next system was drawn without its line).
+        if (!endStaffEntry && !endGraceEntry && !foundOwnVerseSyllable && !foundAnyVerseSyllable) {
+            endStaffEntry = startStaffEntry;
+            endStaffLine = startStaffLine;
+            nextLyricStaffEntry = this.nextStaffEntryWithLyricsOfVerse(index, staffIndex, verseNumber);
+        }
         if (!endStaffEntry || !endStaffLine) {
             return;
         }
@@ -5848,6 +5857,18 @@ export abstract class MusicSheetCalculator {
         return staffEntry.LyricsEntries.some(entry => entry.LyricsEntry.VerseNumber === verseNumber);
     }
 
+    /** The first staff entry of the staff in or after the given vertical container with a syllable of the verse. */
+    private nextStaffEntryWithLyricsOfVerse(containerIndex: number, staffIndex: number, verseNumber: string): GraphicalStaffEntry {
+        const containers: VerticalGraphicalStaffEntryContainer[] = this.graphicalMusicSheet.VerticalGraphicalStaffEntryContainers;
+        for (let index: number = containerIndex; index < containers.length; ++index) {
+            const gse: GraphicalStaffEntry = containers[index].StaffEntries[staffIndex];
+            if (gse && this.hasLyricsOfVerse(gse, verseNumber)) {
+                return gse;
+            }
+        }
+        return undefined;
+    }
+
     /** Whether a note of the voice in the staff entry carries the verse's extend in a text-less lyric node (continue or stop,
      *  VoiceEntry.ExtendOnlyLyricVerses). Any voice when the extend's voice is unknown. */
     private voiceCarriesExtendInStaffEntry(staffEntry: GraphicalStaffEntry, verseNumber: string, voice: Voice): boolean {
@@ -5905,14 +5926,7 @@ export abstract class MusicSheetCalculator {
 
     /** Whether the verse has a syllable in or after the given vertical container. */
     private isVerseSungFrom(containerIndex: number, staffIndex: number, verseNumber: string): boolean {
-        const containers: VerticalGraphicalStaffEntryContainer[] = this.graphicalMusicSheet.VerticalGraphicalStaffEntryContainers;
-        for (let index: number = containerIndex; index < containers.length; ++index) {
-            const gse: GraphicalStaffEntry = containers[index].StaffEntries[staffIndex];
-            if (gse && this.hasLyricsOfVerse(gse, verseNumber)) {
-                return true;
-            }
-        }
-        return false;
+        return this.nextStaffEntryWithLyricsOfVerse(containerIndex, staffIndex, verseNumber) !== undefined;
     }
 
     /** Whether the voice has only rests in the staff entry. False if the voice has no notes there. */
