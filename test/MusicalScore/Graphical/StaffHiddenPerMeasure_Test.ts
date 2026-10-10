@@ -44,4 +44,14 @@ describe("A staff the MusicXML hides in some measures", () => {
         const texts: string[] = Array.from(container.querySelectorAll("text")).map(element => element.textContent);
         expect(texts.filter(text => text.startsWith("Instr")).length).to.equal(0);
     });
+
+    /** Saint-Saëns, Violin Concerto No. 3: the tempo of the hidden ossia part above the violin was placed on the hidden staffline. */
+    it("draws the tempo of a hidden top staff above the first staff drawn", async () => {
+        osmd.clear();
+        await osmd.load(TestUtils.getScore("test_staff_hidden_top_tempo.musicxml"));
+        osmd.render();
+        expect(systems().map(system => system.StaffLines.map(line => line.ParentStaff.idInMusicSheet))).to.deep.equal([[1]]);
+        const texts: string[] = Array.from(container.querySelectorAll("text")).map(element => element.textContent);
+        expect(texts.filter(text => text === "Allegro").length).to.equal(1);
+    });
 });

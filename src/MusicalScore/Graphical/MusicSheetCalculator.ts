@@ -3345,7 +3345,9 @@ export abstract class MusicSheetCalculator {
             let firstVisibleMeasureX: number = measures[0].PositionAndShape.RelativePosition.x;
             let verticalIndex: number = 0;
             for (let j: number = 0; j < measures.length; j++) {
-                if (!measures[j].ParentStaffLine || measures[j].ParentStaffLine.Measures.length === 0) {
+                // (also a staff the MusicXML hides in the whole system, see StaffLine.hiddenInSystem: the tempo goes above the
+                //   first one drawn)
+                if (!measures[j].ParentStaffLine || measures[j].ParentStaffLine.Measures.length === 0 || !measures[j].isVisible()) {
                     continue;
                 }
 
@@ -3362,7 +3364,7 @@ export abstract class MusicSheetCalculator {
             const ownStaffIndex: number = MusicSheetCalculator.ownStaffIndexOfTempoExpression(multiTempoExpression, verticalIndex);
             const ownStaffMeasure: GraphicalMeasure = ownStaffIndex !== undefined ? measures[ownStaffIndex] : undefined;
             const onOwnStaff: boolean = ownStaffMeasure?.ParentStaffLine?.Measures.length > 0 &&
-                ownStaffMeasure.ParentStaff.isVisible();
+                ownStaffMeasure.isVisible();
             if (onOwnStaff) {
                 staffLine = ownStaffMeasure.ParentStaffLine;
                 firstVisibleMeasureX = ownStaffMeasure.PositionAndShape.RelativePosition.x;
@@ -5851,7 +5853,7 @@ export abstract class MusicSheetCalculator {
                     continue;
                 }
 
-                if (this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.isVisible()) {
+                if (this.graphicalMusicSheet.MeasureList[i][j].isVisible()) {
                     for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
                         if (sourceMeasure.StaffLinkedExpressions[j][k].InstantaneousDynamic !== undefined ||
                             (sourceMeasure.StaffLinkedExpressions[j][k].StartingContinuousDynamic !== undefined &&
@@ -5874,7 +5876,7 @@ export abstract class MusicSheetCalculator {
                 if (!this.graphicalMusicSheet.MeasureList[i] || !this.graphicalMusicSheet.MeasureList[i][j]) {
                     continue;
                 }
-                if (this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.isVisible()) {
+                if (this.graphicalMusicSheet.MeasureList[i][j].isVisible()) {
                     for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
                         if ((sourceMeasure.StaffLinkedExpressions[j][k].OctaveShiftStart)) {
                             this.calculateSingleOctaveShift(sourceMeasure, sourceMeasure.StaffLinkedExpressions[j][k], i, j);
@@ -5892,7 +5894,7 @@ export abstract class MusicSheetCalculator {
                 if (!this.graphicalMusicSheet.MeasureList[i] || !this.graphicalMusicSheet.MeasureList[i][j]) {
                     continue;
                 }
-                if (this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.isVisible()) {
+                if (this.graphicalMusicSheet.MeasureList[i][j].isVisible()) {
                     for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
                         if ((sourceMeasure.StaffLinkedExpressions[j][k].PedalStart)) {
                             this.calculateSinglePedal(sourceMeasure, sourceMeasure.StaffLinkedExpressions[j][k], i, j);
@@ -5910,7 +5912,7 @@ export abstract class MusicSheetCalculator {
                 if (!this.graphicalMusicSheet.MeasureList[i] || !this.graphicalMusicSheet.MeasureList[i][j]) {
                     continue;
                 }
-                if (this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.isVisible()) {
+                if (this.graphicalMusicSheet.MeasureList[i][j].isVisible()) {
                     for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
                         if ((sourceMeasure.StaffLinkedExpressions[j][k].WavyLineStart)) {
                             this.calculateSingleWavyLine(sourceMeasure, sourceMeasure.StaffLinkedExpressions[j][k], i, j);
@@ -6068,13 +6070,13 @@ export abstract class MusicSheetCalculator {
                     continue;
                 }
                 let staffIndexToUse: number = j;
-                if (!this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.isVisible()) {
+                if (!this.graphicalMusicSheet.MeasureList[i][j].isVisible()) {
                     // If this staff is hidden and it's the first staff (j === 0) (see #1621),
                     // find the first visible staff to render expressions on (similar to rehearsal mark fix #1555)
                     if (j === 0) {
                         let foundVisibleStaff: boolean = false;
                         for (let s: number = 0; s < this.graphicalMusicSheet.MeasureList[i].length; s++) {
-                            if (this.graphicalMusicSheet.MeasureList[i][s]?.ParentStaff.isVisible()) {
+                            if (this.graphicalMusicSheet.MeasureList[i][s]?.isVisible()) {
                                 staffIndexToUse = s; // render words on this staff instead of first/invisible staff (see #1621)
                                 foundVisibleStaff = true;
                                 break;

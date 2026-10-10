@@ -94,9 +94,18 @@ export abstract class MusicSystem extends GraphicalObject {
         const hidden: StaffLine[] = this.staffLines.filter(line => line.hiddenInSystem);
         for (const staffLine of hidden) {
             this.staffLines.splice(this.staffLines.indexOf(staffLine), 1);
+            // (its box no longer counts for the system's borders)
+            const childIndex: number = this.PositionAndShape.ChildElements.indexOf(staffLine.PositionAndShape);
+            if (childIndex >= 0) {
+                this.PositionAndShape.ChildElements.splice(childIndex, 1);
+            }
             const instrument: Instrument = staffLine.ParentStaff.ParentInstrument;
             if (!this.staffLines.some(line => line.ParentStaff.ParentInstrument === instrument)) {
-                this.labels.remove(instrument);
+                const label: GraphicalLabel = this.labels.remove(instrument);
+                const labelIndex: number = label ? this.PositionAndShape.ChildElements.indexOf(label.PositionAndShape) : -1;
+                if (labelIndex >= 0) {
+                    this.PositionAndShape.ChildElements.splice(labelIndex, 1);
+                }
             }
             this.systemLines = this.systemLines.filter(line => line.parentTopStaffLine !== staffLine &&
                 line.bottomMeasure?.ParentStaffLine !== staffLine);

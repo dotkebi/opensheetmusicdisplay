@@ -1909,7 +1909,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       return;
     }
     const vfMeasure: VexFlowMeasure = this.graphicalMusicSheet.MeasureList[measureIndex]?.find(
-      (measure: GraphicalMeasure) => measure?.ParentStaffLine && measure.ParentStaff.isVisible()) as VexFlowMeasure;
+      (measure: GraphicalMeasure) => measure?.ParentStaffLine && measure.isVisible()) as VexFlowMeasure;
     if (!vfMeasure) {
       return;
     }
