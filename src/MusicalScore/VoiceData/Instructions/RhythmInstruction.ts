@@ -25,6 +25,10 @@ export class RhythmInstruction extends AbstractNotationInstruction {
      * (Wagner, Siegmunds Liebeslied m1: "9/8 3/4" above the violin, the cello and the right hand).
      * It is drawn only; the measure is as long as [[Rhythm]]. Undefined: none. */
     public Interchangeable: Fraction;
+    /** The symbol relating the interchangeable time signature to this one (MusicXML <time-relation>: parentheses, bracket,
+     * equals, slash, space, hyphen), undefined: none. "parentheses" draws the interchangeable one in parentheses before this
+     * one, as printed (Bowen, Viola Sonata No. 2 m477: "(12/8) 4/4"); the others are drawn as without a relation. */
+    public InterchangeableRelation: string;
     /** Reader only: read from the staff's own `<time number="N">` (or kept on a staff without one, see
      * InstrumentReader.pendingStaffRhythm) —
      * kept on its staff when the reader evens out the staves' time signatures
@@ -53,6 +57,7 @@ export class RhythmInstruction extends AbstractNotationInstruction {
         // the reader clones the rhythm onto staves without one; a <time print-object="no"> stays hidden on each
         clone.PrintObject = this.PrintObject;
         clone.Interchangeable = this.Interchangeable?.clone();
+        clone.InterchangeableRelation = this.InterchangeableRelation;
         clone.ReadForItsStaff = this.ReadForItsStaff;
         return clone;
     }
@@ -74,7 +79,8 @@ export class RhythmInstruction extends AbstractNotationInstruction {
         const i2: Fraction = rhythm2.Interchangeable;
         return this.OperatorEquals(rhythm2) &&
             this.symbolEnum === rhythm2.symbolEnum &&
-            ((!i1 && !i2) || (i1 && i2 && i1.Numerator === i2.Numerator && i1.Denominator === i2.Denominator));
+            ((!i1 && !i2) || (i1 && i2 && i1.Numerator === i2.Numerator && i1.Denominator === i2.Denominator &&
+              this.InterchangeableRelation === rhythm2.InterchangeableRelation));
     }
 
     public OperatorNotEqual(rhythm2: RhythmInstruction): boolean {

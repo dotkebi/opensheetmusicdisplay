@@ -1384,6 +1384,8 @@ export class InstrumentReader {
       );
       newRhythmInstruction.PrintObject = timePrintObject;
       newRhythmInstruction.Interchangeable = InstrumentReader.readInterchangeable(timeList);
+      newRhythmInstruction.InterchangeableRelation = newRhythmInstruction.Interchangeable ?
+        InstrumentReader.readInterchangeableRelation(timeList) : undefined;
       return newRhythmInstruction;
     } else {
       // senza-misura: no time signature is drawn, the beats stay 4/4
@@ -1468,6 +1470,18 @@ export class InstrumentReader {
     }
     const own: IXmlElement[] = timeNodes.filter(node => staffNumberOf(node) === staff);
     return own.length > 0 ? own : undefined;
+  }
+
+  /** The `<time-relation>` of the first `<interchangeable>` of the elements, see [[RhythmInstruction.InterchangeableRelation]]. */
+  public static readInterchangeableRelation(timeNodes: IXmlElement[]): string {
+    for (const timeNode of timeNodes) {
+      const interchangeable: IXmlElement = timeNode.element("interchangeable");
+      if (interchangeable) {
+        const relation: string = interchangeable.element("time-relation")?.value?.trim();
+        return relation ? relation : undefined;
+      }
+    }
+    return undefined;
   }
 
   /** The `<interchangeable>` time signature of the elements (the first beats/beat-type pair), see

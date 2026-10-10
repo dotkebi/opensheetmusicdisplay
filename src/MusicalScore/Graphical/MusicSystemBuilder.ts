@@ -588,6 +588,9 @@ export class MusicSystemBuilder {
             totalBeginInstructionLengthX = Math.max(totalBeginInstructionLengthX, beginInstructionLengthX);
         }
         staves[0].formatBegModifiers(staves); // x-align notes / beginning modifiers like time signatures, e.g. for transposing instruments
+        // the time signature of a stave without an interchangeable one under the same value's interchangeable one
+        //   (VexFlowMeasure.alignTimeSignaturesUnderInterchangeable; generally don't want to reference Vexflow classes here)
+        (measures.find(measure => measure)?.constructor as any)?.alignTimeSignaturesUnderInterchangeable?.(measures);
         return totalBeginInstructionLengthX;
     }
 

@@ -4,6 +4,7 @@ import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSh
 import { RhythmInstruction } from "../../../src/MusicalScore/VoiceData/Instructions/RhythmInstruction";
 import { MusicSheet } from "../../../src/MusicalScore/MusicSheet";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
+import { VexFlowTimeSignatureParenthesis } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowTimeSignatureParenthesis";
 import Vex from "vexflow";
 import VF = Vex.Flow;
 
@@ -61,6 +62,25 @@ describe("Time signatures per staff and interchangeable time signatures", () => 
         expect(osmd.Sheet.SourceMeasures.map(measure => measure.MeasureNumber)).to.deep.equal([1, 2, 3, 4]);
     });
 
+    /** Bowen, Viola Sonata No. 2 m477: <time-relation>parentheses</time-relation> draws the interchangeable time signature in
+     * parentheses before the main one, "(12/8) 4/4", as printed (2026-10-11 user decision 2). */
+    it("draws a parenthesized interchangeable time signature before the main one", async () => {
+        osmd.clear();
+        await osmd.load(TestUtils.getScore("test_time_interchangeable_parentheses.musicxml"));
+        osmd.render();
+        const rhythm: RhythmInstruction = osmd.Sheet.SourceMeasures[0].FirstInstructionsStaffEntries[0].Instructions
+            .find(instruction => instruction instanceof RhythmInstruction) as RhythmInstruction;
+        expect(rhythm.InterchangeableRelation).to.equal("parentheses");
+        for (let staff: number = 0; staff < 3; staff++) {
+            const measure: VexFlowMeasure = osmd.GraphicSheet.MeasureList[0][staff] as VexFlowMeasure;
+            const kinds: string[] = drawnTimes(0, staff).slice().sort((a: any, b: any) => a.getX() - b.getX())
+                .map((modifier: any) => modifier instanceof VexFlowTimeSignatureParenthesis ? "paren" :
+                     modifier === measure.interchangeableTimeSignature ? "12/8" :
+                     modifier === measure.mainTimeSignature ? "4/4" : "?");
+            expect(kinds, `staff ${staff}`).to.deep.equal(["paren", "12/8", "paren", "4/4"]);
+        }
+    });
+
     it("draws the interchangeable time signature right of the main one", () => {
         expect(drawnTimes(0, 0).length).to.equal(2);
         expect(drawnTimes(0, 1).length).to.equal(2);
@@ -75,12 +95,13 @@ describe("Time signatures per staff and interchangeable time signatures", () => 
         const main: any = times[0];
         const interchangeable: any = times[1];
         expect(interchangeable.getX(), "right of the main one").to.be.greaterThan(main.getX() + main.getWidth() - 1);
-        // aligned with the left hand's time signature, in its place after the clef (VexFlowPatch
-        // Stave.formatBegModifiers moved every time signature to the x of the interchangeable one)
-        expect(main.getX()).to.equal((drawnTimes(0, 2)[0] as any).getX());
+        // in its place after the clef (VexFlowPatch Stave.formatBegModifiers moved every time signature to the x of the
+        // interchangeable one)
         const stave: any = (osmd.GraphicSheet.MeasureList[0][1] as VexFlowMeasure).getVFStave();
         const clef: any = stave.getModifiers(VF.StaveModifier.Position.BEGIN, (VF.Clef as any).CATEGORY)[0];
         expect(main.getX() - (clef.getX() + clef.getWidth()), "after the clef").to.be.lessThan(
             interchangeable.getX() - main.getX());
+        // the left hand's 3/4 under the right hand's interchangeable 3/4, as printed (2026-10-11 user decision 1)
+        expect((drawnTimes(0, 2)[0] as any).getX(), "left hand under the interchangeable 3/4").to.be.closeTo(interchangeable.getX(), 0.01);
     });
 });
