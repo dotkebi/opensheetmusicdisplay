@@ -479,7 +479,7 @@ export class RepetitionCalculator {
         case RepetitionInstructionEnum.DalSegnoAlFine:
             // (the segno's repetition may have been closed already, e.g. by a repeat sign after the segno: see startAtSegnoBackwards())
             if (this.openRepetitions.length === 0 &&
-                this.findSegnoBackwards(this.currentMeasureIndex, currentRepetitionInstruction.SegnoLabel) < 0) {
+                this.findSegnoForDalSegno(this.currentMeasureIndex, currentRepetitionInstruction.SegnoLabel) < 0) {
                 break;
             }
             currentRepetition = this.getOrCreateCurrentRepetition2(true);
@@ -543,7 +543,7 @@ export class RepetitionCalculator {
         case RepetitionInstructionEnum.DalSegnoAlCoda:
             // (the segno's repetition may have been closed already, e.g. by a repeat sign after the segno: see startAtSegnoBackwards())
             if (this.openRepetitions.length === 0 &&
-                this.findSegnoBackwards(this.currentMeasureIndex, currentRepetitionInstruction.SegnoLabel) < 0) {
+                this.findSegnoForDalSegno(this.currentMeasureIndex, currentRepetitionInstruction.SegnoLabel) < 0) {
                 break;
             }
             currentRepetition = this.getOrCreateCurrentRepetition2(true);
@@ -728,7 +728,7 @@ export class RepetitionCalculator {
       if (repContainer.SegnoFound) {
           return;
       }
-      const segnoMeasureIndex: number = this.findSegnoBackwards(this.currentMeasureIndex, segnoLabel);
+      const segnoMeasureIndex: number = this.findSegnoForDalSegno(this.currentMeasureIndex, segnoLabel);
       if (segnoMeasureIndex < 0) {
           return;
       }
@@ -772,6 +772,20 @@ export class RepetitionCalculator {
           endIndex = -1;
       }
       repetition.setEndingStartIndex(2, endIndex);
+  }
+
+  /**
+   * Returns the measure index a D.S. at or before startMeasureIndex goes back to: its segno (see findSegnoBackwards), or,
+   * without one in a movement after the first, the start of its movement rather than an earlier repeat start
+   * (as osmd-dart findSegnoForDalSegno; "Menuetto D.C." with <sound dalsegno> in a trio whose measure numbers restart,
+   * wave 2 0890). -1 if none.
+   */
+  private findSegnoForDalSegno(startMeasureIndex: number, segnoLabel: string): number {
+      const segno: number = this.findSegnoBackwards(startMeasureIndex, segnoLabel);
+      if (segno < 0 && this.movementStartIndex > 0) {
+          return this.movementStartIndex;
+      }
+      return segno;
   }
 
   /**

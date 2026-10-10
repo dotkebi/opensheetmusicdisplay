@@ -62,6 +62,17 @@ describe("MusicPartManagerIterator measure order with repetitions", () => {
     });
 
     /**
+     * A D.S. that finds no segno in its movement goes back to the start of its movement (as osmd-dart findSegnoForDalSegno),
+     * not to the last repeat start before it.
+     *
+     * Sample: a minuet (measures 1-2, segno "segno") and a trio whose measure numbers restart (another movement), its measure 2 repeated,
+     * "Menuetto D.C." with <sound dalsegno="segno"> in its last measure (wave 2 0890).
+     */
+    it("takes a D.S. without a segno in its movement back to the start of its movement", async () => {
+        expect(await playedMeasures("test_repeat_dalsegno_other_movement.musicxml")).to.deep.equal([0, 1, 2, 3, 3, 4, 2, 3, 4]);
+    });
+
+    /**
      * A first ending with no second ending written after it is played on the first pass only: the last pass goes on after it.
      * It used to be played on both passes, since a repetition with fewer endings than passes plays its first ending on the extra ones.
      *
