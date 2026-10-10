@@ -8,7 +8,7 @@ import {StaffLine} from "../StaffLine";
 import {SystemLinesEnum} from "../SystemLinesEnum";
 import {ClefInstruction, ClefEnum} from "../../VoiceData/Instructions/ClefInstruction";
 import {KeyInstruction} from "../../VoiceData/Instructions/KeyInstruction";
-import {RhythmInstruction} from "../../VoiceData/Instructions/RhythmInstruction";
+import {RhythmInstruction, RhythmSymbolEnum} from "../../VoiceData/Instructions/RhythmInstruction";
 import {VexFlowConverter} from "./VexFlowConverter";
 import {VexFlowStaffEntry} from "./VexFlowStaffEntry";
 import {VexFlowKeySignatureNote} from "./VexFlowKeySignatureNote";
@@ -342,15 +342,26 @@ export class VexFlowMeasure extends GraphicalMeasure {
             timeSig,
             VF.StaveModifier.Position.BEGIN
         );
+        // the interchangeable time signature to its right (MusicXML <interchangeable>, Wagner, Siegmunds Liebeslied m1: "9/8 3/4")
+        const interchangeableSig: VF.TimeSignature = rhythm.Interchangeable ?
+            VexFlowConverter.TimeSignature(new RhythmInstruction(rhythm.Interchangeable, RhythmSymbolEnum.NONE)) : undefined;
+        if (interchangeableSig) {
+            this.stave.addModifier(interchangeableSig, VF.StaveModifier.Position.BEGIN);
+        }
         if (!this.ShowTimeSignature ||
             this.isTabMeasure && !this.rules.TabTimeSignatureRendered) {
-            // extends Element is missing from class StaveModifier in DefinitelyTyped definitions, so setStyle isn't found
-            timeSig.setStyle({ fillStyle: "#00000000"}); // transparent. requires VexflowPatch
-            // instead of not rendering the time signature, technically, we render it, but with transparent color. this helps layout / x-alignment.
+            for (const sig of [timeSig, interchangeableSig]) {
+                if (!sig) {
+                    continue;
+                }
+                // extends Element is missing from class StaveModifier in DefinitelyTyped definitions, so setStyle isn't found
+                sig.setStyle({ fillStyle: "#00000000"}); // transparent. requires VexflowPatch
+                // instead of not rendering the time signature, technically, we render it, but with transparent color. this helps layout / x-alignment.
 
-            // SVG compatibility: also set visibility="hidden".
-            //   this helps make the modifier invisible instead of black in some systems like apps, outside the browser. (VexFlowPatch)
-            (timeSig as any).hidden = true;
+                // SVG compatibility: also set visibility="hidden".
+                //   this helps make the modifier invisible instead of black in some systems like apps, outside the browser. (VexFlowPatch)
+                (sig as any).hidden = true;
+            }
         }
         this.updateInstructionWidth();
     }

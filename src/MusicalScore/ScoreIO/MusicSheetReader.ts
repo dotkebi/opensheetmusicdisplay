@@ -492,7 +492,8 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
         }
         for (let idx: number = 0, len: number = rhythmInstructions.length; idx < len; ++idx) {
             const rhythmInstruction: RhythmInstruction = rhythmInstructions[idx];
-            if (rhythmInstruction.Rhythm.RealValue < maxRhythmValue) {
+            // (a staff's own <time number="N"> stays on its staff)
+            if (rhythmInstruction.Rhythm.RealValue < maxRhythmValue && !rhythmInstruction.ReadForItsStaff) {
                 if (this._lastElement(
                         this.currentMeasure.FirstInstructionsStaffEntries[rhythmInstructions.indexOf(rhythmInstruction)].Instructions
                     ) instanceof RhythmInstruction) {
@@ -560,7 +561,11 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                 this.checkFractionsForEquivalence(maxInstrumentDuration, activeRhythm);
             }
         }
-        this.currentMeasure.ImplicitMeasure = this.checkIfMeasureIsImplicit(maxInstrumentDuration, activeRhythm);
+        const alternativeLengths: Fraction[] = [];
+        for (const instrumentReader of instrumentReaders) {
+            alternativeLengths.push(...instrumentReader.AlternativeMeasureLengths);
+        }
+        this.currentMeasure.ImplicitMeasure = this.checkIfMeasureIsImplicit(maxInstrumentDuration, activeRhythm, alternativeLengths);
         if (!this.currentMeasure.ImplicitMeasure || sourceMeasureCounter > 0) {
             sourceMeasureCounter++;
             // for a starting pickup measure (measure number 0), we shouldn't increment,
@@ -611,11 +616,15 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
      * Handle the case of an implicit [[SourceMeasure]].
      * @param maxInstrumentDuration
      * @param activeRhythm
+     * @param alternativeLengths the lengths the measure may have under the other time signatures in force (other
+     * staves', interchangeable ones, see InstrumentReader.AlternativeMeasureLengths): a first measure as long as one of
+     * them is complete, no pickup (Wagner, Siegmunds Liebeslied m1: a 3/4 bar under 9/8 with 3/4 interchangeable and
+     * 3/4 in the left hand).
      * @returns {boolean}
      */
-    private checkIfMeasureIsImplicit(maxInstrumentDuration: Fraction, activeRhythm: Fraction): boolean {
+    private checkIfMeasureIsImplicit(maxInstrumentDuration: Fraction, activeRhythm: Fraction, alternativeLengths: Fraction[] = []): boolean {
         if (!this.previousMeasure && maxInstrumentDuration.lt(activeRhythm)) {
-            return true;
+            return !alternativeLengths.some(length => Math.abs(length.RealValue - maxInstrumentDuration.RealValue) < 1e-9);
         }
         if (this.previousMeasure) {
             return Fraction.plus(this.previousMeasure.Duration, maxInstrumentDuration).Equals(activeRhythm);

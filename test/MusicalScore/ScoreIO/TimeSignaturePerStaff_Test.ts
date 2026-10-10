@@ -81,14 +81,16 @@ describe("Time signature written per staff", () => {
         expect(sheet.SourceMeasures[0].Duration.RealValue).to.equal(0.75);
     });
 
-    it("per-staff time signatures that differ: the lowest staff number wins", async () => {
+    it("per-staff time signatures that differ: the lowest staff number sets the measure, each staff draws its own", async () => {
         // Wagner m1: staff 1 9/8 (interchangeable 3/4), staff 2 3/4 - was 15/8
         const perStaff: string = "<time number=\"2\"><beats>3</beats><beat-type>4</beat-type></time>" +
             "<time number=\"1\"><beats>9</beats><beat-type>8</beat-type>" +
             "<interchangeable separator=\"none\"><beats>3</beats><beat-type>4</beat-type></interchangeable></time>";
         const sheet: MusicSheet = await load(score("<time number=\"1\"><beats>9</beats><beat-type>8</beat-type></time>",
                                                    pianoMeasures(perStaff)));
-        expect(rhythms(sheet, 0)).to.deep.equal(["9/8", "9/8", "9/8"]);
+        // R166-V01 follow-up (2026-10-11): the left hand draws its 3/4
+        expect(sheet.SourceMeasures[0].ActiveTimeSignature.RealValue).to.equal(9 / 8);
+        expect(rhythms(sheet, 0)).to.deep.equal(["9/8", "9/8", "3/4"]);
     });
 
     it("a composite time signature inside one <time> is still added up", async () => {
