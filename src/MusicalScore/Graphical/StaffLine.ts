@@ -36,6 +36,11 @@ export abstract class StaffLine extends GraphicalObject {
     protected abstractExpressions: AbstractGraphicalExpression[] = [];
     /** Dashed lines after text expressions (MusicXML <dashes>) on this staffline. */
     public ExpressionDashes: GraphicalExpressionDashes[] = [];
+    /**
+     * The MusicXML hides the staff in all measures of the system: the staffline was taken out of its system and isn't drawn
+     * (see SourceMeasure.HiddenStaffIndices, MusicSystem.removeHiddenStaffLine()).
+     */
+    public hiddenInSystem: boolean = false;
     /** The staff height in units */
     private staffHeight: number;
     private topLineOffset: number;

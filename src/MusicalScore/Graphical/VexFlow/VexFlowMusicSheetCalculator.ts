@@ -3433,7 +3433,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     let uppermostMeasure: VexFlowMeasure = undefined;
     for (let idx: number = 0, len: number = measures.length; idx < len; ++idx) {
       const graphicalMeasure: VexFlowMeasure = measures[idx];
-      if (graphicalMeasure && graphicalMeasure.ParentStaffLine && graphicalMeasure.ParentStaff.isVisible()) {
+      if (graphicalMeasure && graphicalMeasure.ParentStaffLine && graphicalMeasure.isVisible()) {
         uppermostMeasure = <VexFlowMeasure>graphicalMeasure;
         break;
       }
@@ -3455,7 +3455,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   protected calculateSegnoSigns(repetitionInstruction: RepetitionInstruction, measures: VexFlowMeasure[]): boolean {
     let drawn: boolean = false;
     for (const placement of repetitionInstruction.SymbolPlacements) {
-      const measure: VexFlowMeasure = measures.find(m => m?.ParentStaffLine && m.ParentStaff === placement.staff && m.ParentStaff.isVisible());
+      const measure: VexFlowMeasure = measures.find(m => m?.ParentStaffLine && m.ParentStaff === placement.staff && m.isVisible());
       if (!measure) {
         continue;
       }
@@ -3468,7 +3468,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       drawn = true;
       // a sign above a lower staff is between two staves: it reserves its space, so that the staves are spaced for it
       //   (and the objects below the staff above, e.g. a "Petite reprise" text, are not drawn into it)
-      (repetition as any).reservesSkyline = measure !== measures.find(m => m?.ParentStaffLine && m.ParentStaff.isVisible());
+      (repetition as any).reservesSkyline = measure !== measures.find(m => m?.ParentStaffLine && m.isVisible());
       let anchorX: number = undefined;
       let atMeasureEnd: boolean = false;
       if (placement.timestamp.RealValue > 0) {

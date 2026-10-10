@@ -253,6 +253,58 @@ export class MusicSystemBuilder {
             this.checkAndCreateExtraInstructionMeasure(measures);
         }
         this.stretchMusicSystem(systemEndsPart);
+        this.removeStaffLinesHiddenInSystem(this.currentSystemParams.currentSystem);
+    }
+
+    /**
+     * Marks the stafflines of the system whose staff the MusicXML hides in all of the system's measures
+     * (<staff-details print-object="no">, see SourceMeasure.HiddenStaffIndices), e.g. an ossia staff in the systems without
+     * its ossia (Wagner, Siegmunds Liebeslied). Their measures aren't drawn (GraphicalMeasure.isVisible()); the stafflines
+     * are taken out of the system before the staves are spaced (MusicSystem.removeHiddenStaffLines()). A staff shown in one
+     * measure of the system is drawn in the whole system. At least one staffline stays.
+     */
+    protected removeStaffLinesHiddenInSystem(musicSystem: MusicSystem): void {
+        const hidden: StaffLine[] = musicSystem.StaffLines.filter(staffLine => this.staffHiddenInAllMeasures(staffLine));
+        if (hidden.length === 0 || hidden.length === musicSystem.StaffLines.length) {
+            return;
+        }
+        for (const staffLine of hidden) {
+            staffLine.hiddenInSystem = true;
+        }
+    }
+
+    /** Takes the hidden stafflines out of the system (see removeStaffLinesHiddenInSystem()) and stacks the others again, as layoutSystemStaves() does. */
+    protected takeOutHiddenStaffLines(musicSystem: MusicSystem): void {
+        if (!musicSystem.removeHiddenStaffLines()) {
+            return;
+        }
+        const staffLines: StaffLine[] = musicSystem.StaffLines;
+        let yOffsetSum: number = 0;
+        for (let i: number = 0; i < staffLines.length; i++) {
+            staffLines[i].PositionAndShape.RelativePosition = new PointF2D(0, yOffsetSum);
+            yOffsetSum += this.rules.StaffHeight;
+            if (i + 1 < staffLines.length) {
+                yOffsetSum += staffLines[i].ParentStaff.ParentInstrument === staffLines[i + 1].ParentStaff.ParentInstrument ?
+                    this.rules.BetweenStaffDistance : this.rules.StaffDistance;
+            }
+        }
+        musicSystem.PositionAndShape.BorderBottom = yOffsetSum;
+    }
+
+    private staffHiddenInAllMeasures(staffLine: StaffLine): boolean {
+        const staffIndex: number = staffLine.ParentStaff.idInMusicSheet;
+        let measured: boolean = false;
+        for (const measure of staffLine.Measures) {
+            const sourceMeasure: SourceMeasure = measure.parentSourceMeasure;
+            if (!sourceMeasure) {
+                continue; // e.g. an extra instruction measure at the system's end
+            }
+            measured = true;
+            if (!sourceMeasure.isStaffHidden(staffIndex)) {
+                return false;
+            }
+        }
+        return measured;
     }
 
     /**
@@ -1176,6 +1228,7 @@ export class MusicSystemBuilder {
      * @param musicSystem
      */
     protected optimizeDistanceBetweenStaffLines(musicSystem: MusicSystem): void {
+        this.takeOutHiddenStaffLines(musicSystem);
         // don't perform any y-spacing in case of a StaffEntryLink (in both StaffLines)
         if (!musicSystem.checkStaffEntriesForStaffEntryLink()) {
             for (let i: number = 0; i < musicSystem.StaffLines.length - 1; i++) {

@@ -76,6 +76,11 @@ export class InstrumentReader {
   }
 
   private repetitionInstructionReader: RepetitionInstructionReader;
+  /**
+   * Staves of the instrument (index in the instrument) that the MusicXML hides, until a staff-details shows them again
+   * (<staff-details print-object="no"/"yes">), see SourceMeasure.HiddenStaffIndices.
+   */
+  private hiddenStaves: Set<number> = new Set<number>();
   private xmlMeasureList: IXmlElement[];
   private musicSheet: MusicSheet;
   private slurReader: SlurReader;
@@ -239,6 +244,21 @@ export class InstrumentReader {
           }
           const staffDetailsNodes: IXmlElement[] = xmlNode.elements("staff-details"); // there can be multiple, even if redundant. see #1041
           for (const staffDetailsNode of staffDetailsNodes) {
+            const printObject: string = staffDetailsNode.attribute("print-object")?.value;
+            if (printObject === "yes" || printObject === "no") {
+              // without a number: all staves of the part
+              const number: number = parseInt(staffDetailsNode.attribute("number")?.value, 10);
+              for (let i: number = 0; i < this.instrument.Staves.length; i++) {
+                if (!isNaN(number) && number - 1 !== i) {
+                  continue;
+                }
+                if (printObject === "no") {
+                  this.hiddenStaves.add(i);
+                } else {
+                  this.hiddenStaves.delete(i);
+                }
+              }
+            }
             const staffLinesNode: IXmlElement = staffDetailsNode.element("staff-lines");
             if (staffLinesNode) {
               let staffNumber: number = 1;
@@ -651,6 +671,9 @@ export class InstrumentReader {
 
     this.pendingTieStops.resolve(this.instrument);
     this.linkArpeggiosAcrossStaves(this.currentMeasure);
+    this.hiddenStaves.forEach((staff: number): void => {
+      this.currentMeasure.HiddenStaffIndices.push(this.musicSheet.getGlobalStaffIndexOfFirstStaff(this.instrument) + staff);
+    });
     this.previousMeasure = this.currentMeasure;
     this.currentXmlMeasureIndex += 1;
     return true;

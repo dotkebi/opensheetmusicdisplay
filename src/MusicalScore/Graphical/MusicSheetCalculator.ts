@@ -636,7 +636,9 @@ export abstract class MusicSheetCalculator {
      * @param musicSystem
      */
     protected calculateMeasureNumberPlacement(musicSystem: MusicSystem): void {
-        const staffLine: StaffLine = musicSystem.StaffLines[0];
+        // (the first staffline the system draws: one that the MusicXML hides in the whole system is taken out of it later,
+        //   see StaffLine.hiddenInSystem)
+        const staffLine: StaffLine = musicSystem.StaffLines.find(line => !line.hiddenInSystem) ?? musicSystem.StaffLines[0];
         if (!staffLine || !staffLine.Measures[0]) {
             log.warn("calculateMeasureNumberPlacement: measure undefined for system.Id " + musicSystem.Id);
             return; // TODO apparently happens in script sometimes (mp #70)

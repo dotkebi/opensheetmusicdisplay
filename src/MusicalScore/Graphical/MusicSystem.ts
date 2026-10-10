@@ -83,6 +83,26 @@ export abstract class MusicSystem extends GraphicalObject {
     public get StaffLines(): StaffLine[] {
         return this.staffLines;
     }
+
+    /**
+     * Takes the stafflines out of the system whose staff the MusicXML hides in all measures of the system
+     * (StaffLine.hiddenInSystem, see SourceMeasure.HiddenStaffIndices). A part label goes with the part's last staffline,
+     * and the system lines (e.g. the barline joining the staves of a part) of their measures go too.
+     * @returns whether one was taken out
+     */
+    public removeHiddenStaffLines(): boolean {
+        const hidden: StaffLine[] = this.staffLines.filter(line => line.hiddenInSystem);
+        for (const staffLine of hidden) {
+            this.staffLines.splice(this.staffLines.indexOf(staffLine), 1);
+            const instrument: Instrument = staffLine.ParentStaff.ParentInstrument;
+            if (!this.staffLines.some(line => line.ParentStaff.ParentInstrument === instrument)) {
+                this.labels.remove(instrument);
+            }
+            this.systemLines = this.systemLines.filter(line => line.parentTopStaffLine !== staffLine &&
+                line.bottomMeasure?.ParentStaffLine !== staffLine);
+        }
+        return hidden.length > 0;
+    }
     public set StaffLines(value: StaffLine[]) {
         this.staffLines = value;
     }

@@ -269,7 +269,14 @@ export abstract class GraphicalMeasure extends GraphicalObject {
         return false;
     }
 
+    /**
+     * Whether the measure is drawn: its staff is visible, and it isn't in a staffline that the MusicXML hides in its whole system
+     * (StaffLine.hiddenInSystem).
+     */
     public isVisible(): boolean {
+        if (this.parentStaffLine?.hiddenInSystem) {
+            return false;
+        }
         return this.ParentStaff.isVisible();
     }
 
