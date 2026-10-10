@@ -123,6 +123,9 @@ export abstract class MusicSheetCalculator {
     protected graphicalMusicSheet: GraphicalMusicSheet;
     protected rules: EngravingRules;
     protected musicSystems: MusicSystem[];
+    /** The expressions with an instantaneous dynamic written inside a wedge of their staff and side, in its first or second
+     *  half (see dynamicsInsideWedges()): AlignmentManager leaves them out (GraphicalInstantaneousDynamicExpression.InsideWedge). */
+    protected dynamicsWithinWedges: Set<MultiExpression> = new Set<MultiExpression>();
     /** Dashed lines after expression texts, collected while the texts are placed (see calculateExpressionDashes()). */
     private pendingExpressionDashes: {
         expression: AbstractExpression; textBox: BoundingBox; color: string; placement: PlacementEnum;
@@ -5887,6 +5890,7 @@ export abstract class MusicSheetCalculator {
      */
     private dynamicsInsideWedges(minIndex: number, maxIndex: number): Set<MultiExpression> {
         const inside: Set<MultiExpression> = new Set<MultiExpression>();
+        this.dynamicsWithinWedges = new Set<MultiExpression>();
         const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
         const wedges: ContinuousDynamicExpression[] = [];
         for (let i: number = minIndex; i <= maxIndex; i++) {
@@ -5911,10 +5915,16 @@ export abstract class MusicSheetCalculator {
                         continue;
                     }
                     const time: number = multiExpression.AbsoluteTimestamp.RealValue;
-                    if (wedges.some(wedge => wedge.StaffNumber === dynamic.StaffNumber && wedge.Placement === dynamic.Placement &&
-                        wedge.StartMultiExpression.AbsoluteTimestamp.RealValue < time &&
-                        2 * time < wedge.StartMultiExpression.AbsoluteTimestamp.RealValue + wedge.EndMultiExpression.AbsoluteTimestamp.RealValue)) {
-                        inside.add(multiExpression);
+                    for (const wedge of wedges) {
+                        const start: number = wedge.StartMultiExpression.AbsoluteTimestamp.RealValue;
+                        const end: number = wedge.EndMultiExpression.AbsoluteTimestamp.RealValue;
+                        if (wedge.StaffNumber !== dynamic.StaffNumber || wedge.Placement !== dynamic.Placement || time <= start || time >= end) {
+                            continue;
+                        }
+                        this.dynamicsWithinWedges.add(multiExpression);
+                        if (2 * time < start + end) {
+                            inside.add(multiExpression);
+                        }
                     }
                 }
             }

@@ -5,7 +5,9 @@ import { AbstractGraphicalExpression } from "../AbstractGraphicalExpression";
 import { PointF2D } from "../../../Common/DataObjects/PointF2D";
 import { EngravingRules } from "../EngravingRules";
 import { PlacementEnum } from "../../VoiceData/Expressions/AbstractExpression";
+import { InstantaneousDynamicExpression } from "../../VoiceData/Expressions/InstantaneousDynamicExpression";
 import { GraphicalContinuousDynamicExpression } from "../GraphicalContinuousDynamicExpression";
+import { GraphicalInstantaneousDynamicExpression } from "../GraphicalInstantaneousDynamicExpression";
 
 export class AlignmentManager {
     private parentStaffline: StaffLine;
@@ -20,9 +22,15 @@ export class AlignmentManager {
         // Find close expressions along the staffline. Group them into tuples
         const groups: AbstractGraphicalExpression[][] = [];
         let tmpList: AbstractGraphicalExpression[] = new Array<AbstractGraphicalExpression>();
-        for (let aeIdx: number = 0; aeIdx < this.parentStaffline.AbstractExpressions.length - 1; aeIdx++) {
-            const currentExpression: AbstractGraphicalExpression = this.parentStaffline.AbstractExpressions[aeIdx];
-            const nextExpression: AbstractGraphicalExpression = this.parentStaffline.AbstractExpressions[aeIdx + 1];
+        // A dynamic written inside a wedge lies under (over) the wedge or beyond it (MusicSheetCalculator.dynamicsInsideWedges()):
+        //   aligned with the wedge, the wedge was squeezed to a stub before or after it (Cesti, Intorno all'idol mio, Piano m49:
+        //   the p near the end of the dim. wedge, overlapping it; it was left out only while overlapping boxes weren't neighbours).
+        //   Same as osmd-dart.
+        const expressions: AbstractGraphicalExpression[] = this.parentStaffline.AbstractExpressions.filter(e =>
+            !(e instanceof GraphicalInstantaneousDynamicExpression && e.InsideWedge));
+        for (let aeIdx: number = 0; aeIdx < expressions.length - 1; aeIdx++) {
+            const currentExpression: AbstractGraphicalExpression = expressions[aeIdx];
+            const nextExpression: AbstractGraphicalExpression = expressions[aeIdx + 1];
 
             const currentExpressionPlacement: PlacementEnum = currentExpression?.SourceExpression?.Placement;
             const nextExpressionPlacement: PlacementEnum = nextExpression?.SourceExpression?.Placement;
@@ -40,8 +48,12 @@ export class AlignmentManager {
                 //     (nextExpression as any).label?.label?.text?.startsWith("dim")) {
                 //         console.log("here");
                 //     }
-                const dist: PointF2D = this.getDistance(currentExpression.PositionAndShape, nextExpression.PositionAndShape);
-                if (Math.abs(dist.x) < this.rules.DynamicExpressionMaxDistance && !this.textsOverlap(currentExpression, nextExpression)) {
+                // Overlapping boxes are neighbours (gap 0): with the gap as Math.abs of the signed distance, a wedge overlapping the
+                //   next one by more than DynamicExpressionMaxDistance was not grouped, so it was neither squeezed nor aligned, and the
+                //   second wedge stayed stacked above the first (Parisotti, Traetta Ombra cara Canto m67: the crescendo stopping at the
+                //   note where the diminuendo starts, from its border left). Same as osmd-dart (AlignmentManager._isClose).
+                const gap: number = this.getHorizontalGap(currentExpression.PositionAndShape, nextExpression.PositionAndShape);
+                if (gap < this.rules.DynamicExpressionMaxDistance && !this.textsOverlap(currentExpression, nextExpression)) {
                     // Prevent last found expression to be added twice. e.g. p<f as three close expressions
                     if (tmpList.indexOf(currentExpression) === -1) {
                         tmpList.push(currentExpression);
@@ -106,14 +118,28 @@ export class AlignmentManager {
                         //   wider than the spacer the "overlap" is negative, and squeezing by it shortened the wedge by the gap
                         //   (Parisotti, Martini Piacer d'amor Canto m45: the diminuendo after the crescendo ending at the barline
                         //   lost 2.4 of its length; renderer leftovers 2, decision C-6). Same as osmd-dart.
-                        if (nextExpression) {
-                            const overlapRight: PointF2D = this.getOverlap(expr.PositionAndShape, nextExpression.PositionAndShape);
+                        // The side of a neighbour is that of its time when the times differ: a wedge written with an <offset> before
+                        //   the dynamic at the note it starts after came first in the staff line's list, and was squeezed to a stub
+                        //   before the dynamic as if it were its right neighbour (Pergolesi, Stizzoso mio stizzoso Canto m26: the
+                        //   crescendo written with an <offset> to the f's note). osmd-dart places the dynamic first and starts the
+                        //   wedge after it there.
+                        const before: AbstractGraphicalExpression[] = [];
+                        const after: AbstractGraphicalExpression[] = [];
+                        for (const [neighbour, listedBefore] of [[prevExpression, true], [nextExpression, false]] as [AbstractGraphicalExpression, boolean][]) {
+                            if (!neighbour) {
+                                continue;
+                            }
+                            const order: number = this.timeOrder(neighbour, expr);
+                            (order < 0 || order === 0 && listedBefore ? before : after).push(neighbour);
+                        }
+                        for (const neighbour of after) {
+                            const overlapRight: PointF2D = this.getOverlap(expr.PositionAndShape, neighbour.PositionAndShape);
                             if (overlapRight.x + this.rules.DynamicExpressionSpacer > 0) {
                                 (expr as VexFlowContinuousDynamicExpression).squeeze(-(overlapRight.x + this.rules.DynamicExpressionSpacer));
                             }
                         }
-                        if (prevExpression) {
-                            const overlapLeft: PointF2D = this.getOverlap(prevExpression.PositionAndShape, expr.PositionAndShape);
+                        for (const neighbour of before) {
+                            const overlapLeft: PointF2D = this.getOverlap(neighbour.PositionAndShape, expr.PositionAndShape);
                             if (overlapLeft.x + this.rules.DynamicExpressionSpacer > 0) {
                                 (expr as VexFlowContinuousDynamicExpression).squeeze(overlapLeft.x + this.rules.DynamicExpressionSpacer);
                             }
@@ -176,24 +202,53 @@ export class AlignmentManager {
         return limitedShift;
     }
 
+    /** Negative if a starts before b, positive if after, 0 if at the same time or a time is unknown (only dynamics have one here).
+     *  At the same time a dynamic comes before a wedge. */
+    private timeOrder(a: AbstractGraphicalExpression, b: AbstractGraphicalExpression): number {
+        const time: (e: AbstractGraphicalExpression) => number = e => {
+            if (e instanceof GraphicalContinuousDynamicExpression) {
+                return e.ContinuousDynamic.StartMultiExpression?.AbsoluteTimestamp?.RealValue;
+            }
+            if (e instanceof GraphicalInstantaneousDynamicExpression) {
+                return (e.SourceExpression as InstantaneousDynamicExpression)?.ParentMultiExpression?.AbsoluteTimestamp?.RealValue;
+            }
+            return undefined;
+        };
+        const ta: number = time(a);
+        const tb: number = time(b);
+        if (ta === undefined || tb === undefined) {
+            return 0;
+        }
+        if (Math.abs(ta - tb) < 1e-9) {
+            // a dynamic at a wedge's start is the level the wedge starts from: "f <"
+            const isDynamic: (e: AbstractGraphicalExpression) => boolean = e => e instanceof GraphicalInstantaneousDynamicExpression;
+            return isDynamic(a) && this.isWedge(b) ? -1 : this.isWedge(a) && isDynamic(b) ? 1 : 0;
+        }
+        return ta < tb ? -1 : 1;
+    }
+
     /** Whether the expression is a crescendo or decrescendo wedge (a continuous dynamic without text). */
     private isWedge(expression: AbstractGraphicalExpression): boolean {
         return expression instanceof GraphicalContinuousDynamicExpression && !expression.IsVerbal;
     }
 
     /**
-     * Get distance between two bounding boxes
+     * The horizontal gap between two bounding boxes, 0 if they overlap.
      * @param a First bounding box
      * @param b Second bounding box
      */
-    private getDistance(a: BoundingBox, b: BoundingBox): PointF2D {
-        const rightBorderA: number = a.RelativePosition.x + a.BorderMarginRight;
-        const leftBorderB: number = b.RelativePosition.x + b.BorderMarginLeft;
-        const bottomBorderA: number = a.RelativePosition.y + a.BorderMarginBottom;
-        const topBorderB: number = b.RelativePosition.y + b.BorderMarginTop;
-        return new PointF2D(leftBorderB - rightBorderA,
-                            topBorderB - bottomBorderA);
-                            // note: this is a distance vector, not absolute distance, otherwise we need Math.abs
+    private getHorizontalGap(a: BoundingBox, b: BoundingBox): number {
+        const leftA: number = a.RelativePosition.x + a.BorderMarginLeft;
+        const rightA: number = a.RelativePosition.x + a.BorderMarginRight;
+        const leftB: number = b.RelativePosition.x + b.BorderMarginLeft;
+        const rightB: number = b.RelativePosition.x + b.BorderMarginRight;
+        if (rightA < leftB) {
+            return leftB - rightA;
+        }
+        if (rightB < leftA) {
+            return leftA - rightB;
+        }
+        return 0;
     }
 
     /**

@@ -1861,6 +1861,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         multiExpression.InstantaneousDynamic,
         staffLine,
         startMeasure);
+      graphicalInstantaneousDynamic.InsideWedge = this.dynamicsWithinWedges.has(multiExpression);
       // compare with multiExpression.InstantaneousDynamic.InMeasureTimestamp or add a relative timestamp? if we ever need a separate timestamp
       this.calculateGraphicalInstantaneousDynamicExpression(graphicalInstantaneousDynamic, dynamicStartPosition, absoluteTimestamp);
       this.dynamicExpressionMap.set(absoluteTimestamp.RealValue, graphicalInstantaneousDynamic.PositionAndShape);

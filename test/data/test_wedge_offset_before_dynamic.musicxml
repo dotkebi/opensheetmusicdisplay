@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Parisotti, Pergolesi Stizzoso mio stizzoso, Canto m25-28 (renumbered 1-4): an extract of Opusis' own MusicXML encoding of the
+     public-domain Parisotti edition, without print elements. In m26 (m2 here) the crescendo is written before the eighth rest with
+     an <offset> of an eighth, to the f's eighth. -->
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1">
+      <part-name>Canto</part-name>
+    </score-part>
+  </part-list>
+  <part id="P1"><measure number="1">
+      <attributes>
+        <divisions>221760</divisions>
+        <key>
+          <fifths>-4</fifths>
+        </key>
+        <time>
+          <beats>2</beats>
+          <beat-type>4</beat-type>
+        </time>
+        <clef>
+          <sign>G</sign>
+          <line>2</line>
+        </clef>
+      </attributes>
+      <note>
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <lyric number="1" placement="below"><syllabic>single</syllabic><text>zit...</text></lyric></note>
+      <note>
+        <rest/>
+        <duration>110880</duration>
+        <type>eighth</type>
+      </note>
+      <note>
+        <rest/>
+        <duration>221760</duration>
+        <type>quarter</type>
+      </note>
+    </measure>
+    <measure number="2">
+      <direction placement="above"><direction-type><wedge type="crescendo" number="2" spread="0"/></direction-type><offset>110880</offset></direction><note>
+        <rest/>
+        <duration>110880</duration>
+        <type>eighth</type>
+      </note>
+      <direction placement="above">
+        <direction-type>
+          <dynamics default-x="-36" default-y="-80">
+            <f/>
+          </dynamics>
+        </direction-type>
+        <sound dynamics="88"/>
+      </direction>
+      <note>
+        <pitch>
+          <step>C</step>
+          <octave>5</octave>
+        </pitch>
+        <duration>110880</duration>
+        <type>eighth</type>
+        <lyric number="1" placement="below"><syllabic>begin</syllabic><text>Ser</text></lyric></note>
+      <note>
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>55440</duration>
+        <type>16th</type>
+        <stem>up</stem>
+        <beam number="1">begin</beam><beam number="2">begin</beam><notations>
+          <slur number="1" type="start" placement="below"/>
+        </notations>
+        <lyric number="1" placement="below"><syllabic>middle</syllabic><text>pi</text><extend type="start"/></lyric></note>
+      <note>
+        <pitch>
+          <step>G</step>
+          <octave>4</octave>
+        </pitch>
+        <duration>55440</duration>
+        <type>16th</type>
+        <stem>up</stem>
+        <beam number="1">end</beam><beam number="2">end</beam><notations>
+          <slur number="1" type="stop"/>
+        </notations>
+      <lyric number="1" placement="below"><extend type="stop"/></lyric></note>
+      <note>
+        <pitch>
+          <step>A</step>
+          <alter>-1</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>55440</duration>
+        <type>16th</type>
+        <stem>up</stem>
+        <beam number="1">begin</beam><beam number="2">begin</beam><notations>
+          <slur number="2" type="start" placement="below"/>
+        </notations>
+        <lyric number="1" placement="below"><syllabic>end</syllabic><text>na</text><extend type="start"/></lyric></note>
+      <note>
+        <pitch>
+          <step>F</step>
+          <octave>4</octave>
+        </pitch>
+        <duration>55440</duration>
+        <type>16th</type>
+        <stem>up</stem>
+        <beam number="1">end</beam><beam number="2">end</beam><notations>
+          <slur number="2" type="stop"/>
+        </notations>
+      <lyric number="1" placement="below"><extend type="stop"/></lyric></note>
+    </measure>
+    <measure number="3">
+      <direction placement="above"><direction-type><wedge type="diminuendo" number="3" spread="15"/></direction-type><offset>0</offset></direction><direction placement="above"><direction-type><wedge type="stop" number="2" spread="15"/></direction-type><offset>0</offset></direction><note>
+        <pitch>
+          <step>G</step>
+          <octave>4</octave>
+        </pitch>
+        <duration>221760</duration>
+        <type>quarter</type>
+        <lyric number="1" placement="below"><syllabic>single</syllabic><text>vuol</text></lyric></note>
+      <note>
+        <pitch>
+          <step>F</step>
+          <octave>4</octave>
+        </pitch>
+        <duration>221760</duration>
+        <type>quarter</type>
+        <lyric number="1" placement="below"><syllabic>begin</syllabic><text>co</text></lyric></note>
+    </measure>
+    <measure number="4">
+      <direction placement="above"><direction-type><wedge type="stop" number="3" spread="0"/></direction-type><offset>0</offset></direction><note>
+        <pitch>
+          <step>E</step>
+          <alter>-1</alter>
+          <octave>4</octave>
+        </pitch>
+        <duration>221760</duration>
+        <type>quarter</type>
+        <lyric number="1" placement="below"><syllabic>end</syllabic><text>sì</text></lyric></note>
+      <note>
+        <rest/>
+        <duration>221760</duration>
+        <type>quarter</type>
+      </note>
+    </measure>
+    </part>
+</score-partwise>
