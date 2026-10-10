@@ -25,7 +25,8 @@ export class RhythmInstruction extends AbstractNotationInstruction {
      * (Wagner, Siegmunds Liebeslied m1: "9/8 3/4" above the violin, the cello and the right hand).
      * It is drawn only; the measure is as long as [[Rhythm]]. Undefined: none. */
     public Interchangeable: Fraction;
-    /** Reader only: read from the staff's own `<time number="N">`, which differs from the measure's time signature —
+    /** Reader only: read from the staff's own `<time number="N">` (or kept on a staff without one, see
+     * InstrumentReader.pendingStaffRhythm) —
      * kept on its staff when the reader evens out the staves' time signatures
      * (MusicSheetReader.checkIfRhythmInstructionsAreSetAndEqual). */
     public ReadForItsStaff: boolean = false;

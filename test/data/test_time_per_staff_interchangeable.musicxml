@@ -4,7 +4,8 @@
      interchangeable one, after Wagner, Siegmunds Liebeslied (Riesenfeld arr.) m1.
      Violin and piano right hand: 9/8 with 3/4 printed next to it, notated as
      9/8 eighths under 3:2 (each bar lasts 3/4); piano left hand: 3/4 only.
-     m3: 3/4 on every staff. -->
+     m3: 3/4 on every staff; m4: 6/8 for the left hand only (<time number="2">),
+     the right hand and the violin stay in 3/4. -->
 <score-partwise version="4.0">
   <part-list>
     <score-part id="P1"><part-name>Violin</part-name></score-part>
@@ -73,13 +74,13 @@
       <note><pitch><step>C</step><octave>3</octave></pitch><duration>6</duration><voice>5</voice><type>quarter</type><staff>2</staff></note>
     </measure>
     <measure number="4">
+      <attributes><time number="2"><beats>6</beats><beat-type>8</beat-type></time></attributes>
       <note><pitch><step>C</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
       <note><pitch><step>C</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
       <note><pitch><step>C</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
       <backup><duration>18</duration></backup>
-      <note><pitch><step>C</step><octave>3</octave></pitch><duration>6</duration><voice>5</voice><type>quarter</type><staff>2</staff></note>
-      <note><pitch><step>C</step><octave>3</octave></pitch><duration>6</duration><voice>5</voice><type>quarter</type><staff>2</staff></note>
-      <note><pitch><step>C</step><octave>3</octave></pitch><duration>6</duration><voice>5</voice><type>quarter</type><staff>2</staff></note>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>9</duration><voice>5</voice><type>quarter</type><dot/><staff>2</staff></note>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>9</duration><voice>5</voice><type>quarter</type><dot/><staff>2</staff></note>
     </measure>
   </part>
 </score-partwise>

@@ -1261,13 +1261,37 @@ export class InstrumentReader {
       const rhythmInstruction: RhythmInstruction = this.rhythmInstructionOf(InstrumentReader.timeNodesOfOneStaff(allTimeNodes));
       // The time signature drawn on each staff: its own <time number="N"> (Wagner, Siegmunds Liebeslied m1: 9/8 with
       // 3/4 for the right hand, 3/4 for the left hand). The measure stays as long as the one time signature above.
+      // <time number="N"> elements only: a staff without one keeps its time signature, not drawn again (Vieuxtemps,
+      // Op. 31 m201: C for the left hand only, the right hand stays in 12/8). A staff's own one stays on its staff
+      // (RhythmInstruction.ReadForItsStaff).
+      const numberedOnly: boolean = allTimeNodes.every(node => !!node.attribute("number"));
       this.pendingStaffRhythms = [];
       for (let staff: number = 1; staff <= this.instrument.Staves.length; staff++) {
-        const ownTimeNodes: IXmlElement[] = InstrumentReader.staffTimeNodes(allTimeNodes, staff);
-        this.pendingStaffRhythms.push(ownTimeNodes ? this.rhythmInstructionOf(ownTimeNodes) : undefined);
+        this.pendingStaffRhythms.push(this.pendingStaffRhythm(allTimeNodes, staff, numberedOnly));
       }
       this.abstractInstructions.push([1, rhythmInstruction, currentFraction]);
     }
+  }
+
+  /**
+   * The time signature waiting for staff `staff` (one-based) after a `<time>` in <attributes>: its own; with
+   * `<time number="N">` elements only and none for this staff, its time signature in force, not drawn again; else
+   * undefined (the measure's one).
+   */
+  private pendingStaffRhythm(allTimeNodes: IXmlElement[], staff: number, numberedOnly: boolean): RhythmInstruction {
+    const own: IXmlElement[] = InstrumentReader.staffTimeNodes(allTimeNodes, staff);
+    if (own) {
+      const rhythm: RhythmInstruction = this.rhythmInstructionOf(own);
+      rhythm.ReadForItsStaff = numberedOnly;
+      return rhythm;
+    }
+    if (numberedOnly && staff <= this.activeStaffRhythms.length) {
+      const kept: RhythmInstruction = this.activeStaffRhythms[staff - 1].clone();
+      kept.PrintObject = false;
+      kept.ReadForItsStaff = true;
+      return kept;
+    }
+    return undefined;
   }
 
   /**
@@ -1632,8 +1656,6 @@ export class InstrumentReader {
         for (let staff: number = 0; staff < numberOfStaves; staff++) {
           const own: RhythmInstruction = this.pendingStaffRhythms[staff];
           if (own) {
-            // a staff's own time signature drawn otherwise than the measure's stays on its staff
-            own.ReadForItsStaff = !own.drawnAs(rhythmInstruction);
             staffRhythms.push(own);
           } else {
             staffRhythms.push(rhythmInstruction);

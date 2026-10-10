@@ -10,7 +10,8 @@ import VF = Vex.Flow;
 /**
  * test_time_per_staff_interchangeable.musicxml (after Wagner, Siegmunds Liebeslied m1, integrated review R166-V01
  * follow-up): violin (staff 0) and piano right hand (staff 1) 9/8 with 3/4 printed next to it (<interchangeable>),
- * piano left hand (staff 2) 3/4 by <time number="2">; each bar lasts 3/4; m3 is 3/4 on every staff.
+ * piano left hand (staff 2) 3/4 by <time number="2">; each bar lasts 3/4; m3 is 3/4 on every staff; m4 is 6/8 for the
+ * left hand only.
  * Each staff draws its own time signature, the measure is as long as the lowest staff number's.
  * Same as osmd-dart test/time_per_staff_interchangeable_test.dart.
  */
@@ -65,6 +66,11 @@ describe("Time signatures per staff and interchangeable time signatures", () => 
         expect(drawnTimes(0, 1).length).to.equal(2);
         expect(drawnTimes(0, 2).length).to.equal(1);
         expect(drawnTimes(2, 2).length).to.equal(1);
+        // m4: <time number="2"> only - the left hand draws its 6/8, the right hand and the violin keep 3/4 and draw nothing
+        //   (Vieuxtemps, Op. 31 m201)
+        expect(drawnTimes(3, 0).length, "violin m4").to.equal(0);
+        expect(drawnTimes(3, 1).length, "right hand m4").to.equal(0);
+        expect(drawnTimes(3, 2).length, "left hand m4").to.equal(1);
         const times: VF.TimeSignature[] = drawnTimes(0, 1);
         const main: any = times[0];
         const interchangeable: any = times[1];
