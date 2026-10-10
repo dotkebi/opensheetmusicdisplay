@@ -9,6 +9,9 @@ import log from "loglevel";
 export class GraphicalInstantaneousDynamicExpression extends AbstractGraphicalExpression {
     protected mInstantaneousDynamicExpression: InstantaneousDynamicExpression;
     protected mMeasure: GraphicalMeasure;
+    /** Whether the dynamic is written inside a wedge of its staff and side (MusicSheetCalculator.dynamicsInsideWedges()): it lies
+     *  under (over) the wedge or beyond it, and AlignmentManager leaves it out. Same as osmd-dart. */
+    public InsideWedge: boolean = false;
 
     constructor(instantaneousDynamic: InstantaneousDynamicExpression, staffLine: StaffLine, measure: GraphicalMeasure) {
         super(staffLine, instantaneousDynamic, measure.parentSourceMeasure);

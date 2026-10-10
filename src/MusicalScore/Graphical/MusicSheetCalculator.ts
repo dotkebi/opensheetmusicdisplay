@@ -123,6 +123,9 @@ export abstract class MusicSheetCalculator {
     protected graphicalMusicSheet: GraphicalMusicSheet;
     protected rules: EngravingRules;
     protected musicSystems: MusicSystem[];
+    /** The expressions with an instantaneous dynamic written inside a wedge of their staff and side, in its first or second
+     *  half (see dynamicsInsideWedges()): AlignmentManager leaves them out (GraphicalInstantaneousDynamicExpression.InsideWedge). */
+    protected dynamicsWithinWedges: Set<MultiExpression> = new Set<MultiExpression>();
     /** Dashed lines after expression texts, collected while the texts are placed (see calculateExpressionDashes()). */
     private pendingExpressionDashes: {
         expression: AbstractExpression; textBox: BoundingBox; color: string; placement: PlacementEnum;
@@ -1560,7 +1563,17 @@ export abstract class MusicSheetCalculator {
         const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
         const distance: number = this.rules.ExpressionDashesTextDistance;
         const lineWidth: number = this.rules.ExpressionDashesLineWidth;
-        for (const pending of this.pendingExpressionDashes) {
+        // In the order of the texts in the music (by measure, then x): the words in a line move onto it (moveWordsOntoExpressionDashes()),
+        //   so a later text's own line is calculated from where the text was moved, not before it (Parisotti, Traetta Ombra cara Piano
+        //   m60-61: "cres. - - -" moved onto the line of "animato - - -" kept its line at its old height; the dynamics' texts are
+        //   collected before the words). A stable sort keeps the order of the rest.
+        const pendings: typeof this.pendingExpressionDashes = this.pendingExpressionDashes
+            .map((pending, index) => ({pending, index}))
+            .sort((a, b) => a.pending.measureIndex - b.pending.measureIndex ||
+                (a.pending.staffLine === b.pending.staffLine ? a.pending.textBox.RelativePosition.x - b.pending.textBox.RelativePosition.x : 0) ||
+                a.index - b.index)
+            .map(entry => entry.pending);
+        for (const pending of pendings) {
             const expression: AbstractExpression = pending.expression;
             const endMeasureIndex: number = Math.min(sourceMeasures.indexOf(expression.DashesEndMeasure), this.graphicalMusicSheet.MeasureList.length - 1);
             if (endMeasureIndex < pending.measureIndex) {
@@ -1604,23 +1617,106 @@ export abstract class MusicSheetCalculator {
                         Math.max(y, skyBottomLine.getMaxInRangeOf(before[1], startX, endX) + distance) :
                         Math.min(y, skyBottomLine.getMinInRangeOf(before[0], startX, endX) - distance);
                 }
-                endX = this.firstExpressionDashesObstacleX(line, pending.textBox, below, startX, endX, y) - distance;
-                if (endX - startX < this.rules.ExpressionDashesDashLength) {
-                    continue;
+                // the words in the line go on it, the line broken around them
+                const words: BoundingBox[] = this.moveWordsOntoExpressionDashes(line, pending.textBox, pending.placement, startX,
+                                                                                endX + 2 * distance, y);
+                const segments: [number, number][] = [];
+                let segmentStart: number = startX;
+                for (const word of words) {
+                    const wordLeft: number = word.RelativePosition.x + word.BorderMarginLeft;
+                    if (wordLeft < endX) {
+                        segments.push([segmentStart, wordLeft]);
+                        segmentStart = Math.max(segmentStart, word.RelativePosition.x + word.BorderMarginRight + distance);
+                    }
                 }
-                if (below) {
-                    skyBottomLine.updateBottomLineInRange(startX, endX, y + lineWidth);
-                } else {
-                    skyBottomLine.updateSkyLineInRange(startX, endX, y - lineWidth);
+                segments.push([segmentStart, endX]);
+                for (const [segmentStartX, segmentEndX] of segments) {
+                    const lineEndX: number =
+                        this.firstExpressionDashesObstacleX(line, pending.textBox, below, segmentStartX, segmentEndX, y) - distance;
+                    if (lineEndX - segmentStartX < this.rules.ExpressionDashesDashLength) {
+                        continue;
+                    }
+                    if (below) {
+                        skyBottomLine.updateBottomLineInRange(segmentStartX, lineEndX, y + lineWidth);
+                    } else {
+                        skyBottomLine.updateSkyLineInRange(segmentStartX, lineEndX, y - lineWidth);
+                    }
+                    const dashes: GraphicalExpressionDashes = new GraphicalExpressionDashes(
+                        expression, new PointF2D(segmentStartX, y), new PointF2D(lineEndX, y), lineWidth);
+                    dashes.Color = pending.color;
+                    line.ExpressionDashes.push(dashes);
                 }
-                const dashes: GraphicalExpressionDashes = new GraphicalExpressionDashes(
-                    expression, new PointF2D(startX, y), new PointF2D(endX, y), lineWidth);
-                dashes.Color = pending.color;
-                line.ExpressionDashes.push(dashes);
             }
         }
         this.pendingExpressionDashes = [];
         this.skyBottomLinesBeforeExpressions = undefined;
+    }
+
+    /**
+     * Moves the words of staffLine on the side of a dashed line that start in it (from startX up to its end, endX) onto the line
+     * (the height y of its text), as printed: "cres: - - - ed - - - accel." in one row between the staves (Parisotti, A. Scarlatti
+     * Se tu della mia morte Piano m18–20). The text of the line was placed clear of everything under the whole line, the words
+     * only of what is under them, so they were nearer the staff. A word moves only away from the staff, and only if the notes
+     * (the sky-/bottomline before the expressions) and the other texts leave room for it there.
+     * @returns the text boxes of the moved words, by their x
+     */
+    private moveWordsOntoExpressionDashes(staffLine: StaffLine, ownBox: BoundingBox, placement: PlacementEnum,
+                                          startX: number, endX: number, y: number): BoundingBox[] {
+        const below: boolean = placement === PlacementEnum.Below;
+        const before: [number[], number[]] = this.skyBottomLinesBeforeExpressions?.get(staffLine);
+        const skyBottomLine: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        const boxes: BoundingBox[] = [];
+        for (const expression of staffLine.AbstractExpressions) {
+            const textBox: BoundingBox = this.expressionTextBox(expression);
+            if (textBox && textBox !== ownBox && !boxes.includes(textBox)) {
+                boxes.push(textBox);
+            }
+        }
+        const moved: BoundingBox[] = [];
+        for (const expression of staffLine.AbstractExpressions) {
+            const textBox: BoundingBox = this.expressionTextBox(expression);
+            if (!textBox || textBox === ownBox || moved.includes(textBox) || expression.SourceExpression?.Placement !== placement ||
+                expression instanceof GraphicalInstantaneousDynamicExpression) {
+                continue;
+            }
+            const left: number = textBox.RelativePosition.x + textBox.BorderMarginLeft;
+            const right: number = textBox.RelativePosition.x + textBox.BorderMarginRight;
+            if (left < startX || left > endX) {
+                continue;
+            }
+            const center: number = textBox.RelativePosition.y + (textBox.BorderTop + textBox.BorderBottom) / 2;
+            const shift: number = y - center;
+            if (below ? shift <= 0.01 : shift >= -0.01) {
+                continue;
+            }
+            const top: number = textBox.RelativePosition.y + textBox.BorderMarginTop + shift;
+            const bottom: number = textBox.RelativePosition.y + textBox.BorderMarginBottom + shift;
+            if (before && (below ? skyBottomLine.getMaxInRangeOf(before[1], left, right) > top :
+                                   skyBottomLine.getMinInRangeOf(before[0], left, right) < bottom)) {
+                continue; // the notes reach the line there
+            }
+            const hitsOtherText: boolean = boxes.some(other => {
+                if (other === textBox) {
+                    return false;
+                }
+                const otherLeft: number = other.RelativePosition.x + other.BorderMarginLeft;
+                const otherRight: number = other.RelativePosition.x + other.BorderMarginRight;
+                const otherTop: number = other.RelativePosition.y + other.BorderMarginTop;
+                const otherBottom: number = other.RelativePosition.y + other.BorderMarginBottom;
+                return otherLeft < right && left < otherRight && otherTop < bottom && top < otherBottom;
+            });
+            if (hitsOtherText) {
+                continue;
+            }
+            textBox.RelativePosition.y += shift;
+            if (below) {
+                skyBottomLine.updateBottomLineInRange(left, right, bottom);
+            } else {
+                skyBottomLine.updateSkyLineInRange(left, right, top);
+            }
+            moved.push(textBox);
+        }
+        return moved.sort((a, b) => (a.RelativePosition.x + a.BorderMarginLeft) - (b.RelativePosition.x + b.BorderMarginLeft));
     }
 
     /** The first x in [startX, endX) where something on staffLine reaches a dashed line at height y, else endX.
@@ -2579,12 +2675,86 @@ export abstract class MusicSheetCalculator {
             drawingHeight = skyBottomLineCalculator.getSkyLineMinForLabel(left, rangeRight);
             box.RelativePosition = new PointF2D(startPosInStaffline.x, drawingHeight - box.BorderMarginBottom);
         }
+        this.placeTextInsideWedge(graphicalContinuousDynamic, staffLine, placement);
         // so that the dynamics placed after it don't overlap it (instantaneous dynamics and wedges update it when placed too)
         graphicalContinuousDynamic.updateSkyBottomLine();
         const measureIndex: number = graphicalContinuousDynamic.StartMeasure?.parentSourceMeasure?.measureListIndex;
         if (measureIndex !== undefined) {
             this.addExpressionDashes(continuousDynamic, box, graphicalContinuousDynamic.Label?.ColorXML, placement,
                                      staffLine, staffIndex, measureIndex);
+        }
+    }
+
+    /**
+     * A verbal continuous dynamic ("cres.") starting inside a wedge of its side, after the wedge's start, goes between the staff and
+     * the wedge, as printed (Parisotti, A. Scarlatti Se Florindo è fedele Piano m4: "cres." from the second eighth over a crescendo
+     * from the first, below the right hand). Placed by the bottom/sky line after the wedge, the text went on the wedge's lines.
+     * If there is no room there (the wedge's LineBeforeWedge), the text goes there and the wedge further out. The alignment keeps them
+     * on their rows (AlignmentManager.textInsideWedge()). Same as osmd-dart.
+     */
+    protected placeTextInsideWedge(text: GraphicalContinuousDynamicExpression, staffLine: StaffLine, placement: PlacementEnum): void {
+        if (placement !== PlacementEnum.Below && placement !== PlacementEnum.Above) {
+            return;
+        }
+        const box: BoundingBox = text.PositionAndShape;
+        const textLeft: number = box.RelativePosition.x + box.BorderMarginLeft;
+        const textRight: number = box.RelativePosition.x + box.BorderMarginRight;
+        const height: number = box.BorderMarginBottom - box.BorderMarginTop;
+        const gap: number = this.rules.DynamicExpressionSpacer;
+        let wedge: GraphicalContinuousDynamicExpression = undefined;
+        for (let i: number = staffLine.AbstractExpressions.length - 1; i >= 0 && !wedge; i--) {
+            const e: AbstractGraphicalExpression = staffLine.AbstractExpressions[i];
+            if (!(e instanceof GraphicalContinuousDynamicExpression) || e === text || e.IsVerbal || e.IsSoftAccent ||
+                e.Lines.length < 2 || e.LineBeforeWedge === undefined || e.Placement !== placement) {
+                continue;
+            }
+            const xs: number[] = e.Lines.flatMap(l => [l.Start.x, l.End.x]);
+            if (textLeft > Math.min(...xs) && textLeft < Math.max(...xs) &&
+                GraphicalContinuousDynamicExpression.textStartsInsideWedge(text.ContinuousDynamic, e.ContinuousDynamic)) {
+                wedge = e;
+            }
+        }
+        if (!wedge) {
+            return;
+        }
+        const ys: number[] = wedge.Lines.flatMap(l => [l.Start.y, l.End.y]);
+        // Beyond the wedge's end the room is that of the bottom (sky) line there. If what is there reaches the wedge's row, the text
+        //   stays where it is, the wedge too (Vivaldi, Un certo non so che Piano m13-14: "crescendo" from inside a short wedge,
+        //   moved between them, went onto the beamed notes after the wedge).
+        // (from a little after the wedge's end, whose own opening is in the line there)
+        const wedgeRight: number = Math.max(...wedge.Lines.flatMap(l => [l.Start.x, l.End.x])) + gap;
+        const beyond: boolean = textRight > wedgeRight;
+        const skyBottomLine: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        if (placement === PlacementEnum.Below) {
+            const wedgeTop: number = Math.min(...ys);
+            const lineBeyond: number = beyond ? skyBottomLine.getBottomLineMaxInRange(wedgeRight, textRight) : -Infinity;
+            if (lineBeyond > wedgeTop) {
+                return;
+            }
+            const lineBefore: number = Math.max(wedge.LineBeforeWedge, lineBeyond);
+            if (wedgeTop - gap - lineBefore >= height) {
+                box.RelativePosition.y = wedgeTop - gap - box.BorderMarginBottom;
+            } else {
+                box.RelativePosition.y = lineBefore - box.BorderMarginTop;
+                wedge.shiftYPosition(box.RelativePosition.y + box.BorderMarginBottom + gap - wedgeTop);
+                wedge.calcPsi();
+                wedge.updateSkyBottomLine();
+            }
+        } else {
+            const wedgeBottom: number = Math.max(...ys);
+            const lineBeyond: number = beyond ? skyBottomLine.getSkyLineMinInRange(wedgeRight, textRight) : Infinity;
+            if (lineBeyond < wedgeBottom) {
+                return;
+            }
+            const lineBefore: number = Math.min(wedge.LineBeforeWedge, lineBeyond);
+            if (lineBefore - gap - wedgeBottom >= height) {
+                box.RelativePosition.y = wedgeBottom + gap - box.BorderMarginTop;
+            } else {
+                box.RelativePosition.y = lineBefore - box.BorderMarginBottom;
+                wedge.shiftYPosition(box.RelativePosition.y + box.BorderMarginTop - gap - wedgeBottom);
+                wedge.calcPsi();
+                wedge.updateSkyBottomLine();
+            }
         }
     }
 
@@ -2950,6 +3120,7 @@ export abstract class MusicSheetCalculator {
             // must check BottomLine for possible collisions within the Length of the Expression
             // find the corresponding max value for the given Length
             let maxBottomLineValueForExpressionLength: number = skyBottomLineCalculator.getBottomLineMaxInRange(upperStartX, upperEndX);
+            graphicalContinuousDynamic.LineBeforeWedge = maxBottomLineValueForExpressionLength;
 
             // if collisions, then set the Height accordingly
             if (maxBottomLineValueForExpressionLength > idealY) {
@@ -3039,6 +3210,7 @@ export abstract class MusicSheetCalculator {
             // must check SkyLine for possible collisions within the Length of the Expression
             // find the corresponding min value for the given Length
             let minSkyLineValueForExpressionLength: number = skyBottomLineCalculator.getSkyLineMinInRange(upperStartX, upperEndX);
+            graphicalContinuousDynamic.LineBeforeWedge = minSkyLineValueForExpressionLength;
 
             // if collisions, then set the Height accordingly
             if (minSkyLineValueForExpressionLength < idealY) {
@@ -3987,6 +4159,21 @@ export abstract class MusicSheetCalculator {
             const endAfterRightStaffEntry: boolean = timestamp.RealValue > rightStaffEntry.getAbsoluteTimestamp().RealValue;
             // endAfterRightStaffEntry is an unfortunate case where the timestamp isn't correct for the last note in the piece,
             //   see test_wedge_diminuendo_duplicated.musicxml
+            // A time inside the last note of the piece (no staff entry after it to interpolate to) lies between that note and the
+            //   end of its measure: it was the note's x, so a swell "<>" over the last note, its stop and the diminuendo's start
+            //   between the note and the barline, was drawn as two wedges from the note's x over each other (Parisotti, D.
+            //   Scarlatti Consolati e spera Canto m94). The end of the measure itself keeps the workaround above. Same as osmd-dart.
+            const leftMeasure: GraphicalMeasure = leftStaffEntry.parentMeasure;
+            const leftMeasureEnd: Fraction = leftMeasure.parentSourceMeasure ?
+                Fraction.plus(leftMeasure.parentSourceMeasure.AbsoluteTimestamp, leftMeasure.parentSourceMeasure.Duration) : undefined;
+            const insideLastNote: boolean = leftStaffEntry === rightStaffEntry && endAfterRightStaffEntry && firstVisibleMeasureRelativeX <= 0 &&
+                leftMeasureEnd !== undefined && timestamp.lt(leftMeasureEnd);
+            if (insideLastNote) {
+                const leftTimestamp: Fraction = leftStaffEntry.getAbsoluteTimestamp();
+                const measureEndX: number = leftMeasure.PositionAndShape.RelativePosition.x + leftMeasure.PositionAndShape.BorderRight;
+                const quotient: number = Fraction.minus(timestamp, leftTimestamp).RealValue / Fraction.minus(leftMeasureEnd, leftTimestamp).RealValue;
+                return new PointF2D(leftX + (measureEndX - leftX) * quotient, 0.0);
+            }
             if (firstVisibleMeasureRelativeX > 0) {
                 rightX = rightStaffEntry.PositionAndShape.RelativePosition.x + measureRelativeX;
             } else if (useLeftStaffEntryBorder &&
@@ -5872,6 +6059,7 @@ export abstract class MusicSheetCalculator {
      */
     private dynamicsInsideWedges(minIndex: number, maxIndex: number): Set<MultiExpression> {
         const inside: Set<MultiExpression> = new Set<MultiExpression>();
+        this.dynamicsWithinWedges = new Set<MultiExpression>();
         const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
         const wedges: ContinuousDynamicExpression[] = [];
         for (let i: number = minIndex; i <= maxIndex; i++) {
@@ -5896,10 +6084,16 @@ export abstract class MusicSheetCalculator {
                         continue;
                     }
                     const time: number = multiExpression.AbsoluteTimestamp.RealValue;
-                    if (wedges.some(wedge => wedge.StaffNumber === dynamic.StaffNumber && wedge.Placement === dynamic.Placement &&
-                        wedge.StartMultiExpression.AbsoluteTimestamp.RealValue < time &&
-                        2 * time < wedge.StartMultiExpression.AbsoluteTimestamp.RealValue + wedge.EndMultiExpression.AbsoluteTimestamp.RealValue)) {
-                        inside.add(multiExpression);
+                    for (const wedge of wedges) {
+                        const start: number = wedge.StartMultiExpression.AbsoluteTimestamp.RealValue;
+                        const end: number = wedge.EndMultiExpression.AbsoluteTimestamp.RealValue;
+                        if (wedge.StaffNumber !== dynamic.StaffNumber || wedge.Placement !== dynamic.Placement || time <= start || time >= end) {
+                            continue;
+                        }
+                        this.dynamicsWithinWedges.add(multiExpression);
+                        if (2 * time < start + end) {
+                            inside.add(multiExpression);
+                        }
                     }
                 }
             }

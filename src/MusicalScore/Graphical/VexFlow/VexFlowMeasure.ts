@@ -39,7 +39,7 @@ import {SkyBottomLineCalculator} from "../SkyBottomLineCalculator";
 import { NoteType } from "../../VoiceData/NoteType";
 import { Arpeggio } from "../../VoiceData/Arpeggio";
 import { GraphicalTie } from "../GraphicalTie";
-import { Note } from "../../VoiceData/Note";
+import { Note, TremoloBetweenNotes } from "../../VoiceData/Note";
 import { TabNote } from "../../VoiceData/TabNote";
 import { CrossStaffBeam } from "./CrossStaffBeam";
 import { CrossStaffCurve } from "./CrossStaffCurve";
@@ -1433,6 +1433,48 @@ export class VexFlowMeasure extends GraphicalMeasure {
     /**
      * Complete the creation of VexFlow Beams in this measure
      */
+    /**
+     * The two notes of a tremolo between notes share the stem direction a beam over them would give (VexFlow's
+     * calculateStemDirection: the lines of their keys summed around the middle line), unless the XML gives one. Each took its own,
+     * and with opposite stems the strokes were drawn between the noteheads (Parisotti, Paisiello Chi vuol la zingarella Piano m74–75:
+     * a chord below the middle line and an F3 above it, both stems up in the print, the strokes between the stems). Same as osmd-dart.
+     */
+    private alignTremoloStems(): void {
+        for (const staffEntry of this.staffEntries) {
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                for (const gNote of gve.notes) {
+                    const tremolo: TremoloBetweenNotes = gNote.sourceNote.TremoloInfo?.tremoloBetweenNotes;
+                    if (!tremolo || tremolo.startNote !== gNote.sourceNote || !tremolo.stopNote) {
+                        continue;
+                    }
+                    const stopGve: GraphicalVoiceEntry = this.rules.GNote(tremolo.stopNote)?.parentVoiceEntry;
+                    if (!stopGve || stopGve.parentStaffEntry?.parentMeasure !== this ||
+                        gve.parentVoiceEntry.WantedStemDirection !== StemDirectionType.Undefined ||
+                        stopGve.parentVoiceEntry.WantedStemDirection !== StemDirectionType.Undefined) {
+                        continue;
+                    }
+                    const notes: VF.StaveNote[] = [(gve as VexFlowVoiceEntry).vfStaveNote as VF.StaveNote,
+                                                   (stopGve as VexFlowVoiceEntry).vfStaveNote as VF.StaveNote];
+                    if (notes.some(n => !n || !(n as any).hasStem?.() || n.getAttribute("type") === "GhostNote")) {
+                        continue;
+                    }
+                    let lineSum: number = 0;
+                    for (const n of notes) {
+                        for (const keyProp of (n as any).keyProps ?? []) {
+                            lineSum += keyProp.line - 3;
+                        }
+                    }
+                    const direction: number = lineSum >= 0 ? VF.Stem.DOWN : VF.Stem.UP;
+                    for (const n of notes) {
+                        if (n.getStemDirection() !== direction) {
+                            n.setStemDirection(direction);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     public finalizeBeams(): void {
         // The following line resets the created Vex.Flow Beams and
         // created them brand new. Is this needed? And more importantly,
@@ -2122,6 +2164,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
             }
         }
 
+        this.alignTremoloStems();
         // const t0: number = performance.now();
         this.finalizeBeams();
         // const t1: number = performance.now();
