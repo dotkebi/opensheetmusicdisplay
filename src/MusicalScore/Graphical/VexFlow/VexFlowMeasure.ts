@@ -2741,6 +2741,94 @@ export class VexFlowMeasure extends GraphicalMeasure {
         return this.ornamentInkAt(VF.Modifier.Position.ABOVE);
     }
 
+    /**
+     * Where the tuplet numbers drawn are, as VF.Tuplet.draw() puts them, in units relative to the staff line (x) and its
+     * top line (y), like [[OrnamentInk]]; above for those over their notes. A bracketed tuplet's ink covers its bracket
+     * too. Read after the measure's notes are formatted and their stems built (its first draw).
+     */
+    public get TupletNumberInk(): { tuplet: any, above: boolean, bracketed: boolean, left: number, right: number, top: number, bottom: number }[] {
+        const inks: { tuplet: any, above: boolean, bracketed: boolean, left: number, right: number, top: number, bottom: number }[] = [];
+        if (this.isTabMeasure && !this.rules.TupletNumbersInTabs) {
+            return inks;
+        }
+        const x: number = this.PositionAndShape.RelativePosition.x;
+        for (const voiceID in this.vftuplets) {
+            if (!this.vftuplets.hasOwnProperty(voiceID)) {
+                continue;
+            }
+            for (let i: number = 0; i < this.tuplets[voiceID].length; i++) {
+                const tuplet: Tuplet = this.tuplets[voiceID][i][0];
+                const vftuplet: any = this.vftuplets[voiceID][i];
+                if (!vftuplet || !tuplet.RenderTupletNumber ||
+                    tuplet.ShowNumberNoneGivenInXml && this.rules.TupletNumberUseShowNoneXMLValue) {
+                    continue;
+                }
+                const ink: { left: number, right: number, top: number, bottom: number } = this.tupletNumberInk(vftuplet);
+                if (ink) {
+                    inks.push({
+                        tuplet: vftuplet, above: vftuplet.location === VF.Tuplet.LOCATION_TOP, bracketed: !!vftuplet.bracketed,
+                        left: x + ink.left, right: x + ink.right, top: ink.top, bottom: ink.bottom,
+                    });
+                }
+            }
+        }
+        return inks;
+    }
+
+    /** [[TupletNumberInk]] of one tuplet relative to the stave's left edge and top line, in units, as VF.Tuplet.draw()
+     *  (VexFlowPatch tuplet.js) places its numerator glyphs. */
+    private tupletNumberInk(vftuplet: any): { left: number, right: number, top: number, bottom: number } {
+        try {
+            const notes: any[] = vftuplet.getNotes();
+            const first: any = notes[0];
+            const last: any = notes[notes.length - 1];
+            let xPos: number;
+            let width: number;
+            if (!vftuplet.bracketed) {
+                xPos = first.getStemX();
+                width = last.getStemX() - xPos;
+            } else {
+                xPos = first.getTieLeftX() - 5;
+                width = last.getTieRightX() - xPos + 5;
+            }
+            const glyphs: any[] = vftuplet.numerator_glyphs;
+            const textWidth: number = glyphs.reduce((sum: number, glyph: any) => sum + glyph.getMetrics().width, 0);
+            const baseline: number = vftuplet.getYPosition() + vftuplet.point / 3 - 2;
+            let pen: number = xPos + width / 2 - textWidth / 2;
+            let left: number = Infinity, right: number = -Infinity, top: number = Infinity, bottom: number = -Infinity;
+            for (const glyph of glyphs) {
+                const box: any = glyph.bbox;
+                left = Math.min(left, pen + box.getX());
+                right = Math.max(right, pen + box.getX() + box.getW());
+                top = Math.min(top, baseline + box.getY());
+                bottom = Math.max(bottom, baseline + box.getY() + box.getH());
+                pen += glyph.getMetrics().width;
+            }
+            if (!isFinite(left)) {
+                return undefined;
+            }
+            if (vftuplet.bracketed) {
+                // the bracket's line at the tuplet's y, its ends 10 px towards the notes
+                const yPos: number = vftuplet.getYPosition();
+                const hookEnd: number = yPos + vftuplet.location * 10;
+                left = Math.min(left, xPos);
+                right = Math.max(right, xPos + width + 1);
+                top = Math.min(top, yPos, hookEnd);
+                bottom = Math.max(bottom, yPos + 1, hookEnd);
+            }
+            const stave: any = first.getStave();
+            const line: number = stave.getYForLine(0);
+            return {
+                left: (left - stave.getX()) / unitInPixels,
+                right: (right - stave.getX()) / unitInPixels,
+                top: (top - line) / unitInPixels,
+                bottom: (bottom - line) / unitInPixels,
+            };
+        } catch (e) {
+            return undefined;
+        }
+    }
+
     /** Where the ornaments below the notes were drawn, like [[OrnamentInk]], without a drop under a slur. */
     public get BelowOrnamentInk(): { ornament: any, left: number, right: number, top: number, bottom: number }[] {
         return this.ornamentInkAt(VF.Modifier.Position.BELOW);

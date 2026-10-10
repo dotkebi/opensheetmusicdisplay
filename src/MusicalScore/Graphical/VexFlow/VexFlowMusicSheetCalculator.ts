@@ -4124,7 +4124,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   }
 
   /** How far ink below the notes goes down to clear the slurs below that would touch it (0: none), like raiseOverSlursAbove(). */
-  private static dropUnderSlursBelow(ink: { left: number, right: number, top: number, bottom: number }, staffLine: StaffLine): number {
+  private static dropUnderSlursBelow(ink: { left: number, right: number, top: number, bottom: number }, staffLine: StaffLine,
+                                     inside: number = GraphicalSlur.ornamentClearance - 0.1): number {
     const clearance: number = GraphicalSlur.ornamentClearance;
     const over: number = clearance + GraphicalSlur.thickness;
     let drop: number = 0;
@@ -4140,7 +4141,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           continue;
         }
         curveBottom = Math.max(curveBottom, point.y);
-        if (point.y > ink.top - over + 0.1 && point.y < ink.bottom + clearance - 0.1) {
+        if (point.y > ink.top - over + 0.1 && point.y < ink.bottom + inside) {
           touches = true;
         }
       }
@@ -4151,8 +4152,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     return drop;
   }
 
-  /** How far ink above the notes goes up to clear the slurs above that would touch it (0: none), see layoutOrnament(). */
-  private static raiseOverSlursAbove(ink: { left: number, right: number, top: number, bottom: number }, staffLine: StaffLine): number {
+  /** How far ink above the notes goes up to clear the slurs above that would touch it (0: none), see layoutOrnament().
+   *  A slur over the ink clears it when it stays inside over its top (a slur lifted over an ornament clears it by the
+   *  full clearance; one over a tuplet number by any space, see layoutFermatasOverSlurs()). */
+  private static raiseOverSlursAbove(ink: { left: number, right: number, top: number, bottom: number }, staffLine: StaffLine,
+                                     inside: number = GraphicalSlur.ornamentClearance - 0.1): number {
     const clearance: number = GraphicalSlur.ornamentClearance;
     const over: number = clearance + GraphicalSlur.thickness;
     let raise: number = 0;
@@ -4168,8 +4172,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           continue;
         }
         curveTop = Math.min(curveTop, point.y);
-        // (a slur lifted over the ornament clears it by the full clearance)
-        if (point.y > ink.top - clearance + 0.1 && point.y < ink.bottom + over - 0.1) {
+        if (point.y > ink.top - inside && point.y < ink.bottom + over - 0.1) {
           touches = true;
         }
       }
@@ -4232,6 +4235,45 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         const drop: number = VexFlowMusicSheetCalculator.dropUnderSlursBelow(ink, staffLine);
         if (drop > 0) {
           ink.accent.slurClearanceYShift = drop * unitInPixels;
+          staffLine.SkyBottomLineCalculator.updateBottomLineInRange(ink.left, ink.right, ink.bottom + drop);
+        }
+      }
+    }
+    // A tuplet number a slur on its side would touch goes outside the slur: a bracketed tuplet with its bracket
+    //   (Bellini, Torna, vezzosa Fillide m104, L'allegro marinaro m37), an unbracketed number the slur can't clear
+    //   (GraphicalSlur lifts a slur over a number in its middle half when that takes a modest raise; Per pietà, bell'idol
+    //   mio m58). A number under a slur that clears it at all stays inside. As in osmd-dart.
+    for (const ink of measure.TupletNumberInk) {
+      const options: any = ink.tuplet.options;
+      if (ink.above) {
+        // (over one slur it can meet another one over both: Lotti, Pur dicesti, o bocca bella m163, a slur over two
+        //   triplets and one over the first two notes)
+        let raise: number = 0;
+        for (let pass: number = 0; pass < 3; pass++) {
+          const more: number = VexFlowMusicSheetCalculator.raiseOverSlursAbove(
+            { left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise }, staffLine, 0);
+          if (more <= 0) {
+            break;
+          }
+          raise += more;
+        }
+        if (raise > 0) {
+          options.y_offset = (options.y_offset || 0) - raise * unitInPixels;
+          staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
+          this.marksRaisedOverSlurs.push({ staffLine, left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise });
+        }
+      } else {
+        let drop: number = 0;
+        for (let pass: number = 0; pass < 3; pass++) {
+          const more: number = VexFlowMusicSheetCalculator.dropUnderSlursBelow(
+            { left: ink.left, right: ink.right, top: ink.top + drop, bottom: ink.bottom + drop }, staffLine, 0);
+          if (more <= 0) {
+            break;
+          }
+          drop += more;
+        }
+        if (drop > 0) {
+          options.y_offset = (options.y_offset || 0) + drop * unitInPixels;
           staffLine.SkyBottomLineCalculator.updateBottomLineInRange(ink.left, ink.right, ink.bottom + drop);
         }
       }
