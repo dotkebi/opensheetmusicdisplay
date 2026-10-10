@@ -17,6 +17,9 @@ import { Fraction } from "../../Common/DataObjects/Fraction";
 import { ArticulationEnum, StemDirectionType, VoiceEntry } from "../VoiceData/VoiceEntry";
 import { VexFlowGraphicalNote, VexFlowMeasure } from "./VexFlow";
 import { CrossStaffCurve } from "./VexFlow/CrossStaffCurve";
+import { unitInPixels } from "./VexFlow/VexFlowMusicSheetDrawer";
+import { Note } from "../VoiceData/Note";
+import { Tie } from "../VoiceData/Tie";
 import Vex from "vexflow";
 import VF = Vex.Flow;
 
@@ -106,6 +109,10 @@ export class GraphicalSlur extends GraphicalCurve {
         const skyBottomLineCalculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
 
         this.calculatePlacement(skyBottomLineCalculator, staffLine);
+
+        if (this.calculateInnerChordCurve(slurStartNote, slurEndNote)) {
+            return;
+        }
 
         // the Start- and End Reference Points for the Sky-BottomLine
         const headToHead: boolean = this.isHeadToHeadBetweenVoices(slurStartNote, slurEndNote);
@@ -637,6 +644,129 @@ export class GraphicalSlur extends GraphicalCurve {
             return rangeEndX;
         }
         return Math.max(rangeEndX, endX - GraphicalSlur.graceRangeMargin);
+    }
+
+    /** Space (in units) an [[calculateInnerChordCurve]] slur keeps from the ink of its chords (dots, accidentals). */
+    private static readonly innerSlurGap: number = 0.3;
+    /** Distance (in units) of an [[calculateInnerChordCurve]] slur's end point from the centre line of its notehead. */
+    private static readonly innerSlurYOffset: number = 0.3;
+    /** Height (in units) of an [[calculateInnerChordCurve]] slur: 0.12 of its width, between these. */
+    private static readonly innerSlurMinHeight: number = 0.4;
+    private static readonly innerSlurMaxHeight: number = 0.8;
+
+    /**
+     * A slur from an inner note of a chord to the next chord of its voice, when a note of the chord further on the
+     * slur's side has its own slur (or tie) on that side to the same chord: it goes between the two chords, from the
+     * notehead of its start note to the notehead of its end note, like a tie, inside the outer curve. Both slurs had
+     * the end points of the chord's outer note, the inner slur lying on the outer one (Bononcini, Deh piu a me, piano
+     * m8: slurs below from Eb4 and Ab4, m12 and m19: slurs above from Bb4 and Db5; m2: a slur below from Bb4 under the
+     * tie of Eb4; solo vocal verification 2, X5). The print draws the inner slur between the chords; so does Gould
+     * (Behind Bars, slurs for two parts in chords) - the outer slur keeps its place outside the chord. Only between
+     * neighbouring staff entries, with room between the chords. Same as osmd-dart.
+     */
+    private calculateInnerChordCurve(slurStartNote: GraphicalNote, slurEndNote: GraphicalNote): boolean {
+        if (!slurStartNote || !slurEndNote || this.graceStart || this.graceEnd || this.isCrossStaffPiece ||
+            this.isVoltaPiece || this.staffEntries.length !== 2 || this.slur.isCrossed() ||
+            !this.hasOuterCurveInChord(slurStartNote, slurEndNote)) {
+            return false;
+        }
+        const startVf: any = (slurStartNote as VexFlowGraphicalNote).vfnote?.[0];
+        const endVf: any = (slurEndNote as VexFlowGraphicalNote).vfnote?.[0];
+        if (!startVf?.preFormatted || !endVf?.preFormatted) {
+            return false;
+        }
+        const width: number = GraphicalSlur.headToHeadNoteheadWidth;
+        const startHeadLeft: number = GraphicalSlur.noteXInStaffLine(slurStartNote);
+        const endHeadLeft: number = GraphicalSlur.noteXInStaffLine(slurEndNote);
+        // after the dots of the start chord, before the accidentals of the end chord
+        const startX: number = startHeadLeft + width + startVf.getMetrics().modRightPx / unitInPixels + GraphicalSlur.innerSlurGap;
+        const endX: number = endHeadLeft - endVf.getMetrics().modLeftPx / unitInPixels - GraphicalSlur.innerSlurGap;
+        const curveWidth: number = endX - startX;
+        if (curveWidth < 1) {
+            return false;
+        }
+        const side: number = this.placement === PlacementEnum.Below ? 1 : -1;
+        const startY: number = GraphicalSlur.noteYInStaffLine(slurStartNote) + side * GraphicalSlur.innerSlurYOffset;
+        const endY: number = GraphicalSlur.noteYInStaffLine(slurEndNote) + side * GraphicalSlur.innerSlurYOffset;
+        const height: number = Math.min(GraphicalSlur.innerSlurMaxHeight, Math.max(GraphicalSlur.innerSlurMinHeight, 0.12 * curveWidth));
+        // a cubic curve with both control points d beyond the chord reaches 0.75·d beyond it in the middle
+        const controlOffset: number = side * height / 0.75;
+        this.bezierStartPt = new PointF2D(startX, startY);
+        this.bezierStartControlPt = new PointF2D(startX + curveWidth / 4, startY + (endY - startY) / 4 + controlOffset);
+        this.bezierEndControlPt = new PointF2D(endX - curveWidth / 4, endY - (endY - startY) / 4 + controlOffset);
+        this.bezierEndPt = new PointF2D(endX, endY);
+        return true;
+    }
+
+    /** Whether the slur starts at an inner note of its chord and the chord's outer note on the slur's side starts a slur
+     *  placed on that side in the XML, or a tie curved to that side, ending in the slur's end chord. A slur on the chord's
+     *  bottom note placed above, the usual MusicXML for a slur over the chord, stays over the chord, also over a tie of its
+     *  top note (Torelli, Tu lo sai, piano m36) or of a middle note (Pergolesi/Ciampi, Nina, piano m12). */
+    private hasOuterCurveInChord(slurStartNote: GraphicalNote, slurEndNote: GraphicalNote): boolean {
+        const above: boolean = this.placement === PlacementEnum.Above;
+        const endChord: GraphicalVoiceEntry = slurEndNote.parentVoiceEntry;
+        const inEndChord: (note: Note) => boolean = (note: Note): boolean => endChord.notes.some(n => n.sourceNote === note);
+        let outer: GraphicalNote;
+        let outerY: number;
+        let innerY: number; // the other side's outer note
+        for (const note of slurStartNote.parentVoiceEntry.notes) {
+            const y: number = GraphicalSlur.noteYInStaffLine(note);
+            if (note.sourceNote.isRest()) {
+                continue;
+            }
+            if (outer === undefined || (above ? y < outerY : y > outerY)) {
+                outer = note;
+                outerY = y;
+            }
+            if (innerY === undefined || (above ? y > innerY : y < innerY)) {
+                innerY = y;
+            }
+        }
+        const startY: number = GraphicalSlur.noteYInStaffLine(slurStartNote);
+        if (outer === undefined || outer === slurStartNote || startY === outerY || startY === innerY) {
+            return false; // not an inner note
+        }
+        for (const slur of outer.sourceNote.NoteSlurs) {
+            if (slur !== this.slur && slur.StartNote === outer.sourceNote && slur.EndNote && inEndChord(slur.EndNote) &&
+                slur.PlacementXml === this.placement) {
+                return true;
+            }
+        }
+        const tie: Tie = outer.sourceNote.NoteTie;
+        const tieIndex: number = tie ? tie.Notes.indexOf(outer.sourceNote) : -1;
+        if (tieIndex >= 0 && tieIndex + 1 < tie.Notes.length && inEndChord(tie.Notes[tieIndex + 1])) {
+            let direction: PlacementEnum = tie.getTieDirection(outer.sourceNote);
+            if (direction !== PlacementEnum.Above && direction !== PlacementEnum.Below) {
+                // without one, Vexflow curves the tie away from the stem
+                const stem: StemDirectionType = slurStartNote.parentVoiceEntry.parentVoiceEntry.StemDirection;
+                direction = stem === StemDirectionType.Up ? PlacementEnum.Below :
+                    stem === StemDirectionType.Down ? PlacementEnum.Above : PlacementEnum.NotYetDefined;
+            }
+            if (direction === this.placement) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The x of the note (the left of its notehead) relative to its staffline. */
+    private static noteXInStaffLine(note: GraphicalNote): number {
+        const staffEntry: GraphicalStaffEntry = note.parentVoiceEntry.parentStaffEntry;
+        return note.PositionAndShape.RelativePosition.x + staffEntry.PositionAndShape.RelativePosition.x +
+            staffEntry.parentMeasure.PositionAndShape.RelativePosition.x;
+    }
+
+    /** The y of the note (its notehead's centre line) relative to its staffline, from the line of its Vexflow notehead (the
+     *  notes of a chord are placed at their heads only at the end of drawing, VexFlowMeasure.correctNotePositions()). */
+    private static noteYInStaffLine(note: GraphicalNote): number {
+        const measure: GraphicalMeasure = note.parentVoiceEntry.parentStaffEntry.parentMeasure;
+        const vfNote: any = (note as VexFlowGraphicalNote).vfnote?.[0];
+        const head: any = vfNote?.note_heads?.[(note as VexFlowGraphicalNote).vfnoteIndex];
+        if (head && measure instanceof VexFlowMeasure) {
+            const stave: VF.Stave = measure.getVFStave();
+            return measure.PositionAndShape.RelativePosition.y + (stave.getYForNote(head.getLine()) - stave.getYForLine(0)) / unitInPixels;
+        }
+        return note.parentVoiceEntry.PositionAndShape.RelativePosition.y + note.PositionAndShape.RelativePosition.y;
     }
 
     /** Width of a black notehead, for the end points of a [[isHeadToHeadBetweenVoices]] slur. */

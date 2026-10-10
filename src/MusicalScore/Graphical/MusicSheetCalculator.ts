@@ -70,6 +70,7 @@ import { FontStyles } from "../../Common/Enums/FontStyles";
 import { AbstractTempoExpression } from "../VoiceData/Expressions/AbstractTempoExpression";
 import { GraphicalInstantaneousDynamicExpression } from "./GraphicalInstantaneousDynamicExpression";
 import { ContDynamicEnum, ContinuousDynamicExpression } from "../VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
+import { InstantaneousDynamicExpression } from "../VoiceData/Expressions/InstantaneousDynamicExpression";
 import { GraphicalContinuousDynamicExpression } from "./GraphicalContinuousDynamicExpression";
 import { AbstractGraphicalExpression } from "./AbstractGraphicalExpression";
 import { FillEmptyMeasuresWithWholeRests } from "../../OpenSheetMusicDisplay/OSMDOptions";
@@ -5827,29 +5828,83 @@ export abstract class MusicSheetCalculator {
     private calculateDynamicExpressions(): void {
         const maxIndex: number = Math.min(this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures.length - 1, this.rules.MaxMeasureToDrawIndex);
         const minIndex: number = Math.min(this.rules.MinMeasureToDrawIndex, this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures.length);
-        for (let i: number = minIndex; i <= maxIndex; i++) {
-            const sourceMeasure: SourceMeasure = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures[i];
-            //Reset, beginning of new measure
-            this.dynamicExpressionMap.clear();
-            for (let j: number = 0; j < sourceMeasure.StaffLinkedExpressions.length; j++) {
-                if (!this.graphicalMusicSheet.MeasureList[i] || !this.graphicalMusicSheet.MeasureList[i][j]) {
-                    continue;
-                }
+        const insideWedges: Set<MultiExpression> = this.dynamicsInsideWedges(minIndex, maxIndex);
+        // first the dynamics written inside a wedge, then the rest in their order (see dynamicsInsideWedges())
+        for (const firstPass of [true, false]) {
+            for (let i: number = minIndex; i <= maxIndex; i++) {
+                const sourceMeasure: SourceMeasure = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures[i];
+                //Reset, beginning of new measure
+                this.dynamicExpressionMap.clear();
+                for (let j: number = 0; j < sourceMeasure.StaffLinkedExpressions.length; j++) {
+                    if (!this.graphicalMusicSheet.MeasureList[i] || !this.graphicalMusicSheet.MeasureList[i][j]) {
+                        continue;
+                    }
 
-                if (this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.isVisible()) {
-                    for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
-                        if (sourceMeasure.StaffLinkedExpressions[j][k].InstantaneousDynamic !== undefined ||
-                            (sourceMeasure.StaffLinkedExpressions[j][k].StartingContinuousDynamic !== undefined &&
-                                sourceMeasure.StaffLinkedExpressions[j][k].StartingContinuousDynamic.StartMultiExpression ===
-                                sourceMeasure.StaffLinkedExpressions[j][k] && sourceMeasure.StaffLinkedExpressions[j][k].UnknownList.length === 0)
-                        ) {
-                            this.calculateDynamicExpressionsForMultiExpression(sourceMeasure.StaffLinkedExpressions[j][k], i, j);
+                    if (this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.isVisible()) {
+                        for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
+                            const multiExpression: MultiExpression = sourceMeasure.StaffLinkedExpressions[j][k];
+                            if (insideWedges.has(multiExpression) !== firstPass) {
+                                continue;
+                            }
+                            if (multiExpression.InstantaneousDynamic !== undefined ||
+                                (multiExpression.StartingContinuousDynamic !== undefined &&
+                                    multiExpression.StartingContinuousDynamic.StartMultiExpression ===
+                                    multiExpression && multiExpression.UnknownList.length === 0)
+                            ) {
+                                this.calculateDynamicExpressionsForMultiExpression(multiExpression, i, j);
+                            }
                         }
                     }
                 }
             }
         }
         this.dynamicExpressionMap.clear();
+    }
+
+    /**
+     * The expressions with an instantaneous dynamic (and no wedge of their own) written in the first half of a wedge on
+     * their staff and side: after the wedge's start, before the middle between its start and its end note. They are placed
+     * before the wedges, at the notes, and the wedge goes over (under) them, as in the print. Placed after the wedge, in
+     * their order, such a dynamic sat on the wedge's lines over its middle (Legrenzi, Che fiero costume, voice m26: the p
+     * under the dim. wedge from the 16th before it; solo vocal verification 2, X2). A dynamic in a wedge's second half is
+     * its goal and stays beyond the wedge as before (Cesti, Intorno all'idol mio, piano m49: the p near the end of the
+     * dim. wedge is printed below it). Same as osmd-dart.
+     */
+    private dynamicsInsideWedges(minIndex: number, maxIndex: number): Set<MultiExpression> {
+        const inside: Set<MultiExpression> = new Set<MultiExpression>();
+        const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+        const wedges: ContinuousDynamicExpression[] = [];
+        for (let i: number = minIndex; i <= maxIndex; i++) {
+            for (const staffExpressions of sourceMeasures[i].StaffLinkedExpressions) {
+                for (const multiExpression of staffExpressions) {
+                    const wedge: ContinuousDynamicExpression = multiExpression.StartingContinuousDynamic;
+                    if (wedge && wedge.StartMultiExpression === multiExpression && wedge.EndMultiExpression &&
+                        !(wedge.Label?.length > 0) && multiExpression.UnknownList.length === 0) {
+                        wedges.push(wedge);
+                    }
+                }
+            }
+        }
+        if (wedges.length === 0) {
+            return inside;
+        }
+        for (let i: number = minIndex; i <= maxIndex; i++) {
+            for (const staffExpressions of sourceMeasures[i].StaffLinkedExpressions) {
+                for (const multiExpression of staffExpressions) {
+                    const dynamic: InstantaneousDynamicExpression = multiExpression.InstantaneousDynamic;
+                    if (!dynamic || multiExpression.StartingContinuousDynamic) {
+                        continue;
+                    }
+                    const time: number = multiExpression.AbsoluteTimestamp.RealValue;
+                    if (wedges.some(wedge => wedge.StaffNumber === dynamic.StaffNumber && wedge.Placement === dynamic.Placement &&
+                        wedge.StartMultiExpression.AbsoluteTimestamp.RealValue < time &&
+                        2 * time < wedge.StartMultiExpression.AbsoluteTimestamp.RealValue + wedge.EndMultiExpression.AbsoluteTimestamp.RealValue)) {
+                        inside.add(multiExpression);
+                    }
+                }
+            }
+        }
+        return inside;
     }
 
     private calculateOctaveShifts(): void {
