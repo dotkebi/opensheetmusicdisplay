@@ -107,6 +107,8 @@ export class InstrumentReader {
   private activeRhythm: RhythmInstruction;
   /** The time signature drawn on each staff of the instrument, see [[staffTimeNodes]]; the ones read in the current
    * <attributes> wait in pendingStaffRhythms (undefined: the measure's one time signature). */
+  /** The staves of the instrument (index in the instrument) whose <staff-details> say <staff-type>ossia</staff-type>. */
+  private ossiaStaves: Set<number> = new Set<number>();
   private activeStaffRhythms: RhythmInstruction[] = [];
   private pendingStaffRhythms: RhythmInstruction[] = [];
   private activeClefsHaveBeenInitialized: boolean[];
@@ -277,6 +279,21 @@ export class InstrumentReader {
                   this.hiddenStaves.add(i);
                 } else {
                   this.hiddenStaves.delete(i);
+                }
+              }
+            }
+            // <staff-type>ossia</staff-type> (until another staff-type): the staff is an ossia, not played (see isOssiaPart)
+            const staffType: string = staffDetailsNode.element("staff-type")?.value?.trim();
+            if (staffType) {
+              const number: number = parseInt(staffDetailsNode.attribute("number")?.value, 10);
+              for (let i: number = 0; i < this.instrument.Staves.length; i++) {
+                if (!isNaN(number) && number - 1 !== i) {
+                  continue;
+                }
+                if (staffType === "ossia") {
+                  this.ossiaStaves.add(i);
+                } else {
+                  this.ossiaStaves.delete(i);
                 }
               }
             }
@@ -498,6 +515,10 @@ export class InstrumentReader {
             printObject, isCueNote, isGraceNote, stemDirectionXml, tremoloInfo, stemColorXml, noteheadColorXml,
             dots
           );
+          if (note && (this.ossiaStaves.has(noteStaff - 1) || this.isOssiaPart())) {
+            // an ossia (alternative) staff is not played with the other staves (see isOssiaPart)
+            note.IsPlaybackCueNote = true;
+          }
           if (isGraceNote && note?.ParentVoiceEntry) {
             // a wavy line stopped on a grace note ends there, e.g. at the first note of a Nachschlag ending a trill (Legrenzi,
             //   Che fiero costume m16: grace note E5 before G5). The grace note has its main note's timestamp, so the stop's
@@ -1438,6 +1459,16 @@ export class InstrumentReader {
     }
     const lowest: number = Math.min(...timeNodes.map(node => staffNumberOf(node)));
     return timeNodes.filter(node => staffNumberOf(node) === lowest);
+  }
+
+  /**
+   * Whether the part is an ossia by its name ("Ossia", "ossia 1", ...: MuseScore has no ossia staff type, wave 2 0631
+   * Tannhäuser). Notes of an ossia, also of a staff with <staff-type>ossia</staff-type> (Saint-Saëns, Violin Concerto No. 3;
+   * Wagner, Siegmunds Liebeslied), are alternatives to other staves and are not played with them (Note.IsPlaybackCueNote).
+   * Same as osmd-dart.
+   */
+  private isOssiaPart(): boolean {
+    return /^ossia\b/i.test(this.instrument.Name?.trim() ?? "");
   }
 
   /** Whether the staff (index in the music sheet) has a note drawn in the measure (not a rest, not print-object="no"). */
