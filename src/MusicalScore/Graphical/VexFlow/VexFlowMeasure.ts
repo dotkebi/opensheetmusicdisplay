@@ -895,6 +895,8 @@ export class VexFlowMeasure extends GraphicalMeasure {
                             // (vftuplet as any).numerator_glyphs_stored = undefined;
                             (vftuplet as any).RenderTupletNumber = true;
                         }
+                        // an unbracketed number under up-stems (over down-stems) at the middle of the noteheads
+                        (vftuplet as any).numberXShift = VexFlowMeasure.tupletNumberHeadShift(vftuplet);
                         vftuplet.setContext(ctx).draw();
                     }
                 }
@@ -2780,8 +2782,40 @@ export class VexFlowMeasure extends GraphicalMeasure {
         return inks;
     }
 
+    /**
+     * How far (px) VF.Tuplet.draw() (VexFlowPatch tuplet.js, numberXShift) is to move an unbracketed number on the noteheads'
+     * side of its notes (under up-stems, over down-stems): from the middle of the first and last stems, where Vexflow centres
+     * it, to the middle of their noteheads, where the engravers do (Leo, Dal tuo soglio luminoso, piano m7, Ricordi: the 3
+     * under the middle chord). The stems are beside the heads, so it stood half a notehead towards them, and a slur on that
+     * side, which starts and ends at the heads' centres (VexFlowStaffEntry.positionNotesAtNoteHeads()), saw it off its middle
+     * (GraphicalSlur.isInMiddleOfSlur()). 0 for a number on the stems' side (over the beam, between the stems), a bracketed
+     * one, or a tuplet whose first or last note is a rest or whose stems point both ways. As in osmd-dart.
+     */
+    public static tupletNumberHeadShift(vftuplet: any): number {
+        if (vftuplet.bracketed) {
+            return 0;
+        }
+        try {
+            const notes: any[] = vftuplet.getNotes();
+            const first: any = notes[0];
+            const last: any = notes[notes.length - 1];
+            if (first.isRest() || last.isRest()) {
+                return 0;
+            }
+            const stem: number = vftuplet.location === VF.Tuplet.LOCATION_TOP ? VF.Stem.DOWN : VF.Stem.UP;
+            if (first.getStemDirection() !== stem || last.getStemDirection() !== stem) {
+                return 0;
+            }
+            const headCentre: (note: any) => number = (note: any): number =>
+                note.getAbsoluteX() + note.getXShift() + note.getGlyphWidth() / 2;
+            return (headCentre(first) + headCentre(last) - first.getStemX() - last.getStemX()) / 2;
+        } catch (e) {
+            return 0;
+        }
+    }
+
     /** [[TupletNumberInk]] of one tuplet relative to the stave's left edge and top line, in units, as VF.Tuplet.draw()
-     *  (VexFlowPatch tuplet.js) places its numerator glyphs. */
+     *  (VexFlowPatch tuplet.js) places its numerator glyphs (moved by [[tupletNumberHeadShift]], see draw()). */
     private tupletNumberInk(vftuplet: any): { left: number, right: number, top: number, bottom: number } {
         try {
             const notes: any[] = vftuplet.getNotes();
@@ -2799,7 +2833,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
             const glyphs: any[] = vftuplet.numerator_glyphs;
             const textWidth: number = glyphs.reduce((sum: number, glyph: any) => sum + glyph.getMetrics().width, 0);
             const baseline: number = vftuplet.getYPosition() + vftuplet.point / 3 - 2;
-            let pen: number = xPos + width / 2 - textWidth / 2;
+            let pen: number = xPos + width / 2 - textWidth / 2 + VexFlowMeasure.tupletNumberHeadShift(vftuplet);
             let left: number = Infinity, right: number = -Infinity, top: number = Infinity, bottom: number = -Infinity;
             for (const glyph of glyphs) {
                 const box: any = glyph.bbox;

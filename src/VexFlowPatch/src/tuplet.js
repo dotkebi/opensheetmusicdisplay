@@ -304,7 +304,9 @@
        width += this.point * 0.32;
      }
  
-     const notation_center_x = this.x_pos + (this.width / 2);
+     // VexFlowPatch: an unbracketed number can be moved from the middle of the stems, e.g. to the middle of the
+    //   noteheads when it is on their side (OSMD VexFlowMeasure.tupletNumberHeadShift())
+    const notation_center_x = this.x_pos + (this.width / 2) + (this.bracketed ? 0 : this.numberXShift || 0);
      const notation_start_x = notation_center_x - (width / 2);
  
      // draw bracket if the tuplet is not beamed
