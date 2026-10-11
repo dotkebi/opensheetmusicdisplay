@@ -525,6 +525,7 @@ export class GraphicalSlur extends GraphicalCurve {
     private liftOverOrnaments(staffLine: StaffLine, rangeStartX: number, rangeEndX: number): void {
         let lift: number = 0;
         let numberLift: number = 0;
+        this.TupletNumberLiftTrace = [];
         for (const measure of staffLine.Measures) {
             if (!(measure instanceof VexFlowMeasure)) {
                 continue;
@@ -535,36 +536,68 @@ export class GraphicalSlur extends GraphicalCurve {
             ];
             for (const ink of inks) {
                 const centre: number = (ink.left + ink.right) / 2;
-                // (a tuplet number by the curve alone: the staff entries' boxes that bound the sky line range take in
-                //   their lyrics)
-                if ((!ink.number && (centre < rangeStartX || centre > rangeEndX)) ||
-                    !GraphicalSlur.isInMiddleOfSlur(centre, this.bezierStartPt.x, this.bezierEndPt.x)) {
-                    continue;
-                }
-                for (let i: number = 1; i < 64; i++) {
-                    const t: number = i / 64;
-                    const point: PointF2D = this.calculateCurvePointAtIndex(t);
-                    if (point.x < ink.left || point.x > ink.right) {
-                        continue;
+                const middle: boolean = GraphicalSlur.isInMiddleOfSlur(centre, this.bezierStartPt.x, this.bezierEndPt.x);
+                const overlap: (y: number) => number = y => y - (ink.top - GraphicalSlur.ornamentClearance);
+                if (ink.number) {
+                    // (a tuplet number by the curve alone: the staff entries' boxes that bound the sky line range take in
+                    //   their lyrics)
+                    const need: number = this.liftToClear(ink.left, ink.right, overlap);
+                    this.traceNumber(ink.left, ink.right, centre, middle, need);
+                    if (middle) {
+                        numberLift = Math.max(numberLift, need);
                     }
-                    const below: number = point.y - (ink.top - GraphicalSlur.ornamentClearance);
-                    if (below <= 0) {
-                        continue;
-                    }
-                    if (ink.number) {
-                        numberLift = Math.max(numberLift, below / (3 * t * (1 - t)));
-                    } else {
-                        lift = Math.max(lift, below / (3 * t * (1 - t)));
-                    }
+                } else if (centre >= rangeStartX && centre <= rangeEndX && middle) {
+                    lift = Math.max(lift, this.liftToClear(ink.left, ink.right, overlap));
                 }
             }
         }
         lift = this.allowedLift(lift, numberLift);
+        this.TupletNumberLiftApplied = lift;
         if (lift === 0) {
             return;
         }
         this.bezierStartControlPt = new PointF2D(this.bezierStartControlPt.x, this.bezierStartControlPt.y - lift);
         this.bezierEndControlPt = new PointF2D(this.bezierEndControlPt.x, this.bezierEndControlPt.y - lift);
+    }
+
+    /** How far both control points move for the curve to clear ink from left to right: the most overlap (how far the
+     *  curve point at y reaches into the ink and its clearance) over 3·t·(1−t); 0 when the curve clears it. */
+    private liftToClear(left: number, right: number, overlap: (y: number) => number): number {
+        let lift: number = 0;
+        for (let i: number = 1; i < 64; i++) {
+            const t: number = i / 64;
+            const point: PointF2D = this.calculateCurvePointAtIndex(t);
+            if (point.x < left || point.x > right) {
+                continue;
+            }
+            const over: number = overlap(point.y);
+            if (over <= 0) {
+                continue;
+            }
+            lift = Math.max(lift, over / (3 * t * (1 - t)));
+        }
+        return lift;
+    }
+
+    /**
+     * For diagnostics only (the layout never reads them): the unbracketed tuplet numbers on the slur's side that
+     * liftOverOrnaments() (lowerUnderOrnaments()) looked at in its last calculation - where the number's centre is
+     * along the curve (0 at its start, 1 at its end), whether that is the slur's middle half, and the move of the
+     * control points it needs to go inside - and the move made. As in osmd-dart.
+     */
+    public TupletNumberLiftTrace: { left: number, right: number, fraction: number, middle: boolean, lift: number }[] = [];
+    public TupletNumberLiftApplied: number = 0;
+
+    /** The most a tuplet number may move the control points, see allowedLift() (for diagnostics). */
+    public get TupletNumberLiftLimit(): number {
+        return Math.min(3, 0.75 * (this.bezierEndPt.x - this.bezierStartPt.x));
+    }
+
+    private traceNumber(left: number, right: number, centre: number, middle: boolean, lift: number): void {
+        this.TupletNumberLiftTrace.push({
+            left, right, middle, lift,
+            fraction: (centre - this.bezierStartPt.x) / (this.bezierEndPt.x - this.bezierStartPt.x),
+        });
     }
 
     /**
@@ -590,6 +623,7 @@ export class GraphicalSlur extends GraphicalCurve {
     private lowerUnderOrnaments(staffLine: StaffLine, rangeStartX: number, rangeEndX: number): void {
         let drop: number = 0;
         let numberDrop: number = 0;
+        this.TupletNumberLiftTrace = [];
         for (const measure of staffLine.Measures) {
             if (!(measure instanceof VexFlowMeasure)) {
                 continue;
@@ -600,31 +634,23 @@ export class GraphicalSlur extends GraphicalCurve {
             ];
             for (const ink of inks) {
                 const centre: number = (ink.left + ink.right) / 2;
-                // (a tuplet number by the curve alone: the staff entries' boxes that bound the sky line range take in
-                //   their lyrics)
-                if ((!ink.number && (centre < rangeStartX || centre > rangeEndX)) ||
-                    !GraphicalSlur.isInMiddleOfSlur(centre, this.bezierStartPt.x, this.bezierEndPt.x)) {
-                    continue;
-                }
-                for (let i: number = 1; i < 64; i++) {
-                    const t: number = i / 64;
-                    const point: PointF2D = this.calculateCurvePointAtIndex(t);
-                    if (point.x < ink.left || point.x > ink.right) {
-                        continue;
+                const middle: boolean = GraphicalSlur.isInMiddleOfSlur(centre, this.bezierStartPt.x, this.bezierEndPt.x);
+                const overlap: (y: number) => number = y => ink.bottom + GraphicalSlur.ornamentClearance - y;
+                if (ink.number) {
+                    // (a tuplet number by the curve alone: the staff entries' boxes that bound the sky line range take in
+                    //   their lyrics)
+                    const need: number = this.liftToClear(ink.left, ink.right, overlap);
+                    this.traceNumber(ink.left, ink.right, centre, middle, need);
+                    if (middle) {
+                        numberDrop = Math.max(numberDrop, need);
                     }
-                    const above: number = ink.bottom + GraphicalSlur.ornamentClearance - point.y;
-                    if (above <= 0) {
-                        continue;
-                    }
-                    if (ink.number) {
-                        numberDrop = Math.max(numberDrop, above / (3 * t * (1 - t)));
-                    } else {
-                        drop = Math.max(drop, above / (3 * t * (1 - t)));
-                    }
+                } else if (centre >= rangeStartX && centre <= rangeEndX && middle) {
+                    drop = Math.max(drop, this.liftToClear(ink.left, ink.right, overlap));
                 }
             }
         }
         drop = this.allowedLift(drop, numberDrop);
+        this.TupletNumberLiftApplied = drop;
         if (drop === 0) {
             return;
         }
