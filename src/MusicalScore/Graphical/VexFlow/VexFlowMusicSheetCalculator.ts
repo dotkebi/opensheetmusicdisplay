@@ -4351,6 +4351,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         // (over one slur it can meet another one over both: Lotti, Pur dicesti, o bocca bella m163, a slur over two
         //   triplets and one over the first two notes)
         let raise: number = 0;
+        const trace: number[] = [];
+        measure.TupletNumberSlurRaiseTrace.set(ink.tuplet, trace);
         for (let pass: number = 0; pass < 3; pass++) {
           const more: number = VexFlowMusicSheetCalculator.raiseOverSlursAbove(
             { left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise }, staffLine, 0);
@@ -4358,6 +4360,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
             break;
           }
           raise += more;
+          trace.push(more);
         }
         if (raise > 0) {
           options.y_offset = (options.y_offset || 0) - raise * unitInPixels;
@@ -4366,6 +4369,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         }
       } else {
         let drop: number = 0;
+        const trace: number[] = [];
+        measure.TupletNumberSlurRaiseTrace.set(ink.tuplet, trace);
         for (let pass: number = 0; pass < 3; pass++) {
           const more: number = VexFlowMusicSheetCalculator.dropUnderSlursBelow(
             { left: ink.left, right: ink.right, top: ink.top + drop, bottom: ink.bottom + drop }, staffLine, 0);
@@ -4373,6 +4378,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
             break;
           }
           drop += more;
+          trace.push(more);
         }
         if (drop > 0) {
           options.y_offset = (options.y_offset || 0) + drop * unitInPixels;

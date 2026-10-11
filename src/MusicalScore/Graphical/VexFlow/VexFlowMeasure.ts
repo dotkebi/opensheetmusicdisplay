@@ -2741,6 +2741,11 @@ export class VexFlowMeasure extends GraphicalMeasure {
         return this.ornamentInkAt(VF.Modifier.Position.ABOVE);
     }
 
+    /** For diagnostics only (the layout never reads it): the moves (in units, one per pass) by which
+     *  VexFlowMusicSheetCalculator.layoutFermatasOverSlurs() took each tuplet's number outside the slurs on its side in
+     *  its last layout; empty when it stayed. As in osmd-dart. */
+    public TupletNumberSlurRaiseTrace: Map<any, number[]> = new Map();
+
     /**
      * Where the tuplet numbers drawn are, as VF.Tuplet.draw() puts them, in units relative to the staff line (x) and its
      * top line (y), like [[OrnamentInk]]; above for those over their notes. A bracketed tuplet's ink covers its bracket
