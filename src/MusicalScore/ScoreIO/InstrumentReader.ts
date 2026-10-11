@@ -270,7 +270,7 @@ export class InstrumentReader {
             this.saveAbstractInstructionList(this.instrument.Staves.length, true);
             this.readMeasureRepeats(xmlNode);
           }
-          if (this.isAttributesNodeAtEndOfMeasure(this.xmlMeasureList[this.currentXmlMeasureIndex], xmlNode, currentFraction)) {
+          if (this.isAttributesNodeAtEndOfMeasure(xmlMeasureListArr, xmlNodeIndex, currentFraction)) {
             this.saveClefInstructionAtEndOfMeasure();
           }
           const staffDetailsNodes: IXmlElement[] = xmlNode.elements("staff-details"); // there can be multiple, even if redundant. see #1041
@@ -1075,11 +1075,11 @@ export class InstrumentReader {
 
   /**
    * Check if the given attributesNode is at the end of a XmlMeasure.
-   * @param parentNode
-   * @param attributesNode
+   * @param children the measure's child nodes
+   * @param attributesNodeIndex the attributes node's index in children
    * @returns {boolean}
    */
-  private isAttributesNodeAtEndOfMeasure(parentNode: IXmlElement, attributesNode: IXmlElement, currentFraction: Fraction): boolean {
+  private isAttributesNodeAtEndOfMeasure(children: IXmlElement[], attributesNodeIndex: number, currentFraction: Fraction): boolean {
     if (currentFraction.Equals(this.ActiveRhythm?.Rhythm)) {
       return true;
       // when the MusicXML uses a lot of <backup> nodes (e.g. Sibelius), we sometimes only detect measure end like this, not like below.
@@ -1087,22 +1087,16 @@ export class InstrumentReader {
       //   (at least that there are no note nodes after the attributes node)
       //   but with backup nodes, there can be note nodes after it that are at an earlier timestamp.
     }
-    const childs: IXmlElement[] = parentNode.elements().slice(); // slice=arrayCopy
-    let attributesNodeIndex: number = 0;
-    for (let i: number = 0; i < childs.length; i++) {
-      if (childs[i] === attributesNode) {
-        attributesNodeIndex = i;
-        break;
+    // no note node after it. (By its index in the measure's children: the attributes node was looked up by identity
+    //   in a fresh parentNode.elements(), whose wrappers are new objects, so it was never found and only the check
+    //   above detected a measure's end — a clef after the last note of a measure longer or shorter than the time
+    //   signature was taken one measure late, Vieuxtemps Op. 31 m194. As osmd-dart.)
+    for (let i: number = attributesNodeIndex + 1; i < children.length; i++) {
+      if (children[i].name === "note") {
+        return false;
       }
     }
-    let nextNoteNodeIndex: number = 0;
-    for (let i: number = attributesNodeIndex; i < childs.length; i++) {
-      if (childs[i].name === "note") {
-        nextNoteNodeIndex = i;
-        break;
-      }
-    }
-    return attributesNodeIndex > nextNoteNodeIndex;
+    return true;
   }
 
   /**
@@ -1660,10 +1654,13 @@ export class InstrumentReader {
               instructionTimestamp.RealValue / duration.RealValue > 0.90 && // necessary for #1120
               duration.RealValue !== instructionTimestamp.RealValue // necessary for #1461
             ) {
-              if (!this.currentMeasure.LastInstructionsStaffEntries[key - 1]) {
-                this.currentMeasure.LastInstructionsStaffEntries[key - 1] = new SourceStaffEntry(undefined, this.instrument.Staves[key - 1]);
+              // the measure's staff index (the staff key is counted within this instrument): the clef of a later
+              //   instrument's staff went to another instrument's staff (Vieuxtemps Op. 31 m194, piano left hand)
+              const sseIndex: number = this.inSourceMeasureInstrumentIndex + key - 1;
+              if (!this.currentMeasure.LastInstructionsStaffEntries[sseIndex]) {
+                this.currentMeasure.LastInstructionsStaffEntries[sseIndex] = new SourceStaffEntry(undefined, this.instrument.Staves[key - 1]);
               }
-              lastStaffEntryBefore = this.currentMeasure.LastInstructionsStaffEntries[key - 1];
+              lastStaffEntryBefore = this.currentMeasure.LastInstructionsStaffEntries[sseIndex];
               if (!clefInstruction.PrintObject && lastStaffEntryBefore.Instructions.some(
                 (earlier: AbstractNotationInstruction) => earlier instanceof ClefInstruction && earlier.PrintObject)) {
                 // a visible courtesy clef is already there: keep it, only remember the hidden clef after it
