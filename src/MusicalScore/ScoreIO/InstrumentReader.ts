@@ -139,6 +139,14 @@ export class InstrumentReader {
     this.activeRhythm = value;
   }
 
+  /** Whether the part has written a <time> of its own so far: then another part's time signature isn't copied to it
+   * (see MusicSheetReader.checkIfRhythmInstructionsAreSetAndEqual). */
+  public HasOwnTimeSignature: boolean = false;
+
+  public get Instrument(): Instrument {
+    return this.instrument;
+  }
+
   /** The lengths a measure may have under the time signatures in force, besides [[ActiveRhythm]]: those of the other
    * staves and the interchangeable ones (Wagner, Siegmunds Liebeslied m1: 9/8 for the measure, 3/4 interchangeable
    * and in the left hand — the 3/4 bar is no pickup). */
@@ -1284,6 +1292,7 @@ export class InstrumentReader {
       }
     }
     if (attrNode.element("time")) {
+      this.HasOwnTimeSignature = true;
       const allTimeNodes: IXmlElement[] = attrNode.elements("time");
       const rhythmInstruction: RhythmInstruction = this.rhythmInstructionOf(InstrumentReader.timeNodesOfOneStaff(allTimeNodes));
       // The time signature drawn on each staff: its own <time number="N"> (Wagner, Siegmunds Liebeslied m1: 9/8 with

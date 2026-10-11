@@ -409,7 +409,11 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
     /**
      * Check if all (should there be any apart from the first Measure) [[RhythmInstruction]]s in the [[SourceMeasure]] are the same.
      *
-     * If not, then the max [[RhythmInstruction]] (Fraction) is set to all staves.
+     * If not, then the max [[RhythmInstruction]] (Fraction) is drawn on the staves of the parts that have never written a <time>
+     * of their own; a part that has keeps its own (Vieuxtemps, Op. 31 m178: the piano changes to 12/8, the solo violin stays
+     * in common time), as does a smaller one written in the measure. Only the drawing: every part still measures with the max
+     * one, as before (a part's own time signature can be a local one whose notes are stretched to the measure — OpenScore
+     * lieder written in MuseScore).
      * Also, if it happens to have the same [[RhythmInstruction]]s in RealValue but given in Symbol AND Fraction, then the Fraction prevails.
      * @param instrumentReaders
      */
@@ -453,7 +457,17 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
         }
         if (rhythmInstructions.length > 0 && rhythmInstructions.length < this.completeNumberOfStaves) {
             const rhythmInstruction: RhythmInstruction = rhythmInstructions[index].clone();
+            const receivingStaves: Set<number> = new Set<number>();
+            for (const reader of instrumentReaders.filter(instrumentReader => !instrumentReader.HasOwnTimeSignature)) {
+                const firstStaff: number = this.musicSheet.getGlobalStaffIndexOfFirstStaff(reader.Instrument);
+                for (let s: number = 0; s < reader.Instrument.Staves.length; s++) {
+                    receivingStaves.add(firstStaff + s);
+                }
+            }
             for (let i: number = 0; i < this.completeNumberOfStaves; i++) {
+                if (!receivingStaves.has(i)) {
+                    continue;
+                }
                 if (
                     this.currentMeasure.FirstInstructionsStaffEntries[i] !== undefined &&
                     !(this._lastElement(this.currentMeasure.FirstInstructionsStaffEntries[i].Instructions) instanceof RhythmInstruction)
@@ -490,19 +504,10 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                 instrumentReader.ActiveRhythm = rhythmInstruction;
             }
         }
+        // (a smaller time signature written in the measure stays: it is its part's own, as a staff's own <time number="N">
+        //   stays on its staff)
         for (let idx: number = 0, len: number = rhythmInstructions.length; idx < len; ++idx) {
             const rhythmInstruction: RhythmInstruction = rhythmInstructions[idx];
-            // (a staff's own <time number="N"> stays on its staff)
-            if (rhythmInstruction.Rhythm.RealValue < maxRhythmValue && !rhythmInstruction.ReadForItsStaff) {
-                if (this._lastElement(
-                        this.currentMeasure.FirstInstructionsStaffEntries[rhythmInstructions.indexOf(rhythmInstruction)].Instructions
-                    ) instanceof RhythmInstruction) {
-                    // TODO Test correctness
-                    const instrs: AbstractNotationInstruction[] =
-                        this.currentMeasure.FirstInstructionsStaffEntries[rhythmInstructions.indexOf(rhythmInstruction)].Instructions;
-                    instrs[instrs.length - 1] = rhythmInstructions[index].clone();
-                }
-            }
             if (
                 Math.abs(rhythmInstruction.Rhythm.RealValue - maxRhythmValue) < 0.000001 &&
                 rhythmInstruction.SymbolEnum !== RhythmSymbolEnum.NONE &&
