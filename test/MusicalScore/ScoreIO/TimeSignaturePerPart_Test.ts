@@ -48,7 +48,8 @@ describe("Time signatures per part", () => {
     }
 
     /** test_time_per_part_own.musicxml: violin (staff 0) 3/4, 6/8 from m2, 2/4 from m4; piano (staves 1-2) 3/4, 6/8 from
-     * m3, 3/4 from m4; every bar lasts 3/4. */
+     * m3, 3/4 from m4, 6/8 in m6, 3/4 in m7, where the violin writes its 2/4 again (m7 with print-object="no"); every bar
+     * lasts 3/4. */
     describe("parts that write their own time signatures", () => {
         beforeEach(async () => {
             await render("test_time_per_part_own.musicxml");
@@ -68,13 +69,22 @@ describe("Time signatures per part", () => {
             expect(drawnCounts(3)).to.deep.equal([1, 1, 1]);
         });
 
+        it("draw their own written again where another part changes", () => {
+            expect(timesOf(5)).to.deep.equal(["2/4", "6/8", "6/8"]);
+            expect(drawnCounts(5)).to.deep.equal([1, 1, 1]);
+            // (written again with print-object="no": not drawn)
+            expect(drawnCounts(6).slice(1)).to.deep.equal([1, 1]);
+            const violin: any = osmd.GraphicSheet.MeasureList[6][0];
+            expect(drawnCounts(6)[0] > 0 && violin.ShowTimeSignature !== false).to.equal(false);
+        });
+
         it("the measures stay as long as before", () => {
             const measures: any[] = osmd.Sheet.SourceMeasures;
-            expect(measures.map(m => m.Duration.RealValue)).to.deep.equal([0.75, 0.75, 0.75, 0.75, 0.75]);
-            expect(measures.map(m => m.ImplicitMeasure)).to.deep.equal([false, false, false, false, false]);
-            expect(measures.map(m => m.MeasureNumber)).to.deep.equal([1, 2, 3, 4, 5]);
+            expect(measures.map(m => m.Duration.RealValue)).to.deep.equal(Array(7).fill(0.75));
+            expect(measures.map(m => m.ImplicitMeasure)).to.deep.equal(Array(7).fill(false));
+            expect(measures.map(m => m.MeasureNumber)).to.deep.equal([1, 2, 3, 4, 5, 6, 7]);
             // the largest time signature written in the measure, as before
-            expect(measures.map(m => m.ActiveTimeSignature.RealValue)).to.deep.equal([0.75, 0.75, 0.75, 0.75, 0.75]);
+            expect(measures.map(m => m.ActiveTimeSignature.RealValue)).to.deep.equal(Array(7).fill(0.75));
         });
     });
 
