@@ -19,7 +19,7 @@ describe("Tuplet number under its own slur", () => {
     beforeEach(async () => {
         container = TestUtils.getDivElement(document);
         // narrow: the four slurs of m1 are under 4 units wide (osmd-dart takes 400 px, where its slurs are as wide; its
-        //   number is drawn 0.35 lower and in the middle of its slur)
+        //   number is drawn 0.35 lower)
         container.style.width = "500px";
         osmd = TestUtils.createOpenSheetMusicDisplay(container);
         await osmd.load(TestUtils.getScore("test_tuplet_number_own_slur.musicxml"));
@@ -56,14 +56,17 @@ describe("Tuplet number under its own slur", () => {
                     .filter(s => s.staffEntries[0].parentMeasure === measure)
                     .map(s => curveOver(s, ink.left, ink.right))
                     .filter(c => c !== undefined);
-                expect(curves.length, `m${index + 1}: one slur passes over the number at ${ink.left}`).to.equal(1);
-                const curve: { lowest: number, highest: number } = curves[0];
                 if (index === 0) {
-                    expect(curve.lowest, `m1: slur ${curve.lowest} under the number top ${ink.top} at ${ink.left}`)
+                    expect(curves.length, `m1: one slur passes over the number at ${ink.left}`).to.equal(1);
+                    expect(curves[0].lowest, `m1: slur ${curves[0].lowest} under the number top ${ink.top} at ${ink.left}`)
                         .to.be.lessThan(ink.top);
                 } else {
-                    expect(ink.bottom, `m2: number bottom ${ink.bottom} on the slur ${curve.highest}`)
-                        .to.be.lessThan(curve.highest - GraphicalSlur.thickness);
+                    // over the slur's end, or (centred on the noteheads, TupletNumberNoteheadSideSlur_Test) just right of it
+                    expect(curves.length, `m2: slurs at the number at ${ink.left}`).to.be.at.most(1);
+                    for (const curve of curves) {
+                        expect(ink.bottom, `m2: number bottom ${ink.bottom} on the slur ${curve.highest}`)
+                            .to.be.lessThan(curve.highest - GraphicalSlur.thickness);
+                    }
                 }
             }
         }
