@@ -4258,12 +4258,13 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
    *  A slur over the ink clears it when it stays inside over its top (a slur lifted over an ornament clears it by the
    *  full clearance; one over a tuplet number by any space, see layoutFermatasOverSlurs()). */
   private static raiseOverSlursAbove(ink: { left: number, right: number, top: number, bottom: number }, staffLine: StaffLine,
-                                     inside: number = GraphicalSlur.ornamentClearance - 0.1): number {
+                                     inside: number = GraphicalSlur.ornamentClearance - 0.1,
+                                     skip: Set<GraphicalSlur> = new Set()): number {
     const clearance: number = GraphicalSlur.ornamentClearance;
     const over: number = clearance + GraphicalSlur.thickness;
     let raise: number = 0;
     for (const slur of staffLine.GraphicalSlurs) {
-      if (slur.placement !== PlacementEnum.Above || !slur.bezierStartPt) {
+      if (slur.placement !== PlacementEnum.Above || !slur.bezierStartPt || skip.has(slur)) {
         continue;
       }
       let curveTop: number = Number.POSITIVE_INFINITY;
@@ -4348,19 +4349,37 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     for (const ink of measure.TupletNumberInk) {
       const options: any = ink.tuplet.options;
       if (ink.above) {
-        // (over one slur it can meet another one over both: Lotti, Pur dicesti, o bocca bella m163, a slur over two
-        //   triplets and one over the first two notes)
+        // A number over a shorter slur in its tuplet stays under a slur over the whole tuplet, which lifts on over it
+        //   when that takes a modest lift (GraphicalSlur.liftOverRaisedNumber(); Lotti, Pur dicesti, o bocca bella m69
+        //   and m163, a slur over two triplets and one over the first two notes: the Ricordi print has the first 3
+        //   between them). Otherwise (over one slur it can meet another one over both) it goes over all of them.
+        const covering: Set<GraphicalSlur> = new Set(staffLine.GraphicalSlurs.filter(
+          slur => slur.placement === PlacementEnum.Above && slur.bezierStartPt && slur.coversTuplet(ink.tuplet)));
         let raise: number = 0;
-        const trace: number[] = [];
+        let trace: number[] = [];
         measure.TupletNumberSlurRaiseTrace.set(ink.tuplet, trace);
-        for (let pass: number = 0; pass < 3; pass++) {
-          const more: number = VexFlowMusicSheetCalculator.raiseOverSlursAbove(
-            { left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise }, staffLine, 0);
-          if (more <= 0) {
-            break;
+        const raiseOver: (skip: Set<GraphicalSlur>) => void = skip => {
+          for (let pass: number = 0; pass < 3; pass++) {
+            const more: number = VexFlowMusicSheetCalculator.raiseOverSlursAbove(
+              { left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise }, staffLine, 0, skip);
+            if (more <= 0) {
+              break;
+            }
+            raise += more;
+            trace.push(more);
           }
-          raise += more;
-          trace.push(more);
+        };
+        if (covering.size > 0) {
+          raiseOver(covering);
+          if (raise > 0 && ![...covering].every(slur => slur.liftOverRaisedNumber(
+            staffLine, ink.tuplet, ink.left, ink.top - raise, ink.right))) {
+            raise = 0;
+            trace = [];
+            measure.TupletNumberSlurRaiseTrace.set(ink.tuplet, trace);
+          }
+        }
+        if (raise <= 0) {
+          raiseOver(new Set());
         }
         if (raise > 0) {
           options.y_offset = (options.y_offset || 0) - raise * unitInPixels;

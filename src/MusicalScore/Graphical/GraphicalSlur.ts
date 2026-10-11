@@ -524,6 +524,8 @@ export class GraphicalSlur extends GraphicalCurve {
      */
     private liftOverOrnaments(staffLine: StaffLine, rangeStartX: number, rangeEndX: number,
                               startNote: GraphicalNote, endNote: GraphicalNote): void {
+        this.liftStartNote = startNote;
+        this.liftEndNote = endNote;
         let lift: number = 0;
         let numberLift: number = 0;
         let ownNumberLift: number = 0;
@@ -532,11 +534,12 @@ export class GraphicalSlur extends GraphicalCurve {
             if (!(measure instanceof VexFlowMeasure)) {
                 continue;
             }
-            const inks: { left: number, right: number, top: number, number: boolean, own: boolean }[] = [
-                ...measure.OrnamentInk.map(ink => ({ left: ink.left, right: ink.right, top: ink.top, number: false, own: false })),
+            const inks: { left: number, right: number, top: number, number: boolean, own: boolean, covered: boolean }[] = [
+                ...measure.OrnamentInk.map(ink => ({ left: ink.left, right: ink.right, top: ink.top, number: false, own: false, covered: false })),
                 ...GraphicalSlur.tupletNumbersInside(measure, true).map(ink => ({
                     left: ink.left, right: ink.right, top: ink.top, number: true,
                     own: GraphicalSlur.isOwnTuplet(ink.tuplet, startNote, endNote),
+                    covered: this.coversTuplet(ink.tuplet),
                 })),
             ];
             for (const ink of inks) {
@@ -548,9 +551,10 @@ export class GraphicalSlur extends GraphicalCurve {
                     //   their lyrics)
                     const need: number = this.liftToClear(ink.left, ink.right, overlap);
                     this.traceNumber(ink.left, ink.right, centre, middle, need, ink.own);
-                    if (middle && ink.own) {
+                    const inside: boolean = middle || ink.covered;
+                    if (inside && ink.own) {
                         ownNumberLift = Math.max(ownNumberLift, need);
-                    } else if (middle) {
+                    } else if (inside) {
                         numberLift = Math.max(numberLift, need);
                     }
                 } else if (centre >= rangeStartX && centre <= rangeEndX && middle) {
@@ -653,6 +657,80 @@ export class GraphicalSlur extends GraphicalCurve {
         return notes.length > 0 && start !== undefined && end !== undefined && notes[0] === start && notes[notes.length - 1] === end;
     }
 
+    /** Whether the whole tuplet is under the slur: each of its notes is a note of one of the slur's staff entries on
+     *  this staff line. Its number may then go inside off the slur's middle half, over the slur's first or last note,
+     *  within the lift a number may take: a slur from the tuplet's first note on over more notes (Lotti, Pur dicesti,
+     *  bocca bella, Medium High voice m70: the slur from the first triplet's first note to m71 has both 3s under its
+     *  arc in the Schirmer print, the first 0.11 along the curve on the web; it went over the slur). A slur over part
+     *  of the tuplet leaves it out as before (Jemand m43, m45). As in osmd-dart. */
+    public coversTuplet(tuplet: any): boolean {
+        const notes: any[] = tuplet.getNotes();
+        if (notes.length === 0) {
+            return false;
+        }
+        const under: Set<any> = new Set();
+        for (const staffEntry of this.staffEntries) {
+            for (const voiceEntry of staffEntry.graphicalVoiceEntries) {
+                for (const note of voiceEntry.notes) {
+                    const staveNote: any = (note as VexFlowGraphicalNote)?.vfnote?.[0];
+                    if (staveNote !== undefined) {
+                        under.add(staveNote);
+                    }
+                }
+            }
+        }
+        return notes.every(note => under.has(note));
+    }
+
+    private liftStartNote: GraphicalNote;
+    private liftEndNote: GraphicalNote;
+
+    /**
+     * After the number of a tuplet this slur covers (coversTuplet()) went over a shorter slur in it
+     * (VexFlowMusicSheetCalculator.layoutFermatasOverSlurs()), lift this slur on over the number's new place (left to
+     * right, top) by ornamentClearance, within the lift its numbers may take (TupletNumberLiftLimit,
+     * OwnTupletNumberLiftLimit for its own tuplet) with what liftOverOrnaments() took already, and raise the sky line to
+     * the new curve (Lotti, Pur dicesti, o bocca bella, Ricordi edition, voice m69 and m163: the first 3 over the slur
+     * on its first two notes, under the slur over both triplets). False, and no move, when that takes more; the number
+     * then goes over this slur too. Above the notes only. As in osmd-dart.
+     */
+    public liftOverRaisedNumber(staffLine: StaffLine, tuplet: any, left: number, top: number, right: number): boolean {
+        if (this.placement !== PlacementEnum.Above) {
+            return false;
+        }
+        const need: number = this.liftToClear(left, right, y => y - (top - GraphicalSlur.ornamentClearance));
+        if (need <= 0) {
+            return true;
+        }
+        const limit: number = GraphicalSlur.isOwnTuplet(tuplet, this.liftStartNote, this.liftEndNote)
+            ? this.OwnTupletNumberLiftLimit : this.TupletNumberLiftLimit;
+        if (this.TupletNumberLiftApplied + need > limit) {
+            return false;
+        }
+        this.TupletNumberLiftApplied += need;
+        this.bezierStartControlPt = new PointF2D(this.bezierStartControlPt.x, this.bezierStartControlPt.y - need);
+        this.bezierEndControlPt = new PointF2D(this.bezierEndControlPt.x, this.bezierEndControlPt.y - need);
+        const skyBottomLineCalculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        const length: number = staffLine.SkyLine.length;
+        const startIndex: number = skyBottomLineCalculator.getLeftIndexForPointX(this.bezierStartPt.x, length);
+        const endIndex: number = skyBottomLineCalculator.getLeftIndexForPointX(this.bezierEndPt.x, length);
+        const distance: number = this.bezierEndPt.x - this.bezierStartPt.x;
+        const samplingUnit: number = skyBottomLineCalculator.SamplingUnit;
+        for (let i: number = startIndex; i < endIndex; i++) {
+            const diff: number = i / samplingUnit - this.bezierStartPt.x;
+            const curvePoint: PointF2D = this.calculateCurvePointAtIndex(Math.abs(diff) / distance);
+            let index: number = skyBottomLineCalculator.getLeftIndexForPointX(curvePoint.x, length);
+            if (index >= startIndex) {
+                staffLine.SkyLine[index] = Math.min(staffLine.SkyLine[index], curvePoint.y);
+            }
+            index++;
+            if (index < length) {
+                staffLine.SkyLine[index] = Math.min(staffLine.SkyLine[index], curvePoint.y);
+            }
+        }
+        return true;
+    }
+
     /**
      * [[liftOverOrnaments]] for a slur below the notes and the ornaments below them (a lower voice, Couperin,
      * Concerts royaux I Menuet en trio): lower both control points until the curve passes under every ornament in
@@ -668,11 +746,12 @@ export class GraphicalSlur extends GraphicalCurve {
             if (!(measure instanceof VexFlowMeasure)) {
                 continue;
             }
-            const inks: { left: number, right: number, bottom: number, number: boolean, own: boolean }[] = [
-                ...measure.BelowOrnamentInk.map(ink => ({ left: ink.left, right: ink.right, bottom: ink.bottom, number: false, own: false })),
+            const inks: { left: number, right: number, bottom: number, number: boolean, own: boolean, covered: boolean }[] = [
+                ...measure.BelowOrnamentInk.map(ink => ({ left: ink.left, right: ink.right, bottom: ink.bottom, number: false, own: false, covered: false })),
                 ...GraphicalSlur.tupletNumbersInside(measure, false).map(ink => ({
                     left: ink.left, right: ink.right, bottom: ink.bottom, number: true,
                     own: GraphicalSlur.isOwnTuplet(ink.tuplet, startNote, endNote),
+                    covered: this.coversTuplet(ink.tuplet),
                 })),
             ];
             for (const ink of inks) {
@@ -684,9 +763,10 @@ export class GraphicalSlur extends GraphicalCurve {
                     //   their lyrics)
                     const need: number = this.liftToClear(ink.left, ink.right, overlap);
                     this.traceNumber(ink.left, ink.right, centre, middle, need, ink.own);
-                    if (middle && ink.own) {
+                    const inside: boolean = middle || ink.covered;
+                    if (inside && ink.own) {
                         ownNumberDrop = Math.max(ownNumberDrop, need);
-                    } else if (middle) {
+                    } else if (inside) {
                         numberDrop = Math.max(numberDrop, need);
                     }
                 } else if (centre >= rangeStartX && centre <= rangeEndX && middle) {
