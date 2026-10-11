@@ -411,14 +411,15 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
      *
      * If not, then the max [[RhythmInstruction]] (Fraction) is drawn on the staves of the parts that have never written a <time>
      * of their own; a part that has keeps its own (Vieuxtemps, Op. 31 m178: the piano changes to 12/8, the solo violin stays
-     * in common time), as does a smaller one written in the measure. Only the drawing: every part still measures with the max
-     * one, as before (a part's own time signature can be a local one whose notes are stretched to the measure — OpenScore
-     * lieder written in MuseScore).
+     * in common time), as does a smaller one written in the measure. Only the drawing: every part still measures with one
+     * time signature, the largest in force (a part's own time signature can be a local one whose notes are stretched to the
+     * measure — OpenScore lieder written in MuseScore).
      * Also, if it happens to have the same [[RhythmInstruction]]s in RealValue but given in Symbol AND Fraction, then the Fraction prevails.
      * @param instrumentReaders
      */
     private checkIfRhythmInstructionsAreSetAndEqual(instrumentReaders: InstrumentReader[]): void {
         const rhythmInstructions: RhythmInstruction[] = [];
+        const writtenStaves: Set<number> = new Set<number>();
         for (let i: number = 0; i < this.completeNumberOfStaves; i++) {
             if (this.currentMeasure.FirstInstructionsStaffEntries[i]) {
                 const last: AbstractNotationInstruction = this.currentMeasure.FirstInstructionsStaffEntries[i].Instructions[
@@ -426,6 +427,7 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                     ];
                 if (last instanceof RhythmInstruction) {
                     rhythmInstructions.push(<RhythmInstruction>last);
+                    writtenStaves.add(i);
                 }
             }
         }
@@ -480,9 +482,26 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                     this.currentMeasure.FirstInstructionsStaffEntries[i].Instructions.push(rhythmInstruction.clone());
                 }
             }
+            // every part measures with the largest time signature in force: the largest one written in the measure, or a
+            //   larger one that a part writing none here still plays in (Vieuxtemps Op. 31 m189: the solo writes C, the piano
+            //   stays in 12/8 — the measure was taken as 4/4, its full-measure rests cut to 4/4 and the metronome beat in
+            //   quarters). Same as osmd-dart.
+            let activeRhythm: RhythmInstruction = rhythmInstruction;
+            for (const reader of instrumentReaders) {
+                const own: RhythmInstruction = reader.OwnRhythm;
+                const firstStaff: number = this.musicSheet.getGlobalStaffIndexOfFirstStaff(reader.Instrument);
+                let writesHere: boolean = false;
+                for (let s: number = 0; s < reader.Instrument.Staves.length; s++) {
+                    writesHere = writesHere || writtenStaves.has(firstStaff + s);
+                }
+                if (reader.HasOwnTimeSignature && !writesHere && own && own.Rhythm.RealValue > activeRhythm.Rhythm.RealValue &&
+                    this.playsInOwnRhythm(firstStaff, reader.Instrument.Staves.length, own)) {
+                    activeRhythm = own.clone();
+                }
+            }
             for (let idx: number = 0, len: number = instrumentReaders.length; idx < len; ++idx) {
                 const instrumentReader: InstrumentReader = instrumentReaders[idx];
-                instrumentReader.ActiveRhythm = rhythmInstruction;
+                instrumentReader.ActiveRhythm = activeRhythm;
             }
         }
         if (rhythmInstructions.length === 0 && this.currentMeasure === this.musicSheet.SourceMeasures[0]) {
@@ -523,6 +542,35 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
      * @param rhythmInstructions
      * @returns {boolean}
      */
+    /**
+     * Whether a part writing no <time> in the measure (its staves firstStaff..) still plays in its own time signature
+     * there: its notes fill it, or it only rests (rests written as long as its time signature). Not when its notes fill
+     * only the smaller one written: a time change written in one part only (wave 1 0345, Mr. Crowley m42: the second
+     * part's notes are in 2/4 too, its whole-measure rests a 2/2 long). Same as osmd-dart.
+     */
+    private playsInOwnRhythm(firstStaff: number, staves: number, own: RhythmInstruction): boolean {
+        let hasNotes: boolean = false;
+        let length: number = 0;
+        for (const container of this.currentMeasure.VerticalSourceStaffEntryContainers) {
+            for (let s: number = firstStaff; s < firstStaff + staves; s++) {
+                const entry: SourceStaffEntry = container.StaffEntries[s];
+                if (!entry) {
+                    continue;
+                }
+                for (const voiceEntry of entry.VoiceEntries) {
+                    if (voiceEntry.IsGrace) {
+                        continue;
+                    }
+                    for (const note of voiceEntry.Notes) {
+                        hasNotes = hasNotes || !note.isRest();
+                        length = Math.max(length, container.Timestamp.RealValue + note.Length.RealValue);
+                    }
+                }
+            }
+        }
+        return !hasNotes || length >= own.Rhythm.RealValue - 0.000001;
+    }
+
     private areRhythmInstructionsMixed(rhythmInstructions: RhythmInstruction[]): boolean {
         for (let i: number = 1; i < rhythmInstructions.length; i++) {
             if (

@@ -147,6 +147,18 @@ export class InstrumentReader {
     return this.instrument;
   }
 
+  /** The largest time signature the part's staves are in — its own, whatever MusicSheetReader made [[ActiveRhythm]] —
+   * or undefined before its first <time>. */
+  public get OwnRhythm(): RhythmInstruction {
+    let own: RhythmInstruction = undefined;
+    for (const rhythm of this.activeStaffRhythms) {
+      if (!own || rhythm.Rhythm.RealValue > own.Rhythm.RealValue) {
+        own = rhythm;
+      }
+    }
+    return own;
+  }
+
   /** The lengths a measure may have under the time signatures in force, besides [[ActiveRhythm]]: those of the other
    * staves and the interchangeable ones (Wagner, Siegmunds Liebeslied m1: 9/8 for the measure, 3/4 interchangeable
    * and in the left hand — the 3/4 bar is no pickup). */

@@ -108,4 +108,26 @@ describe("Time signatures per part", () => {
         expect(drawnCounts(5)).to.deep.equal([0, 0]);
         expect(osmd.Sheet.SourceMeasures.map(m => m.Duration.RealValue)).to.deep.equal(Array(6).fill(0.75));
     });
+
+    /** test_time_part_stays_in_larger.musicxml: violin and piano 12/8; in m2 the violin writes C (four quarters) while the
+     *  piano, writing nothing, rests the whole measure; m3: violin four quarters, piano four dotted quarters. */
+    it("a part still in a larger time signature keeps the measure as long", async () => {
+        await render("test_time_part_stays_in_larger.musicxml");
+        const measures: any[] = osmd.Sheet.SourceMeasures;
+        expect(measures.map(m => m.ActiveTimeSignature.RealValue)).to.deep.equal([1.5, 1.5, 1.5]);
+        expect(measures.map(m => m.Duration.RealValue)).to.deep.equal([1.5, 1.5, 1.5]);
+        expect(measures.map(m => m.AbsoluteTimestamp.RealValue)).to.deep.equal([0, 1.5, 3]);
+        const pianoRest: any = measures[1].VerticalSourceStaffEntryContainers[0].StaffEntries[1].VoiceEntries[0].Notes[0];
+        expect(pianoRest.Length.RealValue, "not cut to 4/4").to.equal(1.5);
+        expect(drawnCounts(1)).to.deep.equal([1, 0]);
+    });
+
+    /** test_time_change_written_in_one_part.musicxml: two parts in 2/2; in m2 only the first writes 2/4, the second plays
+     *  two quarters; in m3 the second rests the whole measure (a rest written a 2/2 long). */
+    it("a time change written in one part only measures every part", async () => {
+        await render("test_time_change_written_in_one_part.musicxml");
+        const measures: any[] = osmd.Sheet.SourceMeasures;
+        expect(measures.map(m => m.ActiveTimeSignature.RealValue)).to.deep.equal([1, 0.5, 0.5]);
+        expect(measures.map(m => m.Duration.RealValue)).to.deep.equal([1, 0.5, 0.5]);
+    });
 });
