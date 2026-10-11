@@ -524,6 +524,8 @@ export class GraphicalSlur extends GraphicalCurve {
      */
     private liftOverOrnaments(staffLine: StaffLine, rangeStartX: number, rangeEndX: number,
                               startNote: GraphicalNote, endNote: GraphicalNote): void {
+        this.liftStartNote = startNote;
+        this.liftEndNote = endNote;
         let lift: number = 0;
         let numberLift: number = 0;
         let ownNumberLift: number = 0;
@@ -661,7 +663,7 @@ export class GraphicalSlur extends GraphicalCurve {
      *  bocca bella, Medium High voice m70: the slur from the first triplet's first note to m71 has both 3s under its
      *  arc in the Schirmer print, the first 0.11 along the curve on the web; it went over the slur). A slur over part
      *  of the tuplet leaves it out as before (Jemand m43, m45). As in osmd-dart. */
-    private coversTuplet(tuplet: any): boolean {
+    public coversTuplet(tuplet: any): boolean {
         const notes: any[] = tuplet.getNotes();
         if (notes.length === 0) {
             return false;
@@ -678,6 +680,55 @@ export class GraphicalSlur extends GraphicalCurve {
             }
         }
         return notes.every(note => under.has(note));
+    }
+
+    private liftStartNote: GraphicalNote;
+    private liftEndNote: GraphicalNote;
+
+    /**
+     * After the number of a tuplet this slur covers (coversTuplet()) went over a shorter slur in it
+     * (VexFlowMusicSheetCalculator.layoutFermatasOverSlurs()), lift this slur on over the number's new place (left to
+     * right, top) by ornamentClearance, within the lift its numbers may take (TupletNumberLiftLimit,
+     * OwnTupletNumberLiftLimit for its own tuplet) with what liftOverOrnaments() took already, and raise the sky line to
+     * the new curve (Lotti, Pur dicesti, o bocca bella, Ricordi edition, voice m69 and m163: the first 3 over the slur
+     * on its first two notes, under the slur over both triplets). False, and no move, when that takes more; the number
+     * then goes over this slur too. Above the notes only. As in osmd-dart.
+     */
+    public liftOverRaisedNumber(staffLine: StaffLine, tuplet: any, left: number, top: number, right: number): boolean {
+        if (this.placement !== PlacementEnum.Above) {
+            return false;
+        }
+        const need: number = this.liftToClear(left, right, y => y - (top - GraphicalSlur.ornamentClearance));
+        if (need <= 0) {
+            return true;
+        }
+        const limit: number = GraphicalSlur.isOwnTuplet(tuplet, this.liftStartNote, this.liftEndNote)
+            ? this.OwnTupletNumberLiftLimit : this.TupletNumberLiftLimit;
+        if (this.TupletNumberLiftApplied + need > limit) {
+            return false;
+        }
+        this.TupletNumberLiftApplied += need;
+        this.bezierStartControlPt = new PointF2D(this.bezierStartControlPt.x, this.bezierStartControlPt.y - need);
+        this.bezierEndControlPt = new PointF2D(this.bezierEndControlPt.x, this.bezierEndControlPt.y - need);
+        const skyBottomLineCalculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        const length: number = staffLine.SkyLine.length;
+        const startIndex: number = skyBottomLineCalculator.getLeftIndexForPointX(this.bezierStartPt.x, length);
+        const endIndex: number = skyBottomLineCalculator.getLeftIndexForPointX(this.bezierEndPt.x, length);
+        const distance: number = this.bezierEndPt.x - this.bezierStartPt.x;
+        const samplingUnit: number = skyBottomLineCalculator.SamplingUnit;
+        for (let i: number = startIndex; i < endIndex; i++) {
+            const diff: number = i / samplingUnit - this.bezierStartPt.x;
+            const curvePoint: PointF2D = this.calculateCurvePointAtIndex(Math.abs(diff) / distance);
+            let index: number = skyBottomLineCalculator.getLeftIndexForPointX(curvePoint.x, length);
+            if (index >= startIndex) {
+                staffLine.SkyLine[index] = Math.min(staffLine.SkyLine[index], curvePoint.y);
+            }
+            index++;
+            if (index < length) {
+                staffLine.SkyLine[index] = Math.min(staffLine.SkyLine[index], curvePoint.y);
+            }
+        }
+        return true;
     }
 
     /**
