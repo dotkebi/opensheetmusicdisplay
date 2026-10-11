@@ -234,10 +234,17 @@ export class Ornament extends Modifier {
       if (this.delayXShift !== undefined) {
         delayXShift = this.delayXShift;
       } else {
-        delayXShift += this.glyph.getMetrics().width / 2;
-        const nextContext = TickContext.getNextContext(this.note.getTickContext());
+        // VexFlowPatch: halfway to the next note of the voice, from tick context to tick context. glyphX (the note's
+        // modifier x) is off the tick contexts' x by the stave's note start, which only nearly cancelled the half glyph
+        // width inside a system: in a system's first measure the clef, key and time put the ornament left by half their
+        // width (Bellini, Vanne m10, drawn left of its G4). The glyph is centred (origin 0.5). As in vexflow_dart.
+        const voice = this.note.getVoice ? this.note.getVoice() : undefined;
+        const tickables = voice ? voice.getTickables() : [];
+        const index = tickables.indexOf(this.note);
+        const next = index >= 0 ? tickables[index + 1] : undefined;
+        const nextContext = next ? next.getTickContext() : TickContext.getNextContext(this.note.getTickContext());
         if (nextContext) {
-          delayXShift += (nextContext.getX() - glyphX) * 0.5;
+          delayXShift += (nextContext.getX() - this.note.getTickContext().getX()) * 0.5;
         } else {
           delayXShift += (stave.x + stave.width - glyphX) * 0.5;
         }
