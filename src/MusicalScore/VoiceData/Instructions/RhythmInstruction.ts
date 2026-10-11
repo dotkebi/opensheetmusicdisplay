@@ -21,6 +21,19 @@ export class RhythmInstruction extends AbstractNotationInstruction {
      * e.g. a default 4/4 for a sample without a time signature like Satie's Gnossiennes.
      * Such a time signature is not rendered by default (see EngravingRules.RenderTimeSignaturesForSamplesWithoutTimeSignature). */
     public SynthesizedFromNoTimeSignature: boolean = false;
+    /** The time signature printed next to it (MusicXML `<interchangeable>`), e.g. 3/4 to the right of 9/8
+     * (Wagner, Siegmunds Liebeslied m1: "9/8 3/4" above the violin, the cello and the right hand).
+     * It is drawn only; the measure is as long as [[Rhythm]]. Undefined: none. */
+    public Interchangeable: Fraction;
+    /** The symbol relating the interchangeable time signature to this one (MusicXML <time-relation>: parentheses, bracket,
+     * equals, slash, space, hyphen), undefined: none. "parentheses" draws the interchangeable one in parentheses before this
+     * one, as printed (Bowen, Viola Sonata No. 2 m477: "(12/8) 4/4"); the others are drawn as without a relation. */
+    public InterchangeableRelation: string;
+    /** Reader only: read from the staff's own `<time number="N">` (or kept on a staff without one, see
+     * InstrumentReader.pendingStaffRhythm) —
+     * kept on its staff when the reader evens out the staves' time signatures
+     * (MusicSheetReader.checkIfRhythmInstructionsAreSetAndEqual). */
+    public ReadForItsStaff: boolean = false;
 
     public get Rhythm(): Fraction {
         return this.rhythm;
@@ -43,6 +56,9 @@ export class RhythmInstruction extends AbstractNotationInstruction {
         clone.SynthesizedFromNoTimeSignature = this.SynthesizedFromNoTimeSignature;
         // the reader clones the rhythm onto staves without one; a <time print-object="no"> stays hidden on each
         clone.PrintObject = this.PrintObject;
+        clone.Interchangeable = this.Interchangeable?.clone();
+        clone.InterchangeableRelation = this.InterchangeableRelation;
+        clone.ReadForItsStaff = this.ReadForItsStaff;
         return clone;
     }
 
@@ -55,6 +71,16 @@ export class RhythmInstruction extends AbstractNotationInstruction {
             return false;
         }
         return (rhythm1.numerator === rhythm2.numerator && rhythm1.denominator === rhythm2.denominator);
+    }
+
+    /** Whether it is drawn as rhythm2: the same signature, symbol and interchangeable signature (see [[Interchangeable]]). */
+    public drawnAs(rhythm2: RhythmInstruction): boolean {
+        const i1: Fraction = this.Interchangeable;
+        const i2: Fraction = rhythm2.Interchangeable;
+        return this.OperatorEquals(rhythm2) &&
+            this.symbolEnum === rhythm2.symbolEnum &&
+            ((!i1 && !i2) || (i1 && i2 && i1.Numerator === i2.Numerator && i1.Denominator === i2.Denominator &&
+              this.InterchangeableRelation === rhythm2.InterchangeableRelation));
     }
 
     public OperatorNotEqual(rhythm2: RhythmInstruction): boolean {

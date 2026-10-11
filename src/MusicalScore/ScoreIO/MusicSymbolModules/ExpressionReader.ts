@@ -368,7 +368,7 @@ export class ExpressionReader {
         this.openDashes = []; // dashes without a stop are not drawn
     }
     public addOctaveShift(directionNode: IXmlElement, currentMeasure: SourceMeasure, endTimestamp: Fraction,
-                          endVoiceEntryCount: number = 0): void {
+                          endVoiceEntryCount: number = 0, startVoiceEntryCount: number = 0): void {
         let octaveStaffNumber: number = 1;
         const staffNode: IXmlElement = directionNode.element("staff");
         if (staffNode) {
@@ -412,6 +412,7 @@ export class ExpressionReader {
                             const octaveShift: OctaveShift = new OctaveShift(type, octave);
                             octaveShift.StaffNumber = octaveStaffNumber;
                             octaveShift.numberXml = numberXml;
+                            octaveShift.startVoiceEntryIndex = startVoiceEntryCount;
                             this.getMultiExpression = this.createNewMultiExpressionIfNeeded(
                                 currentMeasure, numberXml);
                             this.getMultiExpression.OctaveShiftStart = octaveShift;

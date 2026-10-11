@@ -10,6 +10,7 @@ import {ClefInstruction, ClefEnum} from "../../VoiceData/Instructions/ClefInstru
 import {KeyInstruction} from "../../VoiceData/Instructions/KeyInstruction";
 import {RhythmInstruction} from "../../VoiceData/Instructions/RhythmInstruction";
 import {VexFlowConverter} from "./VexFlowConverter";
+import {VexFlowTimeSignatureParenthesis} from "./VexFlowTimeSignatureParenthesis";
 import {VexFlowStaffEntry} from "./VexFlowStaffEntry";
 import {VexFlowKeySignatureNote} from "./VexFlowKeySignatureNote";
 import {Beam} from "../../VoiceData/Beam";
@@ -95,6 +96,17 @@ export class VexFlowMeasure extends GraphicalMeasure {
     public hasMetronomeMark: boolean = false;
     /** The VexFlow Stave (= one measure in a staffline) */
     protected stave!: VF.Stave;
+    /** The padding before an interchangeable time signature, and before the main one after a parenthesized interchangeable
+     * one (px; a time signature's default is 15): the pair stays close, as printed. */
+    public static InterchangeableTimeSignaturePadding: number = 5;
+    /** The padding between a time signature parenthesis and the time signature in it (px). */
+    public static TimeSignatureParenthesisPadding: number = 1;
+    /** The time signature at the begin of the measure and its interchangeable one (see addRhythmAtBegin), with their
+     * specs ("3/4"), for VexFlowMeasure.alignTimeSignaturesUnderInterchangeable. */
+    public mainTimeSignature: VF.TimeSignature;
+    public mainTimeSignatureSpec: string;
+    public interchangeableTimeSignature: VF.TimeSignature;
+    public interchangeableTimeSignatureSpec: string;
     /** VexFlow StaveConnectors (vertical lines) */
     protected connectors: VF.StaveConnector[] = [];
     /** Intermediate object to construct beams */
@@ -158,6 +170,10 @@ export class VexFlowMeasure extends GraphicalMeasure {
         // also see VexFlowMusicSheetDrawer.drawSheet() for some other vexflow default value settings (like default font scale)
         this.hasMetronomeMark = false;
         this.vfRepetitionWords = []; // the modifiers were discarded with the old stave above, so don't keep stale entries
+        this.mainTimeSignature = undefined;
+        this.mainTimeSignatureSpec = undefined;
+        this.interchangeableTimeSignature = undefined;
+        this.interchangeableTimeSignatureSpec = undefined;
 
         if (this.ParentStaff) {
             this.setLineNumber(this.ParentStaff.StafflineCount);
@@ -326,6 +342,44 @@ export class VexFlowMeasure extends GraphicalMeasure {
     }
 
     /**
+     * Puts the time signature of a stave without an interchangeable one under the interchangeable time signature of the same
+     * value on another stave of the vertical measure, after Stave.formatBegModifiers() aligned their first time signatures
+     * (Wagner, Siegmunds Liebeslied m1: the left hand's 3/4 under the 3/4 printed next to 9/8 above it). A time signature
+     * of another value than every interchangeable one stays aligned with the main ones. Same as osmd-dart.
+     */
+    public static alignTimeSignaturesUnderInterchangeable(measures: GraphicalMeasure[]): void {
+        const interchangeableX: Map<string, number> = new Map<string, number>();
+        const mainSpecs: Set<string> = new Set<string>();
+        for (const measure of measures) {
+            if (!(measure instanceof VexFlowMeasure) || !measure.interchangeableTimeSignature) {
+                continue;
+            }
+            const x: number = (measure.interchangeableTimeSignature as any).getX();
+            const spec: string = measure.interchangeableTimeSignatureSpec;
+            interchangeableX.set(spec, Math.max(interchangeableX.get(spec) ?? x, x));
+            mainSpecs.add(measure.mainTimeSignatureSpec);
+        }
+        if (interchangeableX.size === 0) {
+            return;
+        }
+        for (const measure of measures) {
+            if (!(measure instanceof VexFlowMeasure) || !measure.mainTimeSignature || measure.interchangeableTimeSignature) {
+                continue;
+            }
+            const spec: string = measure.mainTimeSignatureSpec;
+            const x: number = interchangeableX.get(spec);
+            // (a value that is also a main time signature there stays under the main ones)
+            if (x === undefined || mainSpecs.has(spec)) {
+                continue;
+            }
+            const timeSig: any = measure.mainTimeSignature;
+            if (x > timeSig.getX()) {
+                timeSig.setX(x);
+            }
+        }
+    }
+
+    /**
      * adds the given rhythm to the begin of the measure.
      * This has to update/increase BeginInstructionsWidth.
      * @param rhythm
@@ -338,19 +392,49 @@ export class VexFlowMeasure extends GraphicalMeasure {
             //   For tab-only scores, this is more compact though.
         }
         const timeSig: VF.TimeSignature = VexFlowConverter.TimeSignature(rhythm);
-        this.stave.addModifier(
-            timeSig,
-            VF.StaveModifier.Position.BEGIN
-        );
+        // the interchangeable time signature (MusicXML <interchangeable>): to the right (Wagner, Siegmunds Liebeslied m1: "9/8 3/4"),
+        //   or in parentheses before it with <time-relation>parentheses (Bowen, Viola Sonata No. 2 m477: "(12/8) 4/4")
+        const interchangeableSig: VF.TimeSignature = rhythm.Interchangeable ?
+            new VF.TimeSignature(rhythm.Interchangeable.Numerator + "/" + rhythm.Interchangeable.Denominator,
+                                 VexFlowMeasure.InterchangeableTimeSignaturePadding) : undefined;
+        const parenthesized: boolean = interchangeableSig !== undefined && rhythm.InterchangeableRelation === "parentheses";
+        const modifiers: any[] = [];
+        if (parenthesized) {
+            modifiers.push(new VexFlowTimeSignatureParenthesis(true, (timeSig as any).getPadding(2)));
+            modifiers.push(interchangeableSig);
+            modifiers.push(new VexFlowTimeSignatureParenthesis(false, VexFlowMeasure.TimeSignatureParenthesisPadding));
+            (timeSig as any).setPadding(VexFlowMeasure.InterchangeableTimeSignaturePadding);
+            modifiers.push(timeSig);
+            (interchangeableSig as any).setPadding(VexFlowMeasure.TimeSignatureParenthesisPadding);
+        } else {
+            modifiers.push(timeSig);
+            if (interchangeableSig) {
+                modifiers.push(interchangeableSig);
+            }
+        }
+        for (const modifier of modifiers) {
+            this.stave.addModifier(modifier, VF.StaveModifier.Position.BEGIN);
+        }
+        this.mainTimeSignature = timeSig;
+        this.mainTimeSignatureSpec = rhythm.Rhythm.Numerator + "/" + rhythm.Rhythm.Denominator;
+        this.interchangeableTimeSignature = interchangeableSig;
+        this.interchangeableTimeSignatureSpec = interchangeableSig ?
+            rhythm.Interchangeable.Numerator + "/" + rhythm.Interchangeable.Denominator : undefined;
         if (!this.ShowTimeSignature ||
             this.isTabMeasure && !this.rules.TabTimeSignatureRendered) {
-            // extends Element is missing from class StaveModifier in DefinitelyTyped definitions, so setStyle isn't found
-            timeSig.setStyle({ fillStyle: "#00000000"}); // transparent. requires VexflowPatch
-            // instead of not rendering the time signature, technically, we render it, but with transparent color. this helps layout / x-alignment.
+            for (const sig of modifiers) {
+                if (sig instanceof VexFlowTimeSignatureParenthesis) {
+                    sig.hidden = true;
+                    continue;
+                }
+                // extends Element is missing from class StaveModifier in DefinitelyTyped definitions, so setStyle isn't found
+                sig.setStyle({ fillStyle: "#00000000"}); // transparent. requires VexflowPatch
+                // instead of not rendering the time signature, technically, we render it, but with transparent color. this helps layout / x-alignment.
 
-            // SVG compatibility: also set visibility="hidden".
-            //   this helps make the modifier invisible instead of black in some systems like apps, outside the browser. (VexFlowPatch)
-            (timeSig as any).hidden = true;
+                // SVG compatibility: also set visibility="hidden".
+                //   this helps make the modifier invisible instead of black in some systems like apps, outside the browser. (VexFlowPatch)
+                (sig as any).hidden = true;
+            }
         }
         this.updateInstructionWidth();
     }

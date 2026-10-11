@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic (written for this repository): a cello, an ossia staff below it (<staff-type>ossia</staff-type>, shown in
+     measure 2 only, as the ossia of Wagner's public-domain Siegmunds Liebeslied m51-52 in 81sabo) and a part named
+     "Ossia" (as MuseScore exports name one, wave 2 0631). Neither ossia is played. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Violoncello</part-name></score-part><score-part id="O1"><part-name/></score-part><score-part id="P3"><part-name>Ossia</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1"><attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>F</sign><line>4</line></clef></attributes><note><pitch><step>C</step><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>
+    <measure number="2"><note><pitch><step>D</step><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>
+  </part>
+  <part id="O1">
+    <measure number="1"><attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>F</sign><line>4</line></clef><staff-details print-object="no"><staff-type>ossia</staff-type><staff-size>65</staff-size></staff-details></attributes><forward><duration>4</duration></forward></measure>
+    <measure number="2"><attributes><staff-details print-object="yes"><staff-type>ossia</staff-type><staff-size>65</staff-size></staff-details></attributes><note><pitch><step>F</step><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>
+  </part>
+  <part id="P3">
+    <measure number="1"><attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>F</sign><line>4</line></clef></attributes><note><pitch><step>E</step><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>
+    <measure number="2"><note><pitch><step>G</step><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note></measure>
+  </part>
+</score-partwise>

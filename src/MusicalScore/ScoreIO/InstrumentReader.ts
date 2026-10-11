@@ -76,6 +76,11 @@ export class InstrumentReader {
   }
 
   private repetitionInstructionReader: RepetitionInstructionReader;
+  /**
+   * Staves of the instrument (index in the instrument) that the MusicXML hides, until a staff-details shows them again
+   * (<staff-details print-object="no"/"yes">), see SourceMeasure.HiddenStaffIndices.
+   */
+  private hiddenStaves: Set<number> = new Set<number>();
   private xmlMeasureList: IXmlElement[];
   private musicSheet: MusicSheet;
   private slurReader: SlurReader;
@@ -100,6 +105,12 @@ export class InstrumentReader {
   private measureEndFraction: Fraction;
   private keyAtMeasureStart: number[];
   private activeRhythm: RhythmInstruction;
+  /** The time signature drawn on each staff of the instrument, see [[staffTimeNodes]]; the ones read in the current
+   * <attributes> wait in pendingStaffRhythms (undefined: the measure's one time signature). */
+  /** The staves of the instrument (index in the instrument) whose <staff-details> say <staff-type>ossia</staff-type>. */
+  private ossiaStaves: Set<number> = new Set<number>();
+  private activeStaffRhythms: RhythmInstruction[] = [];
+  private pendingStaffRhythms: RhythmInstruction[] = [];
   private activeClefsHaveBeenInitialized: boolean[];
   private activeKeysHaveBeenInitialized: boolean[];
   private abstractInstructions: [number, AbstractNotationInstruction, Fraction][] = [];
@@ -126,6 +137,43 @@ export class InstrumentReader {
 
   public set ActiveRhythm(value: RhythmInstruction) {
     this.activeRhythm = value;
+  }
+
+  /** Whether the part has written a <time> of its own so far: then another part's time signature isn't copied to it
+   * (see MusicSheetReader.checkIfRhythmInstructionsAreSetAndEqual). */
+  public HasOwnTimeSignature: boolean = false;
+
+  public get Instrument(): Instrument {
+    return this.instrument;
+  }
+
+  /** The largest time signature the part's staves are in — its own, whatever MusicSheetReader made [[ActiveRhythm]] —
+   * or undefined before its first <time>. */
+  public get OwnRhythm(): RhythmInstruction {
+    let own: RhythmInstruction = undefined;
+    for (const rhythm of this.activeStaffRhythms) {
+      if (!own || rhythm.Rhythm.RealValue > own.Rhythm.RealValue) {
+        own = rhythm;
+      }
+    }
+    return own;
+  }
+
+  /** The lengths a measure may have under the time signatures in force, besides [[ActiveRhythm]]: those of the other
+   * staves and the interchangeable ones (Wagner, Siegmunds Liebeslied m1: 9/8 for the measure, 3/4 interchangeable
+   * and in the left hand — the 3/4 bar is no pickup). */
+  public get AlternativeMeasureLengths(): Fraction[] {
+    const lengths: Fraction[] = [];
+    for (const rhythm of this.activeStaffRhythms) {
+      lengths.push(rhythm.Rhythm);
+      if (rhythm.Interchangeable) {
+        lengths.push(rhythm.Interchangeable);
+      }
+    }
+    if (this.activeRhythm?.Interchangeable) {
+      lengths.push(this.activeRhythm.Interchangeable);
+    }
+    return lengths;
   }
 
   /**
@@ -234,11 +282,41 @@ export class InstrumentReader {
             this.saveAbstractInstructionList(this.instrument.Staves.length, true);
             this.readMeasureRepeats(xmlNode);
           }
-          if (this.isAttributesNodeAtEndOfMeasure(this.xmlMeasureList[this.currentXmlMeasureIndex], xmlNode, currentFraction)) {
+          if (this.isAttributesNodeAtEndOfMeasure(xmlMeasureListArr, xmlNodeIndex, currentFraction)) {
             this.saveClefInstructionAtEndOfMeasure();
           }
           const staffDetailsNodes: IXmlElement[] = xmlNode.elements("staff-details"); // there can be multiple, even if redundant. see #1041
           for (const staffDetailsNode of staffDetailsNodes) {
+            const printObject: string = staffDetailsNode.attribute("print-object")?.value;
+            if (printObject === "yes" || printObject === "no") {
+              // without a number: all staves of the part
+              const number: number = parseInt(staffDetailsNode.attribute("number")?.value, 10);
+              for (let i: number = 0; i < this.instrument.Staves.length; i++) {
+                if (!isNaN(number) && number - 1 !== i) {
+                  continue;
+                }
+                if (printObject === "no") {
+                  this.hiddenStaves.add(i);
+                } else {
+                  this.hiddenStaves.delete(i);
+                }
+              }
+            }
+            // <staff-type>ossia</staff-type> (until another staff-type): the staff is an ossia, not played (see isOssiaPart)
+            const staffType: string = staffDetailsNode.element("staff-type")?.value?.trim();
+            if (staffType) {
+              const number: number = parseInt(staffDetailsNode.attribute("number")?.value, 10);
+              for (let i: number = 0; i < this.instrument.Staves.length; i++) {
+                if (!isNaN(number) && number - 1 !== i) {
+                  continue;
+                }
+                if (staffType === "ossia") {
+                  this.ossiaStaves.add(i);
+                } else {
+                  this.ossiaStaves.delete(i);
+                }
+              }
+            }
             const staffLinesNode: IXmlElement = staffDetailsNode.element("staff-lines");
             if (staffLinesNode) {
               let staffNumber: number = 1;
@@ -457,6 +535,10 @@ export class InstrumentReader {
             printObject, isCueNote, isGraceNote, stemDirectionXml, tremoloInfo, stemColorXml, noteheadColorXml,
             dots
           );
+          if (note && (this.ossiaStaves.has(noteStaff - 1) || this.isOssiaPart())) {
+            // an ossia (alternative) staff is not played with the other staves (see isOssiaPart)
+            note.IsPlaybackCueNote = true;
+          }
           if (isGraceNote && note?.ParentVoiceEntry) {
             // a wavy line stopped on a grace note ends there, e.g. at the first note of a Nachschlag ending a trill (Legrenzi,
             //   Che fiero costume m16: grace note E5 before G5). The grace note has its main note's timestamp, so the stop's
@@ -508,7 +590,9 @@ export class InstrumentReader {
             handeled = this.repetitionInstructionReader.handleRepetitionInstructionsFromWordsOrSymbols( directionTypeNode,
                                                                                                         relativePositionInMeasure,
                                                                                                         xmlNode.element("sound"),
-                                                                                                        symbolPlacement);
+                                                                                                        symbolPlacement,
+                                                                                                        directionTypeNodes.some(
+                                                                                                          dt => dt.element("coda")));
           }
           if (!handeled) {
            let expressionReader: ExpressionReader = this.expressionReaders[0];
@@ -534,7 +618,8 @@ export class InstrumentReader {
                  // Normal case: last note was a real note, use previousFraction
                  endFraction = previousFraction.clone();
                }
-               expressionReader.addOctaveShift(xmlNode, this.currentMeasure, endFraction, endVoiceEntryCount);
+               expressionReader.addOctaveShift(xmlNode, this.currentMeasure, endFraction, endVoiceEntryCount,
+                                               this.voiceEntryCountAt(this.readExpressionStaffNumber(xmlNode), currentFraction));
              }
              if (directionTypeNodes.some(dt => dt.element("pedal"))) {
               // the Ped. is at its position plus its <offset>, as the stop (pedalStopTimestamp) and osmd-dart read it (Gluck,
@@ -572,6 +657,7 @@ export class InstrumentReader {
           // TODO do we need to process bars with left location too?
         } else if (xmlNode.name === "sound") {
           // (*) MetronomeReader.readTempoInstruction(xmlNode, this.musicSheet, this.currentXmlMeasureIndex);
+          this.repetitionInstructionReader?.handleMeasureSoundRepetitionInstructions(xmlNode);
           try {
             if (xmlNode.attribute("tempo")) { // can be null, not just undefined!
 
@@ -647,6 +733,15 @@ export class InstrumentReader {
 
     this.pendingTieStops.resolve(this.instrument);
     this.linkArpeggiosAcrossStaves(this.currentMeasure);
+    this.hiddenStaves.forEach((staff: number): void => {
+      const staffIndex: number = this.musicSheet.getGlobalStaffIndexOfFirstStaff(this.instrument) + staff;
+      // only where the staff has no notes drawn: exporters hide staves that have notes, meaning "hide when empty"
+      //   (MuseScore 4: Beethoven, Op. 135, violin 2 hidden in 701 measures with notes; Beethoven, Symphony No. 9 IV, the
+      //   percussion in all measures)
+      if (!InstrumentReader.staffHasDrawnNotes(this.currentMeasure, staffIndex)) {
+        this.currentMeasure.HiddenStaffIndices.push(staffIndex);
+      }
+    });
     this.previousMeasure = this.currentMeasure;
     this.currentXmlMeasureIndex += 1;
     return true;
@@ -992,11 +1087,11 @@ export class InstrumentReader {
 
   /**
    * Check if the given attributesNode is at the end of a XmlMeasure.
-   * @param parentNode
-   * @param attributesNode
+   * @param children the measure's child nodes
+   * @param attributesNodeIndex the attributes node's index in children
    * @returns {boolean}
    */
-  private isAttributesNodeAtEndOfMeasure(parentNode: IXmlElement, attributesNode: IXmlElement, currentFraction: Fraction): boolean {
+  private isAttributesNodeAtEndOfMeasure(children: IXmlElement[], attributesNodeIndex: number, currentFraction: Fraction): boolean {
     if (currentFraction.Equals(this.ActiveRhythm?.Rhythm)) {
       return true;
       // when the MusicXML uses a lot of <backup> nodes (e.g. Sibelius), we sometimes only detect measure end like this, not like below.
@@ -1004,22 +1099,16 @@ export class InstrumentReader {
       //   (at least that there are no note nodes after the attributes node)
       //   but with backup nodes, there can be note nodes after it that are at an earlier timestamp.
     }
-    const childs: IXmlElement[] = parentNode.elements().slice(); // slice=arrayCopy
-    let attributesNodeIndex: number = 0;
-    for (let i: number = 0; i < childs.length; i++) {
-      if (childs[i] === attributesNode) {
-        attributesNodeIndex = i;
-        break;
+    // no note node after it. (By its index in the measure's children: the attributes node was looked up by identity
+    //   in a fresh parentNode.elements(), whose wrappers are new objects, so it was never found and only the check
+    //   above detected a measure's end — a clef after the last note of a measure longer or shorter than the time
+    //   signature was taken one measure late, Vieuxtemps Op. 31 m194. As osmd-dart.)
+    for (let i: number = attributesNodeIndex + 1; i < children.length; i++) {
+      if (children[i].name === "note") {
+        return false;
       }
     }
-    let nextNoteNodeIndex: number = 0;
-    for (let i: number = attributesNodeIndex; i < childs.length; i++) {
-      if (childs[i].name === "note") {
-        nextNoteNodeIndex = i;
-        break;
-      }
-    }
-    return attributesNodeIndex > nextNoteNodeIndex;
+    return true;
   }
 
   /**
@@ -1209,92 +1298,253 @@ export class InstrumentReader {
       }
     }
     if (attrNode.element("time")) {
-      const timeNode: IXmlElement = attrNode.element("time");
-      let symbolEnum: RhythmSymbolEnum = RhythmSymbolEnum.NONE;
-      let timePrintObject: boolean = true;
-      if (timeNode !== undefined && timeNode.hasAttributes) {
-        const symbolAttribute: IXmlAttribute = timeNode.attribute("symbol");
-        if (symbolAttribute) {
-          if (symbolAttribute.value === "common") {
-            symbolEnum = RhythmSymbolEnum.COMMON;
-          } else if (symbolAttribute.value === "cut") {
-            symbolEnum = RhythmSymbolEnum.CUT;
-          }
-        }
+      this.HasOwnTimeSignature = true;
+      const allTimeNodes: IXmlElement[] = attrNode.elements("time");
+      const rhythmInstruction: RhythmInstruction = this.rhythmInstructionOf(InstrumentReader.timeNodesOfOneStaff(allTimeNodes));
+      // The time signature drawn on each staff: its own <time number="N"> (Wagner, Siegmunds Liebeslied m1: 9/8 with
+      // 3/4 for the right hand, 3/4 for the left hand). The measure stays as long as the one time signature above.
+      // <time number="N"> elements only: a staff without one keeps its time signature, not drawn again (Vieuxtemps,
+      // Op. 31 m201: C for the left hand only, the right hand stays in 12/8). A staff's own one stays on its staff
+      // (RhythmInstruction.ReadForItsStaff).
+      const numberedOnly: boolean = allTimeNodes.every(node => !!node.attribute("number"));
+      this.pendingStaffRhythms = [];
+      for (let staff: number = 1; staff <= this.instrument.Staves.length; staff++) {
+        this.pendingStaffRhythms.push(this.pendingStaffRhythm(allTimeNodes, staff, numberedOnly));
+      }
+      this.abstractInstructions.push([1, rhythmInstruction, currentFraction]);
+    }
+  }
 
-        const printObjectAttribute: IXmlAttribute = timeNode.attribute("print-object");
-        if (printObjectAttribute) {
-          if (printObjectAttribute.value === "no") {
-            timePrintObject = false;
-          }
+  /**
+   * The time signature waiting for staff `staff` (one-based) after a `<time>` in <attributes>: its own; with
+   * `<time number="N">` elements only and none for this staff, its time signature in force, not drawn again; else
+   * undefined (the measure's one).
+   */
+  private pendingStaffRhythm(allTimeNodes: IXmlElement[], staff: number, numberedOnly: boolean): RhythmInstruction {
+    const own: IXmlElement[] = InstrumentReader.staffTimeNodes(allTimeNodes, staff);
+    if (own) {
+      const rhythm: RhythmInstruction = this.rhythmInstructionOf(own);
+      rhythm.ReadForItsStaff = numberedOnly;
+      return rhythm;
+    }
+    if (numberedOnly && staff <= this.activeStaffRhythms.length) {
+      const kept: RhythmInstruction = this.activeStaffRhythms[staff - 1].clone();
+      kept.PrintObject = false;
+      kept.ReadForItsStaff = true;
+      return kept;
+    }
+    return undefined;
+  }
+
+  /**
+   * The time signature of the `<time>` elements (one staff's, see [[timeNodesOfOneStaff]] and [[staffTimeNodes]]),
+   * with its `<interchangeable>` time signature.
+   */
+  private rhythmInstructionOf(timeList: IXmlElement[]): RhythmInstruction {
+    let errorMsg: string;
+    const timeNode: IXmlElement = timeList[0];
+    let symbolEnum: RhythmSymbolEnum = RhythmSymbolEnum.NONE;
+    let timePrintObject: boolean = true;
+    if (timeNode !== undefined && timeNode.hasAttributes) {
+      const symbolAttribute: IXmlAttribute = timeNode.attribute("symbol");
+      if (symbolAttribute) {
+        if (symbolAttribute.value === "common") {
+          symbolEnum = RhythmSymbolEnum.COMMON;
+        } else if (symbolAttribute.value === "cut") {
+          symbolEnum = RhythmSymbolEnum.CUT;
         }
       }
 
-      let num: number = 0;
-      let denom: number = 0;
-      const senzaMisura: boolean = (timeNode && timeNode.element("senza-misura") !== undefined);
-      const timeList: IXmlElement[] = attrNode.elements("time");
-      const beatsList: IXmlElement[] = [];
-      const typeList: IXmlElement[] = [];
-      for (let idx: number = 0, len: number = timeList.length; idx < len; ++idx) {
-        const xmlNode: IXmlElement = timeList[idx];
-        beatsList.push(...xmlNode.elements("beats"));
-        typeList.push(...xmlNode.elements("beat-type"));
-      }
-      if (!senzaMisura) {
-        try {
-          if (beatsList !== undefined && beatsList.length > 0 && typeList !== undefined && beatsList.length === typeList.length) {
-            const length: number = beatsList.length;
-            const fractions: Fraction[] = new Array(length);
-            let maxDenom: number = 0;
-            for (let i: number = 0; i < length; i++) {
-              const s: string = beatsList[i].value;
-              let n: number = 0;
-              let d: number = 0;
-              if (s.indexOf("+") !== -1) {
-                const numbers: string[] = s.split("+");
-                for (let idx: number = 0, len: number = numbers.length; idx < len; ++idx) {
-                  n += parseInt(numbers[idx], 10);
-                }
-              } else {
-                n = parseInt(s, 10);
-              }
-              d = parseInt(typeList[i].value, 10);
-              maxDenom = Math.max(maxDenom, d);
-              fractions[i] = new Fraction(n, d, 0, false);
-            }
-            for (let i: number = 0; i < length; i++) {
-              if (fractions[i].Denominator === maxDenom) {
-                num += fractions[i].Numerator;
-              } else {
-                num += (maxDenom / fractions[i].Denominator) * fractions[i].Numerator;
-              }
-            }
-            denom = maxDenom;
-          } else {
-            num = parseInt(attrNode.element("time").element("beats").value, 10);
-            denom = parseInt(attrNode.element("time").element("beat-type").value, 10);
-          }
-        } catch (ex) {
-          errorMsg = ITextTranslation.translateText("ReaderErrorMessages/RhythmError", "Invalid rhythm. Set to default.");
-          this.musicSheet.SheetErrors.pushMeasureError(errorMsg);
-          num = 4;
-          denom = 4;
-          log.debug("InstrumentReader.addAbstractInstruction", errorMsg, ex);
+      const printObjectAttribute: IXmlAttribute = timeNode.attribute("print-object");
+      if (printObjectAttribute) {
+        if (printObjectAttribute.value === "no") {
+          timePrintObject = false;
         }
-
-        const newRhythmInstruction: RhythmInstruction = new RhythmInstruction(
-          new Fraction(num, denom, 0, false), symbolEnum
-        );
-        newRhythmInstruction.PrintObject = timePrintObject;
-        this.abstractInstructions.push([1, newRhythmInstruction, currentFraction]);
-      } else {
-        // senza-misura: no time signature is drawn, the beats stay 4/4
-        const senzaMisuraRhythm: RhythmInstruction = new RhythmInstruction(new Fraction(4, 4, 0, false), RhythmSymbolEnum.NONE);
-        senzaMisuraRhythm.PrintObject = false;
-        this.abstractInstructions.push([1, senzaMisuraRhythm, currentFraction]);
       }
     }
+
+    let num: number = 0;
+    let denom: number = 0;
+    const senzaMisura: boolean = (timeNode && timeNode.element("senza-misura") !== undefined);
+    const beatsList: IXmlElement[] = [];
+    const typeList: IXmlElement[] = [];
+    for (let idx: number = 0, len: number = timeList.length; idx < len; ++idx) {
+      const xmlNode: IXmlElement = timeList[idx];
+      beatsList.push(...xmlNode.elements("beats"));
+      typeList.push(...xmlNode.elements("beat-type"));
+    }
+    if (!senzaMisura) {
+      try {
+        if (beatsList !== undefined && beatsList.length > 0 && typeList !== undefined && beatsList.length === typeList.length) {
+          const length: number = beatsList.length;
+          const fractions: Fraction[] = new Array(length);
+          let maxDenom: number = 0;
+          for (let i: number = 0; i < length; i++) {
+            const s: string = beatsList[i].value;
+            let n: number = 0;
+            let d: number = 0;
+            if (s.indexOf("+") !== -1) {
+              const numbers: string[] = s.split("+");
+              for (let idx: number = 0, len: number = numbers.length; idx < len; ++idx) {
+                n += parseInt(numbers[idx], 10);
+              }
+            } else {
+              n = parseInt(s, 10);
+            }
+            d = parseInt(typeList[i].value, 10);
+            maxDenom = Math.max(maxDenom, d);
+            fractions[i] = new Fraction(n, d, 0, false);
+          }
+          for (let i: number = 0; i < length; i++) {
+            if (fractions[i].Denominator === maxDenom) {
+              num += fractions[i].Numerator;
+            } else {
+              num += (maxDenom / fractions[i].Denominator) * fractions[i].Numerator;
+            }
+          }
+          denom = maxDenom;
+        } else {
+          num = parseInt(timeNode.element("beats").value, 10);
+          denom = parseInt(timeNode.element("beat-type").value, 10);
+        }
+      } catch (ex) {
+        errorMsg = ITextTranslation.translateText("ReaderErrorMessages/RhythmError", "Invalid rhythm. Set to default.");
+        this.musicSheet.SheetErrors.pushMeasureError(errorMsg);
+        num = 4;
+        denom = 4;
+        log.debug("InstrumentReader.addAbstractInstruction", errorMsg, ex);
+      }
+
+      const newRhythmInstruction: RhythmInstruction = new RhythmInstruction(
+        new Fraction(num, denom, 0, false), symbolEnum
+      );
+      newRhythmInstruction.PrintObject = timePrintObject;
+      newRhythmInstruction.Interchangeable = InstrumentReader.readInterchangeable(timeList);
+      newRhythmInstruction.InterchangeableRelation = newRhythmInstruction.Interchangeable ?
+        InstrumentReader.readInterchangeableRelation(timeList) : undefined;
+      return newRhythmInstruction;
+    } else {
+      // senza-misura: no time signature is drawn, the beats stay 4/4
+      const senzaMisuraRhythm: RhythmInstruction = new RhythmInstruction(new Fraction(4, 4, 0, false), RhythmSymbolEnum.NONE);
+      senzaMisuraRhythm.PrintObject = false;
+      return senzaMisuraRhythm;
+    }
+  }
+
+  /**
+   * How many VoiceEntries the staff (1-based, of this instrument) already has at the timestamp of the current measure:
+   * the grace notes read before a direction at their timestamp (an octave shift starting after them).
+   */
+  private voiceEntryCountAt(staffNumber: number, timestamp: Fraction): number {
+    if (!this.currentMeasure) {
+      return 0;
+    }
+    const staffIndex: number = this.inSourceMeasureInstrumentIndex + staffNumber - 1;
+    for (const container of this.currentMeasure.VerticalSourceStaffEntryContainers) {
+      if (container.Timestamp.Equals(timestamp)) {
+        return container.StaffEntries[staffIndex]?.VoiceEntries.length ?? 0;
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * The `<time>` elements that make up the measure's one time signature.
+   * Several `<beats>`/`<beat-type>` pairs inside one `<time>` are a composite signature (2/4+3/8) and are added up.
+   * `<time number="N">` elements are the same signature written once per staff (a piano part writes 3/4 for staff 1
+   * and staff 2): adding them up made 3/4 + 3/4 = 6/4. The reader keeps one time signature per measure, so it takes
+   * the elements without a `number` (they apply to every staff), otherwise those of the lowest staff number.
+   * Each staff draws its own signature (see [[staffTimeNodes]]); the measure's length follows this one.
+   */
+  public static timeNodesOfOneStaff(timeNodes: IXmlElement[]): IXmlElement[] {
+    const staffNumberOf: (node: IXmlElement) => number = (node: IXmlElement): number => {
+      const value: string = node.attribute("number")?.value;
+      if (value === undefined) {
+        return undefined;
+      }
+      const parsed: number = parseInt(value, 10);
+      return isNaN(parsed) ? undefined : parsed;
+    };
+    const unnumbered: IXmlElement[] = timeNodes.filter(node => staffNumberOf(node) === undefined);
+    if (unnumbered.length === timeNodes.length) {
+      return timeNodes;
+    }
+    if (unnumbered.length > 0) {
+      return unnumbered;
+    }
+    const lowest: number = Math.min(...timeNodes.map(node => staffNumberOf(node)));
+    return timeNodes.filter(node => staffNumberOf(node) === lowest);
+  }
+
+  /**
+   * Whether the part is an ossia by its name ("Ossia", "ossia 1", ...: MuseScore has no ossia staff type, wave 2 0631
+   * Tannhäuser). Notes of an ossia, also of a staff with <staff-type>ossia</staff-type> (Saint-Saëns, Violin Concerto No. 3;
+   * Wagner, Siegmunds Liebeslied), are alternatives to other staves and are not played with them (Note.IsPlaybackCueNote).
+   * Same as osmd-dart.
+   */
+  private isOssiaPart(): boolean {
+    return /^ossia\b/i.test(this.instrument.Name?.trim() ?? "");
+  }
+
+  /** Whether the staff (index in the music sheet) has a note drawn in the measure (not a rest, not print-object="no"). */
+  private static staffHasDrawnNotes(measure: SourceMeasure, staffIndex: number): boolean {
+    for (const container of measure.VerticalSourceStaffEntryContainers) {
+      const staffEntry: SourceStaffEntry = container.StaffEntries[staffIndex];
+      if (staffEntry?.VoiceEntries.some(voiceEntry => voiceEntry.Notes.some(note => !note.isRest() && note.PrintObject))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * The `<time>` elements drawn on staff `staff` (one-based): those without a `number` (every staff), otherwise those
+   * of the staff's number; undefined if the staff has none of its own (it draws the measure's time signature).
+   */
+  public static staffTimeNodes(timeNodes: IXmlElement[], staff: number): IXmlElement[] {
+    const staffNumberOf: (node: IXmlElement) => number = (node: IXmlElement): number => {
+      const value: string = node.attribute("number")?.value;
+      if (value === undefined) {
+        return undefined;
+      }
+      const parsed: number = parseInt(value, 10);
+      return isNaN(parsed) ? undefined : parsed;
+    };
+    const unnumbered: IXmlElement[] = timeNodes.filter(node => staffNumberOf(node) === undefined);
+    if (unnumbered.length > 0) {
+      return unnumbered;
+    }
+    const own: IXmlElement[] = timeNodes.filter(node => staffNumberOf(node) === staff);
+    return own.length > 0 ? own : undefined;
+  }
+
+  /** The `<time-relation>` of the first `<interchangeable>` of the elements, see [[RhythmInstruction.InterchangeableRelation]]. */
+  public static readInterchangeableRelation(timeNodes: IXmlElement[]): string {
+    for (const timeNode of timeNodes) {
+      const interchangeable: IXmlElement = timeNode.element("interchangeable");
+      if (interchangeable) {
+        const relation: string = interchangeable.element("time-relation")?.value?.trim();
+        return relation ? relation : undefined;
+      }
+    }
+    return undefined;
+  }
+
+  /** The `<interchangeable>` time signature of the elements (the first beats/beat-type pair), see
+   * [[RhythmInstruction.Interchangeable]]. */
+  public static readInterchangeable(timeNodes: IXmlElement[]): Fraction {
+    for (const timeNode of timeNodes) {
+      const interchangeable: IXmlElement = timeNode.element("interchangeable");
+      if (!interchangeable) {
+        continue;
+      }
+      const beats: number = parseInt((interchangeable.element("beats")?.value ?? "").trim(), 10);
+      const beatType: number = parseInt((interchangeable.element("beat-type")?.value ?? "").trim(), 10);
+      if (beats > 0 && beatType > 0) {
+        return new Fraction(beats, beatType, 0, false);
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -1416,10 +1666,13 @@ export class InstrumentReader {
               instructionTimestamp.RealValue / duration.RealValue > 0.90 && // necessary for #1120
               duration.RealValue !== instructionTimestamp.RealValue // necessary for #1461
             ) {
-              if (!this.currentMeasure.LastInstructionsStaffEntries[key - 1]) {
-                this.currentMeasure.LastInstructionsStaffEntries[key - 1] = new SourceStaffEntry(undefined, this.instrument.Staves[key - 1]);
+              // the measure's staff index (the staff key is counted within this instrument): the clef of a later
+              //   instrument's staff went to another instrument's staff (Vieuxtemps Op. 31 m194, piano left hand)
+              const sseIndex: number = this.inSourceMeasureInstrumentIndex + key - 1;
+              if (!this.currentMeasure.LastInstructionsStaffEntries[sseIndex]) {
+                this.currentMeasure.LastInstructionsStaffEntries[sseIndex] = new SourceStaffEntry(undefined, this.instrument.Staves[key - 1]);
               }
-              lastStaffEntryBefore = this.currentMeasure.LastInstructionsStaffEntries[key - 1];
+              lastStaffEntryBefore = this.currentMeasure.LastInstructionsStaffEntries[sseIndex];
               if (!clefInstruction.PrintObject && lastStaffEntryBefore.Instructions.some(
                 (earlier: AbstractNotationInstruction) => earlier instanceof ClefInstruction && earlier.PrintObject)) {
                 // a visible courtesy clef is already there: keep it, only remember the hidden clef after it
@@ -1479,12 +1732,23 @@ export class InstrumentReader {
       }
       if (value instanceof RhythmInstruction) {
         const rhythmInstruction: RhythmInstruction = <RhythmInstruction>value;
+        const staffRhythms: RhythmInstruction[] = [];
+        for (let staff: number = 0; staff < numberOfStaves; staff++) {
+          const own: RhythmInstruction = this.pendingStaffRhythms[staff];
+          if (own) {
+            staffRhythms.push(own);
+          } else {
+            staffRhythms.push(rhythmInstruction);
+          }
+        }
+        this.pendingStaffRhythms = [];
         if (!this.activeRhythm || this.activeRhythm !== rhythmInstruction) {
           this.activeRhythm = rhythmInstruction;
+          this.activeStaffRhythms = staffRhythms;
           this.abstractInstructions.splice(i, 1);
           if (this.currentMeasure) {
             for (let j: number = this.inSourceMeasureInstrumentIndex; j < this.inSourceMeasureInstrumentIndex + numberOfStaves; j++) {
-              const newRhythmInstruction: RhythmInstruction = rhythmInstruction;
+              const newRhythmInstruction: RhythmInstruction = staffRhythms[j - this.inSourceMeasureInstrumentIndex];
               let firstStaffEntry: SourceStaffEntry;
               if (!this.currentMeasure.FirstInstructionsStaffEntries[j]) {
                 firstStaffEntry = new SourceStaffEntry(undefined, undefined);

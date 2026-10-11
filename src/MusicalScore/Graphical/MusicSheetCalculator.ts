@@ -640,7 +640,9 @@ export abstract class MusicSheetCalculator {
      * @param musicSystem
      */
     protected calculateMeasureNumberPlacement(musicSystem: MusicSystem): void {
-        const staffLine: StaffLine = musicSystem.StaffLines[0];
+        // (the first staffline the system draws: one that the MusicXML hides in the whole system is taken out of it later,
+        //   see StaffLine.hiddenInSystem)
+        const staffLine: StaffLine = musicSystem.StaffLines.find(line => !line.hiddenInSystem) ?? musicSystem.StaffLines[0];
         if (!staffLine || !staffLine.Measures[0]) {
             log.warn("calculateMeasureNumberPlacement: measure undefined for system.Id " + musicSystem.Id);
             return; // TODO apparently happens in script sometimes (mp #70)
@@ -1859,7 +1861,9 @@ export abstract class MusicSheetCalculator {
             for (let idx2: number = 0, len2: number = graphicalMeasures.length; idx2 < len2; ++idx2) {
                 const graphicalMeasure: GraphicalMeasure = allMeasures[idx][idx2];
 
-                if (graphicalMeasure?.isVisible()) {
+                // (the staff's visibility, not isVisible(): a measure re-laid out in place still has the staffline of the last
+                //   layout, which may be hidden in its system, see StaffLine.hiddenInSystem)
+                if (graphicalMeasure?.ParentStaff.isVisible()) {
                     visiblegraphicalMeasures.push(graphicalMeasure);
 
                     if (this.rules.ColoringEnabled) {
@@ -2073,7 +2077,9 @@ export abstract class MusicSheetCalculator {
             const visiblegraphicalMeasures: GraphicalMeasure[] = [];
             for (let idx2: number = 0, len2: number = graphicalMeasures.length; idx2 < len2; ++idx2) {
                 const graphicalMeasure: GraphicalMeasure = allMeasures[idx][idx2];
-                if (graphicalMeasure?.isVisible()) {
+                // (the staff's visibility, not isVisible(): a measure re-laid out in place still has the staffline of the last
+                //   layout, which may be hidden in its system, see StaffLine.hiddenInSystem)
+                if (graphicalMeasure?.ParentStaff.isVisible()) {
                     visiblegraphicalMeasures.push(graphicalMeasure);
                     if (this.rules.ColoringEnabled) {
                         for (const staffEntry of graphicalMeasure.staffEntries) {
@@ -3516,7 +3522,9 @@ export abstract class MusicSheetCalculator {
             let firstVisibleMeasureX: number = measures[0].PositionAndShape.RelativePosition.x;
             let verticalIndex: number = 0;
             for (let j: number = 0; j < measures.length; j++) {
-                if (!measures[j].ParentStaffLine || measures[j].ParentStaffLine.Measures.length === 0) {
+                // (also a staff the MusicXML hides in the whole system, see StaffLine.hiddenInSystem: the tempo goes above the
+                //   first one drawn)
+                if (!measures[j].ParentStaffLine || measures[j].ParentStaffLine.Measures.length === 0 || !measures[j].isVisible()) {
                     continue;
                 }
 
@@ -3533,7 +3541,7 @@ export abstract class MusicSheetCalculator {
             const ownStaffIndex: number = MusicSheetCalculator.ownStaffIndexOfTempoExpression(multiTempoExpression, verticalIndex);
             const ownStaffMeasure: GraphicalMeasure = ownStaffIndex !== undefined ? measures[ownStaffIndex] : undefined;
             const onOwnStaff: boolean = ownStaffMeasure?.ParentStaffLine?.Measures.length > 0 &&
-                ownStaffMeasure.ParentStaff.isVisible();
+                ownStaffMeasure.isVisible();
             if (onOwnStaff) {
                 staffLine = ownStaffMeasure.ParentStaffLine;
                 firstVisibleMeasureX = ownStaffMeasure.PositionAndShape.RelativePosition.x;
@@ -4857,14 +4865,22 @@ export abstract class MusicSheetCalculator {
                         octaveShiftValue = OctaveEnum.NONE;
                         activeOctaveShift = undefined;
                     }
+                    // Grace notes written before the octave shift start share its timestamp (no duration) but come
+                    //   before it: not covered (startVoiceEntryIndex set by the ExpressionReader).
+                    const graceBeforeStart: boolean = octaveShiftValue !== OctaveEnum.NONE && activeOctaveShift &&
+                        voiceEntry.IsGrace && idx < activeOctaveShift.startVoiceEntryIndex &&
+                        activeOctaveShift.ParentStartMultiExpression?.AbsoluteTimestamp.Equals(sourceStaffEntry.AbsoluteTimestamp);
                     // Normal Notes...
-                    octaveShiftValue = this.handleVoiceEntry(
+                    const entryOctaveShiftValue: OctaveEnum = this.handleVoiceEntry(
                         voiceEntry, graphicalStaffEntry,
                         accidentalCalculator, openLyricWords,
                         graceNotesClef && voiceEntry.IsGrace ? graceNotesClef : activeClefs[staffIndex], openTuplets,
-                        openBeams, octaveShiftValue, staffIndex,
+                        openBeams, graceBeforeStart ? OctaveEnum.NONE : octaveShiftValue, staffIndex,
                         linkedNotes, sourceStaffEntry
                     );
+                    if (!graceBeforeStart) {
+                        octaveShiftValue = entryOctaveShiftValue;
+                    }
                 }
                 // SourceStaffEntry has inStaff ClefInstruction -> create graphical clef
                 for (const instruction of sourceStaffEntry.Instructions) {
@@ -4903,6 +4919,11 @@ export abstract class MusicSheetCalculator {
             if (activeOctaveShift && activeOctaveShift.endVoiceEntryIndex > 0 &&
                 activeOctaveShift.ParentEndMultiExpression?.AbsoluteTimestamp.Equals(drawnTimestamp) &&
                 indexAfterMainNote >= activeOctaveShift.endVoiceEntryIndex) {
+                octaveShiftValue = OctaveEnum.NONE;
+            }
+            // they follow their main note, so they come before an octave shift starting where they are drawn
+            //   (as grace notes before the start at its timestamp, see above; osmd-dart shifts them with their main note)
+            if (activeOctaveShift?.ParentStartMultiExpression?.AbsoluteTimestamp.Equals(drawnTimestamp)) {
                 octaveShiftValue = OctaveEnum.NONE;
             }
             this.handleVoiceEntry(
@@ -6041,7 +6062,7 @@ export abstract class MusicSheetCalculator {
                         continue;
                     }
 
-                    if (this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.isVisible()) {
+                    if (this.graphicalMusicSheet.MeasureList[i][j].isVisible()) {
                         for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
                             const multiExpression: MultiExpression = sourceMeasure.StaffLinkedExpressions[j][k];
                             if (insideWedges.has(multiExpression) !== firstPass) {
@@ -6122,7 +6143,7 @@ export abstract class MusicSheetCalculator {
                 if (!this.graphicalMusicSheet.MeasureList[i] || !this.graphicalMusicSheet.MeasureList[i][j]) {
                     continue;
                 }
-                if (this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.isVisible()) {
+                if (this.graphicalMusicSheet.MeasureList[i][j].isVisible()) {
                     for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
                         if ((sourceMeasure.StaffLinkedExpressions[j][k].OctaveShiftStart)) {
                             this.calculateSingleOctaveShift(sourceMeasure, sourceMeasure.StaffLinkedExpressions[j][k], i, j);
@@ -6140,7 +6161,7 @@ export abstract class MusicSheetCalculator {
                 if (!this.graphicalMusicSheet.MeasureList[i] || !this.graphicalMusicSheet.MeasureList[i][j]) {
                     continue;
                 }
-                if (this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.isVisible()) {
+                if (this.graphicalMusicSheet.MeasureList[i][j].isVisible()) {
                     for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
                         if ((sourceMeasure.StaffLinkedExpressions[j][k].PedalStart)) {
                             this.calculateSinglePedal(sourceMeasure, sourceMeasure.StaffLinkedExpressions[j][k], i, j);
@@ -6158,7 +6179,7 @@ export abstract class MusicSheetCalculator {
                 if (!this.graphicalMusicSheet.MeasureList[i] || !this.graphicalMusicSheet.MeasureList[i][j]) {
                     continue;
                 }
-                if (this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.isVisible()) {
+                if (this.graphicalMusicSheet.MeasureList[i][j].isVisible()) {
                     for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
                         if ((sourceMeasure.StaffLinkedExpressions[j][k].WavyLineStart)) {
                             this.calculateSingleWavyLine(sourceMeasure, sourceMeasure.StaffLinkedExpressions[j][k], i, j);
@@ -6316,13 +6337,13 @@ export abstract class MusicSheetCalculator {
                     continue;
                 }
                 let staffIndexToUse: number = j;
-                if (!this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.isVisible()) {
+                if (!this.graphicalMusicSheet.MeasureList[i][j].isVisible()) {
                     // If this staff is hidden and it's the first staff (j === 0) (see #1621),
                     // find the first visible staff to render expressions on (similar to rehearsal mark fix #1555)
                     if (j === 0) {
                         let foundVisibleStaff: boolean = false;
                         for (let s: number = 0; s < this.graphicalMusicSheet.MeasureList[i].length; s++) {
-                            if (this.graphicalMusicSheet.MeasureList[i][s]?.ParentStaff.isVisible()) {
+                            if (this.graphicalMusicSheet.MeasureList[i][s]?.isVisible()) {
                                 staffIndexToUse = s; // render words on this staff instead of first/invisible staff (see #1621)
                                 foundVisibleStaff = true;
                                 break;

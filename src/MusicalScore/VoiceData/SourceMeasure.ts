@@ -58,6 +58,18 @@ export class SourceMeasure {
     public endingBarStyleEnum: SystemLinesEnum;
     /** Whether the MusicXML says to print a new system (line break). See OSMDOptions.newSystemFromXML */
     public printNewSystemXml: boolean = false;
+    /**
+     * The staves (indices in the music sheet, Staff.idInMusicSheet) the MusicXML hides in this measure
+     * (<staff-details print-object="no">, until a staff-details with print-object="yes"): a staff hidden in all measures of
+     * a system isn't drawn in that system, e.g. an ossia staff printed only where it has notes (Wagner, Siegmunds Liebeslied,
+     * ossia m51-52).
+     */
+    public HiddenStaffIndices: number[] = [];
+
+    /** Whether the MusicXML hides the staff (index in the music sheet) in this measure, see HiddenStaffIndices. */
+    public isStaffHidden(staffIndex: number): boolean {
+        return this.HiddenStaffIndices.indexOf(staffIndex) >= 0;
+    }
     /** Whether the MusicXML says to print a new page (page break). See OSMDOptions.newPageFromXML */
     public printNewPageXml: boolean = false;
     public IsSystemStartMeasure: boolean = false;

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic (written for this repository): a viola and a piano in 4/4 with 12/8 interchangeable in parentheses
+     (<time-relation>parentheses</time-relation>), printed "(12/8) 4/4" as in Bowen's public-domain Viola Sonata No. 2
+     m477; the left hand has eighth triplets against the right hand's quarters. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Viola</part-name></score-part><score-part id="P2"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1"><attributes><divisions>6</divisions><key><fifths>0</fifths></key><time separator="none"><beats>4</beats><beat-type>4</beat-type><interchangeable separator="none"><time-relation>parentheses</time-relation><beats>12</beats><beat-type>8</beat-type></interchangeable></time><clef><sign>C</sign><line>3</line></clef></attributes><note><rest measure="yes"/><duration>24</duration><voice>1</voice></note></measure>
+    <measure number="2"><note><pitch><step>C</step><octave>4</octave></pitch><duration>24</duration><voice>1</voice><type>whole</type></note></measure>
+  </part>
+  <part id="P2">
+    <measure number="1"><attributes><divisions>6</divisions><key><fifths>0</fifths></key><time separator="none"><beats>4</beats><beat-type>4</beat-type><interchangeable separator="none"><time-relation>parentheses</time-relation><beats>12</beats><beat-type>8</beat-type></interchangeable></time><staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>6</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>6</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>6</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>6</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+      <backup><duration>24</duration></backup>
+      <note><pitch><step>A</step><octave>2</octave></pitch><duration>24</duration><voice>5</voice><type>whole</type><staff>2</staff></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>24</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
+      <backup><duration>24</duration></backup>
+      <note><pitch><step>A</step><octave>2</octave></pitch><duration>24</duration><voice>5</voice><type>whole</type><staff>2</staff></note>
+    </measure>
+  </part>
+</score-partwise>

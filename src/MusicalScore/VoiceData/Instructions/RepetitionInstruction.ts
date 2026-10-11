@@ -76,9 +76,17 @@ export class RepetitionInstruction /*implements IComparable*/ {
     /** Whether the MusicXML marks this segno as the target of a D.S. (<sound segno="...">): it is never taken for a D.S. itself. */
     public MarkedAsTarget: boolean = false;
     /**
+     * The name of a segno (<sound segno="...">), or for a D.S. the name of the segno it goes back to (<sound dalsegno="...">).
+     * When D.S. name their segno, a D.S. goes back to the segno of its name, and a named segno that no D.S. names is drawn only
+     * (it is no repetition's start): e.g. the segno that the Arban edition prints above each D.C. barline next to the segno of
+     * the variation the D.C. goes back to (Arban, Fantaisie brillante). Undefined: the last segno before the D.S.
+     */
+    public SegnoLabel: string;
+    /**
      * Whether the RepetitionCalculator added this instruction for playback, without a sign for it in the MusicXML:
      * the backward jump that closes a forward repeat without a backward repeat at the end of the piece.
      * It is played, but not drawn (no backward repeat barline that the score doesn't have).
+     * Also an instruction read from a <sound> of the measure (not of a direction), which prints nothing.
      */
     public Implicit: boolean = false;
     /**

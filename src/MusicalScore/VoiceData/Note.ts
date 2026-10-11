@@ -81,6 +81,9 @@ export class Note {
     private arpeggio: Arpeggio;
     /** States whether this is a cue note (Stichnote) (smaller size). */
     private isCueNote: boolean;
+    /** Whether the note is not played: a note of an ossia staff (see InstrumentReader.isOssiaPart). The front end also
+     * sets it for <cue/> notes (02front midi-extraction); playback skips these notes. */
+    public IsPlaybackCueNote: boolean;
     public IsGraceNote: boolean;
     /** The stem direction asked for in XML. Not necessarily final or wanted stem direction. */
     private stemDirectionXml: StemDirectionType;

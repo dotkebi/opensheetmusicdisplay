@@ -34,6 +34,59 @@ describe("MusicPartManagerIterator measure order with repetitions", () => {
     }
 
     /**
+     * The <sound> of a direction says how it is played, before its words, and names the segno a D.S. goes back to
+     * (Arban, Fantaisie brillante, cornet: "D.C." with <sound dalsegno> goes back to the segno of its variation, "FIN." with
+     * <sound tocoda> ends the repetition, which goes on after the D.C. at the <sound coda> of the next measure; the edition
+     * prints a segno above each D.C. barline too, a named segno that no D.S. names).
+     *
+     * Sample: segno s0 in measure 2, "FIN." in 3, "D.C." back to s0 in 4 (with a segno m4 at its barline), coda in 5;
+     * segno s1 in 6, "FIN." in 7, "D.C." back to s1 in 8, coda in 9.
+     */
+    it("follows the <sound> of jump words and the segno a D.S. names", async () => {
+        expect(await playedMeasures("test_repeat_sound_jump_sections.musicxml")).to.deep.equal([0, 1, 2, 3, 1, 2, 4, 5, 6, 7, 5, 6, 8, 9]);
+    });
+
+    /**
+     * The same jump words in another part without a sound are the same instruction as the ones the sound decides.
+     *
+     * Sample: a march (bars 1-3, segno s in bar 1, "Fine" with <sound fine> in bar 3) and a trio (bars 4-5) with
+     * "Marcia D.C. al Fine" and <sound dalsegno="s"> in the first part, the same words without a sound in the second.
+     */
+    it("reads the jump words of two parts, one with a <sound>, as one instruction", async () => {
+        expect(await playedMeasures("test_repeat_sound_jump_words_two_parts.musicxml")).to.deep.equal([0, 1, 2, 3, 4, 0, 1, 2]);
+        const jumps: RepetitionInstruction[] = osmd.Sheet.SourceMeasures[4].LastRepetitionInstructions
+            .filter(instruction => instruction.type !== RepetitionInstructionEnum.BackJumpLine);
+        expect(jumps.map(instruction => instruction.type)).to.deep.equal([RepetitionInstructionEnum.DalSegnoAlFine]);
+        expect(osmd.Sheet.SourceMeasures[2].LastRepetitionInstructions
+            .filter(instruction => instruction.type === RepetitionInstructionEnum.Fine).length, "the Fine drawn once").to.equal(1);
+    });
+
+    /**
+     * A D.S. that finds no segno in its movement goes back to the segno of the previous movement when no D.S. of that
+     * movement takes it, and, without a Fine there, ends at that movement's end and goes on after the D.S.: "Menuetto D.C."
+     * plays the minuet again, not the trio too (individual 32 fix D, user decision D-2 of 2026-10-11; it went back to the
+     * start of its own movement, the trio, as osmd-dart findSegnoForDalSegno did).
+     *
+     * Sample: a minuet (measures 1-2, segno "segno") and a trio whose measure numbers restart (another movement), its measure 2 repeated,
+     * "Menuetto D.C." with <sound dalsegno="segno"> in its last measure (wave 2 0890).
+     */
+    it("takes a D.S. without a segno in its movement back to the minuet before it, to the minuet's end", async () => {
+        expect(await playedMeasures("test_repeat_dalsegno_other_movement.musicxml")).to.deep.equal([0, 1, 2, 3, 3, 4, 0, 1]);
+    });
+
+    /**
+     * A D.C. al Fine of a trio without a Fine, whose measure numbers restart, goes back to the march before it and ends at
+     * the march's Fine, after the trio's repeat at the same barline — written as MuseScore exports a D.C. (<sound dalsegno>
+     * naming a segno at the march's first measure) or with <sound dacapo="yes"> (individual 32 fix D, user decision D-2).
+     *
+     * Sample: march measures 1-2 (Fine at 2), trio measures 1-2 (numbers restart), the trio's 2 with a backward repeat and the D.C. al Fine.
+     */
+    it("takes a trio's D.C. al Fine back to the march's Fine", async () => {
+        expect(await playedMeasures("test_repeat_trio_dc_al_fine_dalsegno.musicxml")).to.deep.equal([0, 1, 2, 3, 2, 3, 0, 1]);
+        expect(await playedMeasures("test_repeat_trio_dc_al_fine_dacapo.musicxml")).to.deep.equal([0, 1, 2, 3, 2, 3, 0, 1]);
+    });
+
+    /**
      * A first ending with no second ending written after it is played on the first pass only: the last pass goes on after it.
      * It used to be played on both passes, since a repetition with fewer endings than passes plays its first ending on the extra ones.
      *

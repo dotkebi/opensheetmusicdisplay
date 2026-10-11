@@ -103,16 +103,19 @@ export class Stave extends Element {
 
     maxX = 0;
     // Align time signatures
+    // VexFlowPatch: align the first time signature of each stave and move the ones after it (an interchangeable
+    //   time signature drawn to its right, MusicXML <interchangeable>) by the same amount, instead of putting them all
+    //   on one x (they overlapped).
     staves.forEach((stave) => {
       const modifiers = stave.getModifiers(StaveModifier.Position.BEGIN, TimeSignature.CATEGORY);
-      modifiers.forEach((modifier) => {
-        if (modifier.getX() > maxX) maxX = modifier.getX();
-      });
+      if (modifiers.length > 0 && modifiers[0].getX() > maxX) maxX = modifiers[0].getX();
     });
     staves.forEach((stave) => {
       const modifiers = stave.getModifiers(StaveModifier.Position.BEGIN, TimeSignature.CATEGORY);
+      if (modifiers.length === 0) return;
+      const shift = maxX - modifiers[0].getX();
       modifiers.forEach((modifier) => {
-        modifier.setX(maxX);
+        modifier.setX(modifier.getX() + shift);
       });
     });
     // Align key signatures
