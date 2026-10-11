@@ -62,14 +62,28 @@ describe("MusicPartManagerIterator measure order with repetitions", () => {
     });
 
     /**
-     * A D.S. that finds no segno in its movement goes back to the start of its movement (as osmd-dart findSegnoForDalSegno),
-     * not to the last repeat start before it.
+     * A D.S. that finds no segno in its movement goes back to the segno of the previous movement when no D.S. of that
+     * movement takes it, and, without a Fine there, ends at that movement's end and goes on after the D.S.: "Menuetto D.C."
+     * plays the minuet again, not the trio too (individual 32 fix D, user decision D-2 of 2026-10-11; it went back to the
+     * start of its own movement, the trio, as osmd-dart findSegnoForDalSegno did).
      *
      * Sample: a minuet (measures 1-2, segno "segno") and a trio whose measure numbers restart (another movement), its measure 2 repeated,
      * "Menuetto D.C." with <sound dalsegno="segno"> in its last measure (wave 2 0890).
      */
-    it("takes a D.S. without a segno in its movement back to the start of its movement", async () => {
-        expect(await playedMeasures("test_repeat_dalsegno_other_movement.musicxml")).to.deep.equal([0, 1, 2, 3, 3, 4, 2, 3, 4]);
+    it("takes a D.S. without a segno in its movement back to the minuet before it, to the minuet's end", async () => {
+        expect(await playedMeasures("test_repeat_dalsegno_other_movement.musicxml")).to.deep.equal([0, 1, 2, 3, 3, 4, 0, 1]);
+    });
+
+    /**
+     * A D.C. al Fine of a trio without a Fine, whose measure numbers restart, goes back to the march before it and ends at
+     * the march's Fine, after the trio's repeat at the same barline — written as MuseScore exports a D.C. (<sound dalsegno>
+     * naming a segno at the march's first measure) or with <sound dacapo="yes"> (individual 32 fix D, user decision D-2).
+     *
+     * Sample: march measures 1-2 (Fine at 2), trio measures 1-2 (numbers restart), the trio's 2 with a backward repeat and the D.C. al Fine.
+     */
+    it("takes a trio's D.C. al Fine back to the march's Fine", async () => {
+        expect(await playedMeasures("test_repeat_trio_dc_al_fine_dalsegno.musicxml")).to.deep.equal([0, 1, 2, 3, 2, 3, 0, 1]);
+        expect(await playedMeasures("test_repeat_trio_dc_al_fine_dacapo.musicxml")).to.deep.equal([0, 1, 2, 3, 2, 3, 0, 1]);
     });
 
     /**

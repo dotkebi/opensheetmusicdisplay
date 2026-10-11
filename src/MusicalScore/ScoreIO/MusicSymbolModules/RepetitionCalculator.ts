@@ -262,7 +262,9 @@ export class RepetitionCalculator {
         //   Without a segno, the D.S. goes back like a backward repeat without a forward repeat, and plays on to the end.
         const segnoMeasureIndex: number = this.findSegnoBackwards(instruction.measureIndex, instruction.SegnoLabel);
         if (segnoMeasureIndex < 0) {
-          return instruction.type;
+          // to the segno of the previous movement: it ends at that movement's Fine or end (see findSegnoInPreviousMovement)
+          return this.findSegnoInPreviousMovement(instruction.measureIndex, instruction.SegnoLabel) >= 0 ?
+            RepetitionInstructionEnum.DalSegnoAlFine : instruction.type;
         }
         return before(RepetitionInstructionEnum.Fine, segnoMeasureIndex) ? RepetitionInstructionEnum.DalSegnoAlFine :
           before(RepetitionInstructionEnum.ToCoda, segnoMeasureIndex) ? RepetitionInstructionEnum.DalSegnoAlCoda : instruction.type;
@@ -482,7 +484,15 @@ export class RepetitionCalculator {
                 this.findSegnoForDalSegno(this.currentMeasureIndex, currentRepetitionInstruction.SegnoLabel) < 0) {
                 break;
             }
-            currentRepetition = this.getOrCreateCurrentRepetition2(true);
+            if (this.findSegnoBackwards(this.currentMeasureIndex, currentRepetitionInstruction.SegnoLabel) < 0 &&
+                this.findSegnoInPreviousMovement(this.currentMeasureIndex, currentRepetitionInstruction.SegnoLabel) >= 0) {
+                // back to the previous movement: its own repetition, which leaves where a repeat of this movement starts
+                //   (a backward repeat at the D.S.'s barline, read after it, repeats from the start of this movement)
+                currentRepetition = this.createNewRepetition(this.movementStartIndex);
+                currentRepetition.RepetitonUnderConstruction.FromWords = true;
+            } else {
+                currentRepetition = this.getOrCreateCurrentRepetition2(true);
+            }
             currentRepetitionInstruction.parentRepetition = currentRepetition.RepetitonUnderConstruction;
             this.startAtSegnoBackwards(currentRepetition, currentRepetitionInstruction.SegnoLabel);
             if (!currentRepetition.FineFound) {
@@ -490,7 +500,10 @@ export class RepetitionCalculator {
                 const fineMeasureIndex: number = this.findInstructionInMainListBackwards(RepetitionInstructionEnum.Fine,
                                                                                          currentRepetitionInstruction.measureIndex,
                                                                                          currentRepetition.RepetitonUnderConstruction.StartIndex);
-                if (fineMeasureIndex >= 0) {
+                if (fineMeasureIndex < 0 && currentRepetition.RepetitonUnderConstruction.StartIndex < this.movementStartIndex) {
+                    // back in the previous movement without a Fine there: it ends at that movement's end
+                    this.endAtPreviousMovementEnd(currentRepetition);
+                } else if (fineMeasureIndex >= 0) {
                     currentRepetition.FineFound = true;
                     currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction =
                       this.createFoundInstruction(RepetitionInstructionEnum.Fine, fineMeasureIndex, currentRepetition.RepetitonUnderConstruction);
@@ -506,24 +519,32 @@ export class RepetitionCalculator {
             currentRepetition.RepetitonUnderConstruction.BackwardJumpInstructions.push(currentRepetitionInstruction);
             this.currentMeasure.LastRepetitionInstructions.push(currentRepetitionInstruction);
             break;
-        case RepetitionInstructionEnum.DaCapoAlFine:
-            currentRepetition = this.getOrCreateCurrentRepetition(this.movementStartIndex);
+        case RepetitionInstructionEnum.DaCapoAlFine: {
+            // without a Fine in its movement, from the start of the previous movement if that one has a Fine (a trio whose
+            //   measure numbers restart, after its march or minuet: the reader takes it as another movement)
+            const capoIndex: number = this.findInstructionInMainListBackwards(RepetitionInstructionEnum.Fine,
+                currentRepetitionInstruction.measureIndex) < 0 && this.movementStartIndex > 0 &&
+                this.findInstructionInMainListBackwards(RepetitionInstructionEnum.Fine, this.movementStartIndex - 1,
+                                                        this.previousMovementStartIndex()) >= 0 ?
+                this.previousMovementStartIndex() : this.movementStartIndex;
+            currentRepetition = this.getOrCreateCurrentRepetition(capoIndex);
             if (currentRepetition.RepetitonUnderConstruction.BackwardJumpInstructions.length > 0) {
                 this.finalizeRepetition(currentRepetition);
-                currentRepetition = this.createNewRepetition(this.movementStartIndex);
+                currentRepetition = this.createNewRepetition(capoIndex);
             }
             if (currentRepetition.RepetitonUnderConstruction.startMarker !== undefined &&
-                currentRepetition.RepetitonUnderConstruction.StartIndex !== this.movementStartIndex) {
-                currentRepetition = this.createNewRepetition(this.movementStartIndex);
+                currentRepetition.RepetitonUnderConstruction.StartIndex !== capoIndex) {
+                currentRepetition = this.createNewRepetition(capoIndex);
             }
             currentRepetition.RepetitonUnderConstruction.startMarker =
-              new RepetitionInstruction(this.movementStartIndex, RepetitionInstructionEnum.None, AlignmentType.Begin,
+              new RepetitionInstruction(capoIndex, RepetitionInstructionEnum.None, AlignmentType.Begin,
                                         currentRepetition.RepetitonUnderConstruction);
             currentRepetition.RepetitonUnderConstruction.FromWords = true;
             currentRepetitionInstruction.parentRepetition = currentRepetition.RepetitonUnderConstruction;
             if (!currentRepetition.FineFound) {
                 const fineMeasureIndex: number = this.findInstructionInMainListBackwards( RepetitionInstructionEnum.Fine,
-                                                                                          currentRepetitionInstruction.measureIndex);
+                                                                                          currentRepetitionInstruction.measureIndex,
+                                                                                          capoIndex);
                 if (fineMeasureIndex >= 0) {
                     currentRepetition.FineFound = true;
                     currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction =
@@ -540,6 +561,7 @@ export class RepetitionCalculator {
             currentRepetition.RepetitonUnderConstruction.BackwardJumpInstructions.push(currentRepetitionInstruction);
             this.currentMeasure.LastRepetitionInstructions.push(currentRepetitionInstruction);
             break;
+        }
         case RepetitionInstructionEnum.DalSegnoAlCoda:
             // (the segno's repetition may have been closed already, e.g. by a repeat sign after the segno: see startAtSegnoBackwards())
             if (this.openRepetitions.length === 0 &&
@@ -783,9 +805,67 @@ export class RepetitionCalculator {
   private findSegnoForDalSegno(startMeasureIndex: number, segnoLabel: string): number {
       const segno: number = this.findSegnoBackwards(startMeasureIndex, segnoLabel);
       if (segno < 0 && this.movementStartIndex > 0) {
-          return this.movementStartIndex;
+          const previous: number = this.findSegnoInPreviousMovement(startMeasureIndex, segnoLabel);
+          return previous >= 0 ? previous : this.movementStartIndex;
       }
       return segno;
+  }
+
+  /**
+   * Returns the segno in the previous movement that a D.S. without a segno in its movement goes back to, or -1: the last one
+   * there of the name the D.S. gives, unless a D.S. of that movement goes back to it — then that movement is complete in
+   * itself and the D.S. goes back to the start of its own movement, as before (individual 32 fix D, user decision D-2 of
+   * 2026-10-11: a trio whose measure numbers restart is part of its march or minuet, wave 2 0212 "D.C. al Fine" and 0890
+   * "Menuetto D.C." written with <sound dalsegno>; the reader takes the measure number restart as a new movement).
+   */
+  private findSegnoInPreviousMovement(startMeasureIndex: number, segnoLabel: string): number {
+      if (this.movementStartIndex === 0 || startMeasureIndex < this.movementStartIndex) {
+          return -1;
+      }
+      const previousStart: number = this.previousMovementStartIndex();
+      const named: (instruction: RepetitionInstruction) => boolean = (instruction: RepetitionInstruction): boolean =>
+          segnoLabel === undefined || instruction.SegnoLabel === undefined || instruction.SegnoLabel === segnoLabel;
+      let segno: number = -1;
+      for (const instruction of this.repetitionInstructions) {
+          if (instruction.type === RepetitionInstructionEnum.Segno && named(instruction) && !this.isDrawnOnlySegno(instruction) &&
+              instruction.measureIndex >= previousStart && instruction.measureIndex < this.movementStartIndex) {
+              segno = Math.max(segno, instruction.measureIndex);
+          }
+      }
+      if (segno < 0) {
+          return -1;
+      }
+      const takenThere: boolean = this.repetitionInstructions.some(instruction =>
+          RepetitionCalculator.isDalSegno(instruction.type) && named(instruction) &&
+          instruction.measureIndex >= segno && instruction.measureIndex < this.movementStartIndex);
+      return takenThere ? -1 : segno;
+  }
+
+  /** The first measure of the movement before the current one. */
+  private previousMovementStartIndex(): number {
+      let start: number = 0;
+      for (const movementStart of this.movementStartIndices) {
+          if (movementStart < this.movementStartIndex) {
+              start = Math.max(start, movementStart);
+          }
+      }
+      return start;
+  }
+
+  /**
+   * Lets a D.S. that went back to the previous movement, which has no Fine after the segno, end at that movement's last
+   * measure as at a Fine (not drawn: RepetitionInstruction.Implicit) and go on after its jump — "Menuetto D.C." plays the
+   * minuet again, not the trio too.
+   */
+  private endAtPreviousMovementEnd(container: RepetitionBuildingContainer): void {
+      const endIndex: number = this.movementStartIndex - 1;
+      const fine: RepetitionInstruction = new RepetitionInstruction(endIndex, RepetitionInstructionEnum.Fine, AlignmentType.Begin,
+                                                                    container.RepetitonUnderConstruction);
+      fine.Implicit = true;
+      container.FineFound = true;
+      container.RepetitonUnderConstruction.forwardJumpInstruction = fine;
+      container.RepetitonUnderConstruction.setEndingStartIndex(2, this.getFineTarget());
+      this.musicSheet.SourceMeasures[endIndex].LastRepetitionInstructions.splice(0, 0, fine);
   }
 
   /**
