@@ -96,4 +96,16 @@ describe("Time signatures per part", () => {
         expect(drawnCounts(2)).to.deep.equal([1, 1]);
         expect(osmd.Sheet.SourceMeasures.map(m => m.Duration.RealValue)).to.deep.equal([0.75, 0.75, 0.5, 0.5]);
     });
+
+    /** test_time_restated_all_parts.musicxml: violin and cello 3/4; both write 3/4 again in m3 and
+     *  (with print-object="no") in m4, only the violin in m5. */
+    it("a time signature written again unchanged is drawn again", async () => {
+        await render("test_time_restated_all_parts.musicxml");
+        expect(timesOf(2)).to.deep.equal(["3/4", "3/4"]);
+        expect(drawnCounts(2)).to.deep.equal([1, 1]);
+        expect(drawnCounts(3), "print-object=\"no\"").to.deep.equal([0, 0]);
+        expect(drawnCounts(4)).to.deep.equal([1, 0]);
+        expect(drawnCounts(5)).to.deep.equal([0, 0]);
+        expect(osmd.Sheet.SourceMeasures.map(m => m.Duration.RealValue)).to.deep.equal(Array(6).fill(0.75));
+    });
 });
