@@ -15,6 +15,9 @@ import { TestUtils } from "../../Util/TestUtils";
  *   an end entry and drew nothing;
  * - a syllable on a grace note is placed at the grace note, not at the main note of its staff entry, and the main note's
  *   syllable clears it (the grace note group is widened, the measure can't be stretched to make room there).
+ * - a syllable on a grace note after its main note (a Nachschlag, which shares the main note's staff entry) is placed at the
+ *   grace note too, and the hyphen to the next syllable starts after it and ends before that syllable (Scarlatti, Consolati e
+ *   spera m88: the hyphen of "go-der" on the grace note after "to"'s A4 was drawn between "to" and "go").
  * Same as osmd-dart test/lyric_grace_notes_test.dart.
  */
 describe("Lyrics on grace notes", () => {
@@ -78,6 +81,15 @@ describe("Lyrics on grace notes", () => {
     const syllableOnGraceNote: string = score([
         note("A", 4, 4, "eighth", "re") + grace("A", 4, "16th", "in", undefined, true) + note("A", 4, 2, "16th", "me") +
         note("G", 4, 2, "16th") + note("B", 4, 4, "eighth", "di", undefined, "begin") + note("G", 4, 4, "eighth", "pin", undefined, "end"),
+    ], "2", "4");
+
+    /** Consolati e spera m88–89: "to" on the A4 ending the measure, "go" on the grace note after it, "der." in the next measure */
+    const syllableOnGraceNoteAfterMainNote: string = score([
+        note("C", 5, 8, "quarter", "più") + note("A", 4, 4, "eighth", "lie", undefined, "begin") +
+        note("A", 4, 4, "eighth", "to", undefined, "end") +
+        "<note><grace/><pitch><step>G</step><octave>4</octave></pitch><voice>1</voice><type>64th</type>" +
+        "<lyric number=\"1\"><syllabic>begin</syllabic><text>go</text></lyric></note>",
+        note("G", 4, 16, "half", "der.", undefined, "end"),
     ], "2", "4");
 
     async function render(xml: string): Promise<OpenSheetMusicDisplay> {
@@ -188,5 +200,21 @@ describe("Lyrics on grace notes", () => {
         expect(inLeft).to.be.lessThan(entryX(entry) - 1, "the grace note's syllable is at the grace note, left of the main note");
         const reRight: number = labelEdges(entryWithLyric(line, "re"), "re")[1];
         expect(reRight + distance).to.be.at.most(inLeft + 1e-6, "the grace note's syllable clears the previous one");
+    });
+
+    it("places a syllable on a grace note after its main note at the grace note, and the hyphen after it", async () => {
+        const osmd: OpenSheetMusicDisplay = await render(syllableOnGraceNoteAfterMainNote);
+        const line: StaffLine = staffLine(osmd);
+        const entry: GraphicalStaffEntry = entryWithLyric(line, "to");
+        expect(entry.LyricsEntries.map(l => l.LyricsEntry.Text)).to.deep.equal(["to", "go"]);
+        expect(entry.graphicalVoiceEntries.find(gve => gve.parentVoiceEntry.IsGrace).parentVoiceEntry.GraceAfterMainNote).to.equal(true);
+        const toRight: number = labelEdges(entry, "to")[1];
+        const [goLeft, goRight]: [number, number] = labelEdges(entry, "go");
+        expect(goLeft).to.be.greaterThan(toRight, "the grace note's syllable is right of the main note's, at the grace note");
+        const derLeft: number = labelEdges(entryWithLyric(line, "der."), "der.")[0];
+        expect(line.LyricsDashes.length).to.equal(2, "the hyphens of lie-to and go-der.");
+        const dash: BoundingBox = line.LyricsDashes[1].PositionAndShape;
+        expect(dash.RelativePosition.x).to.be.greaterThan(goRight, "the hyphen is after \"go\"");
+        expect(dash.RelativePosition.x + dash.BorderMarginRight).to.be.lessThan(derLeft, "and clear of \"der.\"");
     });
 });

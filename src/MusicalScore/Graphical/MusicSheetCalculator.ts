@@ -5542,9 +5542,11 @@ export abstract class MusicSheetCalculator {
                 lyricEntry.GraphicalLabel.PositionAndShape.BorderMarginRight -
                 lyricEntry.GraphicalLabel.CenteringXShift; // TODO not sure why this is necessary, see Christbaum measure 9+11, Land der Berge 11-12
 
+            // (the label offset of the start syllable, but at the next syllable's grace note if it is sung on one: a syllable
+            //   on a grace note is moved from its staff entry to the grace note, GraphicalLyricEntry.placeAtGraceNote())
             const endX: number = endStaffentry.parentMeasure.PositionAndShape.RelativePosition.x +
                 endStaffentry.PositionAndShape.RelativePosition.x +
-                lyricEntry.GraphicalLabel.PositionAndShape.RelativePosition.x +
+                lyricEntry.GraphicalLabel.PositionAndShape.RelativePosition.x - lyricEntry.GraceXShift + nextLyricEntry.GraceXShift +
                 nextLyricEntry.GraphicalLabel.PositionAndShape.BorderMarginLeft;
             const y: number = lyricEntry.GraphicalLabel.PositionAndShape.RelativePosition.y;
             let numberOfDashes: number = 1;
@@ -5567,6 +5569,7 @@ export abstract class MusicSheetCalculator {
             // start margin from the text Label until the End of StaffLine
             const startX: number = startStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x +
                 startStaffEntry.PositionAndShape.RelativePosition.x +
+                lyricEntry.GraceXShift +
                 lyricEntry.GraphicalLabel.PositionAndShape.BorderMarginRight;
             const lastGraphicalMeasure: GraphicalMeasure = startStaffLine.Measures[startStaffLine.Measures.length - 1];
             const endX: number = lastGraphicalMeasure.PositionAndShape.RelativePosition.x + lastGraphicalMeasure.PositionAndShape.Size.width;
@@ -5585,6 +5588,7 @@ export abstract class MusicSheetCalculator {
                 const secondStartX: number = nextStaffLine.Measures[0].staffEntries[0].PositionAndShape.RelativePosition.x;
                 const secondEndX: number = endStaffentry.parentMeasure.PositionAndShape.RelativePosition.x +
                     endStaffentry.PositionAndShape.RelativePosition.x +
+                    nextLyricEntry.GraceXShift +
                     nextLyricEntry.GraphicalLabel.PositionAndShape.BorderMarginLeft;
                 y = nextLyricEntry.GraphicalLabel.PositionAndShape.RelativePosition.y;
                 this.calculateDashes(nextStaffLine, secondStartX, secondEndX, y);
