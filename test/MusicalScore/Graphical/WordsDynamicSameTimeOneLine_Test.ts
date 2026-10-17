@@ -179,5 +179,14 @@ describe("Words and a dynamic at the same time on one line", () => {
         (osmd.GraphicSheet.GetCalculator as any).restackWordsClearOfDynamics(staffLine, [p.words]);
         expect(p.w.RelativePosition.y).to.be.closeTo(y, 1e-6);
     });
+
+    it("keeps words beside a dynamic under another text's dashed line on the dynamic's line", async () => {
+        // "cresc. - - -" over low notes reaches past "poco" + f: the words in the line's range move onto it
+        //   (moveWordsOntoExpressionDashes()), which took "poco" off its f in osmd-dart (wave 2 corpus 0989 m107)
+        const osmd: OpenSheetMusicDisplay = await render();
+        const [p] = pair(osmd, 11, "poco");
+        expect(p.wordsBaseline).to.be.closeTo(p.dynamicBaseline, 0.01);
+        expect(p.wordsRight).to.be.at.most(p.dynamicLeft + 0.01);
+    });
 });
 

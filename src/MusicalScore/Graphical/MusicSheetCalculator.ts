@@ -1891,8 +1891,10 @@ export abstract class MusicSheetCalculator {
         const moved: BoundingBox[] = [];
         for (const expression of staffLine.AbstractExpressions) {
             const textBox: BoundingBox = this.expressionTextBox(expression);
+            // (words beside the dynamic of their time stay on its line with it)
             if (!textBox || textBox === ownBox || moved.includes(textBox) || expression.SourceExpression?.Placement !== placement ||
-                expression instanceof GraphicalInstantaneousDynamicExpression) {
+                expression instanceof GraphicalInstantaneousDynamicExpression ||
+                expression instanceof GraphicalUnknownExpression && expression.besideDynamic) {
                 continue;
             }
             const left: number = textBox.RelativePosition.x + textBox.BorderMarginLeft;
