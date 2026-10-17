@@ -33,10 +33,6 @@ export class VexFlowInstantaneousDynamicExpression extends GraphicalInstantaneou
         return label;
     }
 
-    get InstantaneousDynamic(): InstantaneousDynamicExpression {
-        return this.mInstantaneousDynamicExpression;
-    }
-
     get Expression(): string {
         return this.mInstantaneousDynamicExpression.DynamicExpression;
     }
