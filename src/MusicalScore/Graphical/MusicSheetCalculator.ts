@@ -1481,7 +1481,8 @@ export abstract class MusicSheetCalculator {
      * wordsQualifyFollowingDynamic()), after it otherwise ("p e leggero", "p dolce") — Bellini, Malinconia, ninfa gentile,
      * piano m13; Parisotti, Lotti, Pur dicesti, piano m1; Bononcini, Deh più a me, piano m1, as in their sources. Before, the
      * words were placed at the bottom (sky) line, which the dynamic had raised there, and went under (over) it.
-     * Words before the dynamic that would start left of the measure's first note start there, and the dynamic follows them.
+     * Words before the dynamic that would start left of the measure's first note (in any staff) start there, and the dynamic
+     * follows them.
      * Instrument cues ("Viol.", "Solo") are not such words (isInstrumentCue()).
      * Returns the words' label, or undefined if there is no such dynamic or the words would run into another expression
      * there; the words are then placed as before.
@@ -1510,9 +1511,7 @@ export abstract class MusicSheetCalculator {
         let dynamicShift: number = 0;
         if (MusicSheetCalculator.wordsQualifyFollowingDynamic(text)) {
             wordsLeft = dynamicLeft - width;
-            const firstEntry: GraphicalStaffEntry = measure.staffEntries[0];
-            const firstNoteX: number = measure.PositionAndShape.RelativePosition.x +
-                (firstEntry ? firstEntry.PositionAndShape.RelativePosition.x : measure.beginInstructionsWidth);
+            const firstNoteX: number = this.firstNoteX(measure);
             if (wordsLeft < firstNoteX) {
                 dynamicShift = firstNoteX - wordsLeft;
                 wordsLeft = firstNoteX;
@@ -1552,6 +1551,23 @@ export abstract class MusicSheetCalculator {
             dynamic.updateSkyBottomLine();
         }
         return graphLabel;
+    }
+
+    /** The x of the first note of measure's measure on its staffline: of the first staff entry of any staff (the first notes
+     *  of a staff can be in another staff, Gounod Méditation m66), or after the begin instructions if there is none. */
+    private firstNoteX(measure: GraphicalMeasure): number {
+        let x: number = measure.PositionAndShape.RelativePosition.x + measure.beginInstructionsWidth;
+        let found: boolean = false;
+        for (const other of this.graphicalMusicSheet.MeasureList[measure.parentSourceMeasure?.measureListIndex] ?? [measure]) {
+            const firstEntry: GraphicalStaffEntry = other?.staffEntries[0];
+            if (!firstEntry || other.ParentMusicSystem !== measure.ParentMusicSystem) {
+                continue;
+            }
+            const entryX: number = other.PositionAndShape.RelativePosition.x + firstEntry.PositionAndShape.RelativePosition.x;
+            x = found ? Math.min(x, entryX) : entryX;
+            found = true;
+        }
+        return x;
     }
 
     /** The instantaneous dynamic of staffLine at the time of multiExpression (in its measure) with the given placement. */

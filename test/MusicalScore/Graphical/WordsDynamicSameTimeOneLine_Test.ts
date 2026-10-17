@@ -151,5 +151,22 @@ describe("Words and a dynamic at the same time on one line", () => {
         expect(p.wordsBaseline).to.be.closeTo(p.dynamicBaseline, 0.01);
         expect(p.wordsRight).to.be.at.most(p.dynamicLeft + 0.01);
     });
+
+    it("starts the words at the measure's first note in another staff", async () => {
+        // Gounod, Méditation m66: the right hand's first notes are in the left hand's staff
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        div.style.width = "1600px";
+        const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
+        await osmd.load(TestUtils.getScore("test_words_dynamic_first_note_other_staff.musicxml"));
+        osmd.render();
+        const [p, staffLine] = pair(osmd, 1, "più");
+        const firstX: (measure: any) => number = (measure: any): number =>
+            measure.PositionAndShape.RelativePosition.x + measure.staffEntries[0].PositionAndShape.RelativePosition.x;
+        const upper: any = staffLine.Measures[0];
+        const lower: any = staffLine.ParentMusicSystem.StaffLines[1].Measures[0];
+        expect(firstX(lower), "the fixture: the left hand starts earlier").to.be.below(firstX(upper) - 1);
+        expect(p.wordsLeft).to.be.closeTo(firstX(lower), 0.01);
+        expect(p.wordsRight).to.be.at.most(p.dynamicLeft + 0.01);
+    });
 });
 
