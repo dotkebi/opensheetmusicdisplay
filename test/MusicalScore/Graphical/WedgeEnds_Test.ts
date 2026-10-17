@@ -229,4 +229,35 @@ ${above("<wedge type=\"stop\" number=\"1\"/>")}
         // (its stop at the start of m3 ends it at the end of m2, see WedgeOffset_Test)
         expect(wedge.ContinuousDynamic.EndMultiExpression.SourceMeasureParent.MeasureNumber).to.equal(2);
     });
+    /** Parisotti, Piccinni Notte dea del mistero, score Canto m34 (P26-H3): a crescendo over a dotted half, its stop at the end of
+     *  the measure (an offset, so the end is read at the start), in the first measure of a system with the next note in the next
+     *  system. The next note's x is one in that system: the wedge ended near its start and was drawn at WedgeMinLength. It goes
+     *  to the end of its measure. */
+    const nextNoteInNextSystem: string = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">${pianoPart}<part id="P1">
+<measure number="1"><attributes><divisions>2</divisions><key><fifths>0</fifths></key><time><beats>3</beats><beat-type>4</beat-type></time>
+<clef><sign>G</sign><line>2</line></clef></attributes>
+<note><pitch><step>E</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice><type>half</type><dot/></note></measure>
+<measure number="2"><print new-system="yes"/>
+<direction placement="above"><direction-type><wedge type="crescendo" number="1"/></direction-type><offset>0</offset></direction>
+<direction placement="above"><direction-type><wedge type="stop" number="1"/></direction-type><offset>6</offset></direction>
+<note><pitch><step>C</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice><type>half</type><dot/></note></measure>
+<measure number="3"><print new-system="yes"/><attributes><key><fifths>6</fifths></key></attributes>
+<note><pitch><step>C</step><alter>1</alter><octave>5</octave></pitch><duration>6</duration><voice>1</voice><type>half</type><dot/></note></measure>
+</part></score-partwise>`;
+
+    it("goes to the end of its measure when the next note is in the next system", async () => {
+        const osmd: OpenSheetMusicDisplay = await render(nextNoteInNextSystem, true);
+        const crescendo: GraphicalContinuousDynamicExpression = wedges(osmd).find(w => w.ContinuousDynamic.DynamicType === ContDynamicEnum.crescendo);
+        expect(crescendo).to.not.equal(undefined);
+        const measure: GraphicalMeasure = osmd.GraphicSheet.MeasureList[1][0];
+        const nextMeasure: GraphicalMeasure = osmd.GraphicSheet.MeasureList[2][0];
+        expect(measure.ParentStaffLine.ParentMusicSystem).to.not.equal(nextMeasure.ParentStaffLine.ParentMusicSystem);
+        const left: number = Math.min(...crescendo.Lines.map((l: GraphicalLine) => Math.min(l.Start.x, l.End.x)));
+        const right: number = Math.max(...crescendo.Lines.map((l: GraphicalLine) => Math.max(l.Start.x, l.End.x)));
+        const measureEnd: number = measure.PositionAndShape.RelativePosition.x + measure.PositionAndShape.BorderRight;
+        expect(right - left, `length ${right - left}, measure width ${measure.PositionAndShape.Size.width}`)
+            .to.be.greaterThan(measure.PositionAndShape.Size.width / 2);
+        expect(right).to.be.closeTo(measureEnd - osmd.EngravingRules.WedgeHorizontalMargin, 0.05);
+    });
 });
