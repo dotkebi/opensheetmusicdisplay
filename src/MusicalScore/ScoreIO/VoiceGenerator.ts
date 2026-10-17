@@ -171,14 +171,21 @@ export class VoiceGenerator {
           if (glissElements.length > 0) {
             this.slurReader.addSlur(glissElements, this.currentNote);
           }
-        } else if (this.currentNote.ParentVoiceEntry.IsGrace &&
-                   this.currentVoiceEntry.GraceSlurPlacement === PlacementEnum.NotYetDefined) {
-          // a grace note's slur is only kept as VoiceEntry.GraceSlur (drawn by the grace note group),
-          //   but its placement is needed to draw the arc on the written side (e.g. below stem-down grace notes)
-          for (const slurElement of slurElements) {
-            if (slurElement.attribute("type")?.value === "start") {
-              this.currentVoiceEntry.GraceSlurPlacement = this.getTieDirection(slurElement);
-              break;
+        } else if (this.currentNote.ParentVoiceEntry.IsGrace) {
+          // A grace note's slur is read like any other slur (upstream only keeps it as VoiceEntry.GraceSlur, drawn by the
+          //   grace note group to the next main note): a slur from a grace note to a later note keeps its far end (Bowen,
+          //   Viola Sonata No. 2 I m221), and one to a grace note after its main note ends there. Only a slur to the
+          //   group's main note is still drawn by the group, see VoiceEntry.DrawsGraceGroupSlur. As osmd_dart.
+          if (this.slurReader !== undefined && slurElements.length > 0) {
+            this.slurReader.addSlur(slurElements, this.currentNote);
+          }
+          if (this.currentVoiceEntry.GraceSlurPlacement === PlacementEnum.NotYetDefined) {
+            // the placement of the group's arc, to draw it on the written side (e.g. below stem-down grace notes)
+            for (const slurElement of slurElements) {
+              if (slurElement.attribute("type")?.value === "start") {
+                this.currentVoiceEntry.GraceSlurPlacement = this.getTieDirection(slurElement);
+                break;
+              }
             }
           }
         }

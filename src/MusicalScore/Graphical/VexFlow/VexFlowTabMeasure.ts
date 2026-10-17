@@ -65,7 +65,7 @@ export class VexFlowTabMeasure extends VexFlowMeasure {
                         continue;
                     }
                     graceGVoiceEntriesBefore.push(gve);
-                    graceSlur = graceSlur || gve.parentVoiceEntry.GraceSlur;
+                    graceSlur = graceSlur || gve.parentVoiceEntry.DrawsGraceGroupSlur;
                     continue;
                 }
                 if (graceGVoiceEntriesBefore.length > 0) {

@@ -121,11 +121,32 @@ export class VoiceEntry {
     public set GraceNoteSlash(value: boolean) {
         this.graceNoteSlash = value;
     }
+    /** Whether the XML marks a slur on this grace note (see DrawsGraceGroupSlur). */
     public get GraceSlur(): boolean {
         return this.graceSlur;
     }
     public set GraceSlur(value: boolean) {
         this.graceSlur = value;
+    }
+    /** Whether this grace note's group draws its own arc to the main note.
+     *  A grace note's slur is read like any other slur (see VoiceGenerator). Only a slur that ends on the group's main note
+     *  stays the group's arc (see Slur.isGraceGroupSlur); one to a later note is a GraphicalSlur instead. A slur mark without
+     *  a matching stop keeps the former group arc. As osmd_dart VoiceEntry.drawsGraceGroupSlur.
+     */
+    public get DrawsGraceGroupSlur(): boolean {
+        if (!this.graceSlur) {
+            return false;
+        }
+        let resolved: boolean = false;
+        for (const note of this.notes) {
+            for (const slur of note.NoteSlurs) {
+                resolved = true;
+                if (slur.StartNote === note && slur.isGraceGroupSlur()) {
+                    return true;
+                }
+            }
+        }
+        return !resolved;
     }
     public get GraceSlurPlacement(): PlacementEnum {
         return this.graceSlurPlacement;

@@ -16,7 +16,7 @@ import { GraphicalMeasure } from "./GraphicalMeasure";
 import { BoundingBox } from "./BoundingBox";
 import { Fraction } from "../../Common/DataObjects/Fraction";
 import { ArticulationEnum, StemDirectionType, VoiceEntry } from "../VoiceData/VoiceEntry";
-import { VexFlowGraphicalNote, VexFlowMeasure } from "./VexFlow";
+import { VexFlowGraphicalNote, VexFlowMeasure, VexFlowVoiceEntry } from "./VexFlow";
 import { CrossStaffCurve } from "./VexFlow/CrossStaffCurve";
 import { unitInPixels } from "./VexFlow/VexFlowMusicSheetDrawer";
 import { Note } from "../VoiceData/Note";
@@ -952,7 +952,7 @@ export class GraphicalSlur extends GraphicalCurve {
         }
         for (const slur of outer.sourceNote.NoteSlurs) {
             if (slur !== this.slur && slur.StartNote === outer.sourceNote && slur.EndNote && inEndChord(slur.EndNote) &&
-                slur.PlacementXml === this.placement) {
+                slur.PlacementXml === this.placement && !slur.isGraceGroupSlur()) { // (a grace group's arc: no GraphicalSlur)
                 return true;
             }
         }
@@ -1495,7 +1495,49 @@ export class GraphicalSlur extends GraphicalCurve {
             endY = GraphicalSlur.clampEndPointBelow(endY, staffLine.StaffHeight);
         }
 
+        // a grace note shares its main note's staff entry position (see VoiceGenerator: a slur can start or end on one)
+        startX += GraphicalSlur.graceNoteXOffset(slurStartNote);
+        endX += GraphicalSlur.graceNoteXOffset(slurEndNote);
+
         return {startX, startY, endX, endY};
+    }
+
+    /** Distance in units from the staff entry position a grace note shares with its main note to the grace note's
+     *  notehead (0 for other notes). As osmd_dart GraphicalSlur._graceNoteXOffset.
+     */
+    private static graceNoteXOffset(graphicalNote: GraphicalNote): number {
+        if (!graphicalNote?.sourceNote?.ParentVoiceEntry?.IsGrace) {
+            return 0;
+        }
+        const graceNote: any = (graphicalNote.parentVoiceEntry as VexFlowVoiceEntry).vfStaveNote;
+        const staffEntry: GraphicalStaffEntry = graphicalNote.parentVoiceEntry.parentStaffEntry;
+        if (!graceNote || !staffEntry) {
+            return 0;
+        }
+        for (const gve of staffEntry.graphicalVoiceEntries as VexFlowVoiceEntry[]) {
+            const mainNote: any = gve.vfStaveNote;
+            const group: any = mainNote?.getModifiers?.().find((modifier: any) =>
+                modifier.getCategory() === "gracenotegroups" && modifier.getGraceNotes().includes(graceNote));
+            if (!group) {
+                continue;
+            }
+            // The group positions its notes only while drawing. Its alignment is idempotent (it sets the tick contexts'
+            //   x offset), so apply it early.
+            group.alignSubNotesWithNote(group.getGraceNotes(), mainNote);
+            return (graceNote.getNoteHeadBeginX() - mainNote.getNoteHeadBeginX()) / unitInPixels;
+        }
+        // A grace note after its main note (a Nachschlag) is no group member but a stand-alone tickable right of its main
+        //   note, already formatted (see VexFlowMeasure). A slur to it ended at the main note (Couperin, Concerts royaux IV
+        //   Forlane m25: from the note before the main note; IV Rigaudon m22: from the main note itself, a dash).
+        const voiceEntry: VoiceEntry = graphicalNote.parentVoiceEntry.parentVoiceEntry;
+        if (voiceEntry.GraceAfterMainNote && graceNote.getTickContext?.()) {
+            const main: any = (staffEntry.graphicalVoiceEntries as VexFlowVoiceEntry[]).find(gve =>
+                !gve.parentVoiceEntry.IsGrace && gve.parentVoiceEntry.ParentVoice === voiceEntry.ParentVoice)?.vfStaveNote;
+            if (main?.getTickContext?.()) {
+                return (graceNote.getNoteHeadBeginX() - main.getNoteHeadBeginX()) / unitInPixels;
+            }
+        }
+        return 0;
     }
 
     /** Y of a slur-above end point: no lower than 1.5 while the point is within the staff. */
