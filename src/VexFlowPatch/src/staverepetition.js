@@ -183,7 +183,10 @@ export class Repetition extends StaveModifier {
     //   text_x = symbol_x - + ctx.measureText(text).width - 12;
     // }
 
-    const y = stave.getYForTopText(stave.options.num_lines) + this.y_shift + 25;
+    // VexFlowPatch: words placed below the staff (OSMD placeWordRepetitionBelowStaff()): belowY is the text baseline,
+    //   in px below the top staff line
+    const y = this.belowY !== undefined ? stave.getYForLine(0) + this.belowY - 5 :
+      stave.getYForTopText(stave.options.num_lines) + this.y_shift + 25;
     if (draw_coda) {
       Glyph.renderGlyph(ctx, symbol_x, y, 40, 'v4d', true);
     }

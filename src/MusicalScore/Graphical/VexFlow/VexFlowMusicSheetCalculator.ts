@@ -3541,13 +3541,56 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         break;
       }
     }
-    // ToDo: feature/Repetitions
-    // now create corresponding graphical symbol or Text in VexFlow:
-    // use top measure and staffline for positioning.
+    // words at the staff of their direction, below it if placed below (see RepetitionInstruction.SymbolPlacements),
+    //   else above the uppermost staff
+    for (const placement of repetitionInstruction.SymbolPlacements) {
+      const measure: VexFlowMeasure = measures.find(m => m?.ParentStaffLine && m.ParentStaff === placement.staff && m.isVisible());
+      if (!measure) {
+        continue;
+      }
+      if (measure === uppermostMeasure && !placement.below) {
+        break; // the default place
+      }
+      const repetition: VF.Repetition = measure.addWordRepetition(repetitionInstruction);
+      const staffLines: StaffLine[] = measure.ParentStaffLine.ParentMusicSystem?.StaffLines ?? [];
+      if (repetition && (!placement.below || staffLines[staffLines.length - 1] !== measure.ParentStaffLine)) {
+        // between two staves, where the barlines go on: not shifted to the end of the last measure of the staffline,
+        //   onto its end barline (Rossini, William Tell selection, piano m116: "Fine" below the right hand)
+        (repetition as any).xShiftAsPercentOfStaveWidth = undefined;
+      }
+      if (placement.below) {
+        this.placeWordRepetitionBelowStaff(measure, repetition);
+      } else {
+        // between two staves: reserves its space, like a segno above a lower staff (see calculateSegnoSigns())
+        (repetition as any).reservesSkyline = true;
+        this.placeWordRepetitionInSkyline(measure, repetition);
+      }
+      return;
+    }
     if (uppermostMeasure) {
       const repetition: VF.Repetition = uppermostMeasure.addWordRepetition(repetitionInstruction);
       this.placeWordRepetitionInSkyline(uppermostMeasure, repetition);
     }
+  }
+
+  /**
+   * Places the words of a repetition instruction below the staff of the measure (placement="below"), under what is below the
+   * staff there, and reserves their place in the bottom line. Drawn at the x of the words above the staff (drawSymbolText()).
+   */
+  protected placeWordRepetitionBelowStaff(measure: VexFlowMeasure, repetition: VF.Repetition): void {
+    const range: {startX: number, endX: number} = repetition ? this.wordRepetitionRange(measure, repetition) : undefined;
+    if (!range) {
+      return;
+    }
+    const calculator: SkyBottomLineCalculator = measure.ParentStaffLine.SkyBottomLineCalculator;
+    let bottom: number = calculator.getBottomLineMaxInRange(range.startX, range.endX);
+    if (!isFinite(bottom) || bottom < 4) {
+      bottom = 4;
+    }
+    // the text (12pt, 1.6 units) reaches about 1.2 units above its baseline and 0.4 below
+    const baseline: number = bottom + 0.5 + 1.2;
+    (repetition as any).belowY = baseline * unitInPixels; // see VexFlowPatch staverepetition.js drawSymbolText()
+    calculator.updateBottomLineInRange(range.startX, range.endX, baseline + 0.4);
   }
 
   /**
@@ -3638,20 +3681,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   }
 
   /**
-   * Shifts a repetition instruction (VF.Repetition, e.g. Coda sign or "D.S. al Fine" text) above
-   * other objects in its range, e.g. chord symbols, which are calculated before the repetition
-   * instructions, or previously placed repetition instructions (see #1689).
-   * Shifted instructions reserve their space in the skyline, so that the staffline borders account for them.
-   * The horizontal and default vertical position replicate the drawing code
-   * in VexFlowPatch/src/staverepetition.js (drawSymbolText() etc).
-   * @param measure the (uppermost) measure the repetition instruction was added to
-   * @param repetition the VexFlow repetition (stave modifier) to place, created by addWordRepetition()
+   * The horizontal range (staffline units) of a repetition instruction drawn by staverepetition.js, see placeWordRepetitionInSkyline().
+   * @returns undefined if it is empty
    */
-  protected placeWordRepetitionInSkyline(measure: VexFlowMeasure, repetition: VF.Repetition): void {
+  protected wordRepetitionRange(measure: VexFlowMeasure, repetition: VF.Repetition): {startX: number, endX: number} {
     const staffLine: StaffLine = measure.ParentStaffLine;
-    if (!repetition || !staffLine) {
-      return;
-    }
     const type: number = (repetition as any).symbol_type;
     const repetitionTypes: {[key: string]: number} = VF.Repetition.type as any;
     let text: string; // the texts drawn by staverepetition.js drawSymbolText()
@@ -3755,8 +3789,32 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     startX = Math.max(0, startX);
     endX = Math.min(staffLine.PositionAndShape.Size.width, endX);
     if (!(endX > startX)) {
+      return undefined;
+    }
+    return { startX: startX, endX: endX };
+  }
+
+  /**
+   * Shifts a repetition instruction (VF.Repetition, e.g. Coda sign or "D.S. al Fine" text) above
+   * other objects in its range, e.g. chord symbols, which are calculated before the repetition
+   * instructions, or previously placed repetition instructions (see #1689).
+   * Shifted instructions reserve their space in the skyline, so that the staffline borders account for them.
+   * The horizontal and default vertical position replicate the drawing code
+   * in VexFlowPatch/src/staverepetition.js (drawSymbolText() etc).
+   * @param measure the (uppermost) measure the repetition instruction was added to
+   * @param repetition the VexFlow repetition (stave modifier) to place, created by addWordRepetition()
+   */
+  protected placeWordRepetitionInSkyline(measure: VexFlowMeasure, repetition: VF.Repetition): void {
+    const staffLine: StaffLine = measure.ParentStaffLine;
+    if (!repetition || !staffLine) {
       return;
     }
+    const range: {startX: number, endX: number} = this.wordRepetitionRange(measure, repetition);
+    if (!range) {
+      return;
+    }
+    const startX: number = range.startX;
+    const endX: number = range.endX;
     // default drawing band of staverepetition.js, relative to the top staff line:
     //   the text baseline is at getYForTopText(5) + 25 + 5 = 3 units above the top staff line (plus y_shift),
     //   glyphs are anchored similarly, so the drawn objects roughly span [-4.5, -2.5] units

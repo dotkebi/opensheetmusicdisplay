@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<!-- Repetition instruction words drawn where their direction says (placement and staff), Schirmer, Twenty-Four Italian Songs and
+     Arias, Pur dicesti m111: "D.S. al Fine" below the left hand.
+     m2: "Fine" without placement and staff - above the top staff, as before.
+     m3: "D.C." below the right hand (staff 1), at the end of the first system: between the staves, not shifted onto the end barline.
+     m4: "To Coda" above the left hand (staff 2), at the start of the second system.
+     m5: "D.S. al Fine" below the left hand (staff 2), with the segno above the right hand in its own direction. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>
+      <direction placement="above"><direction-type><segno/></direction-type><staff>1</staff><sound segno="S"/></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>4</duration><voice>5</voice><type>whole</type><staff>2</staff></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>4</duration><voice>5</voice><type>whole</type><staff>2</staff></note>
+      <direction><direction-type><words>Fine</words></direction-type><sound fine="yes"/></direction>
+    </measure>
+    <measure number="3">
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>4</duration><voice>5</voice><type>whole</type><staff>2</staff></note>
+      <direction placement="below"><direction-type><words>D.C.</words></direction-type><staff>1</staff></direction>
+    </measure>
+    <measure number="4">
+      <print new-system="yes"/>
+      <note><pitch><step>F</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>F</step><octave>3</octave></pitch><duration>4</duration><voice>5</voice><type>whole</type><staff>2</staff></note>
+      <direction placement="above"><direction-type><words>To Coda</words></direction-type><staff>2</staff></direction>
+    </measure>
+    <measure number="5">
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>G</step><octave>3</octave></pitch><duration>4</duration><voice>5</voice><type>whole</type><staff>2</staff></note>
+      <direction placement="above"><direction-type><segno/></direction-type><staff>1</staff></direction>
+      <direction placement="below"><direction-type><words>D.S. al Fine</words></direction-type><staff>2</staff><sound dalsegno="S"/></direction>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>

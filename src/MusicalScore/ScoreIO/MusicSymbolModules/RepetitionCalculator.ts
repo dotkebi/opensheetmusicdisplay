@@ -430,8 +430,10 @@ export class RepetitionCalculator {
                                                 RepetitionInstructionEnum.ToCoda,
                                                 AlignmentType.End,
                                                 currentRepetition.RepetitonUnderConstruction);
-                    // (a coda written as words is drawn as written)
+                    // (a coda written as words is drawn as written, where it is written)
                     currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.Words = currentRepetitionInstruction.Words;
+                    currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.SymbolPlacements =
+                      currentRepetitionInstruction.SymbolPlacements.slice();
                     this.currentMeasure.LastRepetitionInstructions.push(currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction);
                 } else {
                     this.addDrawnOnlyInstruction(currentRepetitionInstruction);
@@ -593,10 +595,10 @@ export class RepetitionCalculator {
                           new RepetitionInstruction(measureIndex, RepetitionInstructionEnum.ToCoda,
                                                     AlignmentType.Begin, currentRepetition.RepetitonUnderConstruction);
                         this.removeDrawnOnlyCoda(measureIndex); // the coda sign is drawn as the To Coda
-                        // (a coda written as words is drawn as written, see RepetitionInstructionReader)
-                        currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.Words =
-                          this.repetitionInstructions.find(read => read.measureIndex === measureIndex &&
-                                                           read.type === RepetitionInstructionEnum.Coda)?.Words;
+                        // (a coda written as words is drawn as written, where it is written, see RepetitionInstructionReader)
+                        this.drawAsRead(currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction,
+                                        this.repetitionInstructions.find(read => read.measureIndex === measureIndex &&
+                                                                         read.type === RepetitionInstructionEnum.Coda));
                         this.musicSheet.SourceMeasures[measureIndex].LastRepetitionInstructions.
                           splice(0, 0, currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction);
                         currentRepetition.ToCodaFound = true;
@@ -648,10 +650,10 @@ export class RepetitionCalculator {
                           new RepetitionInstruction(measureIndex, RepetitionInstructionEnum.ToCoda,
                                                     AlignmentType.Begin, currentRepetition.RepetitonUnderConstruction);
                         this.removeDrawnOnlyCoda(measureIndex); // the coda sign is drawn as the To Coda
-                        // (a coda written as words is drawn as written, see RepetitionInstructionReader)
-                        currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.Words =
-                          this.repetitionInstructions.find(read => read.measureIndex === measureIndex &&
-                                                           read.type === RepetitionInstructionEnum.Coda)?.Words;
+                        // (a coda written as words is drawn as written, where it is written, see RepetitionInstructionReader)
+                        this.drawAsRead(currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction,
+                                        this.repetitionInstructions.find(read => read.measureIndex === measureIndex &&
+                                                                         read.type === RepetitionInstructionEnum.Coda));
                         this.musicSheet.SourceMeasures[measureIndex].LastRepetitionInstructions.
                           splice(0, 0, currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction);
                         currentRepetition.ToCodaFound = true;
@@ -695,23 +697,32 @@ export class RepetitionCalculator {
   /**
    * Adds a Fine, To Coda or coda sign that no repetition takes to the current measure, e.g. a Fine without a D.C. al Fine,
    * so that it is drawn as written. It has no parent repetition: the iterator doesn't jump there.
-   * @param readInstruction the instruction as read, whose words are drawn for it (see RepetitionInstruction.Words)
+   * @param readInstruction the instruction as read, drawn as it is (see drawAsRead())
    */
   private addDrawnOnlyInstruction(readInstruction: RepetitionInstruction): void {
       const type: RepetitionInstructionEnum = readInstruction.type;
       const instruction: RepetitionInstruction = new RepetitionInstruction(this.currentMeasureIndex, type,
           type === RepetitionInstructionEnum.Coda ? AlignmentType.Begin : AlignmentType.End, undefined);
-      instruction.Words = readInstruction.Words;
+      this.drawAsRead(instruction, readInstruction);
       this.drawnOnlyInstructions.push(instruction);
   }
 
   /**
+   * Draws the instruction as the one read: its words (see RepetitionInstruction.Words) where they are written
+   * (see RepetitionInstruction.SymbolPlacements).
+   */
+  private drawAsRead(instruction: RepetitionInstruction, readInstruction: RepetitionInstruction): void {
+      instruction.Words = readInstruction?.Words;
+      instruction.SymbolPlacements = readInstruction?.SymbolPlacements.slice() ?? [];
+  }
+
+  /**
    * Creates the instruction for a Fine or To Coda that a D.C. or D.S. found backwards, where the iterator ends or jumps,
-   * with the words drawn for the one read there (see RepetitionInstruction.Words).
+   * drawn as the one read there (see drawAsRead()).
    */
   private createFoundInstruction(type: RepetitionInstructionEnum, measureIndex: number, repetition: Repetition): RepetitionInstruction {
       const instruction: RepetitionInstruction = new RepetitionInstruction(measureIndex, type, AlignmentType.Begin, repetition);
-      instruction.Words = this.repetitionInstructions.find(read => read.measureIndex === measureIndex && read.type === type)?.Words;
+      this.drawAsRead(instruction, this.repetitionInstructions.find(read => read.measureIndex === measureIndex && read.type === type));
       return instruction;
   }
 
