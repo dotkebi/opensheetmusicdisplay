@@ -13,6 +13,7 @@ import { LinkedVoice } from "../VoiceData/LinkedVoice";
 import { GraphicalVoiceEntry } from "./GraphicalVoiceEntry";
 import { GraphicalStaffEntry } from "./GraphicalStaffEntry";
 import { GraphicalMeasure } from "./GraphicalMeasure";
+import { BoundingBox } from "./BoundingBox";
 import { Fraction } from "../../Common/DataObjects/Fraction";
 import { ArticulationEnum, StemDirectionType, VoiceEntry } from "../VoiceData/VoiceEntry";
 import { VexFlowGraphicalNote, VexFlowMeasure } from "./VexFlow";
@@ -22,6 +23,11 @@ import { Note } from "../VoiceData/Note";
 import { Tie } from "../VoiceData/Tie";
 import Vex from "vexflow";
 import VF = Vex.Flow;
+
+/** A voice entry's box relative to the staff line (see GraphicalSlur.betweenVoices()). */
+type VoiceEntryBox = { left: number, right: number, top: number, bottom: number, first: boolean, last: boolean, rest: boolean };
+/** The slur's own voice's entries and the other voices' entries on the staff under a slur between voices. */
+type BetweenVoices = { own: VoiceEntryBox[], others: VoiceEntryBox[] };
 
 export class GraphicalSlur extends GraphicalCurve {
     // private intersection: PointF2D;
@@ -116,9 +122,11 @@ export class GraphicalSlur extends GraphicalCurve {
 
         // the Start- and End Reference Points for the Sky-BottomLine
         const headToHead: boolean = this.isHeadToHeadBetweenVoices(slurStartNote, slurEndNote);
+        const between: BetweenVoices = headToHead || this.betweenVoicesFallback ? undefined : this.betweenVoices(slurStartNote, slurEndNote);
+        this.IsBetweenVoices = false;
         const startEndPoints: {startX: number, startY: number, endX: number, endY: number} = headToHead ?
             this.calculateHeadToHeadStartAndEnd(slurStartNote, slurEndNote) :
-            this.calculateStartAndEnd(slurStartNote, slurEndNote, staffLine, rules, skyBottomLineCalculator);
+            this.calculateStartAndEnd(slurStartNote, slurEndNote, staffLine, rules, skyBottomLineCalculator, between !== undefined);
 
         const startX: number = startEndPoints.startX;
         const endX: number = startEndPoints.endX;
@@ -359,7 +367,8 @@ export class GraphicalSlur extends GraphicalCurve {
             endLowerLeft.x = this.graceRangeEndX(endLowerLeft.x, slurEndNote, startX, endX);
 
             // BottomLinePointsList between firstStaffEntry startLowerRightPoint and lastStaffentry endLowerLeftPoint
-            points = headToHead ? [] : this.calculateBottomPoints(startLowerRight, endLowerLeft, staffLine, skyBottomLineCalculator);
+            points = headToHead ? [] : between ? GraphicalSlur.betweenVoicesPoints(between, startLowerRight.x, endLowerLeft.x) :
+                this.calculateBottomPoints(startLowerRight, endLowerLeft, staffLine, skyBottomLineCalculator);
 
             if (points.length === 0) {
                 const pointF: PointF2D = new PointF2D((endLowerLeft.x - startLowerRight.x) / 2 + startLowerRight.x,
@@ -461,6 +470,19 @@ export class GraphicalSlur extends GraphicalCurve {
             this.bezierEndControlPt = new PointF2D(endControlPoint.x, endControlPoint.y + endYOffset);
             this.bezierEndPt = new PointF2D(endX, endY + endYOffset);
             this.lowerUnderOrnaments(staffLine, startLowerRight.x, endLowerLeft.x, slurStartNote, slurEndNote);
+            if (between) {
+                if (!this.fitBetweenVoices(between)) {
+                    // no room between the voices: around the other voice's notes as before
+                    this.betweenVoicesFallback = true;
+                    try {
+                        this.calculateCurve(rules);
+                    } finally {
+                        this.betweenVoicesFallback = false;
+                    }
+                    return;
+                }
+                this.IsBetweenVoices = true;
+            }
 
             /* for DEBUG only */
             // this.intersection = transposeMatrix.vectorMultiplication(intersectionPoint);
@@ -971,6 +993,149 @@ export class GraphicalSlur extends GraphicalCurve {
         return note.parentVoiceEntry.PositionAndShape.RelativePosition.y + note.PositionAndShape.RelativePosition.y;
     }
 
+    /** Whether the last calculateCurve() drew the slur between the voices (see [[betweenVoices]]). For diagnostics and tests. */
+    public IsBetweenVoices: boolean = false;
+    /** Set while calculateCurve() runs again without [[betweenVoices]] after the curve didn't fit between the voices. */
+    private betweenVoicesFallback: boolean = false;
+    /** Space (in units) a slur between voices keeps from the other voice's notes, beyond its half thickness. */
+    private static readonly betweenVoicesClearance: number = 0.2;
+    /** The least depth (in units, under the line from its start to its end) of a slur between voices; a flatter curve
+     *  doesn't read as a slur, and the slur goes around the other voice's notes instead. */
+    private static readonly betweenVoicesMinDepth: number = 0.4;
+
+    /**
+     * A slur below in a voice with its stems up, over a staff shared with another voice that sounds lower meanwhile: it
+     * goes between the voices, right under its own noteheads, and only its own voice's notes bend it (Scarlatti, Se
+     * Florindo è fedele, piano m61: the slur under the upper voice's sixteenths went under the lower voice's D4 and its
+     * tie to m62; Ricordi's Parisotti draws it between the voices, the tie under the D4). The curve is flattened to clear
+     * the other voices' notes and rests (fitBetweenVoices()); without room for it, the slur goes around them as before.
+     * Not for slurs over grace notes, between staves, over a system break, or with an articulation under a note of the
+     * voice (staccatos sit in that space). Returns the voice entries' boxes, or undefined when the slur isn't one.
+     * Same as osmd-dart.
+     */
+    private betweenVoices(slurStartNote: GraphicalNote, slurEndNote: GraphicalNote): BetweenVoices {
+        if (this.placement !== PlacementEnum.Below || !slurStartNote || !slurEndNote || this.graceStart || this.graceEnd ||
+            this.isCrossStaffPiece || this.isVoltaPiece || this.crossStaffCurve || this.pieceSide !== undefined || this.slur.isCrossed()) {
+            return undefined;
+        }
+        const startEntry: VoiceEntry = slurStartNote.parentVoiceEntry.parentVoiceEntry;
+        const endEntry: VoiceEntry = slurEndNote.parentVoiceEntry.parentVoiceEntry;
+        if (startEntry.IsGrace || endEntry.IsGrace || startEntry.ParentVoice !== endEntry.ParentVoice ||
+            startEntry.StemDirection !== StemDirectionType.Up || endEntry.StemDirection !== StemDirectionType.Up) {
+            return undefined;
+        }
+        const own: VoiceEntryBox[] = [];
+        const others: VoiceEntryBox[] = [];
+        for (let index: number = 0; index < this.staffEntries.length; index++) {
+            const staffEntry: GraphicalStaffEntry = this.staffEntries[index];
+            const x: number = staffEntry.parentMeasure.PositionAndShape.RelativePosition.x + staffEntry.PositionAndShape.RelativePosition.x;
+            for (const voiceEntry of staffEntry.graphicalVoiceEntries) {
+                if (voiceEntry.parentVoiceEntry.IsGrace || voiceEntry.notes.length === 0) {
+                    continue;
+                }
+                const shape: BoundingBox = voiceEntry.PositionAndShape;
+                const box: VoiceEntryBox = {
+                    left: x + shape.RelativePosition.x + shape.BorderLeft, right: x + shape.RelativePosition.x + shape.BorderRight,
+                    top: shape.RelativePosition.y + shape.BorderTop, bottom: shape.RelativePosition.y + shape.BorderBottom,
+                    first: index === 0, last: index === this.staffEntries.length - 1, rest: voiceEntry.notes[0].sourceNote.isRest(),
+                };
+                if (voiceEntry.parentVoiceEntry.ParentVoice === startEntry.ParentVoice) {
+                    if (voiceEntry.notes.some(note => GraphicalSlur.hasArticulationOnSide(note, PlacementEnum.Below))) {
+                        return undefined;
+                    }
+                    own.push(box);
+                } else if (voiceEntry.notes.some(note => note.sourceNote.PrintObject)) {
+                    others.push(box);
+                }
+            }
+        }
+        const lowestEnd: number = Math.max(own[0]?.bottom ?? -Infinity, own[own.length - 1]?.bottom ?? -Infinity);
+        if (!others.some(other => !other.rest && other.top > lowestEnd)) {
+            return undefined;
+        }
+        return { own, others };
+    }
+
+    /** The bottom line points of a [[betweenVoices]] slur: the bottoms of its own voice's notes after the first and before
+     *  the last, from startX to endX. */
+    private static betweenVoicesPoints(between: BetweenVoices, startX: number, endX: number): PointF2D[] {
+        const points: PointF2D[] = [];
+        for (const box of between.own) {
+            if (box.first || box.last || box.rest) {
+                continue;
+            }
+            for (const x of [box.left, box.right]) {
+                if (x > startX && x < endX) {
+                    points.push(new PointF2D(x, box.bottom));
+                }
+            }
+        }
+        return points;
+    }
+
+    /**
+     * Whether the curve of a [[betweenVoices]] slur fits between the voices: raise an end over the other voices' notes
+     * and rests under it, no higher than its own notehead, and both control points (flatten the curve) until it clears
+     * them by betweenVoicesClearance; it fits if it keeps betweenVoicesMinDepth and doesn't run into its own voice's
+     * noteheads.
+     */
+    private fitBetweenVoices(between: BetweenVoices): boolean {
+        const clearance: number = GraphicalSlur.betweenVoicesClearance + GraphicalSlur.thickness / 2;
+        // (an end may sit lower than usual, e.g. under the second of two slurs starting at the note: Schumann, Widmung,
+        //   piano m1 on the web, at the lower voice's whole note's top)
+        const ends: { point: PointF2D, control: PointF2D, box: VoiceEntryBox, start: boolean }[] = [
+            { point: this.bezierStartPt, control: this.bezierStartControlPt, box: between.own.find(box => box.first), start: true },
+            { point: this.bezierEndPt, control: this.bezierEndControlPt, box: between.own.find(box => box.last), start: false },
+        ];
+        for (const end of ends) {
+            let y: number = end.point.y;
+            for (const other of between.others) {
+                if (end.point.x >= other.left && end.point.x <= other.right) {
+                    y = Math.min(y, other.top - clearance);
+                }
+            }
+            if (y === end.point.y) {
+                continue;
+            }
+            if (!end.box || y < end.box.bottom) {
+                return false; // no room under its notehead
+            }
+            const raised: number = end.point.y - y;
+            const point: PointF2D = new PointF2D(end.point.x, y);
+            const control: PointF2D = new PointF2D(end.control.x, end.control.y - raised);
+            if (end.start) {
+                this.bezierStartPt = point;
+                this.bezierStartControlPt = control;
+            } else {
+                this.bezierEndPt = point;
+                this.bezierEndControlPt = control;
+            }
+        }
+        let lift: number = 0;
+        for (const other of between.others) {
+            lift = Math.max(lift, this.liftToClear(other.left, other.right, y => y - (other.top - clearance)));
+        }
+        if (lift > 0) {
+            this.bezierStartControlPt = new PointF2D(this.bezierStartControlPt.x, this.bezierStartControlPt.y - lift);
+            this.bezierEndControlPt = new PointF2D(this.bezierEndControlPt.x, this.bezierEndControlPt.y - lift);
+            for (const box of between.own) {
+                if (box.first || box.last || box.rest) {
+                    continue;
+                }
+                if (this.liftToClear(box.left, box.right, y => box.bottom + GraphicalSlur.thickness / 2 - y) > 0) {
+                    return false;
+                }
+            }
+        }
+        let depth: number = 0;
+        for (let i: number = 1; i < 64; i++) {
+            const point: PointF2D = this.calculateCurvePointAtIndex(i / 64);
+            const ratio: number = (point.x - this.bezierStartPt.x) / (this.bezierEndPt.x - this.bezierStartPt.x);
+            depth = Math.max(depth, point.y - (this.bezierStartPt.y + ratio * (this.bezierEndPt.y - this.bezierStartPt.y)));
+        }
+        return depth >= GraphicalSlur.betweenVoicesMinDepth;
+    }
+
     /** Width of a black notehead, for the end points of a [[isHeadToHeadBetweenVoices]] slur. */
     private static readonly headToHeadNoteheadWidth: number = 1.2;
     /** Distance of a [[isHeadToHeadBetweenVoices]] slur's end point from the notehead's centre line, besides the
@@ -1109,7 +1274,8 @@ export class GraphicalSlur extends GraphicalCurve {
                                     slurEndNote: GraphicalNote,
                                     staffLine: StaffLine,
                                     rules: EngravingRules,
-                                    skyBottomLineCalculator: SkyBottomLineCalculator): {startX: number, startY: number, endX: number, endY: number} {
+                                    skyBottomLineCalculator: SkyBottomLineCalculator,
+                                    ownVoiceOnly: boolean = false): {startX: number, startY: number, endX: number, endY: number} {
         let startX: number = 0;
         let startY: number = 0;
         let endX: number = 0;
@@ -1144,7 +1310,7 @@ export class GraphicalSlur extends GraphicalCurve {
                 startY = Math.min(startY, GraphicalSlur.yOverArticulation(slurStartNote, PlacementEnum.Above));
             } else {
                 startY = slurStartVE.PositionAndShape.RelativePosition.y + slurStartVE.PositionAndShape.BorderBottom;
-                if (this.rules.SlurPlacementUseSkyBottomLine) {
+                if (this.rules.SlurPlacementUseSkyBottomLine && !ownVoiceOnly) {
                     startY = Math.max(endY, slurStartVE.parentStaffEntry.getBottomlineMax());
                 }
                 // for (const articulation of slurStartVE.parentVoiceEntry.Articulations) {
@@ -1229,7 +1395,7 @@ export class GraphicalSlur extends GraphicalCurve {
                 endY = Math.min(endY, GraphicalSlur.yOverArticulation(slurEndNote, PlacementEnum.Above));
             } else {
                 endY = slurEndVE.PositionAndShape.RelativePosition.y + slurEndVE.PositionAndShape.BorderBottom;
-                if (this.rules.SlurPlacementUseSkyBottomLine) {
+                if (this.rules.SlurPlacementUseSkyBottomLine && !ownVoiceOnly) {
                     endY = Math.max(endY, slurEndVE.parentStaffEntry.getBottomlineMax());
                 }
                 if (articulationPlacement === PlacementEnum.Below) {
@@ -1318,10 +1484,13 @@ export class GraphicalSlur extends GraphicalCurve {
         // actually fall inside it. A point that already lies entirely beyond the staff on the
         // slur's side (e.g. a slur below grace notes that sit above the staff) must stay at the
         // note; pulling it to the staff would draw the slur across the staff lines, far from the notes.
+        // A slur between voices (betweenVoices()) stays inside the staff, at its notes (as in osmd-dart, which has no such
+        // clamp: the end at a note on the middle line went half a space lower on the web, and the slur under Widmung's
+        // arpeggio had no room left over the lower voice).
         if (this.placement === PlacementEnum.Above) {
             startY = GraphicalSlur.clampEndPointAbove(startY, staffLine.StaffHeight);
             endY = GraphicalSlur.clampEndPointAbove(endY, staffLine.StaffHeight);
-        } else {
+        } else if (!ownVoiceOnly) {
             startY = GraphicalSlur.clampEndPointBelow(startY, staffLine.StaffHeight);
             endY = GraphicalSlur.clampEndPointBelow(endY, staffLine.StaffHeight);
         }
