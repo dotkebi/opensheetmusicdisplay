@@ -1467,6 +1467,7 @@ export abstract class MusicSheetCalculator {
         // registers itself in staffLine.AbstractExpressions (pushing it there again drew the words twice)
         const unknownExpression: GraphicalUnknownExpression = new GraphicalUnknownExpression(
             staffLine, graphLabel, placement, measures[staffIndex]?.parentSourceMeasure, multiExpression);
+        unknownExpression.besideDynamic = besideDynamic !== undefined;
         unknownExpression.updateSkyBottomLine();
         //    multiExpression); // TODO would be nice to hand over and save reference to original expression,
         //                         but MultiExpression is not an AbstractExpression.

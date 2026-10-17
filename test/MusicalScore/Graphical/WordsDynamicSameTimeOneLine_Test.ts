@@ -6,6 +6,7 @@ import { MusicSheetCalculator } from "../../../src/MusicalScore/Graphical/MusicS
 import { GraphicalInstantaneousDynamicExpression } from "../../../src/MusicalScore/Graphical/GraphicalInstantaneousDynamicExpression";
 import { GraphicalUnknownExpression } from "../../../src/MusicalScore/Graphical/GraphicalUnknownExpression";
 import { TestUtils } from "../../Util/TestUtils";
+import { PointF2D } from "../../../src/Common/DataObjects/PointF2D";
 
 /**
  * Words and an instantaneous dynamic of the same staff, placement and time are engraved on one line, the words before the
@@ -167,6 +168,16 @@ describe("Words and a dynamic at the same time on one line", () => {
         expect(firstX(lower), "the fixture: the left hand starts earlier").to.be.below(firstX(upper) - 1);
         expect(p.wordsLeft).to.be.closeTo(firstX(lower), 0.01);
         expect(p.wordsRight).to.be.at.most(p.dynamicLeft + 0.01);
+    });
+
+    it("doesn't restack words beside a dynamic touching it under it", async () => {
+        // the boxes touch; a rounding error made that an overlap after osmd-dart's app first-viewport render
+        const osmd: OpenSheetMusicDisplay = await render();
+        const [p, staffLine] = pair(osmd, 1, "leggero e");
+        const y: number = p.w.RelativePosition.y;
+        p.d.RelativePosition = new PointF2D(p.d.RelativePosition.x - 1e-9, p.d.RelativePosition.y);
+        (osmd.GraphicSheet.GetCalculator as any).restackWordsClearOfDynamics(staffLine, [p.words]);
+        expect(p.w.RelativePosition.y).to.be.closeTo(y, 1e-6);
     });
 });
 

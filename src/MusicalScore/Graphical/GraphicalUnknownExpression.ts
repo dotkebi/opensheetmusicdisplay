@@ -10,6 +10,8 @@ import { SourceMeasure } from "../VoiceData/SourceMeasure";
 
 export class GraphicalUnknownExpression extends AbstractGraphicalExpression {
     public sourceMultiExpression: MultiExpression;
+    /** Placed beside the instantaneous dynamic of its time, on its baseline (MusicSheetCalculator.placeWordsBesideSameTimeDynamic()). */
+    public besideDynamic: boolean = false;
 
     constructor(staffLine: StaffLine, label: GraphicalLabel, placement: PlacementEnum, measure: SourceMeasure,
                 sourceMultiExpression: MultiExpression = undefined) {
