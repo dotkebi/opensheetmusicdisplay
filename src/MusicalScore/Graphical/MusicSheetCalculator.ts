@@ -1488,7 +1488,10 @@ export abstract class MusicSheetCalculator {
      */
     protected placeWordsBesideSameTimeDynamic(multiExpression: MultiExpression, staffLine: StaffLine, measure: GraphicalMeasure,
                                               text: string, style: FontStyles, placement: PlacementEnum, fontHeight: number): GraphicalLabel {
-        if (!this.rules.PlaceWordsBesideSameTimeDynamic || !measure ||
+        // the words of one direction with the dynamic are joined with the dynamic's empty label (and an exporter's empty words,
+        //   Gounod Méditation m33 "piu" + " " + f): "piu   "
+        text = text.trim();
+        if (!this.rules.PlaceWordsBesideSameTimeDynamic || !measure || text === "" ||
             (placement !== PlacementEnum.Above && placement !== PlacementEnum.Below) || MusicSheetCalculator.isInstrumentCue(text)) {
             return undefined;
         }

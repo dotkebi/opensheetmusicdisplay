@@ -142,4 +142,14 @@ describe("Words and a dynamic at the same time on one line", () => {
         const notes: number = staffLine.SkyBottomLineCalculator.getMaxInRangeOf(staffLine.NotesBottomLine, p.wordsLeft, p.wordsRight);
         expect(p.wordsTop).to.be.at.least(notes - 0.01);
     });
+
+    it("puts \"piu\" of one direction with an empty words, f and <sound dynamics> before the f", async () => {
+        // Gounod, Méditation m33 (an OSMD sample): the words are read since the words of a direction with <sound dynamics> are drawn
+        const osmd: OpenSheetMusicDisplay = await render();
+        const [p] = pair(osmd, 9, "piu");
+        expect(p.words.Label.Label.text).to.equal("piu");
+        expect(p.wordsBaseline).to.be.closeTo(p.dynamicBaseline, 0.01);
+        expect(p.wordsRight).to.be.at.most(p.dynamicLeft + 0.01);
+    });
 });
+
