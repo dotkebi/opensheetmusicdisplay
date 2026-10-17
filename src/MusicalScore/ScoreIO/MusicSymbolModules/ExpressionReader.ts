@@ -180,7 +180,6 @@ export class ExpressionReader {
     public read(directionNode: IXmlElement, currentMeasure: SourceMeasure,
                 inSourceMeasureCurrentFraction: Fraction, inSourceMeasurePreviousFraction: Fraction = undefined): void {
         let isTempoInstruction: boolean = false;
-        let isDynamicInstruction: boolean = false;
         this.startMeasureForDashes(currentMeasure);
 
         const timestampFraction: Fraction = inSourceMeasureCurrentFraction.clone();
@@ -219,7 +218,6 @@ export class ExpressionReader {
                 const soundOffset: IXmlElement = n.element("offset") ??
                     (offsetNode?.attribute("sound")?.value === "yes" ? offsetNode : undefined);
                 this.soundDynamicTimestamp = this.readDirectionTimestamp(soundOffset, inSourceMeasureCurrentFraction);
-                isDynamicInstruction = true;
             }
         }
         const dirNodes: IXmlElement[] = directionNode.elements("direction-type");
@@ -326,7 +324,9 @@ export class ExpressionReader {
                     instantaneousTempoExpression.language = dirContentNode.attribute("xml:lang")?.value;
                     this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, "");
                     this.addWordExpressionForDashes(instantaneousTempoExpression, timestampFraction);
-                } else if (!isDynamicInstruction) {
+                } else {
+                    // The words of a direction with <sound dynamics> are printed text like any other words, next to a dynamic
+                    //   ("leggero e" + pp, "più" + f) or alone ("dolce", "cresc."). OSMD left them all out.
                     this.interpretWords(dirContentNode, text, currentMeasure, timestampFraction);
                 }
                 continue;
