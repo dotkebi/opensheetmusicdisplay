@@ -138,9 +138,9 @@ export class SlurReader {
                                     // No open start with this number (or see endsOwnSlur). Either a cross-staff slur whose
                                     // start is written after the stop (completed in the start branch above), a start on this
                                     // note (a slur whose end isn't attached to a note, see there), or an orphan
-                                    // stop with no start (e.g. a slur started on a grace note, whose start is
-                                    // skipped by the reader - see VoiceGenerator). Defer it without touching
-                                    // openSlurDict, so it can't disturb normal slurs that reuse this number.
+                                    // stop with no start (e.g. a start the file lacks or whose number doesn't match;
+                                    // a grace note's slur start is read like any other, see VoiceGenerator). Defer it
+                                    // without touching openSlurDict, so it can't disturb normal slurs that reuse this number.
                                     const deferredStop: Slur = new Slur();
                                     deferredStop.EndNote = currentNote;
                                     this.openStopBeforeStartDict[slurNumber] = deferredStop;
@@ -208,9 +208,9 @@ export class SlurReader {
     /** Whether a slur stop that was read before its start (endNote) and a later start note (startNote) form a
      * genuine cross-staff slur. A cross-staff slur written end-staff-first has its start and stop on different
      * staves but in the SAME measure (the <backup> that reorders them is within a measure), and runs forward in
-     * time (start no later than stop). Requiring all of this rejects orphan stops - e.g. from grace-note slurs
-     * whose start is skipped by the reader - which would otherwise be wrongly paired with an unrelated later
-     * start that reuses the same slur number (across a barline and/or backwards in time). */
+     * time (start no later than stop). Requiring all of this rejects orphan stops - e.g. of a slur whose start
+     * the file lacks - which would otherwise be wrongly paired with an unrelated later start that reuses the same
+     * slur number (across a barline and/or backwards in time). */
     private isCrossStaffSlurMatch(startNote: Note, endNote: Note): boolean {
         if (!startNote || !endNote) {
             return false;

@@ -6425,7 +6425,7 @@ export abstract class MusicSheetCalculator {
         // beamed grace notes follow the beam's first note, where the slur starts
         const beam: Beam = voiceEntry.Notes[0]?.NoteBeam;
         const source: VoiceEntry = beam?.Notes.length > 0 ? beam.Notes[0].ParentVoiceEntry : voiceEntry;
-        if (!source.IsGrace || !source.GraceSlur) {
+        if (!source.IsGrace || !source.DrawsGraceGroupSlur) {
             return;
         }
         if (source.GraceSlurPlacement === PlacementEnum.Above) {

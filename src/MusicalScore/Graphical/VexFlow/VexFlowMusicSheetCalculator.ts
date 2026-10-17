@@ -4794,7 +4794,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
             continue; // not into a later ending past an earlier one
           }
           const alternative: boolean = slur.StartNote.ParentVoiceEntry.Notes.some(note => note.NoteSlurs.some(other =>
-            other !== slur && other.StartNote?.ParentVoiceEntry === slur.StartNote.ParentVoiceEntry && other.EndNote &&
+            other !== slur && !other.isGraceGroupSlur() && other.StartNote?.ParentVoiceEntry === slur.StartNote.ParentVoiceEntry &&
+            other.EndNote &&
             indexOf(other.EndNote) >= startIndex && indexOf(other.EndNote) < volta.start));
           const before: GraphicalStaffEntry[] = gSlur.staffEntries.filter(entry =>
             entry.parentMeasure.parentSourceMeasure?.measureListIndex < volta.start);
@@ -4837,7 +4838,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
             for (const graphicalVoiceEntry of graphicalStaffEntry.graphicalVoiceEntries) {
               for (const graphicalNote of graphicalVoiceEntry.notes) {
                 for (const slur of graphicalNote.sourceNote.NoteSlurs) {
-                  if (slur.StartNote !== graphicalNote.sourceNote || !slur.EndNote || !this.crossStaffSlurIsSplit(slur)) {
+                  if (slur.StartNote !== graphicalNote.sourceNote || !slur.EndNote || slur.isGraceGroupSlur() ||
+                      !this.crossStaffSlurIsSplit(slur)) {
                     continue;
                   }
                   const endStaffId: number = this.rules.GNote(slur.EndNote).parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaff.idInMusicSheet;
@@ -4921,6 +4923,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
                     // extra check for some MusicSheets that have openSlurs (because only the first Page is available -> Recordare files)
                     if (!slur.StartNote || (!slur.EndNote && !slur.HasUnattachedEnd)) {
                       continue;
+                    }
+                    if (slur.isGraceGroupSlur()) {
+                      continue; // the grace note group draws the arc to its main note (see VoiceEntry.DrawsGraceGroupSlur)
                     }
                     if (!slur.EndNote && graphicalMeasure.staffEntries[graphicalMeasure.staffEntries.length - 1] !== graphicalStaffEntry) {
                       // a slur without end note is only drawn to the barline from the measure's last note (see Slur.HasUnattachedEnd):

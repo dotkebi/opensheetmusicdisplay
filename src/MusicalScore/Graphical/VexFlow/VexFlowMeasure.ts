@@ -2195,7 +2195,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
                     // save grace notes for the next non-grace note
                     graceGVoiceEntriesBefore.push(gve);
                     if (!graceSlur) {
-                        graceSlur = gve.parentVoiceEntry.GraceSlur;
+                        graceSlur = gve.parentVoiceEntry.DrawsGraceGroupSlur;
                     }
                     continue;
                 }
@@ -2226,7 +2226,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
                     const graceNoteGroup: VF.GraceNoteGroup = new VF.GraceNoteGroup(graceNotes, graceSlur);
                     // the group's arc to the main note follows the grace note's stem unless the XML places the slur
                     const graceSlurPlacement: PlacementEnum = graceGVoiceEntriesBefore.find(
-                        (graceGve: GraphicalVoiceEntry) => graceGve.parentVoiceEntry.GraceSlur)?.parentVoiceEntry.GraceSlurPlacement;
+                        (graceGve: GraphicalVoiceEntry) => graceGve.parentVoiceEntry.DrawsGraceGroupSlur)?.parentVoiceEntry.GraceSlurPlacement;
                     if (this.rules.SlurPlacementFromXML &&
                         (graceSlurPlacement === PlacementEnum.Above || graceSlurPlacement === PlacementEnum.Below)) {
                         (graceNoteGroup as any).slur_direction = graceSlurPlacement === PlacementEnum.Below ?
