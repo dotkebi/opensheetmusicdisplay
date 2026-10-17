@@ -428,6 +428,7 @@ export class RepetitionInstructionReader {
     //const fineCount: number = 0;
     let toCodaCount: number = 0;
     let dalSegnaCount: number = 0;
+    const signsOfJumps: Set<RepetitionInstruction> = new Set<RepetitionInstruction>();
     for (let index: number = 0; index < this.repetitionInstructions.length; index++) {
       const instruction: RepetitionInstruction = this.repetitionInstructions[index];
       switch (instruction.type) {
@@ -445,6 +446,11 @@ export class RepetitionInstructionReader {
           // }
           break;
         case RepetitionInstructionEnum.Segno:
+          if (RepetitionInstruction.IsSignOfJump(instruction, this.repetitionInstructions, this.musicSheet.SourceMeasures[instruction.measureIndex])) {
+            // the sign printed with a D.S. (<direction> with "D.S. al Fine" and <segno/>): drawn, neither a segno of its own nor a D.S.
+            signsOfJumps.add(instruction);
+            break;
+          }
           // Two segnos in a row: the second one is taken for a D.S. back to the first (e.g. a renvoi sign),
           //   unless the MusicXML marks it as a D.S. target itself (a segno that a later D.S. jumps to).
           const repeatOfRenvoi: RepetitionInstruction =
@@ -518,7 +524,9 @@ export class RepetitionInstructionReader {
             codaCount++;
             break;
           case RepetitionInstructionEnum.Segno:
-            segnoCount++;
+            if (!signsOfJumps.has(instruction)) {
+              segnoCount++;
+            }
             break;
           case RepetitionInstructionEnum.DalSegno: // it uses the segno before it, so a segno after it is a new one
           case RepetitionInstructionEnum.DalSegnoAlFine:

@@ -97,6 +97,37 @@ export class RepetitionInstruction /*implements IComparable*/ {
      */
     public SymbolPlacements: RepetitionSymbolPlacement[] = [];
 
+    /**
+     * Whether the instruction is the segno sign that is printed with the D.C. or D.S. of its measure, at the end of the measure
+     * (Schirmer, Twenty-Four Italian Songs and Arias, Pur dicesti m111: the sign above "D.S. al Fine", in the same <direction>):
+     * the sign shows where the D.S. goes back to. It is drawn where it is, but is neither the start of a repetition nor a segno that a
+     * D.S. goes back to (it would go back to itself).
+     * @param instructions the instructions read, among them the D.C. or D.S. of the measure
+     * @param measure the measure of the instruction, whose end is where the sign has to be
+     */
+    public static IsSignOfJump(instruction: RepetitionInstruction, instructions: RepetitionInstruction[], measure: { Duration: Fraction }): boolean {
+        if (instruction.type !== RepetitionInstructionEnum.Segno || !measure || instruction.SymbolPlacements.length === 0 ||
+            !instruction.SymbolPlacements.every(placement => placement.timestamp.gte(measure.Duration))) {
+            return false;
+        }
+        return instructions.some(other => other.measureIndex === instruction.measureIndex && RepetitionInstruction.IsJumpBack(other.type));
+    }
+
+    /** Whether the type is a D.C. or D.S. (with or without al Fine / al Coda). */
+    public static IsJumpBack(type: RepetitionInstructionEnum): boolean {
+        switch (type) {
+            case RepetitionInstructionEnum.DaCapo:
+            case RepetitionInstructionEnum.DaCapoAlFine:
+            case RepetitionInstructionEnum.DaCapoAlCoda:
+            case RepetitionInstructionEnum.DalSegno:
+            case RepetitionInstructionEnum.DalSegnoAlFine:
+            case RepetitionInstructionEnum.DalSegnoAlCoda:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     public CompareTo(obj: Object): number {
         const other: RepetitionInstruction = <RepetitionInstruction>obj;
         if (this.measureIndex > other.measureIndex) {

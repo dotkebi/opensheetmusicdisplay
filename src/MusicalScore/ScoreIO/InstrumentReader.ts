@@ -593,6 +593,20 @@ export class InstrumentReader {
                                                                                                         symbolPlacement,
                                                                                                         directionTypeNodes.some(
                                                                                                           dt => dt.element("coda")));
+            // A segno sign in another direction-type of the direction, e.g. the sign printed with "D.S. al Fine" (Schirmer,
+            //   Twenty-Four Italian Songs and Arias, Pur dicesti m111), or the words after a segno sign. What the first
+            //   direction-type is stays what decides whether the direction is a repetition instruction (words that are no
+            //   instruction are still drawn as text).
+            const firstIsSegnoSign: boolean = !!directionTypeNode.element("segno") && !directionTypeNode.element("words");
+            for (const otherDirectionTypeNode of directionTypeNodes.slice(1)) {
+              if (otherDirectionTypeNode.element("segno") && !otherDirectionTypeNode.element("words") ||
+                  firstIsSegnoSign && otherDirectionTypeNode.element("words")) {
+                this.repetitionInstructionReader.handleRepetitionInstructionsFromWordsOrSymbols(otherDirectionTypeNode,
+                                                                                                relativePositionInMeasure,
+                                                                                                xmlNode.element("sound"),
+                                                                                                symbolPlacement);
+              }
+            }
           }
           if (!handeled) {
            let expressionReader: ExpressionReader = this.expressionReaders[0];

@@ -886,10 +886,15 @@ export class RepetitionCalculator {
       return this.findInstructionInMainListBackwards(RepetitionInstructionEnum.Segno, startMeasureIndex);
   }
 
-  /** Whether the instruction is a named segno that no D.S. names while D.S. name their segno: drawn only (see RepetitionInstruction.SegnoLabel). */
+  /**
+   * Whether the instruction is a named segno that no D.S. names while D.S. name their segno: drawn only (see RepetitionInstruction.SegnoLabel),
+   * or the sign printed with the D.S. of its measure.
+   */
   private isDrawnOnlySegno(instruction: RepetitionInstruction): boolean {
-      return instruction.type === RepetitionInstructionEnum.Segno && instruction.SegnoLabel !== undefined &&
-        this.dalSegnoLabels.size > 0 && !this.dalSegnoLabels.has(instruction.SegnoLabel);
+      return instruction.type === RepetitionInstructionEnum.Segno && (
+        instruction.SegnoLabel !== undefined && this.dalSegnoLabels.size > 0 && !this.dalSegnoLabels.has(instruction.SegnoLabel) ||
+        // the sign printed with a D.S. at the end of its measure: no D.S. goes back to it (RepetitionInstruction.IsSignOfJump)
+        RepetitionInstruction.IsSignOfJump(instruction, this.repetitionInstructions, this.musicSheet.SourceMeasures[instruction.measureIndex]));
   }
 
   /** Whether the instruction type is a D.S. (with or without al Fine / al Coda). */
