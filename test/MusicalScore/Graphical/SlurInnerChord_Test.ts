@@ -4,6 +4,7 @@ import { GraphicalSlur } from "../../../src/MusicalScore/Graphical/GraphicalSlur
 import { GraphicalNote } from "../../../src/MusicalScore/Graphical/GraphicalNote";
 import { GraphicalStaffEntry } from "../../../src/MusicalScore/Graphical/GraphicalStaffEntry";
 import { PlacementEnum } from "../../../src/MusicalScore/VoiceData/Expressions/AbstractExpression";
+import { unitInPixels } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMusicSheetDrawer";
 import { TestUtils } from "../../Util/TestUtils";
 
 /**
@@ -15,6 +16,9 @@ import { TestUtils } from "../../Util/TestUtils";
  * chord written on its bottom note: m3 over a tie of the middle note (Pergolesi/Ciampi, Nina, piano m12), m4 over a tie of
  * the top note (Torelli, Tu lo sai, piano m36). The XML of osmd-dart
  * test/fixtures/test_slur_inner_chord.musicxml. Same as osmd-dart test/slur_inner_chord_test.dart.
+ * Between close chords (the app's first screen: Bononcini m2, m12, m19 1.1 apart) the curve keeps less space from the
+ * noteheads, down to 0.1 for a curve 0.5 wide; without that room the inner slur goes 1 beyond the outer curve, not on it
+ * (Parisotti, P04-X3b).
  */
 describe("Slurs inside a chord", () => {
     /* eslint-disable max-len */
@@ -75,12 +79,15 @@ describe("Slurs inside a chord", () => {
     /* eslint-enable max-len */
 
     let osmd: OpenSheetMusicDisplay;
-    beforeEach(async () => {
+    async function render(width: number): Promise<void> {
         const div: HTMLElement = TestUtils.getDivElement(document);
-        div.style.width = "1600px";
+        div.style.width = width + "px";
         osmd = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
         await osmd.load(xml);
         osmd.render();
+    }
+    beforeEach(async () => {
+        await render(1600);
     });
 
     /** The first slur of the measure from its start note's pitch (e.g. "Bb4") on that side. */
@@ -97,11 +104,12 @@ describe("Slurs inside a chord", () => {
     /** The notes of the fixture's chords, by their staff position (in units below the top line, treble clef): the chords
      *  are written out here, as the notes of a chord get their own y only at the end of drawing. */
     const y: { [pitch: string]: number } = { Db4: 4.5, Eb4: 4.0, G4: 3.0, Ab4: 2.5, Bb4: 2.0, C5: 1.5, Db5: 1.0 };
-    /** The x of the chord's noteheads, relative to the staffline: left and right of a 1.2 wide black notehead. */
+    /** The x of the chord's noteheads, relative to the staffline: left and right of its Vexflow notehead (1.2 wide). The note's
+     *  own x is half the Vexflow note's width right of it, see GraphicalSlur.noteheadLeftInStaffLine(). */
     function headX(entry: GraphicalStaffEntry): { left: number, right: number } {
         const note: GraphicalNote = entry.graphicalVoiceEntries[0].notes[0];
-        const left: number = note.PositionAndShape.RelativePosition.x + entry.PositionAndShape.RelativePosition.x +
-            entry.parentMeasure.PositionAndShape.RelativePosition.x;
+        const head: any = (note as any).vfnote[0].note_heads[(note as any).vfnoteIndex];
+        const left: number = head.getAbsoluteX() / unitInPixels - entry.parentMeasure.ParentStaffLine.PositionAndShape.AbsolutePosition.x;
         return { left, right: left + 1.2 };
     }
     function describeSlur(s: GraphicalSlur): string {
@@ -165,5 +173,32 @@ describe("Slurs inside a chord", () => {
         const over: GraphicalSlur = slur(3, "C4", PlacementEnum.Above);
         // over the top note Bb4 of the chord
         expect(over.bezierStartPt.y, `slur ${describeSlur(over)}`).to.be.lessThan(y.Bb4);
+    });
+    it("goes between close chords with a narrower curve (P04-X3b)", async () => {
+        await render(400);
+        const inner: GraphicalSlur = slur(0, "Bb4", PlacementEnum.Above);
+        const outer: GraphicalSlur = slur(0, "Db5", PlacementEnum.Above);
+        const start: GraphicalStaffEntry = inner.staffEntries[0];
+        const end: GraphicalStaffEntry = inner.staffEntries[1];
+        const reason: string = `inner ${describeSlur(inner)}, outer ${describeSlur(outer)}, ` +
+            `heads ${headX(start).right.toFixed(2)}..${headX(end).left.toFixed(2)}`;
+        expect(headX(end).left - headX(start).right, reason).to.be.lessThan(1.6);
+        expect(inner.bezierStartPt.x, reason).to.be.greaterThan(headX(start).right);
+        expect(inner.bezierEndPt.x, reason).to.be.lessThan(headX(end).left);
+        expect(inner.bezierStartPt.y, reason).to.be.greaterThan(y.Db5);
+        expect(inner.bezierEndPt.y, reason).to.be.greaterThan(y.C5);
+        expect(inner.bezierStartPt.y - outer.bezierStartPt.y, reason).to.be.greaterThan(2);
+    });
+
+    it("goes beyond the outer slur without room between the chords (P04-X3b)", async () => {
+        await render(300);
+        const inner: GraphicalSlur = slur(0, "Bb4", PlacementEnum.Above);
+        const outer: GraphicalSlur = slur(0, "Db5", PlacementEnum.Above);
+        const reason: string = `inner ${describeSlur(inner)}, outer ${describeSlur(outer)}, ` +
+            `heads ${headX(inner.staffEntries[0]).right.toFixed(2)}..${headX(inner.staffEntries[1]).left.toFixed(2)}`;
+        expect(headX(inner.staffEntries[1]).left - headX(inner.staffEntries[0]).right, reason).to.be.lessThan(0.7);
+        // not on the outer slur: 1 beyond it at both ends
+        expect(outer.bezierStartPt.y - inner.bezierStartPt.y, reason).to.be.closeTo(1, 0.01);
+        expect(outer.bezierEndPt.y - inner.bezierEndPt.y, reason).to.be.closeTo(1, 0.01);
     });
 });
