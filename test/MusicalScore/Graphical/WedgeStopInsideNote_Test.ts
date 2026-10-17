@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalContinuousDynamicExpression } from "../../../src/MusicalScore/Graphical/GraphicalContinuousDynamicExpression";
 import { GraphicalMeasure } from "../../../src/MusicalScore/Graphical/GraphicalMeasure";
+import { GraphicalInstantaneousDynamicExpression } from "../../../src/MusicalScore/Graphical/GraphicalInstantaneousDynamicExpression";
 import { GraphicalStaffEntry } from "../../../src/MusicalScore/Graphical/GraphicalStaffEntry";
 import { TestUtils } from "../../Util/TestUtils";
 
@@ -10,7 +11,9 @@ import { TestUtils } from "../../Util/TestUtils";
  * half with an <offset>; the print ends it before the piano's second half). The stop is after the last note of the staff in the
  * measure, so the drawn end went to the end of the measure; it goes to the x of the stop in score time, from the notes of all
  * staves of the system, WedgeHorizontalMargin before it. A stop at the end of the measure (m146: the crescendo over the whole
- * measure) keeps the end of the measure. Same as osmd-dart test/wedge_stop_inside_note_test.dart.
+ * measure) keeps the end of the measure. With a dynamic of the staff at the stop the wedge reaches that dynamic, where it is
+ * drawn (Bowen, Viola Sonata No. 2 m437: "> pp" over a dotted half, the pp at its third beat). Same as osmd-dart
+ * test/wedge_stop_inside_note_test.dart.
  */
 describe("Wedge stopped inside a held note", () => {
     const head: string = `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><part-list>` +
@@ -35,6 +38,18 @@ describe("Wedge stopped inside a held note", () => {
     const duo: string = `${head}${oboe}${piano}</score-partwise>`;
     const solo: string = head.replace(/<score-part id="P2">.*<\/score-part><\/part-list>/, "</part-list>") +
         `${oboe}</score-partwise>`;
+
+    // a diminuendo over a whole note to a pp at the half, before a measure starting with a change of key and time (as m438
+    //   after m437): the pp, drawn from the oboe's own notes, is right of the half in time
+    const change: string = `<attributes><key><fifths>7</fifths></key><time><beats>3</beats><beat-type>4</beat-type></time></attributes>`;
+    const dottedHalf: string = `<note><pitch><step>G</step><octave>5</octave></pitch><duration>12</duration><voice>1</voice>` +
+        `<type>half</type><dot/></note>`;
+    const ppAtHalf: string = `<direction placement="below"><direction-type><dynamics><pp/></dynamics></direction-type>` +
+        `<offset>8</offset></direction>`;
+    const duoWithPp: string = `${head}<part id="P1"><measure number="1">${attributes}${wedgeXml("diminuendo")}${wedgeXml("stop", 8)}` +
+        `${ppAtHalf}${whole}</measure><measure number="2">${change}${dottedHalf}</measure></part>` +
+        `<part id="P2"><measure number="1">${attributes}${quarter}${quarter}${quarter}${quarter}</measure>` +
+        `<measure number="2">${change}${quarter}${quarter}${quarter}</measure></part></score-partwise>`;
 
     function render(source: string): Promise<OpenSheetMusicDisplay> {
         const div: HTMLElement = TestUtils.getDivElement(document);
@@ -81,6 +96,15 @@ describe("Wedge stopped inside a held note", () => {
         const pianoHalf: number = entryX(measure(osmd, 0, 1), 0.5);
         expect(right(wedgeIn(osmd, 1))).to.be.closeTo(pianoHalf - margin, 0.05,
             `measure end ${measureEnd(measure(osmd, 0, 0))}`);
+    });
+
+    it("reaches a dynamic at the stop inside a held note", async () => {
+        const osmd: OpenSheetMusicDisplay = await render(duoWithPp);
+        const pp: GraphicalInstantaneousDynamicExpression = osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines[0]
+            .AbstractExpressions.find(e => e instanceof GraphicalInstantaneousDynamicExpression) as GraphicalInstantaneousDynamicExpression;
+        const ppLeft: number = pp.PositionAndShape.RelativePosition.x + pp.PositionAndShape.BorderMarginLeft;
+        // reached up to DynamicExpressionSpacer before it (the half in time is further left)
+        expect(right(wedgeIn(osmd, 1))).to.be.closeTo(ppLeft - osmd.EngravingRules.DynamicExpressionSpacer, 0.05, `pp ${ppLeft}`);
     });
 
     it("keeps the end of the measure for a wedge stopped there", async () => {

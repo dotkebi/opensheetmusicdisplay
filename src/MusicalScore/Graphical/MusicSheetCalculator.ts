@@ -2837,6 +2837,22 @@ export abstract class MusicSheetCalculator {
         return leftX + (rightX - leftX) * Fraction.minus(stop, leftTime).RealValue / span;
     }
 
+    /** Whether an instantaneous dynamic of the wedge's staff and side is at its stop (StopTimestamp) in the measure of its
+     *  EndMultiExpression. Same as osmd-dart. */
+    protected dynamicAtWedgeStop(wedge: ContinuousDynamicExpression, staffIndex: number): boolean {
+        const end: MultiExpression = wedge.EndMultiExpression;
+        const stop: Fraction = wedge.StopTimestamp;
+        if (!end || !stop) {
+            return false;
+        }
+        const measure: SourceMeasure = end.SourceMeasureParent;
+        if (staffIndex >= measure.StaffLinkedExpressions.length) {
+            return false;
+        }
+        return measure.StaffLinkedExpressions[staffIndex].some(multi => multi.Timestamp.Equals(stop) &&
+            multi.InstantaneousDynamic && multi.InstantaneousDynamic.Placement === wedge.Placement);
+    }
+
     /**
      * The wedge that starts where the wedge stops between the notes of the staff, on the same staff and side, both without text:
      * a crescendo and a diminuendo paired as a swell "<>" over one note (L'allegro marinaro m46, m87, over a dotted half).
@@ -3030,10 +3046,18 @@ export abstract class MusicSheetCalculator {
         // A stop inside a note of the staff held through it (no note of the staff at or after it in the measure): the x of the
         //   stop in score time, WedgeHorizontalMargin before it (Mozart, Oboe Concerto K.314 I, Oboe m71: a crescendo over a
         //   whole note stopped at the half went to the end of the measure; the print ends it before the piano's second half).
-        //   Same as osmd-dart.
+        //   With an instantaneous dynamic of the staff and side at the stop, the x the dynamic is drawn at (from the staff's own
+        //   notes): the wedge reaches it, as "> pp" in the print (Bowen, Viola Sonata No. 2 m437: a diminuendo over a dotted
+        //   half stopped at its third beat at a pp ended two thirds of the measure before the pp). Same as osmd-dart.
         let heldNoteStopX: number = undefined;
         if (!isSoftAccent && pairEndX === undefined && stopTimestamp !== undefined && !stopBeforeNote) {
-            const x: number = this.heldNoteStopX(endMeasure, stopTimestamp, endOfMeasure);
+            let x: number = this.heldNoteStopX(endMeasure, stopTimestamp, endOfMeasure);
+            if (x !== undefined && this.dynamicAtWedgeStop(continuousDynamic, staffIndex)) {
+                x = this.getRelativePositionInStaffLineFromTimestamp(
+                    Fraction.plus(graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.SourceMeasureParent.AbsoluteTimestamp,
+                                  stopTimestamp),
+                    staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0, false).x;
+            }
             if (x !== undefined && x - this.rules.WedgeHorizontalMargin > startPosInStaffline.x) {
                 heldNoteStopX = Math.min(x, endOfMeasure) - this.rules.WedgeHorizontalMargin;
             }
