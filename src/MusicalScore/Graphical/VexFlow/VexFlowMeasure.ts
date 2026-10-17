@@ -981,6 +981,8 @@ export class VexFlowMeasure extends GraphicalMeasure {
                         }
                         // an unbracketed number under up-stems (over down-stems) at the middle of the noteheads
                         (vftuplet as any).numberXShift = VexFlowMeasure.tupletNumberHeadShift(vftuplet);
+                        // ... and close to them, outside the staff
+                        this.applyTupletNumberHeadSideYShift(vftuplet);
                         vftuplet.setContext(ctx).draw();
                     }
                 }
@@ -2893,6 +2895,134 @@ export class VexFlowMeasure extends GraphicalMeasure {
             const headCentre: (note: any) => number = (note: any): number =>
                 note.getAbsoluteX() + note.getXShift() + note.getGlyphWidth() / 2;
             return (headCentre(first) + headCentre(last) - first.getStemX() - last.getStemX()) / 2;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    /** How far (units) an unbracketed number on its noteheads' side stays outside the staff's last (first) line, see
+     *  [[tupletNumberHeadSideYShift]]. As in osmd-dart. */
+    public static readonly TupletNumberStaffClearance: number = 0.2;
+    /** How far (units) such a number stays from the noteheads (and their accidentals) over (under) it. As in osmd-dart. */
+    public static readonly TupletNumberHeadClearance: number = 0.4;
+
+    /** Moves the tuplet's number by [[tupletNumberHeadSideYShift]], in its y_offset beside the moves of
+     *  VexFlowMusicSheetCalculator.layoutFermatasOverSlurs() (each draw takes back the shift of the one before). */
+    private applyTupletNumberHeadSideYShift(vftuplet: any): void {
+        const applied: number = vftuplet.headSideYShift || 0;
+        const shift: number = this.tupletNumberHeadSideYShift(vftuplet);
+        vftuplet.options.y_offset = (vftuplet.options.y_offset || 0) - applied + shift;
+        vftuplet.headSideYShift = shift;
+    }
+
+    /**
+     * How far (px, up for a number under up-stems, down for one over down-stems) VF.Tuplet.draw() is to move an
+     * unbracketed number on the noteheads' side of all its notes, from where Vexflow puts it (Tuplet.getYPosition(): 2 spaces
+     * under the staff or under the lowest notehead) to where the engravers do: just outside the staff, or under the noteheads
+     * over it when they go under the staff (Leo, Dal tuo soglio luminoso, piano m78 and m81, Ricordi: the 3 0.2 under the
+     * staff, 0.5 under the noteheads on ledger lines; Schumann, Myrthen 25 m38, Breitkopf: 0.5 under the noteheads) — its ink
+     * TupletNumberStaffClearance outside the staff's last (first) line and TupletNumberHeadClearance from the noteheads of all
+     * voices over (under) it, the accidentals there, and a stem of another voice pointing to it. Measured on the
+     * number's ink, so that Vexflow 1.2.93 and VexFlow 5 (osmd-dart), whose glyphs stand differently on their y, put it at the
+     * same place. 0 (Vexflow's place) for a bracketed tuplet, a number on the stems' side, a tuplet with a rest, a nested one,
+     * notes on another staff, a rest, grace notes, a tied note, or a modifier (staccato, accent, fingering, ...)
+     * on the number's side of a note at the number, and when this would take the number away from the notes. Measured from Vexflow's place, without
+     * the tuplet's y_offset (this shift and the moves outside a slur). As in osmd-dart.
+     */
+    public tupletNumberHeadSideYShift(vftuplet: any): number {
+        if (vftuplet.bracketed || this.isTabMeasure) {
+            return 0;
+        }
+        try {
+            const notes: any[] = vftuplet.getNotes();
+            const below: boolean = vftuplet.location === VF.Tuplet.LOCATION_BOTTOM;
+            const stem: number = below ? VF.Stem.UP : VF.Stem.DOWN;
+            const stave: any = notes[0].getStave();
+            if (vftuplet.getNestedTupletCount() > 0 || notes.some(note => !(note instanceof VF.StaveNote) || note.isRest() ||
+                note.getStave() !== stave || note.getStemDirection() !== stem)) {
+                return 0;
+            }
+            const ink: { left: number, right: number, top: number, bottom: number } = this.tupletNumberInk(vftuplet);
+            if (!ink) {
+                return 0;
+            }
+            const space: number = stave.getSpacingBetweenLines();
+            const line: number = stave.getYForLine(0);
+            const y: (py: number) => number = py => (py - line) / space; // units from the staff's first line
+            const left: number = ink.left - 0.3;
+            const right: number = ink.right + 0.3;
+            const overlaps: (from: number, to: number) => boolean = (from, to) =>
+                (to - stave.getX()) / space > left && (from - stave.getX()) / space < right;
+            // the staff's outer line on the number's side, and how far the notes at the number go towards it
+            let limit: number = below ? stave.getNumLines() - 1 + VexFlowMeasure.TupletNumberStaffClearance
+                : -VexFlowMeasure.TupletNumberStaffClearance;
+            const reach: (unitsY: number) => void = unitsY => {
+                limit = below ? Math.max(limit, unitsY + VexFlowMeasure.TupletNumberHeadClearance)
+                    : Math.min(limit, unitsY - VexFlowMeasure.TupletNumberHeadClearance);
+            };
+            const side: number = below ? VF.Modifier.Position.BELOW : VF.Modifier.Position.ABOVE;
+            // a tie from or to a note at the number may curve on the number's side, by its noteheads
+            const tied: Set<any> = new Set();
+            for (const staffEntry of this.staffEntries) {
+                for (const gve of staffEntry.graphicalVoiceEntries) {
+                    if (gve.notes.some(note => note.sourceNote.NoteTie)) {
+                        tied.add((gve as VexFlowVoiceEntry).vfStaveNote);
+                    }
+                }
+            }
+            for (const voiceID in this.vfVoices) {
+                if (!this.vfVoices.hasOwnProperty(voiceID)) {
+                    continue;
+                }
+                for (const tickable of this.vfVoices[voiceID].getTickables()) {
+                    if (!(tickable instanceof VF.StaveNote) || tickable.getStave() !== stave) {
+                        continue;
+                    }
+                    const note: any = tickable;
+                    const glyphWidth: number = note.getGlyphWidth();
+                    let headLeft: number = note.getAbsoluteX() + note.getXShift();
+                    let headRight: number = headLeft + glyphWidth;
+                    if ((note as any).displaced) {
+                        // a second in a chord: its other heads beside the stem
+                        if (note.getStemDirection() === VF.Stem.UP) {
+                            headRight += glyphWidth;
+                        } else {
+                            headLeft -= glyphWidth;
+                        }
+                    }
+                    const atNumber: boolean = overlaps(headLeft, headRight);
+                    for (const modifier of note.getModifiers() as any[]) {
+                        if (modifier.getCategory() === "accidentals") {
+                            // where Accidental.draw() puts it, reaching about as far as the glyphs (in spaces from their key)
+                            //   under and over it: a flat's bulb a little under the key, its stem high over it
+                            const accidentalLeft: number = note.getModifierStartXY(VF.Modifier.Position.LEFT, modifier.getIndex()).x +
+                                modifier.x_shift;
+                            if (overlaps(accidentalLeft, accidentalLeft + modifier.getWidth())) {
+                                const keyY: number = y(note.getYs()[modifier.getIndex()]);
+                                const flat: boolean = ["b", "bb", "d", "db", "bbs"].indexOf(modifier.type) >= 0;
+                                reach(below ? keyY + (flat ? 0.7 : 1.4) : keyY - (flat ? 1.8 : 1.4));
+                            }
+                        } else if (atNumber && (modifier.getCategory() === "gracenotegroups" || modifier.getPosition() === side)) {
+                            return 0;
+                        }
+                    }
+                    if (!atNumber) {
+                        continue;
+                    }
+                    if (note.isRest() || tied.has(note)) {
+                        return 0;
+                    }
+                    const ys: number[] = note.getYs();
+                    reach(below ? y(Math.max(...ys)) + 0.5 : y(Math.min(...ys)) - 0.5);
+                    if (notes.indexOf(note) < 0 && note.getStemDirection() !== stem && note.hasStem()) {
+                        // another voice's stem (and beam) towards the number
+                        reach(below ? y(note.getStemExtents().topY) + 0.5 : y(note.getStemExtents().topY) - 0.5);
+                    }
+                }
+            }
+            const offset: number = (vftuplet.options.y_offset || 0) / space;
+            const shift: number = below ? Math.min(0, limit - (ink.top - offset)) : Math.max(0, limit - (ink.bottom - offset));
+            return shift * space;
         } catch (e) {
             return 0;
         }
