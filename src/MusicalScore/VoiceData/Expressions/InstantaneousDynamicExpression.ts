@@ -110,6 +110,20 @@ export class InstantaneousDynamicExpression extends AbstractExpression {
         return InstantaneousDynamicExpression.dynamicToRelativeVolumeDict.getValue(this.dynamicEnum);
     }
 
+    /** The MusicXML dynamics elements made of dynamic letters (all but <other-dynamics> and <n/>), as written: lower case. */
+    public static readonly musicXmlDynamicNames: ReadonlySet<string> = new Set([
+        "p", "pp", "ppp", "pppp", "ppppp", "pppppp", "f", "ff", "fff", "ffff", "fffff", "ffffff",
+        "mp", "mf", "sf", "sfp", "sfpp", "fp", "rf", "rfz", "sfz", "sffz", "fz", "pf", "sfzp",
+    ]);
+
+    /** Whether words with this text are drawn like a dynamic: the whole text is the name of a MusicXML dynamic, in lower
+     *  case ("rfz", "fz" or "sf" written as words — printed as dynamics in the sources, Handel, Se pietà, piano m3,
+     *  Mozart/Boehm, Andante op. 86, piano m40). "F", "R", "rfz portando" are words. User decision B (2026-10-18); as in
+     *  osmd-dart, which draws them with its dynamics' glyphs. */
+    public static isWordsDrawnAsDynamic(text: string): boolean {
+        return InstantaneousDynamicExpression.musicXmlDynamicNames.has((text ?? "").trim());
+    }
+
     public static isInputStringInstantaneousDynamic(inputString: string): boolean {
         if (!inputString) { return false; }
         return InstantaneousDynamicExpression.isStringInStringList(InstantaneousDynamicExpression.listInstantaneousDynamics, inputString);
