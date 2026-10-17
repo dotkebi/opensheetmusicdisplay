@@ -21,6 +21,7 @@ describe("Repetition instruction words placement and staff", () => {
     beforeEach(async () => {
         container = TestUtils.getDivElement(document);
         osmd = TestUtils.createOpenSheetMusicDisplay(container);
+        osmd.setOptions({ newSystemFromXML: true }); // m4 starts the second system
         await osmd.load(TestUtils.getScore(file));
         osmd.render();
     });
@@ -60,6 +61,15 @@ describe("Repetition instruction words placement and staff", () => {
         expect(ds.map(d => d.staff)).to.deep.equal([1]);
         expect(ds[0].belowY / unitInPixels, "below the left hand").to.be.within(5, 9);
         expect(drawn(4, 4).map(d => d.staff), "the segno above the right hand").to.deep.equal([0]); // SEGNO_LEFT
+    });
+
+    it("doesn't shift words between the staves onto the end barline of the last measure of the staffline", () => {
+        expect(osmd.GraphicSheet.MeasureList[2][0].ParentStaffLine.Measures.slice(-1)[0], "m3 ends the first system")
+            .to.equal(osmd.GraphicSheet.MeasureList[2][0]);
+        const dc: any = ((osmd.GraphicSheet.MeasureList[2][0] as any).vfRepetitionWords as any[]).find(r => r.symbol_type === 6);
+        expect(dc.xShiftAsPercentOfStaveWidth, "D.C. below the right hand").to.equal(undefined);
+        const ds: any = ((osmd.GraphicSheet.MeasureList[4][1] as any).vfRepetitionWords as any[]).find(r => r.symbol_type === 11);
+        expect(ds.xShiftAsPercentOfStaveWidth, "D.S. al Fine below the bottom staff, as above the top staff").to.be.greaterThan(0);
     });
 
     it("draws words placed above a lower staff above it", () => {

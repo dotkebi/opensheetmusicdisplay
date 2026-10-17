@@ -3552,6 +3552,12 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         break; // the default place
       }
       const repetition: VF.Repetition = measure.addWordRepetition(repetitionInstruction);
+      const staffLines: StaffLine[] = measure.ParentStaffLine.ParentMusicSystem?.StaffLines ?? [];
+      if (repetition && (!placement.below || staffLines[staffLines.length - 1] !== measure.ParentStaffLine)) {
+        // between two staves, where the barlines go on: not shifted to the end of the last measure of the staffline,
+        //   onto its end barline (Rossini, William Tell selection, piano m116: "Fine" below the right hand)
+        (repetition as any).xShiftAsPercentOfStaveWidth = undefined;
+      }
       if (placement.below) {
         this.placeWordRepetitionBelowStaff(measure, repetition);
       } else {

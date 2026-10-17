@@ -3,8 +3,8 @@
 <!-- Repetition instruction words drawn where their direction says (placement and staff), Schirmer, Twenty-Four Italian Songs and
      Arias, Pur dicesti m111: "D.S. al Fine" below the left hand.
      m2: "Fine" without placement and staff - above the top staff, as before.
-     m3: "D.C." below the right hand (staff 1).
-     m4: "To Coda" above the left hand (staff 2).
+     m3: "D.C." below the right hand (staff 1), at the end of the first system: between the staves, not shifted onto the end barline.
+     m4: "To Coda" above the left hand (staff 2), at the start of the second system.
      m5: "D.S. al Fine" below the left hand (staff 2), with the segno above the right hand in its own direction. -->
 <score-partwise version="4.0">
   <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
@@ -29,6 +29,7 @@
       <direction placement="below"><direction-type><words>D.C.</words></direction-type><staff>1</staff></direction>
     </measure>
     <measure number="4">
+      <print new-system="yes"/>
       <note><pitch><step>F</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
       <backup><duration>4</duration></backup>
       <note><pitch><step>F</step><octave>3</octave></pitch><duration>4</duration><voice>5</voice><type>whole</type><staff>2</staff></note>
