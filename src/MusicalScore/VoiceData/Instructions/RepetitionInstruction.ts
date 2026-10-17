@@ -94,6 +94,9 @@ export class RepetitionInstruction /*implements IComparable*/ {
      * one per <direction> with the sign, e.g. one above each hand of a piano part at different notes
      * (Couperin, Concerts royaux III, Allemande m17). Only the ones of the first part with the segno in the measure.
      * Empty for a segno from words: drawn at the start of the measure, above the top staff.
+     * For the words of an instruction (e.g. "D.S. al Fine", "Fine"), the staff and placement of their directions: the words are drawn
+     * once, at the first of them (Schirmer, Twenty-Four Italian Songs and Arias, Pur dicesti m111: below the left hand).
+     * Empty: above the top staff.
      */
     public SymbolPlacements: RepetitionSymbolPlacement[] = [];
 
@@ -215,7 +218,7 @@ export class RepetitionInstruction /*implements IComparable*/ {
     }
 }
 
-/** Where a sign of a repetition instruction (a segno) is drawn, see RepetitionInstruction.SymbolPlacements. */
+/** Where a sign of a repetition instruction (a segno) or its words are drawn, see RepetitionInstruction.SymbolPlacements. */
 export interface RepetitionSymbolPlacement {
     /** the staff of the <direction> */
     staff: Staff;

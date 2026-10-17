@@ -205,6 +205,11 @@ export class RepetitionInstructionReader {
       }
       const newInstruction: RepetitionInstruction = new RepetitionInstruction(measureIndex, type);
       newInstruction.Words = drawnWords;
+      if (symbolPlacement && type !== RepetitionInstructionEnum.Segno) {
+        // the words are drawn at the staff of their direction, below it if placed below (Schirmer, Twenty-Four Italian Songs and
+        //   Arias, Pur dicesti m111: "D.S. al Fine" below the left hand). (A segno from words stays drawn at the start of the measure.)
+        newInstruction.SymbolPlacements.push(symbolPlacement);
+      }
       newInstruction.MarkedAsTarget = type === RepetitionInstructionEnum.Segno && !!soundNode?.attribute("segno");
       newInstruction.SegnoLabel = RepetitionInstructionReader.segnoLabel(type, soundNode);
       if (!this.keepOneJumpOfWords(newInstruction, words, soundType !== undefined)) {
@@ -567,6 +572,10 @@ export class RepetitionInstructionReader {
       const repetitionInstruction: RepetitionInstruction = currentRepetitionInstructions[idx];
       if (newInstruction.equals(repetitionInstruction)) {
         addInstruction = false;
+        if (repetitionInstruction.Implicit && !newInstruction.Implicit && repetitionInstruction.SymbolPlacements.length === 0) {
+          // (a <sound> of the measure has no place: the words are drawn where their direction is)
+          repetitionInstruction.SymbolPlacements.push(...newInstruction.SymbolPlacements);
+        }
         this.addSymbolPlacements(repetitionInstruction, newInstruction);
         repetitionInstruction.SegnoLabel = repetitionInstruction.SegnoLabel ?? newInstruction.SegnoLabel;
         if (repetitionInstruction.Implicit && !newInstruction.Implicit) {
