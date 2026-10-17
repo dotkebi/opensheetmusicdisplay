@@ -13,6 +13,10 @@ export class GraphicalInstantaneousDynamicExpression extends AbstractGraphicalEx
      *  under (over) the wedge or beyond it, and AlignmentManager leaves it out. Same as osmd-dart. */
     public InsideWedge: boolean = false;
 
+    public get InstantaneousDynamic(): InstantaneousDynamicExpression {
+        return this.mInstantaneousDynamicExpression;
+    }
+
     constructor(instantaneousDynamic: InstantaneousDynamicExpression, staffLine: StaffLine, measure: GraphicalMeasure) {
         super(staffLine, instantaneousDynamic, measure.parentSourceMeasure);
         this.mInstantaneousDynamicExpression = instantaneousDynamic;
