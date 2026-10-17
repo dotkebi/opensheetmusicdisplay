@@ -2783,6 +2783,61 @@ export abstract class MusicSheetCalculator {
     }
 
     /**
+     * The x of the stop (in the measure's source measure) in score time, if a note of the measure's staff is held through it:
+     * from the staff entries of all staves of its system at or around it, else between the last one and the end of the measure
+     * (endOfMeasure). Undefined for a stop at the start or the end of the measure, or one not inside a held note (a rest, or a
+     * staff without notes, keeps the end of the measure). Same as osmd-dart.
+     */
+    protected heldNoteStopX(measure: GraphicalMeasure, stop: Fraction, endOfMeasure: number): number {
+        const sourceMeasure: SourceMeasure = measure.parentSourceMeasure;
+        const system: MusicSystem = measure.ParentStaffLine?.ParentMusicSystem;
+        if (!sourceMeasure || !system || !stop.gt(new Fraction(0, 1)) || !stop.lt(sourceMeasure.Duration)) {
+            return undefined;
+        }
+        const held: boolean = measure.staffEntries.some(se => se.relInMeasureTimestamp.lt(stop) &&
+            se.graphicalVoiceEntries.some(gve => !gve.parentVoiceEntry.IsGrace &&
+                gve.parentVoiceEntry.Notes.some(note => !note.isRest() &&
+                    Fraction.plus(se.relInMeasureTimestamp, note.Length).gt(stop))));
+        if (!held) {
+            return undefined;
+        }
+        let leftTime: Fraction = undefined;
+        let rightTime: Fraction = undefined;
+        let leftX: number = 0;
+        let rightX: number = endOfMeasure;
+        for (const staffLine of system.StaffLines) {
+            for (const other of staffLine.Measures) {
+                if (other.parentSourceMeasure !== sourceMeasure) {
+                    continue;
+                }
+                for (const se of other.staffEntries) {
+                    if (se.graphicalVoiceEntries.length === 0) {
+                        continue;
+                    }
+                    const time: Fraction = se.relInMeasureTimestamp;
+                    const x: number = other.PositionAndShape.RelativePosition.x + se.PositionAndShape.RelativePosition.x;
+                    if (!time.gt(stop) && (!leftTime || time.gt(leftTime))) {
+                        leftTime = time;
+                        leftX = x;
+                    }
+                    if (!time.lt(stop) && (!rightTime || time.lt(rightTime))) {
+                        rightTime = time;
+                        rightX = x;
+                    }
+                }
+            }
+        }
+        if (!leftTime) {
+            return undefined;
+        }
+        const span: number = Fraction.minus(rightTime ?? sourceMeasure.Duration, leftTime).RealValue;
+        if (span <= 0) {
+            return leftX;
+        }
+        return leftX + (rightX - leftX) * Fraction.minus(stop, leftTime).RealValue / span;
+    }
+
+    /**
      * The wedge that starts where the wedge stops between the notes of the staff, on the same staff and side, both without text:
      * a crescendo and a diminuendo paired as a swell "<>" over one note (L'allegro marinaro m46, m87, over a dotted half).
      * Undefined if there is none, or if a note of the staff starts at the stop: that pair keeps the note-based ends and the
@@ -2972,6 +3027,18 @@ export abstract class MusicSheetCalculator {
             }
         }
 
+        // A stop inside a note of the staff held through it (no note of the staff at or after it in the measure): the x of the
+        //   stop in score time, WedgeHorizontalMargin before it (Mozart, Oboe Concerto K.314 I, Oboe m71: a crescendo over a
+        //   whole note stopped at the half went to the end of the measure; the print ends it before the piano's second half).
+        //   Same as osmd-dart.
+        let heldNoteStopX: number = undefined;
+        if (!isSoftAccent && pairEndX === undefined && stopTimestamp !== undefined && !stopBeforeNote) {
+            const x: number = this.heldNoteStopX(endMeasure, stopTimestamp, endOfMeasure);
+            if (x !== undefined && x - this.rules.WedgeHorizontalMargin > startPosInStaffline.x) {
+                heldNoteStopX = Math.min(x, endOfMeasure) - this.rules.WedgeHorizontalMargin;
+            }
+        }
+
         //If the next note position is not on the next staffline
         //extend close to the next note
         if (isSoftAccent) {
@@ -2980,6 +3047,8 @@ export abstract class MusicSheetCalculator {
             endPosInStaffLine.x = startPosInStaffline.x + staffEntryWidth / 2 * sizeFactor;
         } else if (pairEndX !== undefined) {
             endPosInStaffLine.x = pairEndX;
+        } else if (heldNoteStopX !== undefined) {
+            endPosInStaffLine.x = heldNoteStopX;
         } else if (endBeforeStart && nextNotePosInStaffLine.x > startPosInStaffline.x) {
             endPosInStaffLine.x = (nextNotePosInStaffLine.x < endOfMeasure ? nextNotePosInStaffLine.x : endOfMeasure) -
                 this.rules.WedgeHorizontalMargin;
