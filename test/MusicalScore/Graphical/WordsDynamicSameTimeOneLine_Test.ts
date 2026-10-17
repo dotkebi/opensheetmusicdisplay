@@ -188,5 +188,25 @@ describe("Words and a dynamic at the same time on one line", () => {
         expect(p.wordsBaseline).to.be.closeTo(p.dynamicBaseline, 0.01);
         expect(p.wordsRight).to.be.at.most(p.dynamicLeft + 0.01);
     });
+
+    it("lets only the first words beside a dynamic move it", async () => {
+        // "sempre" before the ff moves it after the words; "dolce" after it would take it down onto the low notes' line, off
+        //   "sempre" (wave 2 corpus 0732 m392: "sempre" + "stacc." with an ff)
+        const osmd: OpenSheetMusicDisplay = await render();
+        const [sempre] = pair(osmd, 13, "sempre");
+        expect(sempre.wordsBaseline).to.be.closeTo(sempre.dynamicBaseline, 0.01);
+        expect(sempre.wordsRight).to.be.at.most(sempre.dynamicLeft + 0.01);
+        const [dolce] = pair(osmd, 13, "dolce");
+        expect(dolce.words.besideDynamic).to.equal(false);
+    });
+
+    it("places words of several lines as before", async () => {
+        const osmd: OpenSheetMusicDisplay = await render();
+        const before: OpenSheetMusicDisplay = await render(false);
+        const [p] = pair(osmd, 12, "prima");
+        const [old] = pair(before, 12, "prima");
+        expect(p.w.RelativePosition.x).to.be.closeTo(old.w.RelativePosition.x, 0.01);
+        expect(p.w.RelativePosition.y).to.be.closeTo(old.w.RelativePosition.y, 0.01);
+    });
 });
 

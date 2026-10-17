@@ -1484,7 +1484,7 @@ export abstract class MusicSheetCalculator {
      * words were placed at the bottom (sky) line, which the dynamic had raised there, and went under (over) it.
      * Words before the dynamic that would start left of the measure's first note (in any staff) start there, and the dynamic
      * follows them.
-     * Instrument cues ("Viol.", "Solo") are not such words (isInstrumentCue()).
+     * Instrument cues ("Viol.", "Solo") and words of several lines are not such words (isInstrumentCue()).
      * Returns the words' label, or undefined if there is no such dynamic or the words would run into another expression
      * there; the words are then placed as before.
      */
@@ -1493,7 +1493,7 @@ export abstract class MusicSheetCalculator {
         // the words of one direction with the dynamic are joined with the dynamic's empty label (and an exporter's empty words,
         //   Gounod Méditation m33 "piu" + " " + f): "piu   "
         text = text.trim();
-        if (!this.rules.PlaceWordsBesideSameTimeDynamic || !measure || text === "" ||
+        if (!this.rules.PlaceWordsBesideSameTimeDynamic || !measure || text === "" || text.includes("\n") ||
             (placement !== PlacementEnum.Above && placement !== PlacementEnum.Below) || MusicSheetCalculator.isInstrumentCue(text)) {
             return undefined;
         }
@@ -1543,9 +1543,13 @@ export abstract class MusicSheetCalculator {
             rect[2] += carry;
             rect[3] += carry;
         }
-        if (![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic))) {
+        // Only the first words beside a dynamic move it: a second one ("sempre" before and "stacc." after an ff) would take it
+        //   off the first one's line.
+        if (dynamic.HasWordsBeside && (dynamicShift !== 0 || carry !== 0) ||
+            ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic))) {
             return undefined;
         }
+        dynamic.HasWordsBeside = true;
         box.RelativePosition = new PointF2D(x, y + carry);
         if (dynamicShift !== 0 || carry !== 0) {
             dynamicBox.RelativePosition = new PointF2D(dynamicBox.RelativePosition.x + dynamicShift, dynamicBox.RelativePosition.y + carry);
