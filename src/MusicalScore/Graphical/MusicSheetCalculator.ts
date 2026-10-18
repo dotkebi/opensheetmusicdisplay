@@ -1302,6 +1302,10 @@ export abstract class MusicSheetCalculator {
     /** Visible left and right edge of a words label relative to its anchor x, aligned as calculateLabel() aligns it
      *  (below: from the anchor, above: centered on it). */
     public wordsLabelExtent(text: string, fontStyle: FontStyles, placement: PlacementEnum, fontHeight: number): [number, number] {
+        if (InstantaneousDynamicExpression.isWordsDrawnAsDynamic(text)) {
+            fontStyle = FontStyles.BoldItalic;
+            fontHeight = this.rules.ContinuousDynamicTextHeight;
+        }
         const label: Label = new Label(text);
         label.fontStyle = fontStyle;
         label.fontHeight = fontHeight;
@@ -1425,19 +1429,22 @@ export abstract class MusicSheetCalculator {
                 measures[staffIndex].beginInstructionsWidth + this.rules.RhythmRightMargin;
         }
 
-        const fontHeight: number = this.rules.UnknownTextHeight;
+        // words that are a dynamic's name are drawn like a dynamic: bold italic, its height
+        //   (see InstantaneousDynamicExpression.isWordsDrawnAsDynamic())
+        const drawnAsDynamic: boolean = InstantaneousDynamicExpression.isWordsDrawnAsDynamic(combinedExprString);
+        const fontHeight: number = drawnAsDynamic ? this.rules.ContinuousDynamicTextHeight : this.rules.UnknownTextHeight;
+        const fontStyle: FontStyles = drawnAsDynamic ? FontStyles.BoldItalic : MultiExpression.getFontstyleOfEntry(entries[0]);
         const placement: PlacementEnum = MultiExpression.getPlacementOfEntry(entries[0]);
         relative.x = this.keepWordsBeforeStrongBarline(measures[staffIndex], staffLine, relative.x, multiExpression.Timestamp,
-                                                       combinedExprString, MultiExpression.getFontstyleOfEntry(entries[0]),
-                                                       placement, fontHeight);
+                                                       combinedExprString, fontStyle, placement, fontHeight);
         const lastEntry: MultiExpressionEntry = entries[entries.length - 1];
         const insideStaffFromXml: boolean = this.rules.PlaceWordsInsideStafflineFromXml && defaultYXml < 0 && defaultYXml > -50;
         const besideDynamic: GraphicalLabel = insideStaffFromXml || lastEntry?.expression?.DashesEndMeasure ? undefined :
             this.placeWordsBesideSameTimeDynamic(multiExpression, staffLine, measures[staffIndex], combinedExprString,
-                                                 MultiExpression.getFontstyleOfEntry(entries[0]), placement, fontHeight);
+                                                 fontStyle, placement, fontHeight);
         const graphLabel: GraphicalLabel  = besideDynamic ?? this.calculateLabel(staffLine,
                                                                 relative, combinedExprString,
-                                                                MultiExpression.getFontstyleOfEntry(entries[0]),
+                                                                fontStyle,
                                                                 placement,
                                                                 fontHeight,
                                                                 undefined,
