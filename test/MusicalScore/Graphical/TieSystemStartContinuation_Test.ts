@@ -87,15 +87,19 @@ describe("Tie continued at the start of a system", () => {
         }
     });
 
-    it("(c) a stem-down chord: the tie below ends before the stem, the tie above runs to the middle of its note head", async () => {
+    it("(c) a stem-down chord: the tie below ends before the stem, with room for 1.5 spaces, and so does the tie above", async () => {
         const ties: ContinuationGeometry[] = await continuationsOf(6);
         const below: ContinuationGeometry = ties.find(t => t.direction === 1);
         const above: ContinuationGeometry = ties.find(t => t.direction === -1);
         expect(below.stemDirection).to.equal(-1);
         expect(below.drawnStart).to.be.closeTo(below.glyphsEnd + 0.2 * below.space, 1e-6);
         expect(below.drawnEnd, "the stem is on the tie's side").to.be.closeTo(below.headBegin, 1e-6);
+        // the measure makes room before its notes for that (TieSystemStartRoom_Test): 1.5 spaces, and as long
+        //   the tie above, which keeps Vexflow's end then
+        expect(below.drawnEnd - below.drawnStart).to.be.closeTo(1.5 * below.space, 1e-6);
         expect(above.drawnStart).to.be.closeTo(above.glyphsEnd + 0.2 * above.space, 1e-6);
-        expect(above.drawnEnd).to.be.closeTo(above.headCentre, 1e-6);
+        expect(above.drawnEnd).to.be.closeTo(above.vexflowEnd, 1e-6);
+        expect(above.drawnEnd - above.drawnStart).to.be.closeTo(1.5 * above.space, 1e-6);
     });
 
     it("(d) the part at the end of the previous system keeps Vexflow's ends", async () => {
