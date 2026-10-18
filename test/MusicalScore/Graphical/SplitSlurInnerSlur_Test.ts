@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
 import { GraphicalSlur } from "../../../src/MusicalScore/Graphical/GraphicalSlur";
+import { PointF2D } from "../../../src/Common/DataObjects/PointF2D";
 import { TestUtils } from "../../Util/TestUtils";
 
 /**
@@ -62,6 +63,30 @@ describe("Slur inside a slur continued on the next system", () => {
         throw new Error("no staff line with measure 2");
     }
 
+    function points(slur: GraphicalSlur): PointF2D[] {
+        const result: PointF2D[] = [];
+        for (let i: number = 0; i <= 200; i++) {
+            result.push(slur.calculateCurvePointAtIndex(i / 200));
+        }
+        return result;
+    }
+
+    /** the y of the curve at x (linear between its sampled points), undefined outside */
+    function yAt(curve: PointF2D[], x: number): number {
+        for (let i: number = 1; i < curve.length; i++) {
+            const a: PointF2D = curve[i - 1];
+            const b: PointF2D = curve[i];
+            if (x >= a.x && x <= b.x) {
+                return b.x === a.x ? a.y : a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x);
+            }
+        }
+        return undefined;
+    }
+
+    function top(slur: GraphicalSlur): number {
+        return Math.min(...points(slur).map(p => p.y));
+    }
+
     it("ends the inner slur at its note, as without the outer slur", async () => {
         // (the offset of a second slur ending at a note is for the longer one only)
         for (const systemBreak of [false, true]) {
@@ -69,5 +94,32 @@ describe("Slur inside a slur continued on the next system", () => {
             const alone: GraphicalSlur = pieces(await render(systemBreak, false)).inner;
             expect(inner.bezierEndPt.y).to.be.closeTo(alone.bezierEndPt.y, 0.01, `system break ${systemBreak}`);
         }
+    });
+
+    it("puts the measures on two systems with the break, one without", async () => {
+        expect(pieces(await render(true)).line.Measures[0].MeasureNumber).to.equal(2);
+        expect(pieces(await render(false)).line.Measures[0].MeasureNumber).to.equal(1);
+    });
+
+    it("draws the continued piece over the inner slur, 0.5 units apart", async () => {
+        const { outer, inner } = pieces(await render(true));
+        const outerPoints: PointF2D[] = points(outer);
+        let minGap: number = Infinity;
+        for (const p of points(inner)) {
+            const outerY: number = yAt(outerPoints, p.x);
+            if (outerY === undefined) {
+                continue;
+            }
+            // (y down: the outer piece above has the smaller y)
+            minGap = Math.min(minGap, p.y - outerY);
+        }
+        expect(minGap).to.be.at.least(0.5, `the inner slur reaches ${-minGap} units over the outer one`);
+    });
+
+    it("keeps the inner slur as high as without the system break", async () => {
+        const broken: GraphicalSlur = pieces(await render(true)).inner;
+        const whole: GraphicalSlur = pieces(await render(false)).inner;
+        const rise: number = (top(broken) - broken.bezierStartPt.y) - (top(whole) - whole.bezierStartPt.y);
+        expect(Math.abs(rise)).to.be.at.most(0.5, `inner slur top ${top(broken)} with the break, ${top(whole)} without`);
     });
 });
