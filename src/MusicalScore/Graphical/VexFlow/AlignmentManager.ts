@@ -8,6 +8,9 @@ import { PlacementEnum } from "../../VoiceData/Expressions/AbstractExpression";
 import { InstantaneousDynamicExpression } from "../../VoiceData/Expressions/InstantaneousDynamicExpression";
 import { GraphicalContinuousDynamicExpression } from "../GraphicalContinuousDynamicExpression";
 import { GraphicalInstantaneousDynamicExpression } from "../GraphicalInstantaneousDynamicExpression";
+import { ContinuousDynamicExpression } from "../../VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
+import { MultiExpression } from "../../VoiceData/Expressions/MultiExpression";
+import { Fraction } from "../../../Common/DataObjects/Fraction";
 
 export class AlignmentManager {
     private parentStaffline: StaffLine;
@@ -53,7 +56,8 @@ export class AlignmentManager {
                 //   second wedge stayed stacked above the first (Parisotti, Traetta Ombra cara Canto m67: the crescendo stopping at the
                 //   note where the diminuendo starts, from its border left). Same as osmd-dart (AlignmentManager._isClose).
                 const gap: number = this.getHorizontalGap(currentExpression.PositionAndShape, nextExpression.PositionAndShape);
-                if (gap < this.rules.DynamicExpressionMaxDistance && !this.textsOverlap(currentExpression, nextExpression) &&
+                if ((gap < this.rules.DynamicExpressionMaxDistance || this.chainedWedges(currentExpression, nextExpression)) &&
+                    !this.textsOverlap(currentExpression, nextExpression) &&
                     !this.textInsideWedge(currentExpression, nextExpression)) {
                     // Prevent last found expression to be added twice. e.g. p<f as three close expressions
                     if (tmpList.indexOf(currentExpression) === -1) {
@@ -244,6 +248,59 @@ export class AlignmentManager {
             return isDynamic(a) && this.isWedge(b) ? -1 : this.isWedge(a) && isDynamic(b) ? 1 : 0;
         }
         return ta < tb ? -1 : 1;
+    }
+
+    /** Whether two wedges follow each other in time: the second starts where the first stops, or at most a beat (of the
+     *  measure's time signature) after it, without an instantaneous dynamic of the staff from the stop to the start. They
+     *  share a baseline however far apart they are drawn: each was placed clear of the notes under it on its own, and a beam
+     *  under one put the "<" of "< >" 2 lower than the ">" (Parisotti, Bononcini Deh piu a me, piano m17 7.9 apart, m9 4.2;
+     *  Canto m4, its ">" a sixteenth after the "<", 0.75 lower in the app; P04-X3c). Same as osmd-dart. */
+    private chainedWedges(a: AbstractGraphicalExpression, b: AbstractGraphicalExpression): boolean {
+        if (!this.isWedge(a) || !this.isWedge(b)) {
+            return false;
+        }
+        const wedgeA: ContinuousDynamicExpression = (a as GraphicalContinuousDynamicExpression).ContinuousDynamic;
+        const wedgeB: ContinuousDynamicExpression = (b as GraphicalContinuousDynamicExpression).ContinuousDynamic;
+        const startA: Fraction = wedgeA.StartMultiExpression?.AbsoluteTimestamp;
+        const startB: Fraction = wedgeB.StartMultiExpression?.AbsoluteTimestamp;
+        if (wedgeA === wedgeB || !startA || !startB) {
+            return false;
+        }
+        const [first, second] = startA.RealValue <= startB.RealValue ? [wedgeA, wedgeB] : [wedgeB, wedgeA];
+        const stop: number = this.wedgeStop(first);
+        const start: number = second.StartMultiExpression.AbsoluteTimestamp.RealValue;
+        if (stop === undefined || start < stop - 1e-9) {
+            return false;
+        }
+        const beat: number = 1 / second.StartMultiExpression.SourceMeasureParent.ActiveTimeSignature.Denominator;
+        if (start - stop > beat + 1e-9 || first.StartMultiExpression.SourceMeasureParent !== second.StartMultiExpression.SourceMeasureParent ||
+            first.EndMultiExpression?.SourceMeasureParent !== second.StartMultiExpression.SourceMeasureParent) {
+            return false;
+        }
+        for (const expression of this.parentStaffline.AbstractExpressions) {
+            if (!(expression instanceof GraphicalInstantaneousDynamicExpression)) {
+                continue;
+            }
+            const time: number = (expression.SourceExpression as InstantaneousDynamicExpression)?.ParentMultiExpression?.AbsoluteTimestamp?.RealValue;
+            if (time !== undefined && time >= stop - 1e-9 && time <= start + 1e-9) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** The absolute time a wedge stops: its stop as written (StopTimestamp, with the stop's <offset>), else its end plus that
+     *  offset, as MusicSheetCalculator.wedgeStopTime() takes it. */
+    private wedgeStop(wedge: ContinuousDynamicExpression): number {
+        const end: MultiExpression = wedge.EndMultiExpression;
+        if (!end) {
+            return undefined;
+        }
+        let stop: Fraction = wedge.StopTimestamp ?? end.Timestamp;
+        if (wedge.EndOffsetFraction && !wedge.StopTimestamp && this.rules.UseEndOffsetForExpressions) {
+            stop = Fraction.plus(stop, wedge.EndOffsetFraction);
+        }
+        return end.SourceMeasureParent.AbsoluteTimestamp.RealValue + stop.RealValue;
     }
 
     /** Whether the expression is a crescendo or decrescendo wedge (a continuous dynamic without text). */

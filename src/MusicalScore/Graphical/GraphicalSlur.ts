@@ -119,6 +119,8 @@ export class GraphicalSlur extends GraphicalCurve {
         if (this.calculateInnerChordCurve(slurStartNote, slurEndNote)) {
             return;
         }
+        const outsideShift: number = this.innerChordCurveOutside ?
+            (this.placement === PlacementEnum.Below ? 1 : -1) * GraphicalSlur.innerSlurOutsideShift : 0;
 
         // the Start- and End Reference Points for the Sky-BottomLine
         const headToHead: boolean = this.isHeadToHeadBetweenVoices(slurStartNote, slurEndNote);
@@ -130,8 +132,8 @@ export class GraphicalSlur extends GraphicalCurve {
 
         const startX: number = startEndPoints.startX;
         const endX: number = startEndPoints.endX;
-        let startY: number = startEndPoints.startY;
-        let endY: number = startEndPoints.endY;
+        let startY: number = startEndPoints.startY + outsideShift;
+        let endY: number = startEndPoints.endY + outsideShift;
 
         // Degenerate case: start and end point (nearly) coincide, e.g. for a zero-length slur from a malformed
         // file. The curve calculation below would divide 0 by 0 (start-end angle, tangent slopes) and produce
@@ -870,8 +872,17 @@ export class GraphicalSlur extends GraphicalCurve {
         return Math.max(rangeEndX, endX - GraphicalSlur.graceRangeMargin);
     }
 
-    /** Space (in units) an [[calculateInnerChordCurve]] slur keeps from the ink of its chords (dots, accidentals). */
+    /** Space (in units) an [[calculateInnerChordCurve]] slur keeps from the ink of its chords (dots, accidentals): innerSlurGap,
+     *  less between close chords, down to innerSlurMinGap for a curve innerSlurMinWidth wide. */
     private static readonly innerSlurGap: number = 0.3;
+    private static readonly innerSlurMinGap: number = 0.1;
+    private static readonly innerSlurMinWidth: number = 0.5;
+    /** How far (in units) a slur from an inner note of a chord whose outer note on its side has a curve to the same chord goes
+     *  beyond the chord's curve when there is no room between the chords (see [[calculateInnerChordCurve]]). */
+    private static readonly innerSlurOutsideShift: number = 1.0;
+    /** Set by [[calculateInnerChordCurve]] for a slur that belongs between the chords but has no room there: calculateCurve()
+     *  places it innerSlurOutsideShift beyond the chord's outer curve. */
+    private innerChordCurveOutside: boolean = false;
     /** Distance (in units) of an [[calculateInnerChordCurve]] slur's end point from the centre line of its notehead. */
     private static readonly innerSlurYOffset: number = 0.3;
     /** Height (in units) of an [[calculateInnerChordCurve]] slur: 0.12 of its width, between these. */
@@ -889,6 +900,7 @@ export class GraphicalSlur extends GraphicalCurve {
      * neighbouring staff entries, with room between the chords. Same as osmd-dart.
      */
     private calculateInnerChordCurve(slurStartNote: GraphicalNote, slurEndNote: GraphicalNote): boolean {
+        this.innerChordCurveOutside = false;
         if (!slurStartNote || !slurEndNote || this.graceStart || this.graceEnd || this.isCrossStaffPiece ||
             this.isVoltaPiece || this.staffEntries.length !== 2 || this.slur.isCrossed() ||
             !this.hasOuterCurveInChord(slurStartNote, slurEndNote)) {
@@ -900,19 +912,28 @@ export class GraphicalSlur extends GraphicalCurve {
             return false;
         }
         const width: number = GraphicalSlur.headToHeadNoteheadWidth;
-        const startHeadLeft: number = GraphicalSlur.noteXInStaffLine(slurStartNote);
-        const endHeadLeft: number = GraphicalSlur.noteXInStaffLine(slurEndNote);
-        // after the dots of the start chord, before the accidentals of the end chord
-        const startX: number = startHeadLeft + width + startVf.getMetrics().modRightPx / unitInPixels + GraphicalSlur.innerSlurGap;
-        const endX: number = endHeadLeft - endVf.getMetrics().modLeftPx / unitInPixels - GraphicalSlur.innerSlurGap;
+        const startHeadLeft: number = GraphicalSlur.noteheadLeftInStaffLine(slurStartNote);
+        const endHeadLeft: number = GraphicalSlur.noteheadLeftInStaffLine(slurEndNote);
+        // after the dots of the start chord, before the accidentals of the end chord; closer to them between close chords: the
+        //   app's first screen has the eighth chords of Bononcini m2, m12, m19 1.1 apart, and the inner slurs (with the gap and
+        //   a width of at least 1 before) lay on the outer ones (Parisotti, P04-X3b). Same as osmd-dart.
+        const inkRight: number = startHeadLeft + width + startVf.getMetrics().modRightPx / unitInPixels;
+        const inkLeft: number = endHeadLeft - endVf.getMetrics().modLeftPx / unitInPixels;
+        const gap: number = Math.max(GraphicalSlur.innerSlurMinGap,
+                                     Math.min(GraphicalSlur.innerSlurGap, (inkLeft - inkRight - GraphicalSlur.innerSlurMinWidth) / 2));
+        const startX: number = inkRight + gap;
+        const endX: number = inkLeft - gap;
         const curveWidth: number = endX - startX;
-        if (curveWidth < 1) {
+        if (curveWidth < GraphicalSlur.innerSlurMinWidth - 1e-9) {
+            // no room between the chords: beyond the chord's outer curve, not on it
+            this.innerChordCurveOutside = true;
             return false;
         }
         const side: number = this.placement === PlacementEnum.Below ? 1 : -1;
         const startY: number = GraphicalSlur.noteYInStaffLine(slurStartNote) + side * GraphicalSlur.innerSlurYOffset;
         const endY: number = GraphicalSlur.noteYInStaffLine(slurEndNote) + side * GraphicalSlur.innerSlurYOffset;
-        const height: number = Math.min(GraphicalSlur.innerSlurMaxHeight, Math.max(GraphicalSlur.innerSlurMinHeight, 0.12 * curveWidth));
+        const height: number = Math.min(GraphicalSlur.innerSlurMaxHeight,
+                                        Math.max(Math.min(GraphicalSlur.innerSlurMinHeight, 0.5 * curveWidth), 0.12 * curveWidth));
         // a cubic curve with both control points d beyond the chord reaches 0.75·d beyond it in the middle
         const controlOffset: number = side * height / 0.75;
         this.bezierStartPt = new PointF2D(startX, startY);
@@ -978,6 +999,20 @@ export class GraphicalSlur extends GraphicalCurve {
         const staffEntry: GraphicalStaffEntry = note.parentVoiceEntry.parentStaffEntry;
         return note.PositionAndShape.RelativePosition.x + staffEntry.PositionAndShape.RelativePosition.x +
             staffEntry.parentMeasure.PositionAndShape.RelativePosition.x;
+    }
+
+    /** The left of the note's notehead relative to its staffline. The note's x ([[noteXInStaffLine]]) is its voice entry's,
+     *  half the Vexflow note's width right of the noteheads (VexFlowVoiceEntry.applyBordersFromVexflow()): taken for the left,
+     *  an inner chord slur began 0.9 after the start chord's noteheads and ended inside the end chord's (Parisotti, Bononcini
+     *  Deh piu a me, piano m12: in the gap between the noteheads of C5 and Ab4; P04-X3b). osmd-dart's note x is the left. */
+    private static noteheadLeftInStaffLine(note: GraphicalNote): number {
+        const vfNote: any = (note as VexFlowGraphicalNote).vfnote?.[0];
+        const head: any = vfNote?.note_heads?.[(note as VexFlowGraphicalNote).vfnoteIndex];
+        if (!vfNote?.getNoteHeadBeginX || !head?.getAbsoluteX) {
+            return GraphicalSlur.noteXInStaffLine(note);
+        }
+        const halfNoteWidth: number = (vfNote.width - (vfNote.paddingRight ?? 0)) / 2;
+        return GraphicalSlur.noteXInStaffLine(note) + (head.getAbsoluteX() - vfNote.getNoteHeadBeginX() - halfNoteWidth) / unitInPixels;
     }
 
     /** The y of the note (its notehead's centre line) relative to its staffline, from the line of its Vexflow notehead (the

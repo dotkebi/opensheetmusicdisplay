@@ -3150,6 +3150,12 @@ export abstract class MusicSheetCalculator {
         const nextNotePosInStaffLine: PointF2D = this.getRelativePositionInStaffLineFromTimestamp(
             placementFraction, staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0,
             graphicalContinuousDynamic.ContinuousDynamic.DynamicType === ContDynamicEnum.diminuendo || graceBeforeNextNote);
+        // The next note in another system (the end note the last of its system): its x is one in that system, not in the
+        //   wedge's, so it is not used and the wedge goes to the end of its measure (Parisotti, Piccinni Notte dea del mistero,
+        //   score Canto m34: a crescendo over a dotted half stopped at the end of the first measure of a system ended near its
+        //   start, at the x of the next system's first note, and was drawn at WedgeMinLength; P26-H3). Same as osmd-dart.
+        const nextNoteInOtherSystem: boolean = this.staffEntryAtTimestampInOtherSystem(
+            placementFraction, staffIndex, endStaffLine, isPartOfMultiStaffInstrument);
         const wedgePadding: number = this.rules.SoftAccentWedgePadding;
         const staffEntryWidth: number = container.getFirstNonNullStaffEntry().PositionAndShape.Size.width; // staff entry widths for whole notes is too long
         const sizeFactor: number = this.rules.SoftAccentSizeFactor;
@@ -3200,17 +3206,17 @@ export abstract class MusicSheetCalculator {
             endPosInStaffLine.x = startPosInStaffline.x + staffEntryWidth / 2 * sizeFactor;
         } else if (pairEndX !== undefined) {
             endPosInStaffLine.x = pairEndX;
-        } else if (endBeforeStart && nextNotePosInStaffLine.x > startPosInStaffline.x) {
+        } else if (endBeforeStart && !nextNoteInOtherSystem && nextNotePosInStaffLine.x > startPosInStaffline.x) {
             endPosInStaffLine.x = (nextNotePosInStaffLine.x < endOfMeasure ? nextNotePosInStaffLine.x : endOfMeasure) -
                 this.rules.WedgeHorizontalMargin;
-        } else if (stopAtNote && nextNotePosInStaffLine.x > endPosInStaffLine.x) {
+        } else if (stopAtNote && !nextNoteInOtherSystem && nextNotePosInStaffLine.x > endPosInStaffLine.x) {
             // A stop written at the start of a note of the staff: the wedge reaches that note, WedgeHorizontalMargin before it,
             //   not 1/WedgeEndDistanceBetweenTimestampsFactor of the way from its end note (Parisotti, Martini Piacer d'amor
             //   Canto m45: the diminuendo over a quarter and an eighth, stopped at the next quarter, covered the first note only;
             //   renderer leftovers 2, decision C-6). Same as osmd-dart.
             endPosInStaffLine.x = (nextNotePosInStaffLine.x < endOfMeasure ? nextNotePosInStaffLine.x : endOfMeasure) -
                 this.rules.WedgeHorizontalMargin;
-        } else if (nextNotePosInStaffLine.x > endPosInStaffLine.x && nextNotePosInStaffLine.x < endOfMeasure) {
+        } else if (!nextNoteInOtherSystem && nextNotePosInStaffLine.x > endPosInStaffLine.x && nextNotePosInStaffLine.x < endOfMeasure) {
             endPosInStaffLine.x += (nextNotePosInStaffLine.x - endPosInStaffLine.x) / this.rules.WedgeEndDistanceBetweenTimestampsFactor;
         } else { //Otherwise extend to the end of the measure
             endPosInStaffLine.x = endOfMeasure - this.rules.WedgeHorizontalMargin;
@@ -4434,6 +4440,22 @@ export abstract class MusicSheetCalculator {
             relative = new PointF2D(leftX + (rightX - leftX) * timestampQuotient, 0.0);
         }
         return relative;
+    }
+
+    /** Whether the staff entry at or before the timestamp (where getRelativePositionInStaffLineFromTimestamp() takes the x from)
+     *  lies in another music system than the staff line: its x is then one in that system. */
+    protected staffEntryAtTimestampInOtherSystem(
+        timestamp: Fraction, verticalIndex: number, staffLine: StaffLine, multiStaffInstrument: boolean
+    ): boolean {
+        const numEntries: number = this.graphicalMusicSheet.VerticalGraphicalStaffEntryContainers.length;
+        const index: number = this.graphicalMusicSheet.GetInterpolatedIndexInVerticalContainers(timestamp);
+        const leftIndex: number = Math.min(Math.floor(index), numEntries - 1);
+        if (!staffLine || leftIndex < 0 || verticalIndex < 0) {
+            return false;
+        }
+        const leftStaffEntry: GraphicalStaffEntry = this.getFirstLeftNotNullStaffEntryFromContainer(leftIndex, verticalIndex, multiStaffInstrument);
+        const system: MusicSystem = leftStaffEntry?.parentMeasure?.ParentStaffLine?.ParentMusicSystem;
+        return system !== undefined && system !== staffLine.ParentMusicSystem;
     }
 
     protected getRelativeXPositionFromTimestamp(timestamp: Fraction): number {
