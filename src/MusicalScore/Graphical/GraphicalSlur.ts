@@ -84,7 +84,30 @@ export class GraphicalSlur extends GraphicalCurve {
             return -1;
         }
 
+        // Pieces over the same time: the slur that is longer as a whole is the outer one and is placed after the inner one, as
+        // without a system break (Alma del core, piano m89-90: the piece of the slur from m89 continued on the next system and
+        // the slur from that system's first note to the same end note - placed first, the continued piece pushed the inner slur
+        // up into a high arch over it, crossing it).
+        const xSlurSpan: number = GraphicalSlur.slurTimeSpan(x.slur);
+        const ySlurSpan: number = GraphicalSlur.slurTimeSpan(y.slur);
+        if (xSlurSpan !== undefined && ySlurSpan !== undefined) {
+            if (xSlurSpan > ySlurSpan) {
+                return 1;
+            }
+            if (ySlurSpan > xSlurSpan) {
+                return -1;
+            }
+        }
+
         return 0;
+    }
+
+    /** The time from the start note to the end note of the slur (undefined without both notes). */
+    private static slurTimeSpan(slur: Slur): number {
+        if (!slur.StartNote || !slur.EndNote) {
+            return undefined;
+        }
+        return Fraction.minus(slur.EndNote.getAbsoluteTimestamp(), slur.StartNote.getAbsoluteTimestamp()).RealValue;
     }
 
     /**
