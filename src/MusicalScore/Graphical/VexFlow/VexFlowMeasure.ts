@@ -995,6 +995,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
                 continue; // rendered later in VexFlowMusicSheetDrawer.drawGlissandi(), when all staffline measures are rendered
             }
             VexFlowMeasure.fitShortTieToNoteheads(tie);
+            VexFlowMeasure.fitTieContinuationToSystemStart(tie);
             tie.setContext(ctx);
             tie.draw();
             // Vexflow draws the text of a tie, e.g. "H" of a hammer-on in a TAB staff (TabTie), after the tie's SVG group:
@@ -1056,6 +1057,62 @@ export class VexFlowMeasure extends GraphicalMeasure {
             end = lastBegin;
         }
         if (end - start <= lastX - firstX) {
+            return;
+        }
+        anyTie.render_options.first_x_shift = start - firstX;
+        anyTie.render_options.last_x_shift = end - lastX;
+    }
+
+    /** Lets the part of a tie continued at the start of a system run from after the clef and key signature to its note.
+     * Vexflow draws a tie without a first note from the stave's note start x, the right edge of the last begin
+     * modifier's box, to the left edge of the note head. At the start of a system that gap is about 1.2 staff spaces
+     * and touches the key signature, so the part reads as a small curl behind the last accidental (24 Italian Songs,
+     * Medium High, 23 Pietà, Signore m110 at app width 834; in 7 files 26 such ties on the web and in the app).
+     * The part starts 0.3 staff spaces after the glyphs of the clef, key and time signature at the start of the stave
+     * (Vexflow leaves 1 px, 0.1 spaces, after each accidental of a key signature, so 0.2 spaces after its box). When the
+     * part is then shorter than 1.5 staff spaces, it runs to the middle of the note head, as fitShortTieToNoteheads()
+     * ends a short tie; the end stays at the note head's edge where the note's stem is on the tie's side (a stem-down
+     * note under a tie below), and for displaced (second-interval) note heads.
+     * Sets the tie's first_x_shift/last_x_shift; called before each draw. Same rule as osmd-dart's
+     * fitTieContinuationToSystemStart().
+     */
+    public static fitTieContinuationToSystemStart(tie: VF.StaveTie): void {
+        if (tie instanceof VF.TabTie) {
+            return;
+        }
+        const anyTie: any = tie as any;
+        const last: any = anyTie.last_note;
+        if (anyTie.first_note || !(last instanceof VF.StaveNote)) {
+            return;
+        }
+        anyTie.render_options.first_x_shift = 0;
+        anyTie.render_options.last_x_shift = 0;
+        const stave: any = last.getStave();
+        const space: number = stave.getSpacingBetweenLines();
+        const tieSpacing: number = anyTie.render_options.tie_spacing ?? 0;
+        const firstX: number = stave.getTieStartX(); // as StaveTie.draw()
+        const lastX: number = last.getTieLeftX() + tieSpacing;
+        let start: number = firstX;
+        let glyphsEnd: number = undefined;
+        for (const modifier of stave.getModifiers(VF.StaveModifier.Position.BEGIN)) {
+            if (modifier instanceof VF.Barline) {
+                continue;
+            }
+            const trailing: number = modifier instanceof VF.KeySignature ? 0.1 * space : 0;
+            const modifierEnd: number = modifier.getX() + modifier.getWidth() - trailing;
+            glyphsEnd = glyphsEnd === undefined ? modifierEnd : Math.max(glyphsEnd, modifierEnd);
+        }
+        if (glyphsEnd !== undefined) {
+            start = glyphsEnd + 0.3 * space;
+        }
+        let end: number = lastX;
+        if (lastX - start < 1.5 * space && last.getExtraLeftPx() === 0 && last.getExtraRightPx() === 0) {
+            const direction: number = anyTie.direction ? anyTie.direction : last.getStemDirection(); // as StaveTie.draw()
+            if (!(direction > 0 && last.hasStem() && last.getStemDirection() === VF.Stem.DOWN)) {
+                end = (last.getNoteHeadBeginX() + last.getNoteHeadEndX()) / 2;
+            }
+        }
+        if (end - start <= 0) {
             return;
         }
         anyTie.render_options.first_x_shift = start - firstX;
