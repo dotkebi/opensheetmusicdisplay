@@ -670,6 +670,10 @@ export class EngravingRules {
     public RenderWavyLines: boolean;
     public DynamicExpressionMaxDistance: number;
     public DynamicExpressionSpacer: number;
+    /** Whether words and an instantaneous dynamic of the same staff, placement and time are drawn on one line, the words
+     *  before or after the dynamic (see MusicSheetCalculator.placeWordsBesideSameTimeDynamic()). Otherwise the words are
+     *  stacked under (over) the dynamic. */
+    public PlaceWordsBesideSameTimeDynamic: boolean;
     /** Skip a dynamic marking that repeats the currently active one, i.e. has the same text (e.g. a second p in a row). Default false. */
     public IgnoreRepeatedDynamics: boolean;
     public ExpressionsUseXMLColor: boolean;
@@ -1083,6 +1087,7 @@ export class EngravingRules {
         this.ContinuousTempoTextHeight = 2.3;
         this.DynamicExpressionMaxDistance = 2;
         this.DynamicExpressionSpacer = 0.5;
+        this.PlaceWordsBesideSameTimeDynamic = true;
         this.IgnoreRepeatedDynamics = false;
         this.ExpressionsUseXMLColor = true;
 

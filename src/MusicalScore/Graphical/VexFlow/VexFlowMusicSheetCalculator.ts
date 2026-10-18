@@ -4111,7 +4111,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     }
     for (const word of words) {
       const below: boolean = word.Placement === PlacementEnum.Below;
-      if (!below && word.Placement !== PlacementEnum.Above) {
+      // Words beside the dynamic of their time were placed clear of the other expressions there; their box touches the
+      //   dynamic's, which a rounding error can make an overlap (as in osmd-dart after the app's first-viewport render).
+      if (word.besideDynamic || !below && word.Placement !== PlacementEnum.Above) {
         continue;
       }
       const label: BoundingBox = word.Label.PositionAndShape;

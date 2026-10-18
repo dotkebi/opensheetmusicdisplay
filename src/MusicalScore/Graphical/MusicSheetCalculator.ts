@@ -1431,7 +1431,11 @@ export abstract class MusicSheetCalculator {
                                                        combinedExprString, MultiExpression.getFontstyleOfEntry(entries[0]),
                                                        placement, fontHeight);
         const lastEntry: MultiExpressionEntry = entries[entries.length - 1];
-        const graphLabel: GraphicalLabel  = this.calculateLabel(staffLine,
+        const insideStaffFromXml: boolean = this.rules.PlaceWordsInsideStafflineFromXml && defaultYXml < 0 && defaultYXml > -50;
+        const besideDynamic: GraphicalLabel = insideStaffFromXml || lastEntry?.expression?.DashesEndMeasure ? undefined :
+            this.placeWordsBesideSameTimeDynamic(multiExpression, staffLine, measures[staffIndex], combinedExprString,
+                                                 MultiExpression.getFontstyleOfEntry(entries[0]), placement, fontHeight);
+        const graphLabel: GraphicalLabel  = besideDynamic ?? this.calculateLabel(staffLine,
                                                                 relative, combinedExprString,
                                                                 MultiExpression.getFontstyleOfEntry(entries[0]),
                                                                 placement,
@@ -1456,19 +1460,233 @@ export abstract class MusicSheetCalculator {
         //   verbal dynamic's box does (calculateGraphicalVerbalContinuousDynamic()) and as osmd-dart places words: with the
         //   text itself at the line, words kept inside their measure (keepWordsBeforeStrongBarline()) moved onto the breath
         //   mark of their note and onto a slur and touched them (Bellini, Vaga luna, voice and piano m11 "più cresc.").
-        if (!this.rules.PlaceWordsInsideStafflineFromXml || !(defaultYXml < 0 && defaultYXml > -50)) {
+        if (!besideDynamic && (!this.rules.PlaceWordsInsideStafflineFromXml || !(defaultYXml < 0 && defaultYXml > -50))) {
             graphLabel.PositionAndShape.RelativePosition.y -= placement === PlacementEnum.Below ?
                 graphLabel.PositionAndShape.BorderMarginTop : graphLabel.PositionAndShape.BorderMarginBottom;
         }
         // registers itself in staffLine.AbstractExpressions (pushing it there again drew the words twice)
         const unknownExpression: GraphicalUnknownExpression = new GraphicalUnknownExpression(
             staffLine, graphLabel, placement, measures[staffIndex]?.parentSourceMeasure, multiExpression);
+        unknownExpression.besideDynamic = besideDynamic !== undefined;
         unknownExpression.updateSkyBottomLine();
         //    multiExpression); // TODO would be nice to hand over and save reference to original expression,
         //                         but MultiExpression is not an AbstractExpression.
         if (lastEntry?.expression) {
             this.addExpressionDashes(lastEntry.expression, graphLabel.PositionAndShape, graphLabel.ColorXML, placement, staffLine, staffIndex, measureIndex);
         }
+    }
+
+    /**
+     * Words and an instantaneous dynamic of the same staff, placement and time are one phrase, engraved on one line: the words
+     * go on the dynamic's baseline, before it if they qualify it ("leggero e pp", "sempre p", see
+     * wordsQualifyFollowingDynamic()), after it otherwise ("p e leggero", "p dolce") — Bellini, Malinconia, ninfa gentile,
+     * piano m13; Parisotti, Lotti, Pur dicesti, piano m1; Bononcini, Deh più a me, piano m1, as in their sources. Before, the
+     * words were placed at the bottom (sky) line, which the dynamic had raised there, and went under (over) it.
+     * Words before the dynamic that would start left of the measure's first note (in any staff) start there, and the dynamic
+     * follows them.
+     * Instrument cues ("Viol.", "Solo") and words of several lines are not such words (isInstrumentCue()).
+     * Returns the words' label, or undefined if there is no such dynamic or the words would run into another expression
+     * there; the words are then placed as before.
+     */
+    protected placeWordsBesideSameTimeDynamic(multiExpression: MultiExpression, staffLine: StaffLine, measure: GraphicalMeasure,
+                                              text: string, style: FontStyles, placement: PlacementEnum, fontHeight: number): GraphicalLabel {
+        // the words of one direction with the dynamic are joined with the dynamic's empty label (and an exporter's empty words,
+        //   Gounod Méditation m33 "piu" + " " + f): "piu   "
+        text = text.trim();
+        if (!this.rules.PlaceWordsBesideSameTimeDynamic || !measure || text === "" || text.includes("\n") ||
+            (placement !== PlacementEnum.Above && placement !== PlacementEnum.Below) || MusicSheetCalculator.isInstrumentCue(text)) {
+            return undefined;
+        }
+        const dynamic: GraphicalInstantaneousDynamicExpression = this.sameTimeDynamic(staffLine, multiExpression, placement);
+        if (!dynamic?.Label) {
+            return undefined;
+        }
+        const graphLabel: GraphicalLabel = this.createExpressionLabel(staffLine, text, style, placement, fontHeight);
+        const box: BoundingBox = graphLabel.PositionAndShape;
+        const dynamicBox: BoundingBox = dynamic.PositionAndShape;
+        const dynamicLeft: number = dynamicBox.RelativePosition.x + dynamicBox.BorderMarginLeft;
+        const dynamicRight: number = dynamicBox.RelativePosition.x + dynamicBox.BorderMarginRight;
+        const width: number = box.BorderMarginRight - box.BorderMarginLeft;
+        // the boxes touch: their margins leave about a word space between the texts
+        let wordsLeft: number = dynamicRight;
+        let dynamicShift: number = 0;
+        if (MusicSheetCalculator.wordsQualifyFollowingDynamic(text)) {
+            wordsLeft = dynamicLeft - width;
+            const firstNoteX: number = this.firstNoteX(measure);
+            if (wordsLeft < firstNoteX) {
+                dynamicShift = firstNoteX - wordsLeft;
+                wordsLeft = firstNoteX;
+            }
+        }
+        if (wordsLeft < 0 || wordsLeft + width > staffLine.PositionAndShape.Size.width) {
+            return undefined;
+        }
+        // the words' baseline on the dynamic's
+        const dynamicBaseline: number = dynamicBox.RelativePosition.y + dynamic.Label.PositionAndShape.RelativePosition.y +
+            MusicSheetCalculator.labelBaselineOffset(dynamic.Label);
+        const y: number = dynamicBaseline - MusicSheetCalculator.labelBaselineOffset(graphLabel);
+        const x: number = wordsLeft - box.BorderMarginLeft;
+        const wordsRect: number[] = [wordsLeft, wordsLeft + width, y + box.BorderMarginTop, y + box.BorderMarginBottom];
+        const dynamicRect: number[] = [dynamicLeft + dynamicShift, dynamicRight + dynamicShift,
+                                       dynamicBox.RelativePosition.y + dynamicBox.BorderMarginTop,
+                                       dynamicBox.RelativePosition.y + dynamicBox.BorderMarginBottom];
+        // On that baseline the words (and the dynamic moved after them) must clear the notes, slurs etc. under them: the
+        //   dynamic then moves out with the words, as the words are placed clear of them (the slur under the notes after the
+        //   rest that has the dynamic, Malinconia m13).
+        const rects: number[][] = dynamicShift !== 0 ? [wordsRect, dynamicRect] : [wordsRect];
+        let carry: number = 0;
+        for (const rect of rects) {
+            const outside: number = this.distanceIntoNotes(staffLine, placement, rect);
+            carry = placement === PlacementEnum.Below ? Math.max(carry, outside) : Math.min(carry, outside);
+        }
+        for (const rect of [wordsRect, dynamicRect]) {
+            rect[2] += carry;
+            rect[3] += carry;
+        }
+        // Only the first words beside a dynamic move it: a second one ("sempre" before and "stacc." after an ff) would take it
+        //   off the first one's line.
+        if (dynamic.HasWordsBeside && (dynamicShift !== 0 || carry !== 0) ||
+            ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic))) {
+            return undefined;
+        }
+        dynamic.HasWordsBeside = true;
+        box.RelativePosition = new PointF2D(x, y + carry);
+        if (dynamicShift !== 0 || carry !== 0) {
+            dynamicBox.RelativePosition = new PointF2D(dynamicBox.RelativePosition.x + dynamicShift, dynamicBox.RelativePosition.y + carry);
+            dynamic.updateSkyBottomLine();
+        }
+        return graphLabel;
+    }
+
+    /** The x of the first note of measure's measure on its staffline: of the first staff entry of any staff (the first notes
+     *  of a staff can be in another staff, Gounod Méditation m66), or after the begin instructions if there is none. */
+    private firstNoteX(measure: GraphicalMeasure): number {
+        let x: number = measure.PositionAndShape.RelativePosition.x + measure.beginInstructionsWidth;
+        let found: boolean = false;
+        for (const other of this.graphicalMusicSheet.MeasureList[measure.parentSourceMeasure?.measureListIndex] ?? [measure]) {
+            const firstEntry: GraphicalStaffEntry = other?.staffEntries[0];
+            if (!firstEntry || other.ParentMusicSystem !== measure.ParentMusicSystem) {
+                continue;
+            }
+            const entryX: number = other.PositionAndShape.RelativePosition.x + firstEntry.PositionAndShape.RelativePosition.x;
+            x = found ? Math.min(x, entryX) : entryX;
+            found = true;
+        }
+        return x;
+    }
+
+    /** The instantaneous dynamic of staffLine at the time of multiExpression (in its measure) with the given placement. */
+    private sameTimeDynamic(staffLine: StaffLine, multiExpression: MultiExpression,
+                            placement: PlacementEnum): GraphicalInstantaneousDynamicExpression {
+        for (const expression of staffLine.AbstractExpressions) {
+            if (!(expression instanceof GraphicalInstantaneousDynamicExpression) || expression.Placement !== placement) {
+                continue;
+            }
+            const other: MultiExpression = expression.InstantaneousDynamic?.ParentMultiExpression;
+            if (other === multiExpression || other?.SourceMeasureParent === multiExpression.SourceMeasureParent &&
+                other.Timestamp.Equals(multiExpression.Timestamp)) {
+                return expression;
+            }
+        }
+        return undefined;
+    }
+
+    /** Whether words go before the dynamic they are written with, qualifying it: a short qualifier ("sempre p", "più f",
+     *  "poco f", "subito p") or words ending with a conjunction ("leggero e pp"). Other words follow the dynamic ("p dolce",
+     *  "p e leggero", "p dolcissimo e legato sempre"). The MusicXML order of the two doesn't say it: generators write the
+     *  words first. */
+    public static wordsQualifyFollowingDynamic(text: string): boolean {
+        const words: string = text.trim().toLowerCase().replace(/[,;:]+$/, "").replace(/\s+/g, " ");
+        if (["sempre", "più", "piu", "piú", "poco", "molto", "subito", "sub.", "meno", "ben", "quasi", "sempre più", "sempre piu",
+             "poco più", "poco piu", "molto più", "molto piu", "un poco", "più che", "piu che"].includes(words)) {
+            return true;
+        }
+        const tokens: string[] = words.split(" ");
+        return tokens.length > 1 && ["e", "ed", "ma", "und", "et"].includes(tokens[tokens.length - 1]);
+    }
+
+    /** Whether words name instruments (a cue in a piano reduction or score: "Viol.", "Horn", "Solo", "Tutti"), not the way
+     *  to play: their source draws them apart from the dynamic. */
+    public static isInstrumentCue(text: string): boolean {
+        const first: string = text.trim().toLowerCase().replace(/^[[(]+/, "").split(/[^a-zäöüéèàùìòâêîôûç]+/)[0];
+        return ["solo", "soli", "tutti", "viol", "violin", "violine", "violini", "vl", "vla", "viola", "vc", "vcl", "vlc", "cello",
+                "cb", "kb", "bass", "bl", "bläser", "blech", "holz", "fl", "flöte", "flauto", "ob", "oboe", "cl", "clar", "klar",
+                "fag", "fg", "bsn", "horn", "hörner", "hr", "cor", "corno", "corni", "tromp", "trp", "tr", "trb", "pos", "harfe",
+                "arpa", "hp", "str", "streicher", "orch", "orchester", "pk", "timp", "pauken", "bassi", "basso", "celli", "violoncelli",
+                "viole", "archi", "legni", "ottoni", "fagotti", "oboi", "flauti", "clarinetti", "trombe", "tromboni", "timpani"].includes(first);
+    }
+
+    /** Where the first line of a label's text has its baseline, relative to the label's position (see drawLabel()). */
+    public static labelBaselineOffset(label: GraphicalLabel): number {
+        const fontHeight: number = label.Label.fontHeight;
+        const height: number = fontHeight * (0.2 + Math.max(1, label.TextLines?.length ?? 1));
+        switch (label.Label.textAlignment) {
+            case TextAlignmentEnum.LeftCenter:
+            case TextAlignmentEnum.CenterCenter:
+            case TextAlignmentEnum.RightCenter:
+                return fontHeight - height / 2;
+            case TextAlignmentEnum.LeftBottom:
+            case TextAlignmentEnum.CenterBottom:
+            case TextAlignmentEnum.RightBottom:
+                return fontHeight - height;
+            default:
+                return fontHeight;
+        }
+    }
+
+    /** How far rect [left, right, top, bottom] (relative to staffLine) has to move out (down below the staff, up above it) to
+     *  clear the notes, slurs etc. under (over) it: the sky/bottom line before the expressions. 0 if it is clear. */
+    private distanceIntoNotes(staffLine: StaffLine, placement: PlacementEnum, rect: number[]): number {
+        const [left, right, top, bottom] = rect;
+        const lines: number[][] = this.skyBottomLinesBeforeExpressions?.get(staffLine);
+        if (!lines) {
+            return 0;
+        }
+        const calculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        if (placement === PlacementEnum.Below) {
+            return Math.max(0, calculator.getMaxInRangeOf(lines[1], left, right) - top);
+        }
+        return Math.min(0, calculator.getMinInRangeOf(lines[0], left, right) - bottom);
+    }
+
+    /** Whether rect [left, right, top, bottom] (relative to staffLine) is clear of the dynamics, wedges and words placed on
+     *  staffLine, except the given dynamic. */
+    private clearOfExpressions(staffLine: StaffLine, rect: number[], except: AbstractGraphicalExpression): boolean {
+        const [left, right, top, bottom] = rect;
+        for (const expression of staffLine.AbstractExpressions) {
+            if (expression === except) {
+                continue;
+            }
+            let other: BoundingBox;
+            let x0: number = 0;
+            let y0: number = 0;
+            if (expression instanceof GraphicalInstantaneousDynamicExpression) {
+                other = expression.PositionAndShape;
+            } else if (expression instanceof GraphicalContinuousDynamicExpression) {
+                x0 = expression.PositionAndShape.RelativePosition.x;
+                y0 = expression.PositionAndShape.RelativePosition.y;
+                if (expression.IsVerbal) {
+                    other = expression.Label?.PositionAndShape;
+                } else if (expression.Lines.length >= 2) {
+                    other = expression.PositionAndShape;
+                    x0 -= other.RelativePosition.x;
+                    y0 -= other.RelativePosition.y;
+                }
+            } else if (expression instanceof GraphicalUnknownExpression) {
+                other = expression.Label?.PositionAndShape;
+            }
+            if (!other) {
+                continue;
+            }
+            const oLeft: number = x0 + other.RelativePosition.x + other.BorderMarginLeft;
+            const oRight: number = x0 + other.RelativePosition.x + other.BorderMarginRight;
+            const oTop: number = y0 + other.RelativePosition.y + other.BorderMarginTop;
+            const oBottom: number = y0 + other.RelativePosition.y + other.BorderMarginBottom;
+            if (oLeft < right && left < oRight && oTop < bottom && top < oBottom) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -1677,8 +1895,10 @@ export abstract class MusicSheetCalculator {
         const moved: BoundingBox[] = [];
         for (const expression of staffLine.AbstractExpressions) {
             const textBox: BoundingBox = this.expressionTextBox(expression);
+            // (words beside the dynamic of their time stay on its line with it)
             if (!textBox || textBox === ownBox || moved.includes(textBox) || expression.SourceExpression?.Placement !== placement ||
-                expression instanceof GraphicalInstantaneousDynamicExpression) {
+                expression instanceof GraphicalInstantaneousDynamicExpression ||
+                expression instanceof GraphicalUnknownExpression && expression.besideDynamic) {
                 continue;
             }
             const left: number = textBox.RelativePosition.x + textBox.BorderMarginLeft;
@@ -3446,15 +3666,9 @@ export abstract class MusicSheetCalculator {
         return;
     }
 
-    protected calculateLabel(staffLine: StaffLine,
-                             relative: PointF2D,
-                             combinedString: string,
-                             style: FontStyles,
-                             placement: PlacementEnum,
-                             fontHeight: number,
-                             textAlignment: TextAlignmentEnum = TextAlignmentEnum.CenterBottom,
-                             yPadding: number = 0,
-                             skyBottomLineRangeEndX: number = undefined): GraphicalLabel {
+    /** An expression's label with its borders, not yet positioned (see calculateLabel()). */
+    protected createExpressionLabel(staffLine: StaffLine, combinedString: string, style: FontStyles, placement: PlacementEnum,
+                                    fontHeight: number, textAlignment: TextAlignmentEnum = TextAlignmentEnum.CenterBottom): GraphicalLabel {
         const label: Label = new Label(combinedString, textAlignment);
         label.fontStyle = style;
         label.fontHeight = fontHeight;
@@ -3472,6 +3686,19 @@ export abstract class MusicSheetCalculator {
         graphLabel.PositionAndShape.BorderMarginTop *= marginFactor;
         graphLabel.PositionAndShape.BorderMarginLeft *= marginFactor;
         graphLabel.PositionAndShape.BorderMarginRight *= marginFactor;
+        return graphLabel;
+    }
+
+    protected calculateLabel(staffLine: StaffLine,
+                             relative: PointF2D,
+                             combinedString: string,
+                             style: FontStyles,
+                             placement: PlacementEnum,
+                             fontHeight: number,
+                             textAlignment: TextAlignmentEnum = TextAlignmentEnum.CenterBottom,
+                             yPadding: number = 0,
+                             skyBottomLineRangeEndX: number = undefined): GraphicalLabel {
+        const graphLabel: GraphicalLabel = this.createExpressionLabel(staffLine, combinedString, style, placement, fontHeight, textAlignment);
 
         let left: number = relative.x + graphLabel.PositionAndShape.BorderMarginLeft;
         let right: number = relative.x + graphLabel.PositionAndShape.BorderMarginRight;
