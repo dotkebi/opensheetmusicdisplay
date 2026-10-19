@@ -49,6 +49,11 @@ export abstract class GraphicalMeasure extends GraphicalObject {
      */
     public beginInstructionsWidth: number;
     /**
+     * The x-width of room before the first notes, after the begin instructions: at the start of a system, for the part of
+     * a tie continued into a first note (see VexFlowMeasure.reserveSystemStartTieRoom()). Set by the music system builder.
+     */
+    public firstNoteRoom: number = 0;
+    /**
      * The minimum possible x-width of all staff entries without overlapping.
      */
     public minimumStaffEntriesWidth: number;
