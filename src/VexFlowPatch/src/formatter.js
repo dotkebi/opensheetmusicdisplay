@@ -498,7 +498,18 @@ export class Formatter {
       const tickSpace = (tick - prevTick) * leftoverPxPerTick;
 
       spaceAccum += tickSpace;
-      context.setX(context.getX() + spaceAccum);
+      let justifiedX = context.getX() + spaceAccum;
+      if (index > 0) {
+        const previous = contextMap[prevTick];
+        if (justifiedX < previous.getX()) {
+          // VexFlowPatch: negative justification in an overfull measure can
+          // put a later tick before its predecessor (Haydn Hob.VIIg:C1 I
+          // m316: the Nachschlag before its trill). Preserve ordinary compact
+          // spacing, but restore a head-width gap when time would run backward.
+          justifiedX = previous.getX() + previous.getMetrics().notePx + context.getMetrics().extraLeftPx;
+        }
+      }
+      context.setX(justifiedX);
 
       // Move center aligned tickables to middle
       context
