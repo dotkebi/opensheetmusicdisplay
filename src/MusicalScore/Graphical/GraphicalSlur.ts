@@ -84,7 +84,61 @@ export class GraphicalSlur extends GraphicalCurve {
             return -1;
         }
 
+        // Pieces over the same time: the slur that is longer as a whole is the outer one and is placed after the inner one, as
+        // without a system break (Alma del core, piano m89-90: the piece of the slur from m89 continued on the next system and
+        // the slur from that system's first note to the same end note - placed first, the continued piece pushed the inner slur
+        // up into a high arch over it, crossing it).
+        const xSlurSpan: number = GraphicalSlur.slurTimeSpan(x.slur);
+        const ySlurSpan: number = GraphicalSlur.slurTimeSpan(y.slur);
+        if (xSlurSpan !== undefined && ySlurSpan !== undefined) {
+            if (xSlurSpan > ySlurSpan) {
+                return 1;
+            }
+            if (ySlurSpan > xSlurSpan) {
+                return -1;
+            }
+        }
+
         return 0;
+    }
+
+    /** The time from the start note to the end note of the slur (undefined without both notes). */
+    private static slurTimeSpan(slur: Slur): number {
+        if (!slur.StartNote || !slur.EndNote) {
+            return undefined;
+        }
+        return Fraction.minus(slur.EndNote.getAbsoluteTimestamp(), slur.StartNote.getAbsoluteTimestamp()).RealValue;
+    }
+
+    /** The height of this piece at a system edge where it is continued from another system (start) or to the next one (end),
+     *  from its last calculateCurve(); undefined with its note there. See outsideContinuedPieces(). */
+    private continuedStartY: number;
+    private continuedEndY: number;
+
+    /** y (with SlurNoteHeadYOffset) at the system edge at x where this piece is continued from another system (start) or to
+     *  the next one, out of every piece placed before it on the staff line (Compare: covering less time - a slur inside it)
+     *  continued at the same edge on the same side, by SlursStartingAtSameStaffEntryYOffset as for slurs from the same note.
+     *  Such a piece took its height at the edge from its other end only (1 unit out), so the outer piece, ending at a note lower
+     *  than the inner one's, started inside it and crossed it (Alma del core, piano m50-51 on the web: the slur from the m49 chord
+     *  to the m52 chord over the slur from the m50 E5 to the m51 D5, 1.7 units inside it at m51, and 0.5 at the end of the
+     *  system before); in the print the outer one goes over the inner one. */
+    private outsideContinuedPieces(staffLine: StaffLine, x: number, y: number, rules: EngravingRules, start: boolean): number {
+        const offset: number = rules.SlursStartingAtSameStaffEntryYOffset;
+        for (const other of staffLine.GraphicalSlurs) {
+            if (other === this || other.placement !== this.placement) {
+                continue;
+            }
+            const otherY: number = start ? other.continuedStartY : other.continuedEndY;
+            if (otherY === undefined || GraphicalSlur.Compare(other, this) >= 0) {
+                continue;
+            }
+            const otherX: number = start ? other.bezierStartPt.x : other.bezierEndPt.x;
+            if (Math.abs(otherX - x) > 0.5) {
+                continue;
+            }
+            y = this.placement === PlacementEnum.Below ? Math.max(y, otherY + offset) : Math.min(y, otherY - offset);
+        }
+        return y;
     }
 
     /**
@@ -92,6 +146,7 @@ export class GraphicalSlur extends GraphicalCurve {
      * @param rules
      */
     public calculateCurve(rules: EngravingRules): void {
+        this.continuedStartY = this.continuedEndY = undefined;
 
         // single GraphicalSlur means a single Curve, eg each GraphicalSlurObject is meant to be on the same StaffLine
         // a Slur can span more than one GraphicalSlurObjects
@@ -153,6 +208,12 @@ export class GraphicalSlur extends GraphicalCurve {
         if (this.placement === PlacementEnum.Above) {
             startY -= rules.SlurNoteHeadYOffset;
             endY -= rules.SlurNoteHeadYOffset;
+            if (!slurStartNote) {
+                startY = this.outsideContinuedPieces(staffLine, startX, startY, rules, true);
+            }
+            if (!slurEndNote && this.slur.EndNote) {
+                endY = this.outsideContinuedPieces(staffLine, endX, endY, rules, false);
+            }
             const startUpperRight: PointF2D = new PointF2D(this.staffEntries[0].parentMeasure.PositionAndShape.RelativePosition.x
                                                            + this.staffEntries[0].PositionAndShape.RelativePosition.x,
                                                            startY);
@@ -304,6 +365,12 @@ export class GraphicalSlur extends GraphicalCurve {
             this.bezierStartControlPt = new PointF2D(startControlPoint.x, startControlPoint.y - startYOffset);
             this.bezierEndControlPt = new PointF2D(endControlPoint.x, endControlPoint.y - endYOffset);
             this.bezierEndPt = new PointF2D(endX, endY - endYOffset);
+            if (!slurStartNote) {
+                this.continuedStartY = this.bezierStartPt.y;
+            }
+            if (!slurEndNote && this.slur.EndNote) {
+                this.continuedEndY = this.bezierEndPt.y;
+            }
             this.liftOverOrnaments(staffLine, startUpperRight.x, endUpperLeft.x, slurStartNote, slurEndNote);
 
             // calculate slur Curvepoints and update Skyline
@@ -331,6 +398,12 @@ export class GraphicalSlur extends GraphicalCurve {
         } else {
             startY += rules.SlurNoteHeadYOffset;
             endY += rules.SlurNoteHeadYOffset;
+            if (!slurStartNote) {
+                startY = this.outsideContinuedPieces(staffLine, startX, startY, rules, true);
+            }
+            if (!slurEndNote && this.slur.EndNote) {
+                endY = this.outsideContinuedPieces(staffLine, endX, endY, rules, false);
+            }
 
             // firstStaffEntry startLowerRightPoint and lastStaffentry endLowerLeftPoint
             const startLowerRight: PointF2D = new PointF2D(this.staffEntries[0].parentMeasure.PositionAndShape.RelativePosition.x
@@ -471,6 +544,12 @@ export class GraphicalSlur extends GraphicalCurve {
             this.bezierStartControlPt = new PointF2D(startControlPoint.x, startControlPoint.y + startYOffset);
             this.bezierEndControlPt = new PointF2D(endControlPoint.x, endControlPoint.y + endYOffset);
             this.bezierEndPt = new PointF2D(endX, endY + endYOffset);
+            if (!slurStartNote) {
+                this.continuedStartY = this.bezierStartPt.y;
+            }
+            if (!slurEndNote && this.slur.EndNote) {
+                this.continuedEndY = this.bezierEndPt.y;
+            }
             this.lowerUnderOrnaments(staffLine, startLowerRight.x, endLowerLeft.x, slurStartNote, slurEndNote);
             if (between) {
                 if (!this.fitBetweenVoices(between)) {

@@ -41,6 +41,7 @@ import { NoteType } from "../../VoiceData/NoteType";
 import { Arpeggio } from "../../VoiceData/Arpeggio";
 import { GraphicalTie } from "../GraphicalTie";
 import { Note, TremoloBetweenNotes } from "../../VoiceData/Note";
+import { Tie } from "../../VoiceData/Tie";
 import { TabNote } from "../../VoiceData/TabNote";
 import { CrossStaffBeam } from "./CrossStaffBeam";
 import { CrossStaffCurve } from "./CrossStaffCurve";
@@ -166,6 +167,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
             (this.stave as any).clef = VexFlowConverter.Clef(this.InitiallyActiveClef).type;
             // Vexflow sets stave.clef to treble by default. It needs this info e.g. for key signature accidentals on new key sig
         }
+        this.firstNoteRoom = 0; // the music system builder reserves it again (reserveSystemStartTieRoom())
         (this.stave as any).MeasureNumber = this.MeasureNumber; // for debug info. vexflow automatically uses stave.measure for rendering measure numbers
         // also see VexFlowMusicSheetDrawer.drawSheet() for some other vexflow default value settings (like default font scale)
         this.hasMetronomeMark = false;
@@ -1106,7 +1108,8 @@ export class VexFlowMeasure extends GraphicalMeasure {
             start = glyphsEnd + 0.3 * space;
         }
         let end: number = lastX;
-        if (lastX - start < 1.5 * space && last.getExtraLeftPx() === 0 && last.getExtraRightPx() === 0) {
+        // (1.5 spaces long where the measure made room for it, reserveSystemStartTieRoom(): not shorter, whatever the rounding)
+        if (lastX - start < 1.5 * space - 1e-6 && last.getExtraLeftPx() === 0 && last.getExtraRightPx() === 0) {
             const direction: number = anyTie.direction ? anyTie.direction : last.getStemDirection(); // as StaveTie.draw()
             if (!(direction > 0 && last.hasStem() && last.getStemDirection() === VF.Stem.DOWN)) {
                 end = (last.getNoteHeadBeginX() + last.getNoteHeadEndX()) / 2;
@@ -1117,6 +1120,102 @@ export class VexFlowMeasure extends GraphicalMeasure {
         }
         anyTie.render_options.first_x_shift = start - firstX;
         anyTie.render_options.last_x_shift = end - lastX;
+    }
+
+    /** Makes room before the first notes of a measure at the start of a system for the parts of ties continued into them.
+     * The part of a tie continued at the start of a system starts 0.3 staff spaces after the clef, key and time signature
+     * (fitTieContinuationToSystemStart()), and Vexflow leaves about 1 staff space from there to the note. Where the part
+     * can't run to the middle of the note head, i.e. where the note's stem is on the tie's side (a stem-down note under
+     * a tie below) and for displaced (second-interval) note heads, it stayed 1 staff space long, a small curl behind the
+     * key signature (24 Italian Songs, Medium High, 23 Pietà, Signore m78 at app width 834; Schumann, Myrthen: 51 such
+     * ties on the web). The notes of the measure, on all its staves, start further right by as much as the shortest of
+     * these parts needs to be 1.5 staff spaces long, where no part needs it the measure stays as it was.
+     * Called by MusicSystemBuilder for the first measure of a system, after its begin instructions were added, so before
+     * its notes are formatted at the system's widths: the first tick of a measure is at the same x at every width
+     * (Formatter.preFormat() distributes the space after it), so the notes as formatted for the measure's minimum width
+     * (calculateMeasureXLayout()) tell where they will be. Same rule as osmd-dart's reserveSystemStartTieRoom().
+     * @param measures the measures of the source measure, one per visible staff.
+     * @returns the room in units, also set as each measure's firstNoteRoom.
+     */
+    public static reserveSystemStartTieRoom(measures: GraphicalMeasure[]): number {
+        let shortfall: number = 0;
+        for (const measure of measures) {
+            if (measure instanceof VexFlowMeasure && !measure.isTabMeasure) {
+                shortfall = Math.max(shortfall, measure.systemStartTieShortfall());
+            }
+        }
+        const room: number = shortfall / unitInPixels;
+        for (const measure of measures) {
+            if (!(measure instanceof VexFlowMeasure)) {
+                continue;
+            }
+            measure.firstNoteRoom = room;
+            if (shortfall > 0) {
+                // the staves' note start x was aligned (Stave.formatBegModifiers()), keep them aligned
+                const stave: any = measure.stave;
+                stave.setNoteStartX(stave.getNoteStartX() + shortfall);
+            }
+        }
+        return room;
+    }
+
+    /** By how many pixels the shortest part of a tie continued into a first note of this measure would be shorter than
+     * 1.5 staff spaces, as fitTieContinuationToSystemStart() will draw it if this measure starts a system (0 if none is).
+     */
+    private systemStartTieShortfall(): number {
+        const stave: any = this.stave;
+        const space: number = stave.getSpacingBetweenLines();
+        const noteStartX: number = stave.getNoteStartX();
+        let start: number = noteStartX; // the tie start x of the stave, see fitTieContinuationToSystemStart()
+        let glyphsEnd: number = undefined;
+        for (const modifier of stave.getModifiers(VF.StaveModifier.Position.BEGIN)) {
+            if (modifier instanceof VF.Barline) {
+                continue;
+            }
+            const trailing: number = modifier instanceof VF.KeySignature ? 0.1 * space : 0;
+            const modifierEnd: number = modifier.getX() + modifier.getWidth() - trailing;
+            glyphsEnd = glyphsEnd === undefined ? modifierEnd : Math.max(glyphsEnd, modifierEnd);
+        }
+        if (glyphsEnd !== undefined) {
+            start = glyphsEnd + 0.3 * space;
+        }
+        let shortfall: number = 0;
+        for (const staffEntry of this.staffEntries) {
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                for (const note of gve.notes) {
+                    const sourceNote: Note = note.sourceNote;
+                    const tie: Tie = sourceNote.NoteTie;
+                    const index: number = tie ? tie.Notes.indexOf(sourceNote) : -1;
+                    if (index <= 0 || !sourceNote.PrintObject) {
+                        continue;
+                    }
+                    // a part of a tie continued from the previous system (MusicSheetCalculator.handleTie(), layoutGraphicalTie())
+                    const previous: Note = tie.Notes[index - 1];
+                    if (!previous.PrintObject || previous.SourceMeasure === this.parentSourceMeasure) {
+                        continue;
+                    }
+                    const last: any = (note as VexFlowGraphicalNote).vfnote?.[0];
+                    if (!(last instanceof VF.StaveNote) || !last.getStave() || !last.getTickContext()) {
+                        continue;
+                    }
+                    // the note as formatted on a previous stave of this measure (it has a new stave since resetLayout())
+                    const offset: number = noteStartX - last.getStave().getNoteStartX();
+                    const lastX: number = last.getTieLeftX() + offset;
+                    let end: number = lastX;
+                    if (lastX - start < 1.5 * space - 1e-6 && last.getExtraLeftPx() === 0 && last.getExtraRightPx() === 0) {
+                        const placement: PlacementEnum = tie.getTieDirection(previous);
+                        // as VexFlowMusicSheetCalculator.createStaveTie() and StaveTie.draw()
+                        const direction: number = placement === PlacementEnum.Below ? 1 :
+                            placement === PlacementEnum.Above ? -1 : last.getStemDirection();
+                        if (!(direction > 0 && last.hasStem() && last.getStemDirection() === VF.Stem.DOWN)) {
+                            end = (last.getNoteHeadBeginX() + last.getNoteHeadEndX()) / 2 + offset;
+                        }
+                    }
+                    shortfall = Math.max(shortfall, 1.5 * space - (end - start));
+                }
+            }
+        }
+        return shortfall;
     }
 
     /** How far left of the note's heads the accidentals of its tick reach (all voices of the staff share the tick's modifier context). */

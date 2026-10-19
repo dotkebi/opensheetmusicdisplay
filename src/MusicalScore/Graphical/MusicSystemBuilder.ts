@@ -111,6 +111,13 @@ export class MusicSystemBuilder {
                 // forceShowRhythm could be a fourth parameter instead in addBeginInstructions, but only affects RhythmInstruction for now.
                 currentMeasureEndInstructionsWidth += this.addEndInstructions(graphicalMeasures);
             }
+            // room before the first notes of a system for the ties continued into them
+            //   (VexFlowMeasure.reserveSystemStartTieRoom(); generally don't want to reference Vexflow classes here)
+            let currentMeasureFirstNoteRoom: number = 0;
+            if (isSystemStartMeasure) {
+                currentMeasureFirstNoteRoom =
+                    (graphicalMeasures.find(measure => measure)?.constructor as any)?.reserveSystemStartTieRoom?.(graphicalMeasures) ?? 0;
+            }
             let currentMeasureVarWidth: number = 0;
             for (let i: number = 0; i < this.numberOfVisibleStaffLines; i++) {
                 currentMeasureVarWidth = Math.max(currentMeasureVarWidth, graphicalMeasures[i].minimumStaffEntriesWidth);
@@ -131,10 +138,12 @@ export class MusicSystemBuilder {
                     nextMeasureBeginInstructionWidth += this.addBeginInstructions(nextGraphicalMeasures, false, false);
                 }
             }
-            let totalMeasureWidth: number = currentMeasureBeginInstructionsWidth + currentMeasureEndInstructionsWidth + currentMeasureVarWidth;
+            let totalMeasureWidth: number = currentMeasureBeginInstructionsWidth + currentMeasureFirstNoteRoom +
+                currentMeasureEndInstructionsWidth + currentMeasureVarWidth;
             if (graphicalMeasures[0]?.parentSourceMeasure?.multipleRestMeasures) {
                 currentMeasureVarWidth = this.rules.MultipleRestMeasureDefaultWidth;
-                totalMeasureWidth = currentMeasureBeginInstructionsWidth + currentMeasureEndInstructionsWidth + currentMeasureVarWidth;
+                totalMeasureWidth = currentMeasureBeginInstructionsWidth + currentMeasureFirstNoteRoom +
+                    currentMeasureEndInstructionsWidth + currentMeasureVarWidth;
                 // Set minimumStaffEntriesWidth so stretchMusicSystem uses a correct value (not -1 from constructor)
                 for (let i: number = 0; i < this.numberOfVisibleStaffLines; i++) {
                     if (graphicalMeasures[i]) {
@@ -156,7 +165,8 @@ export class MusicSystemBuilder {
             if (isSystemStartMeasure || (measureFitsInSystem && !doXmlLineBreak)) {
                 this.addMeasureToSystem(
                     graphicalMeasures, measureStartLine, measureEndLine, totalMeasureWidth,
-                    currentMeasureBeginInstructionsWidth, currentMeasureVarWidth, currentMeasureEndInstructionsWidth
+                    currentMeasureBeginInstructionsWidth, currentMeasureVarWidth, currentMeasureEndInstructionsWidth,
+                    currentMeasureFirstNoteRoom
                 );
                 this.updateActiveClefs(sourceMeasure, graphicalMeasures);
                 this.measureListIndex++;
@@ -334,7 +344,8 @@ export class MusicSystemBuilder {
 
     protected addMeasureToSystem(
         graphicalMeasures: GraphicalMeasure[], measureStartLine: SystemLinesEnum, measureEndLine: SystemLinesEnum,
-        totalMeasureWidth: number, currentMeasureBeginInstructionsWidth: number, currentVarWidth: number, currentMeasureEndInstructionsWidth: number
+        totalMeasureWidth: number, currentMeasureBeginInstructionsWidth: number, currentVarWidth: number, currentMeasureEndInstructionsWidth: number,
+        firstNoteRoom: number = 0
     ): void {
         this.currentSystemParams.systemMeasures.push({beginLine: measureStartLine, endLine: measureEndLine});
         this.setMeasureWidth(
@@ -342,7 +353,7 @@ export class MusicSystemBuilder {
         );
         this.addStaveMeasuresToSystem(graphicalMeasures);
         this.currentSystemParams.currentWidth += totalMeasureWidth;
-        this.currentSystemParams.currentSystemFixWidth += currentMeasureBeginInstructionsWidth + currentMeasureEndInstructionsWidth;
+        this.currentSystemParams.currentSystemFixWidth += currentMeasureBeginInstructionsWidth + firstNoteRoom + currentMeasureEndInstructionsWidth;
         this.currentSystemParams.currentSystemVarWidth += currentVarWidth;
         this.currentSystemParams.systemMeasureIndex++;
     }
@@ -1129,7 +1140,8 @@ export class MusicSystemBuilder {
                 //         beginInstructionsWidth *= 1; // TODO the first measure in a system is always slightly too big. why? try e.g. 0.6
                 //     }
                 // }
-                measure.setWidth(beginInstructionsWidth + measure.minimumStaffEntriesWidth * scalingFactor + measure.endInstructionsWidth);
+                measure.setWidth(beginInstructionsWidth + measure.firstNoteRoom + measure.minimumStaffEntriesWidth * scalingFactor +
+                    measure.endInstructionsWidth);
                 if (measureIndex < this.currentSystemParams.systemMeasures.length) {
                     const startLine: SystemLinesEnum = this.currentSystemParams.systemMeasures[measureIndex].beginLine;
                     const lineWidth: number = measure.getLineWidth(SystemLinesEnum.BoldThinDots);

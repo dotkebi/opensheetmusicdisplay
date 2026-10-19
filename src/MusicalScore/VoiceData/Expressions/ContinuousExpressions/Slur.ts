@@ -101,7 +101,9 @@ export class Slur {
                 && !slur.isGraceGroupSlur()
                 && slur.EndNote !== undefined
                 && slur.StartNote !== undefined
-                && Fraction.minus(slur.EndNote.getAbsoluteTimestamp(), slur.StartNote.getAbsoluteTimestamp()).CompareTo(length)
+                // (=== -1 as for the start note: without it, a slur shorter than another one ending at its end note was "longer"
+                //   too and took the offset of the second slur: both ends at one point, Alma del core piano m90; as osmd-dart)
+                && Fraction.minus(slur.EndNote.getAbsoluteTimestamp(), slur.StartNote.getAbsoluteTimestamp()).CompareTo(length) === -1
             ) {
                 return true;
             }
