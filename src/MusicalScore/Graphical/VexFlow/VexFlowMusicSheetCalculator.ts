@@ -1931,12 +1931,20 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       // In a TAB staff, TabTies like in one system (see below), but only the part in the first system gets the label
       //   of a hammer-on or pull-off ("H" or "P"), like in MuseScore: it isn't repeated in the next system.
       //   (notes: any, because the typings of TabTie want both notes, though a TabTie draws a part with one, like a StaveTie)
+      // Both pieces keep the side of the whole tie: VexFlow takes an unset direction from the end note's stem
+      //   (StaveTie.draw), but the first piece has no end note and took its start note's (Mozart K.191 I m95-96:
+      //   the F4 whole note's stem up from its grace slur below, the next one's down - below at the break, above
+      //   in a system). Same as osmd-dart.
+      let splitTieDirection: PlacementEnum = tieDirection;
+      if (splitTieDirection === PlacementEnum.NotYetDefined && vfStartNote && vfEndNote) {
+        splitTieDirection = vfEndNote.getStemDirection() === VF.Stem.UP ? PlacementEnum.Below : PlacementEnum.Above;
+      }
       if (vfStartNote) { // first_note or last_note must be not null in Vexflow
         const notes: any = {
           first_indices: [startNoteIndexInTie],
           first_note: vfStartNote
         };
-        const vfTie1: VF.StaveTie = isTab ? new VF.TabTie(notes, tie.Tie.Type) : this.createStaveTie(notes, tieDirection);
+        const vfTie1: VF.StaveTie = isTab ? new VF.TabTie(notes, tie.Tie.Type) : this.createStaveTie(notes, splitTieDirection);
         VexFlowConverter.setVexFlowTextFontFamily((vfTie1 as any).font, this.rules); // e.g. "H" for a hammer-on
         const measure1: VexFlowMeasure = (startNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure);
         measure1.addStaveTie(vfTie1, tie);
@@ -1947,7 +1955,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           last_indices: [endNoteIndexInTie],
           last_note: vfEndNote
         };
-        const vfTie2: VF.StaveTie = isTab ? new VF.TabTie(notes) : this.createStaveTie(notes, tieDirection);
+        const vfTie2: VF.StaveTie = isTab ? new VF.TabTie(notes) : this.createStaveTie(notes, splitTieDirection);
         const measure2: VexFlowMeasure = (endNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure);
         measure2.addStaveTie(vfTie2, tie);
       }
