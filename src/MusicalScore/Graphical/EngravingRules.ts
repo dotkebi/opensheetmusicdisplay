@@ -475,6 +475,14 @@ export class EngravingRules {
     public TremoloBetweenNotesLongNoteStrokeFactor: number;
     /** Maximum vertical rise/fall (slant) of the strokes of a tremolo between two notes, in units. */
     public TremoloBetweenNotesMaxSlant: number;
+    /** Whether a staccato on a note without a flag (a quarter or longer) with a single-note tremolo is drawn as one dot per
+     *  repetition the strokes stand for, in a row (a half note with one stroke: four dots, four detached eighths), as engravers write detached repetitions
+     *  (Mozart, Bassoon Concerto K.191, Richault 17178R, I piano m45, m65). Otherwise as one staccato. */
+    public RenderTremoloStaccatoDots: boolean;
+    /** Distance between the centres of neighbouring dots of a tremolo's staccato row (RenderTremoloStaccatoDots), in units. */
+    public TremoloStaccatoDotSpacing: number;
+    /** The most dots of a tremolo's staccato row: a note standing for more repetitions keeps one staccato. */
+    public TremoloStaccatoDotsMaxCount: number;
     /** Vertical padding between the strokes of a tremolo between two notes and the notehead (edge), in units.
      * Stems are lengthened where necessary to make room for the strokes (e.g. for 4+ strokes),
      * as recommended by Gould (Behind Bars). */
@@ -1119,6 +1127,9 @@ export class EngravingRules {
         this.TremoloBetweenNotesMaxLengthFactor = 0.667; // Gould (Behind Bars) recommends the tremolo strokes to take up 2/3 of the space between notes
         this.TremoloBetweenNotesLongNoteStrokeFactor = 0.4;
         this.TremoloBetweenNotesMaxSlant = 1.0;
+        this.RenderTremoloStaccatoDots = true;
+        this.TremoloStaccatoDotSpacing = 0.75;
+        this.TremoloStaccatoDotsMaxCount = 8;
         this.TremoloBetweenNotesYPadding = 0.45;
         this.StemWidth = 0.15; // originally 0.13. vexflow default 0.15. should probably be adjusted when increasing vexFlowDefaultNotationFontScale,
         this.StaffLineWidth = 0.10; // originally 0.12, but this will be pixels in Vexflow (*10).
