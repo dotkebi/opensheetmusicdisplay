@@ -437,6 +437,14 @@ export class EngravingRules {
     /** A part of a voice leading guide before or after a system break that is shorter than this isn't drawn
      *  (e.g. when the end note is the first note of its system, there is no room for a line in front of it). */
     public VoiceLeadingGuideSystemBreakMinimumLength: number;
+    /** Line width of the hook and the vertical line of a keyboard hand bracket (GraphicalKeyboardHandBracket). */
+    public KeyboardHandBracketLineWidth: number;
+    /** Length of the hook of a keyboard hand bracket, from the center of its vertical line. */
+    public KeyboardHandBracketHookLength: number;
+    /** Free space between the vertical line of a keyboard hand bracket and what is printed at its note's time (notehead, accidental). */
+    public KeyboardHandBracketNoteGap: number;
+    /** Length of the vertical line of a keyboard hand bracket from its hook, if no text of its hand is at its note's time on its side. */
+    public KeyboardHandBracketLength: number;
     public TempoYSpacing: number;
     public InstantaneousTempoTextHeight: number;
     public ContinuousDynamicTextHeight: number;
@@ -570,6 +578,8 @@ export class EngravingRules {
     public RenderGlissandi: boolean;
     /** Whether to render voice leading guides (dotted lines connecting notes of one voice, e.g. across staves). */
     public RenderVoiceLeadingGuides: boolean;
+    /** Whether to render keyboard hand brackets (SMuFL keyboardPlayWithLH/RH, see GraphicalKeyboardHandBracket). */
+    public RenderKeyboardHandBrackets: boolean;
     public ColoringMode: ColoringMode;
     public ColoringEnabled: boolean;
     public ColorStemsLikeNoteheads: boolean;
@@ -1034,6 +1044,12 @@ export class EngravingRules {
         this.VoiceLeadingGuideSystemBreakInset = 0.3;
         this.VoiceLeadingGuideSystemBreakMinimumLength = 1;
 
+        // Keyboard hand brackets
+        this.KeyboardHandBracketLineWidth = 0.15; // like a stem (VexFlow Stem.WIDTH)
+        this.KeyboardHandBracketHookLength = 0.4;
+        this.KeyboardHandBracketNoteGap = 0.5;
+        this.KeyboardHandBracketLength = 3;
+
         // Repetitions
         this.RepetitionAllowFirstMeasureBeginningRepeatBarline = true;
         this.RepetitionEndingLabelHeight = 2.0;
@@ -1169,6 +1185,7 @@ export class EngravingRules {
         this.RenderSlursAcrossStaves = true;
         this.RenderGlissandi = true;
         this.RenderVoiceLeadingGuides = true;
+        this.RenderKeyboardHandBrackets = true;
         this.ColoringMode = ColoringMode.XML;
         this.ColoringEnabled = true;
         this.ColorStemsLikeNoteheads = false;

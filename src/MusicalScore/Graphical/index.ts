@@ -17,6 +17,7 @@ export * from "./GraphicalContinuousDynamicExpression";
 export * from "./GraphicalCurve";
 export * from "./GraphicalGlissando";
 export * from "./GraphicalVoiceLeadingGuide";
+export * from "./GraphicalKeyboardHandBracket";
 export * from "./GraphicalExpressionDashes";
 export * from "./GraphicalInstantaneousDynamicExpression";
 export * from "./GraphicalInstantaneousTempoExpression";

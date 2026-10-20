@@ -211,7 +211,36 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         if (this.rules.RenderGlissandi) {
             this.drawGlissandi(staffLine as VexFlowStaffLine, absolutePos);
         }
+        if (this.rules.RenderKeyboardHandBrackets) {
+            this.drawKeyboardHandBrackets(staffLine, absolutePos);
+        }
         ctx.closeGroup();
+    }
+
+    /** Draws the keyboard hand brackets of a staffline as filled paths (the fonts have no glyph for them). */
+    private drawKeyboardHandBrackets(staffLine: StaffLine, absolutePos: PointF2D): void {
+        for (const bracket of staffLine.KeyboardHandBrackets) {
+            // lazy horizontal: a bracket belongs to the batch that draws its hook's end
+            if (!this.lazyDrawsAtX(absolutePos.x + bracket.HookEndX)) {
+                continue;
+            }
+            const points: PointF2D[] = bracket.outline().map((point: PointF2D) =>
+                this.applyScreenTransformation(new PointF2D(absolutePos.x + point.x, absolutePos.y + point.y)));
+            // filled only (Backend.renderPath() would also stroke the outline, making the lines thicker)
+            const ctx: any = this.backend.getContext();
+            ctx.save();
+            bracket.SVGElement = ctx.openGroup?.("keyboard-hand-bracket");
+            ctx.setFillStyle(this.rules.DefaultColorMusic ?? "#000000");
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            for (const point of points.slice(1)) {
+                ctx.lineTo(point.x, point.y);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.closeGroup?.();
+            ctx.restore();
+        }
     }
 
     private drawSlurs(vfstaffLine: VexFlowStaffLine, absolutePos: PointF2D): void {
