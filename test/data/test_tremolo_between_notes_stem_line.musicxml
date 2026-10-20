@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Tremolos between two half notes (written, 2:1 time modification) without <stem>, stems down. m1: a B-flat2/F3 chord and
+     B-flat3 (Mozart, Bassoon Concerto K.191 I, Besozzi/Richault piano part m1-4: the print joins the stems like a beam); the
+     B-flat3 stem is lengthened to the line of the chord's, the stroke lies between them below the staff. m2: D3 and F3, stems of
+     the same length, unchanged. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>4</divisions><key><fifths>-2</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>F</sign><line>4</line></clef></attributes>
+      <note><pitch><step>B</step><alter>-1</alter><octave>2</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification><notations><ornaments><tremolo type="start">1</tremolo></ornaments></notations></note>
+      <note><chord/><pitch><step>F</step><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification></note>
+      <note><pitch><step>B</step><alter>-1</alter><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification><notations><ornaments><tremolo type="stop">1</tremolo></ornaments></notations></note>
+      <note><pitch><step>B</step><alter>-1</alter><octave>2</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification><notations><ornaments><tremolo type="start">1</tremolo></ornaments></notations></note>
+      <note><chord/><pitch><step>F</step><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification></note>
+      <note><pitch><step>B</step><alter>-1</alter><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification><notations><ornaments><tremolo type="stop">1</tremolo></ornaments></notations></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification><notations><ornaments><tremolo type="start">1</tremolo></ornaments></notations></note>
+      <note><pitch><step>F</step><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification><notations><ornaments><tremolo type="stop">1</tremolo></ornaments></notations></note>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification><notations><ornaments><tremolo type="start">1</tremolo></ornaments></notations></note>
+      <note><pitch><step>F</step><octave>3</octave></pitch><duration>4</duration><voice>1</voice><type>half</type><time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes><normal-type>half</normal-type></time-modification><notations><ornaments><tremolo type="stop">1</tremolo></ornaments></notations></note>
+    </measure>
+  </part>
+</score-partwise>

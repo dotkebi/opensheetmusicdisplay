@@ -912,6 +912,19 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             const stopNoteheadEdgeY: number = (stopInnerNoteheadY - noteheadEdgeOffsetPx) / unitInPixels;
             startYPx = (startTipY + startNoteheadEdgeY) / 2 * unitInPixels;
             stopYPx = (stopTipY + stopNoteheadEdgeY) / 2 * unitInPixels;
+            // Stems of different lengths (VexFlowMeasure.alignTremoloPairStems() lengthens the shorter one to the line of the
+            //   tips): the strokes lie in the middle of the stem region both stems share, parallel to the line of the tips,
+            //   instead of each end in the middle of its own stem's region, which slanted them from the lower notehead up to the
+            //   other stem (Mozart, Bassoon Concerto K.191 I, piano LH m1-4). With stems of the same length, it is the same place.
+            const sharedFrom: number = direction === 1 ? Math.max(startTipY, stopTipY) : Math.max(startNoteheadEdgeY, stopNoteheadEdgeY);
+            const sharedTo: number = direction === 1 ? Math.min(startNoteheadEdgeY, stopNoteheadEdgeY) : Math.min(startTipY, stopTipY);
+            if (sharedTo - sharedFrom >= totalStrokesHeight + yPadding) {
+                const sharedCenter: number = (sharedFrom + sharedTo) / 2;
+                const maxSlantOfTips: number = this.rules.TremoloBetweenNotesMaxSlant;
+                const tipSlant: number = Math.min(maxSlantOfTips, Math.max(-maxSlantOfTips, stopTipY - startTipY));
+                startYPx = (sharedCenter - tipSlant / 2) * unitInPixels;
+                stopYPx = (sharedCenter + tipSlant / 2) * unitInPixels;
+            }
             if (direction === 1) { // stems up: tips above the noteheads (lower y)
                 startCenterMinY = startTipY + totalStrokesHeight / 2; // group must not exceed the stem tip
                 startCenterMaxY = startNoteheadEdgeY - yPadding - totalStrokesHeight / 2; // group must keep its distance from the notehead
