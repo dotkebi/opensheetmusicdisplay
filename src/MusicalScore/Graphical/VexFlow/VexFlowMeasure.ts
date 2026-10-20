@@ -922,10 +922,60 @@ export class VexFlowMeasure extends GraphicalMeasure {
         }
     }
 
+    /**
+     * The stems of a tremolo between two notes end on one line, as beamed stems do (Gould, Behind Bars: the strokes lie between
+     * the stems like a beam). VexFlow ends each stem at its own length: a high note's stem down stayed in the staff while its
+     * partner's reached below it, so the strokes could only slant from the lower notehead up to the short stem (Mozart, Bassoon
+     * Concerto K.191 I, piano LH m1-4: B-flat2/F3 and B-flat3 half notes, which the print beams like eighths). The shorter stem is
+     * lengthened until the tips are at most EngravingRules.TremoloBetweenNotesMaxSlant apart; the strokes stay short and clear of
+     * the stems. Both notes in this measure, same stem direction, not grace notes. Same as osmd-dart.
+     */
+    private alignTremoloPairStems(): void {
+        const maxSlantPx: number = this.rules.TremoloBetweenNotesMaxSlant * unitInPixels;
+        for (const staffEntry of this.staffEntries) {
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                if (gve.parentVoiceEntry.IsGrace) {
+                    continue;
+                }
+                for (const gNote of gve.notes) {
+                    const tremolo: TremoloBetweenNotes = gNote.sourceNote.TremoloInfo?.tremoloBetweenNotes;
+                    if (!tremolo || tremolo.stopNote !== gNote.sourceNote || !(tremolo.strokes > 0)) {
+                        continue;
+                    }
+                    const startGNote: VexFlowGraphicalNote = this.rules.GNote(tremolo.startNote) as VexFlowGraphicalNote;
+                    if (!startGNote?.vfnote || startGNote.parentVoiceEntry.parentStaffEntry.parentMeasure !== this ||
+                        !(gNote as VexFlowGraphicalNote).vfnote) {
+                        continue;
+                    }
+                    const start: any = startGNote.vfnote[0];
+                    const stop: any = (gNote as VexFlowGraphicalNote).vfnote[0];
+                    if (!(start instanceof VF.StaveNote) || !(stop instanceof VF.StaveNote) ||
+                        !start.hasStem() || !stop.hasStem() || !start.getStem() || !stop.getStem() ||
+                        start.getStemDirection() !== stop.getStemDirection()) {
+                        continue;
+                    }
+                    // stems up: tips above (smaller y), stems down: tips below
+                    const direction: number = start.getStemDirection();
+                    const startTip: number = start.getStemExtents().topY;
+                    const stopTip: number = stop.getStemExtents().topY;
+                    const startShort: boolean = direction === VF.Stem.UP ? startTip > stopTip : startTip < stopTip;
+                    const shortfall: number = Math.abs(startTip - stopTip) - maxSlantPx;
+                    if (shortfall <= 0.01) {
+                        continue;
+                    }
+                    const shortNote: any = startShort ? start : stop;
+                    shortNote.setStemLength((VF.Stem as any).HEIGHT + shortNote.getStemExtension() + shortfall);
+                    shortNote.getStem()?.setExtension(shortNote.getStemExtension());
+                }
+            }
+        }
+    }
+
     /** Draws this measure's note content. */
     private drawNotes(ctx: Vex.IRenderContext): void {
         this.postFormatBeams();
         this.clearRestsOfHeldNotes();
+        this.alignTremoloPairStems();
         // Draw all voices
         for (const voiceID in this.vfVoices) {
             if (this.vfVoices.hasOwnProperty(voiceID)) {
@@ -1274,6 +1324,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
         if (!this.MeasureRepeat) { // draw() draws the repeat sign instead of the notes then, see drawNotes()
             this.postFormatBeams();
             this.clearRestsOfHeldNotes();
+            this.alignTremoloPairStems();
             this.refreshCrossStaffBeamNoteYs();
         }
         this.correctNotePositions();
