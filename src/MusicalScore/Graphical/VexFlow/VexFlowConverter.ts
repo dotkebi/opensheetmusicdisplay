@@ -27,6 +27,7 @@ import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
 import { OrnamentEnum, OrnamentContainer } from "../../VoiceData/OrnamentContainer";
 import { Notehead, NoteHeadShape } from "../../VoiceData/Notehead";
 import { VexFlowNoteheadParenthesis } from "./VexFlowNoteheadParenthesis";
+import { VexFlowTremoloStaccato } from "./VexFlowTremoloStaccato";
 import { unitInPixels } from "./VexFlowMusicSheetDrawer";
 import { EngravingRules } from "../EngravingRules";
 import { Note, TremoloBetweenNotes, TremoloInfo } from "../../../MusicalScore/VoiceData/Note";
@@ -1150,7 +1151,11 @@ export class VexFlowConverter {
                     break;
                 }
                 case ArticulationEnum.staccato: {
-                    vfArt = new VF.Articulation("a.");
+                    // with a single-note tremolo: one dot per repetition (VexFlowTremoloStaccato)
+                    const dotCount: number = VexFlowTremoloStaccato.dotCount(gNote.sourceNote.ParentVoiceEntry, rules);
+                    vfArt = dotCount > 1
+                        ? new VexFlowTremoloStaccato(dotCount, rules.TremoloStaccatoDotSpacing * unitInPixels)
+                        : new VF.Articulation("a.");
                     break;
                 }
                 case ArticulationEnum.tenuto: {
