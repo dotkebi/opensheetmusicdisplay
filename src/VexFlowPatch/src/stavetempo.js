@@ -64,8 +64,12 @@ export class StaveTempo extends StaveModifier {
     } else if (duration && bpm) {
       ctx.setFont(font.family, font.size, 'normal');
 
+      // VexFlowPatch: parentheses also without a name (MusicXML <metronome parentheses="yes">)
+      const parenthesis = name || this.tempo.parenthesis;
       if (name) {
         x += ctx.measureText(' ').width;
+      }
+      if (parenthesis) {
         ctx.fillText('(', x, y);
         x += ctx.measureText('(').width;
       }
@@ -78,7 +82,7 @@ export class StaveTempo extends StaveModifier {
         if (i > 0) {
           x += wordSpace;
         }
-        const closing = name && i === marks.length - 1 ? ')' : '';
+        const closing = parenthesis && i === marks.length - 1 ? ')' : '';
         x = this.drawSimpleMark(ctx, x, y, scale, marks[i], closing, wordSpace);
       }
     }

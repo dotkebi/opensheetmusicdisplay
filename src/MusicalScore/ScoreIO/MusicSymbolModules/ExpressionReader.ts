@@ -288,6 +288,8 @@ export class ExpressionReader {
                         instantaneousTempoExpression.dotted = dotted;
                         instantaneousTempoExpression.beatUnit = beatUnit.value;
                         instantaneousTempoExpression.perMinuteText = perMinuteText;
+                        instantaneousTempoExpression.metronomeParentheses = dirContentNode.attribute("parentheses")?.value === "yes";
+                        instantaneousTempoExpression.metronomeBelow = directionNode.attribute("placement")?.value === "below";
                         this.lastMetronomeMark = { expression: instantaneousTempoExpression, timestamp: timestampFraction.clone() };
                         instantaneousTempoExpression.printObject = dirContentNode.attribute("print-object")?.value !== "no";
                         this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, "");

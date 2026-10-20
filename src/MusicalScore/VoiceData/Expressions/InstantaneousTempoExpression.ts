@@ -58,6 +58,13 @@ export class InstantaneousTempoExpression extends AbstractTempoExpression {
     /** Further metronome marks at the same time, written after this one (e.g. "♩. = 80 e ♩. = 50": two alternatives).
      *  Drawn on the same line after this mark. Display only: this mark sets the tempo. */
     public followingMetronomeMarks: InstantaneousTempoExpression[] = [];
+    /** The metronome mark is written in parentheses (MusicXML <metronome parentheses="yes">): "(♩ = 108)".
+     *  The parentheses of the first mark enclose the whole line with its following marks. */
+    public metronomeParentheses: boolean = false;
+    /** The direction of the metronome mark is placed below the staff by its placement="below" attribute
+     *  (Mozart, Bassoon Concerto K.191 I m161: "(♩ = 104)" under the bassoon). Only the attribute counts: a mark
+     *  without one stays above the system, also where Placement defaults to below (a part with more than one staff). */
+    public metronomeBelow: boolean = false;
     /** Whether a metronome mark is drawn (false for MusicXML print-object="no"). A hidden mark still sets the tempo. */
     public printObject: boolean = true;
     /** For complex metronome marks (note equations like swing): left-side note group */

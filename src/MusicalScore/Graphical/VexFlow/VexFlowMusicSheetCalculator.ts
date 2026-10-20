@@ -139,6 +139,8 @@ interface IMetronomePlacement {
   yShift: number;
   /** Whether the mark is where the existing layout draws it, which already reserves space for it. */
   existingPosition: boolean;
+  /** Whether the mark is placed below its staff (InstantaneousTempoExpression.metronomeBelow). */
+  below: boolean;
 }
 
 /** Where a pedal stop between two staff entries is drawn: fraction of the way from entry to after (or to the
@@ -2120,8 +2122,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const vfStave: VF.Stave = vfMeasure.getVFStave();
 
     let yShift: number = this.rules.MetronomeMarkYShift;
+    // A mark placed below the staff (placement="below" on its direction) goes under the notation of its staff
+    //   instead of above the system.
+    const below: boolean = metronomeExpression.metronomeBelow;
     let hasExpressionsAboveStaffline: boolean = false;
-    for (const expression of metronomeExpression.parentMeasure.TempoExpressions) {
+    for (const expression of below ? [] : metronomeExpression.parentMeasure.TempoExpressions) {
       const isMetronomeExpression: boolean = expression.InstantaneousTempo?.TempoType === TempoType.metronomeMark;
       // Only tempo text at the time of the mark lies under it, so text elsewhere in the measure does not raise it.
       if (expression.getPlacementOfFirstEntry() === PlacementEnum.Above &&
@@ -2145,6 +2150,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     } else {
       // Simple metronome mark: note = BPM, followed by further marks at the same time on the same line
       const tempo: any = VexFlowMusicSheetCalculator.staveTempoOfMetronomeMark(metronomeExpression);
+      tempo.parenthesis = metronomeExpression.metronomeParentheses;
       tempo.following = metronomeExpression.followingMetronomeMarks.map(
         following => VexFlowMusicSheetCalculator.staveTempoOfMetronomeMark(following));
       vfStave.setTempo(tempo, yShift * unitInPixels);
@@ -2170,7 +2176,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     // Measure first, so that the existing reservation below is not treated as notation under this mark.
     this.prepareMetronomePlacement(vfMeasure, metronomeExpression, mark, index, xShift, yShift);
     vfMeasure.hasMetronomeMark = true;
-    if (skyline && timestamp.RealValue <= 0) {
+    if (skyline && timestamp.RealValue <= 0 && !below) {
       // Retain the established space above a mark at the beginning of a measure.
       skyline[0] = Math.min(skyline[0], -4.5 + yShift);
     }
@@ -2222,14 +2228,23 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       bounds.left += horizontalOffset * unitInPixels;
       bounds.right += horizontalOffset * unitInPixels;
     }
-    // Keep the existing position unless the drawing intersects the notation; then keep TempoYSpacing from it.
-    const clearance: number = staffLine.SkyBottomLineCalculator.getSkyLineMinInRange(
-      bounds.left / unitInPixels, bounds.right / unitInPixels) - bounds.bottom / unitInPixels;
-    const offset: number = clearance < 0 ? clearance - this.rules.TempoYSpacing : 0;
+    const below: boolean = expression.metronomeBelow;
+    let offset: number;
+    if (below) {
+      // Under the bottom line of its range (at least the staff's bottom line), TempoYSpacing clear of it.
+      const bottomLineMax: number = Math.max(4, staffLine.SkyBottomLineCalculator.getBottomLineMaxInRange(
+        bounds.left / unitInPixels, bounds.right / unitInPixels));
+      offset = bottomLineMax + this.rules.TempoYSpacing - bounds.top / unitInPixels;
+    } else {
+      // Keep the existing position unless the drawing intersects the notation; then keep TempoYSpacing from it.
+      const clearance: number = staffLine.SkyBottomLineCalculator.getSkyLineMinInRange(
+        bounds.left / unitInPixels, bounds.right / unitInPixels) - bounds.bottom / unitInPixels;
+      offset = clearance < 0 ? clearance - this.rules.TempoYSpacing : 0;
+    }
     bounds.top += offset * unitInPixels;
     bounds.bottom += offset * unitInPixels;
     this.metronomePlacements.push({measure, expression, mark, bounds, yShift: (yShift + offset) * unitInPixels,
-      existingPosition: atMeasureStart && offset === 0});
+      existingPosition: atMeasureStart && offset === 0 && !below, below});
   }
 
   protected layoutMetronomeMarks(): void {
@@ -2237,6 +2252,14 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const padding: number = this.rules.TempoYSpacing * unitInPixels;
     for (const placement of this.metronomePlacements) {
       const staffLine: StaffLine = placement.measure.ParentStaffLine;
+      if (placement.below) {
+        // Below the staff: no tempo text to stack with. Reserve the mark's bottom in the bottom line over its extent,
+        //   so that what is placed below later keeps clear of it.
+        placement.mark.setShiftY(placement.yShift);
+        staffLine.SkyBottomLineCalculator.updateBottomLineInRange(
+          placement.bounds.left / unitInPixels, placement.bounds.right / unitInPixels, placement.bounds.bottom / unitInPixels);
+        continue;
+      }
       let occupied: IMetronomeBounds[] = occupiedByStaffLine.get(staffLine);
       if (!occupied) {
         occupied = [];
