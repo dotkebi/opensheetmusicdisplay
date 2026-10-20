@@ -2150,6 +2150,7 @@ export abstract class MusicSheetCalculator {
         this.calculateTupletNumbers();
         // Reserve space for multi-measure repeat counts before placing measure numbers.
         this.reserveSkylineForMeasureRepeats();
+        this.calculateKeyboardHandBrackets();
 
         // calculate MeasureNumbers
         if (this.rules.RenderMeasureNumbers) {
@@ -2189,6 +2190,7 @@ export abstract class MusicSheetCalculator {
             this.calculateExpressionAlignements();
             // calculate all Mood and Unknown Expression
             this.calculateMoodAndUnknownExpressions();
+            this.extendKeyboardHandBracketsToHandTexts();
             // calculate all OctaveShifts
             this.calculateOctaveShifts();
             if (this.rules.RenderPedals) {
@@ -2445,6 +2447,7 @@ export abstract class MusicSheetCalculator {
 
         await step(() => this.calculateTupletNumbers(), 0.87);
         await step(() => this.reserveSkylineForMeasureRepeats());
+        await step(() => this.calculateKeyboardHandBrackets());
 
         if (this.rules.RenderMeasureNumbers) {
             await step(() => {
@@ -2476,6 +2479,7 @@ export abstract class MusicSheetCalculator {
             await step(() => this.calculateDynamicExpressions());
             await step(() => this.calculateExpressionAlignements());
             await step(() => this.calculateMoodAndUnknownExpressions());
+            await step(() => this.extendKeyboardHandBracketsToHandTexts());
             await step(() => this.calculateOctaveShifts());
             if (this.rules.RenderPedals) {
                 await step(() => this.calculatePedals());
@@ -5432,6 +5436,17 @@ export abstract class MusicSheetCalculator {
 
     /** Reserves skyline space for measure-repeat counts. */
     protected reserveSkylineForMeasureRepeats(): void {
+        // override
+    }
+
+    /** Calculates the keyboard hand brackets of the stafflines (StaffLine.KeyboardHandBrackets) from the formatted notes and reserves
+     *  their space in the sky and bottom lines, before anything is placed there by them. */
+    protected calculateKeyboardHandBrackets(): void {
+        // override
+    }
+
+    /** Extends the keyboard hand brackets to the text of their hand, once the texts are placed. */
+    protected extendKeyboardHandBracketsToHandTexts(): void {
         // override
     }
 

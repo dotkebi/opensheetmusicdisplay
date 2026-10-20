@@ -15,6 +15,7 @@ import { SourceMeasure } from "./SourceMeasure";
 import { TechnicalInstruction } from "./Instructions";
 import { Glissando } from "../../MusicalScore/VoiceData/Glissando";
 import { VoiceLeadingGuide } from "./VoiceLeadingGuide";
+import { OtherTechnical } from "./OtherTechnical";
 
 /**
  * Represents a single pitch with a duration (length)
@@ -207,6 +208,12 @@ export class Note {
     public NoteTuplets: Tuplet[] = [];
     /** Visual voice leading guides that start or end on this note. No effect on playback. */
     public VoiceLeadingGuides: VoiceLeadingGuide[] = [];
+    /** MusicXML other-technical indications of this note, e.g. a keyboard hand bracket (see OtherTechnical). */
+    public OtherTechnicals: OtherTechnical[] = [];
+    /** The keyboard hand bracket of this note (SMuFL keyboardPlayWithLH/RH), if it has one. */
+    public get KeyboardHandBracket(): OtherTechnical {
+        return this.OtherTechnicals.find((technical: OtherTechnical) => technical.KeyboardHand !== undefined);
+    }
     public get NoteGlissando(): Glissando {
         return this.glissando;
     }

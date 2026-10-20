@@ -7,6 +7,7 @@ import {PlacementEnum} from "../../VoiceData/Expressions/AbstractExpression";
 import {AccidentalEnum} from "../../../Common/DataObjects/Pitch";
 import { Articulation, breathMarkValueFromXml } from "../../VoiceData/Articulation";
 import { Note } from "../../VoiceData/Note";
+import { OtherTechnical } from "../../VoiceData/OtherTechnical";
 import { EngravingRules } from "../../Graphical/EngravingRules";
 import { MultiExpression } from "../../VoiceData/Expressions/MultiExpression";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
@@ -234,6 +235,15 @@ export class ArticulationReader {
       currentTechnicalInstruction.type = TechnicalInstructionType.String;
       currentNote.StringInstruction = currentTechnicalInstruction;
       currentVoiceEntry.TechnicalInstructions.push(currentTechnicalInstruction);
+    }
+    // other-technical: kept on the note by its SMuFL name and text. Only keyboard hand brackets are drawn (see OtherTechnical).
+    for (const nodeOther of technicalNode.elements("other-technical")) {
+      const smufl: string = nodeOther.attribute("smufl")?.value || undefined;
+      const text: string = nodeOther.value?.trim() ?? "";
+      if (smufl === undefined && text === "") {
+        continue;
+      }
+      currentNote.OtherTechnicals.push(new OtherTechnical(smufl, text, this.getPlacement(nodeOther.attribute("placement"))));
     }
   }
 

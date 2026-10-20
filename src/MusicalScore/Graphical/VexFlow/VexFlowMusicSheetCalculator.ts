@@ -83,6 +83,8 @@ import { Glissando } from "../../VoiceData/Glissando";
 import { VexFlowGlissando } from "./VexFlowGlissando";
 import { WavyLine } from "../../VoiceData/Expressions/ContinuousExpressions/WavyLine";
 import { VexFlowVibratoBracket } from "./VexFlowVibratoBracket";
+import { GraphicalKeyboardHandBracket } from "../GraphicalKeyboardHandBracket";
+import { KeyboardHand } from "../../VoiceData/OtherTechnical";
 import { Staff } from "../../VoiceData/Staff";
 import { Note, TremoloBetweenNotes } from "../../VoiceData/Note";
 import { DynamicEnum, InstantaneousDynamicExpression } from "../../VoiceData/Expressions/InstantaneousDynamicExpression";
@@ -479,6 +481,120 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   protected reserveSkylineForMeasureRepeats(): void {
     for (const display of this.measureRepeatUnitsPendingSkyline) {
       display.reserveSkyline();
+    }
+  }
+
+  /** Text of a hand in a keyboard score: l.h., r.h. (also without dots and spaces), m.s., m.d. (sinistra, destra). */
+  private static readonly keyboardHandTextPattern: RegExp = /^\s*(l\.?\s*h|r\.?\s*h|m\.?\s*s|m\.?\s*d)\.?\s*$/i;
+
+  protected calculateKeyboardHandBrackets(): void {
+    for (const musicSystem of this.musicSystems) {
+      for (const staffLine of musicSystem.StaffLines) {
+        staffLine.KeyboardHandBrackets = [];
+        if (!this.rules.RenderKeyboardHandBrackets || staffLine.ParentStaff?.isTab) {
+          continue;
+        }
+        for (const measure of staffLine.Measures) {
+          for (const staffEntry of measure.staffEntries) {
+            for (const voiceEntry of staffEntry.graphicalVoiceEntries) {
+              for (const graphicalNote of voiceEntry.notes) {
+                const hand: KeyboardHand = graphicalNote.sourceNote?.KeyboardHandBracket?.KeyboardHand;
+                if (hand === undefined || !graphicalNote.sourceNote.PrintObject) {
+                  continue;
+                }
+                const bracket: GraphicalKeyboardHandBracket =
+                  this.calculateKeyboardHandBracket(graphicalNote as VexFlowGraphicalNote, hand, staffLine);
+                if (bracket) {
+                  staffLine.KeyboardHandBrackets.push(bracket);
+                  this.reserveKeyboardHandBracket(bracket, staffLine);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * The bracket of a note: its vertical line left of everything printed at the note's time on its staff (noteheads, also displaced
+   * ones, and so the stems down beside them, accidentals, grace notes), so it doesn't run through a notehead or accidental of another
+   * voice either, and its hook at the edge of the notehead away from the line (the hook encloses the notehead):
+   * the top edge for the left hand, the bottom edge for the right hand.
+   */
+  private calculateKeyboardHandBracket(graphicalNote: VexFlowGraphicalNote, hand: KeyboardHand, staffLine: StaffLine): GraphicalKeyboardHandBracket {
+    const staffEntry: GraphicalStaffEntry = graphicalNote.parentVoiceEntry?.parentStaffEntry;
+    const measure: VexFlowMeasure = staffEntry?.parentMeasure as VexFlowMeasure;
+    const stave: VF.Stave = measure?.getVFStave();
+    const noteHead: any = (graphicalNote.vfnote?.[0] as any)?.note_heads?.[graphicalNote.vfnoteIndex];
+    if (!stave || !noteHead) {
+      return undefined;
+    }
+    let left: number = Number.POSITIVE_INFINITY;
+    for (const voiceEntry of staffEntry.graphicalVoiceEntries as VexFlowVoiceEntry[]) {
+      const vfNote: any = voiceEntry.vfStaveNote;
+      if (!vfNote?.preFormatted || !vfNote.getMetrics || voiceEntry.parentVoiceEntry?.IsGrace) {
+        continue; // grace notes are in their main note's left modifiers
+      }
+      const metrics: any = vfNote.getMetrics();
+      left = Math.min(left, vfNote.getAbsoluteX() + (vfNote.x_shift ?? 0) - (metrics.leftDisplacedHeadPx ?? 0) - (metrics.modLeftPx ?? 0));
+    }
+    if (!Number.isFinite(left)) {
+      return undefined;
+    }
+    // relative to the stave, which the skyline calculation may have moved (see VexFlowMeasure.correctNotePositions())
+    const leftInStaffLine: number = measure.PositionAndShape.RelativePosition.x + (left - stave.getX()) / unitInPixels;
+    const noteHeadY: number = (stave.getYForNote(noteHead.getLine()) - stave.getYForLine(0)) / unitInPixels;
+    const bracket: GraphicalKeyboardHandBracket = new GraphicalKeyboardHandBracket(graphicalNote.sourceNote, hand);
+    bracket.LineWidth = this.rules.KeyboardHandBracketLineWidth;
+    bracket.LineX = leftInStaffLine - this.rules.KeyboardHandBracketNoteGap - bracket.LineWidth / 2;
+    bracket.HookEndX = bracket.LineX + this.rules.KeyboardHandBracketHookLength;
+    const noteHeadHalfHeight: number = 0.5;
+    bracket.HookY = noteHeadY - bracket.Direction * noteHeadHalfHeight;
+    // until the text of its hand is placed (extendKeyboardHandBracketsToHandTexts())
+    bracket.EndY = bracket.HookY + bracket.Direction * this.rules.KeyboardHandBracketLength;
+    return bracket;
+  }
+
+  /** Keeps what is placed above (right hand) or below (left hand) the staff later clear of the bracket's line. */
+  private reserveKeyboardHandBracket(bracket: GraphicalKeyboardHandBracket, staffLine: StaffLine): void {
+    const halfWidth: number = bracket.LineWidth / 2;
+    if (bracket.Direction > 0) {
+      staffLine.SkyBottomLineCalculator.updateBottomLineInRange(bracket.LineX - halfWidth, bracket.LineX + halfWidth, bracket.EndY);
+    } else {
+      staffLine.SkyBottomLineCalculator.updateSkyLineInRange(bracket.LineX - halfWidth, bracket.LineX + halfWidth, bracket.EndY);
+    }
+  }
+
+  /**
+   * Lets each keyboard hand bracket reach the text of its hand (l.h., r.h., m.s., m.d.) at its note's time on its side:
+   * to the near edge of the text, like a printed bracket ending at its hand's text. The texts are placed by the sky or bottom line
+   * the brackets reserved, beside the line (they start at the note), so the line doesn't run into them.
+   */
+  protected extendKeyboardHandBracketsToHandTexts(): void {
+    for (const musicSystem of this.musicSystems) {
+      for (const staffLine of musicSystem.StaffLines) {
+        for (const bracket of staffLine.KeyboardHandBrackets) {
+          const placement: PlacementEnum = bracket.Direction > 0 ? PlacementEnum.Below : PlacementEnum.Above;
+          const timestamp: Fraction = bracket.Note.ParentStaffEntry?.AbsoluteTimestamp;
+          for (const expression of staffLine.AbstractExpressions) {
+            if (!(expression instanceof GraphicalUnknownExpression) || expression.Placement !== placement ||
+                !expression.sourceMultiExpression?.AbsoluteTimestamp?.Equals(timestamp) ||
+                !VexFlowMusicSheetCalculator.keyboardHandTextPattern.test(expression.Label?.Label?.text ?? "")) {
+              continue;
+            }
+            const box: BoundingBox = expression.Label.PositionAndShape;
+            const nearEdge: number = bracket.Direction > 0 ?
+              box.RelativePosition.y + box.BorderMarginTop :
+              box.RelativePosition.y + box.BorderMarginBottom;
+            if ((nearEdge - bracket.HookY) * bracket.Direction >= this.rules.KeyboardHandBracketHookLength) {
+              bracket.EndY = nearEdge; // (a text at the height of the note would leave no line)
+              this.reserveKeyboardHandBracket(bracket, staffLine);
+            }
+            break;
+          }
+        }
+      }
     }
   }
 
