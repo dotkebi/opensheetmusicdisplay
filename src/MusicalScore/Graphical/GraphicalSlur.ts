@@ -1778,11 +1778,20 @@ export class GraphicalSlur extends GraphicalCurve {
             const minAbove: number = skyBottomLineCalculator.getSkyLineMinInRange(sX, eX) * -1;
             const maxBelow: number = skyBottomLineCalculator.getBottomLineMaxInRange(sX, eX) - staffLine.StaffHeight;
 
-            if (maxBelow > minAbove) {
+            if (maxBelow > minAbove - GraphicalSlur.mixedStemsAboveMargin) {
                 this.placement = PlacementEnum.Above;
             } else { this.placement = PlacementEnum.Below; }
         }
     }
+
+    /**
+     * How much further (in units) the ink may reach above the staff than below it
+     * before a slur between notes with stems in different directions goes below;
+     * slurs over mixed stems go above by convention. The two sides are often within
+     * a few hundredths of a unit (Davydov Op. 11 m257 in osmd-dart: 1.564 above,
+     * 1.556 below, the slur hung below a long beam). Same rule as osmd-dart.
+     */
+    private static readonly mixedStemsAboveMargin: number = 0.25;
 
     /**
      * This method calculates the Points between Start- and EndPoint (case above).
