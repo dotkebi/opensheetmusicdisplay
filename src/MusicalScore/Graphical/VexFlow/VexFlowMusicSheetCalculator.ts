@@ -2421,9 +2421,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         }
         // highest element above the staff line under the mark (negative = above it), read from the skyline
         //   (final by now: updated by calculateSkyBottomLines + calculateChordSymbols, both earlier).
-        const topRelative: number = staffLine.SkyBottomLineCalculator.getSkyLineMinInRange(start, end);
+        //   The gap kept under the box is also kept on either side: a slur rising beside the box met its corner
+        //   (Glière Op. 91 III Piano m145, osmd-dart at 820/1366).
+        const marginInUnits: number = 0.5; // small gap between mark bottom and what's below it
+        const topRelative: number = staffLine.SkyBottomLineCalculator.getSkyLineMinInRange(start - marginInUnits, end + marginInUnits);
         if (topRelative < 0) { // only lift if something actually rises above the staff here
-          const marginInUnits: number = 0.5; // small gap between mark bottom and what's below it
           // StaveSection.draw (VexFlowPatch) shifts the mark up so its box bottom doesn't exceed
           //   stave.getYForLine(0) + minBottomY (px), keeping the mark above that element:
           minBottomY = (topRelative - marginInUnits) * unitInPixels;
