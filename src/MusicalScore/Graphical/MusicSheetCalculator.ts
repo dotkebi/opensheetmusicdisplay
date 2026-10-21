@@ -3014,58 +3014,96 @@ export abstract class MusicSheetCalculator {
     }
 
     /**
-     * The x of the stop (in the measure's source measure) in score time, if a note of the measure's staff is held through it:
-     * from the staff entries of all staves of its system at or around it, else between the last one and the end of the measure
-     * (endOfMeasure). Undefined for a stop at the start or the end of the measure, or one not inside a held note (a rest, or a
-     * staff without notes, keeps the end of the measure). Same as osmd-dart.
+     * The x of the stop (in the measure's source measure) in score time, if a note of the measure's staff is held through it, or
+     * the staff has only a whole-measure rest there (onlyWholeMeasureRest()): see systemTimeX(). Undefined for a stop at the start
+     * or the end of the measure, or one inside a rest of a staff with other notes or rests in the measure (it keeps the end of the
+     * measure, or goes to the next entry of the staff). Same as osmd-dart.
      */
     protected heldNoteStopX(measure: GraphicalMeasure, stop: Fraction, endOfMeasure: number): number {
         const sourceMeasure: SourceMeasure = measure.parentSourceMeasure;
-        const system: MusicSystem = measure.ParentStaffLine?.ParentMusicSystem;
-        if (!sourceMeasure || !system || !stop.gt(new Fraction(0, 1)) || !stop.lt(sourceMeasure.Duration)) {
+        if (!sourceMeasure || !stop.gt(new Fraction(0, 1)) || !stop.lt(sourceMeasure.Duration)) {
             return undefined;
         }
         const held: boolean = measure.staffEntries.some(se => se.relInMeasureTimestamp.lt(stop) &&
             se.graphicalVoiceEntries.some(gve => !gve.parentVoiceEntry.IsGrace &&
                 gve.parentVoiceEntry.Notes.some(note => !note.isRest() &&
                     Fraction.plus(se.relInMeasureTimestamp, note.Length).gt(stop))));
-        if (!held) {
+        if (!held && !this.onlyWholeMeasureRest(measure)) {
             return undefined;
         }
-        let leftTime: Fraction = undefined;
+        return this.systemTimeX(measure, stop, endOfMeasure);
+    }
+
+    /**
+     * Whether the measure's staff has only rests, one of them as long as the measure. VexFlow draws that rest in the middle of the
+     * measure (VexFlowConverter, alignCenter), so the staff's entries do not give the x of a time in the measure: a wedge's start in
+     * it was the middle of the measure, its stop inside it the end of the measure (Enescu, Concertstück, Piano m109: a crescendo
+     * from the left hand's first note began at the right hand's whole rest; Glière, Horn Concerto Op. 91 III, Piano m98: a crescendo
+     * stopped at the left hand's second eighth ran to the end of the measure). Same as osmd-dart.
+     */
+    protected onlyWholeMeasureRest(measure: GraphicalMeasure): boolean {
+        const sourceMeasure: SourceMeasure = measure.parentSourceMeasure;
+        if (!sourceMeasure) {
+            return false;
+        }
+        let wholeMeasureRest: boolean = false;
+        for (const se of measure.staffEntries) {
+            for (const gve of se.graphicalVoiceEntries) {
+                for (const note of gve.parentVoiceEntry.Notes) {
+                    if (!note.isRest()) {
+                        return false;
+                    }
+                    if (note.IsWholeMeasureRest || !note.Length.lt(sourceMeasure.Duration)) {
+                        wholeMeasureRest = true;
+                    }
+                }
+            }
+        }
+        return wholeMeasureRest;
+    }
+
+    /**
+     * The x of the time (in the measure's source measure) in score time: from the staff entries of all staves of its system at or
+     * around it, else between the last one and the end of the measure (endOfMeasure), or between the start of the measure's notes
+     * and the first one. Entries of a staff with only a whole-measure rest there, drawn in the middle of the measure, are not used.
+     * Same as osmd-dart.
+     */
+    protected systemTimeX(measure: GraphicalMeasure, time: Fraction, endOfMeasure: number): number {
+        const sourceMeasure: SourceMeasure = measure.parentSourceMeasure;
+        let leftTime: Fraction = new Fraction(0, 1);
+        let leftX: number = measure.PositionAndShape.RelativePosition.x + measure.beginInstructionsWidth;
+        let leftFound: boolean = false;
         let rightTime: Fraction = undefined;
-        let leftX: number = 0;
         let rightX: number = endOfMeasure;
-        for (const staffLine of system.StaffLines) {
+        const system: MusicSystem = measure.ParentStaffLine?.ParentMusicSystem;
+        for (const staffLine of system?.StaffLines ?? []) {
             for (const other of staffLine.Measures) {
-                if (other.parentSourceMeasure !== sourceMeasure) {
+                if (other.parentSourceMeasure !== sourceMeasure || this.onlyWholeMeasureRest(other)) {
                     continue;
                 }
                 for (const se of other.staffEntries) {
                     if (se.graphicalVoiceEntries.length === 0) {
                         continue;
                     }
-                    const time: Fraction = se.relInMeasureTimestamp;
+                    const entryTime: Fraction = se.relInMeasureTimestamp;
                     const x: number = other.PositionAndShape.RelativePosition.x + se.PositionAndShape.RelativePosition.x;
-                    if (!time.gt(stop) && (!leftTime || time.gt(leftTime))) {
-                        leftTime = time;
+                    if (!entryTime.gt(time) && (!leftFound || entryTime.gt(leftTime))) {
+                        leftFound = true;
+                        leftTime = entryTime;
                         leftX = x;
                     }
-                    if (!time.lt(stop) && (!rightTime || time.lt(rightTime))) {
-                        rightTime = time;
+                    if (!entryTime.lt(time) && (!rightTime || entryTime.lt(rightTime))) {
+                        rightTime = entryTime;
                         rightX = x;
                     }
                 }
             }
         }
-        if (!leftTime) {
-            return undefined;
-        }
         const span: number = Fraction.minus(rightTime ?? sourceMeasure.Duration, leftTime).RealValue;
         if (span <= 0) {
             return leftX;
         }
-        return leftX + (rightX - leftX) * Fraction.minus(stop, leftTime).RealValue / span;
+        return leftX + (rightX - leftX) * Fraction.minus(time, leftTime).RealValue / span;
     }
 
     /** Whether an instantaneous dynamic of the wedge's staff and side is at its stop (StopTimestamp) in the measure of its
@@ -3159,11 +3197,32 @@ export abstract class MusicSheetCalculator {
         // const staffIndex: number = musicSystem.StaffLines.indexOf(staffLine);
 
         // We know we have an end measure because otherwise we won't be called
-        const endMeasure: GraphicalMeasure = this.graphicalMusicSheet.getGraphicalMeasureFromSourceMeasureAndIndex(
+        let endMeasure: GraphicalMeasure = this.graphicalMusicSheet.getGraphicalMeasureFromSourceMeasureAndIndex(
             graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.SourceMeasureParent, staffIndex);
         if (!endMeasure) {
             log.warn("MusicSheetCalculator.calculateGraphicalContinuousDynamic: No endMeasure found");
             return;
+        }
+        // A stop at the start of a later measure that the reader left there: the wedge started after the last entry of the staff in
+        //   the previous measure (ExpressionReader.wedgeStopAtPreviousMeasureEnd() closes the other stops at a measure's start at the
+        //   previous measure's last entry). It is drawn to the previous measure's barline as well (Enescu, Concertstück, Piano m1-2: a
+        //   diminuendo from an <offset> into the right hand's whole rest, stopped at m2 q0, ran to the end of m2). Drawn only: the
+        //   playback keeps the stop at the start of the measure. Same as osmd-dart.
+        let previousBarlineX: number = undefined;
+        {
+            const wedge: ContinuousDynamicExpression = graphicalContinuousDynamic.ContinuousDynamic;
+            const startSourceMeasure: SourceMeasure = wedge.StartMultiExpression?.SourceMeasureParent;
+            const endSourceMeasure: SourceMeasure = wedge.EndMultiExpression.SourceMeasureParent;
+            if (!isSoftAccent && startSourceMeasure && startSourceMeasure.measureListIndex < endSourceMeasure.measureListIndex &&
+                wedge.EndMultiExpression.Timestamp.RealValue === 0 && !wedge.StopTimestamp &&
+                (!wedge.EndOffsetFraction || wedge.EndOffsetFraction.RealValue === 0)) {
+                const previous: GraphicalMeasure = this.graphicalMusicSheet.getGraphicalMeasureFromSourceMeasureAndIndex(
+                    this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures[endSourceMeasure.measureListIndex - 1], staffIndex);
+                if (previous?.ParentStaffLine) {
+                    endMeasure = previous;
+                    previousBarlineX = previous.PositionAndShape.RelativePosition.x + previous.PositionAndShape.BorderRight;
+                }
+            }
         }
 
         graphicalContinuousDynamic.EndMeasure = endMeasure;
@@ -3295,7 +3354,9 @@ export abstract class MusicSheetCalculator {
                                   stopTimestamp),
                     staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0, false).x;
             }
-            if (x !== undefined && x - this.rules.WedgeHorizontalMargin > startPosInStaffline.x) {
+            // (the start is in another system for a wedge split at a system break: its x does not bound the end; Glière, Op. 91 III,
+            //   Piano m97-98 in the app at 820/834/1366)
+            if (x !== undefined && (!sameStaffLine || x - this.rules.WedgeHorizontalMargin > startPosInStaffline.x)) {
                 heldNoteStopX = Math.min(x, endOfMeasure) - this.rules.WedgeHorizontalMargin;
             }
         }
@@ -3306,6 +3367,8 @@ export abstract class MusicSheetCalculator {
             //startPosInStaffline.x -= 1;
             startPosInStaffline.x -= staffEntryWidth / 2 * sizeFactor + wedgePadding;
             endPosInStaffLine.x = startPosInStaffline.x + staffEntryWidth / 2 * sizeFactor;
+        } else if (previousBarlineX !== undefined) {
+            endPosInStaffLine.x = previousBarlineX - this.rules.WedgeHorizontalMargin;
         } else if (pairEndX !== undefined) {
             endPosInStaffLine.x = pairEndX;
         } else if (heldNoteStopX !== undefined) {
