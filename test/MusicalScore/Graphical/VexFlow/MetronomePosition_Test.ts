@@ -190,6 +190,34 @@ describe("Metronome position rendering", (): void => {
         expect(marks().length).to.equal(1);
     });
 
+    // A mark at the start of a measure that stays at its existing position reserved no skyline over its drawing, so a
+    //   rehearsal mark in the same measure only cleared what is under the metronome mark and was drawn on it
+    //   (Nielsen Op. 57 m321). The rehearsal mark goes above the metronome mark, also when the notes under it are low.
+    //   Same rule as osmd-dart.
+    it("keeps a rehearsal mark above a mark at its existing position", async (): Promise<void> => {
+        for (const octave of [5, 4]) {
+            const notes: string = ["G", "G", "G", "G"].map((step: string): string =>
+                `<note><pitch><step>${step}</step><octave>${octave}</octave></pitch><duration>1</duration><type>quarter</type></note>`).join("");
+            const plain: string = note("E") + note("D") + note("C") + note("B");
+            await osmd.load(score(plain, "",
+                `<measure number="2">${plain}</measure>` +
+                `<measure number="3">${bpm(120)}<direction><direction-type><rehearsal>B</rehearsal></direction-type></direction>${notes}</measure>` +
+                `<measure number="4">${plain}</measure>`));
+            osmd.render();
+            expect(marks().length).to.equal(1);
+            const label: SVGTextElement = Array.from(div.querySelectorAll<SVGTextElement>("text"))
+                .find((text: SVGTextElement): boolean => text.textContent === "B");
+            const labelBox: DOMRect = glyphBox(label);
+            const box: DOMRect = Array.from(div.querySelectorAll<SVGGraphicsElement>("rect"))
+                .map((rect: SVGGraphicsElement): DOMRect => rect.getBoundingClientRect())
+                .find((rect: DOMRect): boolean => rect.left <= labelBox.left && rect.right >= labelBox.right &&
+                    rect.top <= labelBox.top && rect.bottom >= labelBox.bottom);
+            expect(box, `box around the rehearsal mark (octave ${octave})`).to.not.equal(undefined);
+            // the box's stroke is 2 px wide
+            expect(box.bottom + 1, `rehearsal mark above the metronome mark (octave ${octave})`).to.be.at.most(marks()[0].top);
+        }
+    });
+
     it("keeps a note equation inside the right edge of its staffline", async (): Promise<void> => {
         div.style.width = "300px";
         osmd.EngravingRules.StretchLastSystemLine = true;

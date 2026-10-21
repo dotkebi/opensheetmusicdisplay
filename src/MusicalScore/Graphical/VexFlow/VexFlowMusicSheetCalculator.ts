@@ -2314,12 +2314,15 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         insertionIndex++;
       }
       occupied.splice(insertionIndex, 0, bounds);
-      // A mark left at its existing position keeps the existing reservation; others reserve their drawing and
-      //   TempoYSpacing above it, so that what is placed above later (e.g. the lyricist) keeps that distance.
-      if (!placement.existingPosition || offset !== 0) {
-        staffLine.SkyBottomLineCalculator.updateSkyLineInRange(
-          bounds.left / unitInPixels, bounds.right / unitInPixels, bounds.top / unitInPixels - this.rules.TempoYSpacing);
-      }
+      // A mark left at its existing position reserves its drawn top over its extent (the space above it is
+      //   established by createMetronomeMark); others reserve their drawing and TempoYSpacing above it, so that what
+      //   is placed above later (e.g. the lyricist) keeps that distance. Without the reservation, a rehearsal mark
+      //   (calculateRehearsalMark, later) only cleared what is under the metronome mark and was drawn on it
+      //   (Nielsen Op. 57 m321; same rule as osmd-dart).
+      const reservedTop: number = placement.existingPosition && offset === 0 ?
+        bounds.top / unitInPixels : bounds.top / unitInPixels - this.rules.TempoYSpacing;
+      staffLine.SkyBottomLineCalculator.updateSkyLineInRange(
+        bounds.left / unitInPixels, bounds.right / unitInPixels, reservedTop);
     }
   }
 
