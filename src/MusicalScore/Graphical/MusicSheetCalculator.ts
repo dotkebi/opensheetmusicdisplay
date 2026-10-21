@@ -640,9 +640,7 @@ export abstract class MusicSheetCalculator {
      * @param musicSystem
      */
     protected calculateMeasureNumberPlacement(musicSystem: MusicSystem): void {
-        // (the first staffline the system draws: one that the MusicXML hides in the whole system is taken out of it later,
-        //   see StaffLine.hiddenInSystem)
-        const staffLine: StaffLine = musicSystem.StaffLines.find(line => !line.hiddenInSystem) ?? musicSystem.StaffLines[0];
+        const staffLine: StaffLine = this.measureNumberStaffLine(musicSystem);
         if (!staffLine || !staffLine.Measures[0]) {
             log.warn("calculateMeasureNumberPlacement: measure undefined for system.Id " + musicSystem.Id);
             return; // TODO apparently happens in script sometimes (mp #70)
@@ -688,9 +686,10 @@ export abstract class MusicSheetCalculator {
                 measure.MeasureNumber >= previousMeasureNumber + this.rules.MeasureNumberLabelOffset) ||
                 isFirstMeasureAndNotPrintedOne) &&
                 renderNumberForImplicit) {
-                if (measure.MeasureNumber !== 1 ||
+                if ((measure.MeasureNumber !== 1 ||
                     (measure.MeasureNumber === 1 && measure !== staffLine.Measures[0]) ||
-                    isFirstMeasureAndNotPrintedOne
+                    isFirstMeasureAndNotPrintedOne) &&
+                    !this.rehearsalMarkShowsMeasureNumber(sourceMeasure)
                     ) {
                     this.calculateSingleMeasureNumberPlacement(measure, staffLine, musicSystem, labelOffsetX);
                     labelCreated = true;
@@ -698,6 +697,25 @@ export abstract class MusicSheetCalculator {
                 previousMeasureNumber = measure.MeasureNumber;
             }
         }
+    }
+
+    /**
+     * The staffline the measure numbers go on: the first one drawn (one that the MusicXML hides in the whole system is taken
+     * out of it later, see StaffLine.hiddenInSystem). Their sky line space is reserved on it too. Same as osmd-dart.
+     */
+    protected measureNumberStaffLine(musicSystem: MusicSystem): StaffLine {
+        return musicSystem.StaffLines.find(line => !line.hiddenInSystem) ?? musicSystem.StaffLines[0];
+    }
+
+    /**
+     * Whether the rehearsal mark of the measure reads the number the measure number label would: the score numbers its
+     * rehearsal marks by the measure (Glière, Horn Concerto Op. 91 piano: boxed 30 at m30, no other measure number).
+     * The number is drawn once, in the box. Same as osmd-dart.
+     */
+    protected rehearsalMarkShowsMeasureNumber(sourceMeasure: SourceMeasure): boolean {
+        const label: string = sourceMeasure?.rehearsalExpression?.label;
+        return this.rules.RenderRehearsalMarks && typeof label === "string" &&
+            label.trim() === sourceMeasure.getPrintedMeasureNumber().toString();
     }
 
     /// <summary>
@@ -771,7 +789,7 @@ export abstract class MusicSheetCalculator {
     }
     //So we can apply slurs first, then do these
     private calculateMeasureNumberSkyline(musicSystem: MusicSystem): void {
-        const staffLine: StaffLine = musicSystem.StaffLines[0];
+        const staffLine: StaffLine = this.measureNumberStaffLine(musicSystem);
         for(const measureNumberLabel of musicSystem.MeasureNumberLabels) {
             this.raiseMeasureNumberOverSlurs(measureNumberLabel, staffLine);
             // and the corresponding SkyLine indices
@@ -5617,7 +5635,7 @@ export abstract class MusicSheetCalculator {
      * margins counts too (measureMarkInk()). Same as osmd-dart.
      */
     private raiseMeasureNumbersOverRaisedMarks(musicSystem: MusicSystem): void {
-        const staffLine: StaffLine = musicSystem.StaffLines[0];
+        const staffLine: StaffLine = this.measureNumberStaffLine(musicSystem);
         if (!staffLine) {
             return;
         }
