@@ -291,7 +291,8 @@ export class MusicSystemBuilder {
         const staffLines: StaffLine[] = musicSystem.StaffLines;
         let yOffsetSum: number = 0;
         for (let i: number = 0; i < staffLines.length; i++) {
-            staffLines[i].PositionAndShape.RelativePosition = new PointF2D(0, yOffsetSum);
+            // keep the indent of the part labels (updateMusicSystemStaffLineXPosition()): the measure numbers were placed against it
+            staffLines[i].PositionAndShape.RelativePosition = new PointF2D(staffLines[i].PositionAndShape.RelativePosition.x, yOffsetSum);
             yOffsetSum += this.rules.StaffHeight;
             if (i + 1 < staffLines.length) {
                 yOffsetSum += staffLines[i].ParentStaff.ParentInstrument === staffLines[i + 1].ParentStaff.ParentInstrument ?
