@@ -39,10 +39,11 @@ describe("Wedge on a staff with only a whole-measure rest", () => {
     function leftHand(beats: number): string {
         return ["C", "D", "E", "F"].map(s => beats === 4 ? note(s, 3, 4, "quarter", 2) : note(s, 3, 2, "eighth", 2)).join("");
     }
-    function score(beats: number, rightHandDirections: string[]): string {
+    function score(beats: number, rightHandDirections: string[], newSystemAt2: boolean = false): string {
         const duration: number = beats * 4;
         const measures: string = [0, 1, 2].map(i =>
-            `<measure number="${i + 1}">${i === 0 ? attributes(beats) : ""}${rightHandDirections[i]}${wholeRest(duration)}` +
+            `<measure number="${i + 1}">${i === 0 ? attributes(beats) : ""}` +
+            `${i === 1 && newSystemAt2 ? "<print new-system=\"yes\"/>" : ""}${rightHandDirections[i]}${wholeRest(duration)}` +
             `<backup><duration>${duration}</duration></backup>${leftHand(beats)}</measure>`).join("");
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\"><part-list><score-part id=\"P1\">" +
             `<part-name>Piano</part-name></score-part></part-list><part id="P1">${measures}</part></score-partwise>`;
@@ -52,6 +53,7 @@ describe("Wedge on a staff with only a whole-measure rest", () => {
         const div: HTMLElement = TestUtils.getDivElement(document);
         div.style.width = "1000px";
         const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
+        osmd.EngravingRules.NewSystemAtXMLNewSystemAttribute = true;
         return osmd.load(source).then(() => {
             osmd.render();
             return osmd;
@@ -107,6 +109,19 @@ describe("Wedge on a staff with only a whole-measure rest", () => {
         const secondEighth: number = entryX(measure(osmd, 1, 1), 0.125);
         expect(right(wedge(osmd))).to.be.closeTo(secondEighth - margin, 0.05, `measure end ${measureEnd(measure(osmd, 1, 0))}`);
         expect(left(wedge(osmd))).to.be.closeTo(entryX(measure(osmd, 0, 1), 0), 1.5);
+    });
+
+    it("ends a wedge split at a system break and stopped inside a whole-measure rest before the time of its stop", async () => {
+        // 2/4, m1 q1.5 (the end of the first system) crescendo to m2 q0.5 in the second system (Glière m97-98 in the app)
+        const osmd: OpenSheetMusicDisplay = await render(score(2, [wedgeXml("crescendo", 6), wedgeXml("stop", 2), ""], true));
+        const systems: number = osmd.GraphicSheet.MusicPages[0].MusicSystems.length;
+        expect(systems).to.be.at.least(2);
+        const parts: GraphicalContinuousDynamicExpression[] = osmd.GraphicSheet.MusicPages[0].MusicSystems[1].StaffLines[0]
+            .AbstractExpressions.filter(e => e instanceof GraphicalContinuousDynamicExpression) as GraphicalContinuousDynamicExpression[];
+        expect(parts.length).to.equal(1);
+        const margin: number = osmd.EngravingRules.WedgeHorizontalMargin;
+        const secondEighth: number = entryX(measure(osmd, 1, 1), 0.125);
+        expect(right(parts[0])).to.be.closeTo(secondEighth - margin, 0.05, `measure end ${measureEnd(measure(osmd, 1, 0))}`);
     });
 
     it("ends a wedge from an offset into a whole rest, stopped at the next measure's start, at the barline", async () => {

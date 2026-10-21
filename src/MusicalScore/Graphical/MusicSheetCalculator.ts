@@ -3354,7 +3354,9 @@ export abstract class MusicSheetCalculator {
                                   stopTimestamp),
                     staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0, false).x;
             }
-            if (x !== undefined && x - this.rules.WedgeHorizontalMargin > startPosInStaffline.x) {
+            // (the start is in another system for a wedge split at a system break: its x does not bound the end; Glière, Op. 91 III,
+            //   Piano m97-98 in the app at 820/834/1366)
+            if (x !== undefined && (!sameStaffLine || x - this.rules.WedgeHorizontalMargin > startPosInStaffline.x)) {
                 heldNoteStopX = Math.min(x, endOfMeasure) - this.rules.WedgeHorizontalMargin;
             }
         }
