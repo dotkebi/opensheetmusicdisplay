@@ -294,7 +294,9 @@ export abstract class MusicSystem extends GraphicalObject {
     }
 
     /**
-     * Create an InstrumentBracket for each multiStave Instrument.
+     * Create an InstrumentBracket for each multiStave Instrument, from its first staffline in the system down to its last one:
+     * a staff hidden in the system (removeHiddenStaffLines()) is not in it, so the brace joins the staves left, if there are
+     * two or more of them (Glière, Horn Concerto Op. 91, piano: the horn staff above the piano's two shown in m85-93 only).
      * @param instruments
      * @param staffHeight
      */
@@ -305,14 +307,12 @@ export abstract class MusicSystem extends GraphicalObject {
                 let firstStaffLine: StaffLine = undefined, lastStaffLine: StaffLine = undefined;
                 for (let idx2: number = 0, len2: number = this.staffLines.length; idx2 < len2; ++idx2) {
                     const staffLine: StaffLine = this.staffLines[idx2];
-                    if (staffLine.ParentStaff === instrument.Staves[0] && staffLine.ParentStaff.Visible) {
-                        firstStaffLine = staffLine;
-                    }
-                    if (staffLine.ParentStaff === instrument.Staves[instrument.Staves.length - 1] && staffLine.ParentStaff.Visible) {
+                    if (staffLine.ParentStaff.ParentInstrument === instrument && staffLine.ParentStaff.Visible) {
+                        firstStaffLine = firstStaffLine ?? staffLine;
                         lastStaffLine = staffLine;
                     }
                 }
-                if (firstStaffLine && lastStaffLine) {
+                if (firstStaffLine && lastStaffLine && firstStaffLine !== lastStaffLine) {
                     this.createInstrumentBracket(firstStaffLine, lastStaffLine);
                 }
             }
