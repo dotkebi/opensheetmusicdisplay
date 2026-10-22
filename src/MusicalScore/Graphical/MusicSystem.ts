@@ -217,11 +217,13 @@ export abstract class MusicSystem extends GraphicalObject {
         const staffLine: StaffLine = measure.ParentStaffLine;
         const staffLineRelative: PointF2D = new PointF2D(staffLine.PositionAndShape.RelativePosition.x,
                                                          staffLine.PositionAndShape.RelativePosition.y);
-        const staves: Staff[] = staffLine.ParentStaff.ParentInstrument.Staves;
-        if (staffLine.ParentStaff === staves[0]) {
+        // the part's first and last stafflines in the system (a staff hidden in the system is taken out later, and the line
+        //   joined to the stafflines left, see reconnectAroundHiddenStaffLines(); osmd-dart makes it after, from those left)
+        const partLines: StaffLine[] = this.staffLines.filter(line => line.ParentStaff.ParentInstrument === staffLine.ParentStaff.ParentInstrument);
+        if (partLines[0] === staffLine) {
             let bottomMeasure: GraphicalMeasure = undefined;
-            if (staves.length > 1) {
-                bottomMeasure = this.getBottomStaffLine(staffLine).Measures[measureIndex];
+            if (partLines.length > 1) {
+                bottomMeasure = partLines[partLines.length - 1].Measures[measureIndex];
             }
             const singleVerticalLineAfterMeasure: SystemLine = this.createSystemLine(xPosition, lineWidth, lineType,
                                                                                      linePosition, this, measure, bottomMeasure);
