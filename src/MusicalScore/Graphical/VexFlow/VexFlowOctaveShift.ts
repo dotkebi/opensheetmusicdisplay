@@ -24,6 +24,11 @@ export class VexFlowOctaveShift extends GraphicalOctaveShift {
     private supscript: string;
     /** Main text element */
     private text: string;
+    /** Set by VexFlowMusicSheetCalculator.calculateOctaveShiftSkyBottomLine: the stave's top text position this bracket
+     *  needs, and the x range of its skyline. */
+    public topTextPosition: number;
+    public skylineStartX: number = 0;
+    public skylineStopX: number = 0;
 
     /**
      * Create a new vexflow ocatve shift

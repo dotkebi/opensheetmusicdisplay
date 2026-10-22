@@ -3647,18 +3647,39 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const fontSize: number = (textBracket as any).font.size / 10;
 
     if ((<any>textBracket).position === VF.TextBracket.Positions.TOP) {
-      // Math.ceil with a small tolerance: the geometric skyline calculation gives exact values where
-      // the pixel-based one snapped to pixels (often exact integers, e.g. a note top exactly 1 unit
-      // above the staff), and without the tolerance, a skyline minimum a fraction of a pixel inside
-      // an integer boundary would lose a whole unit of headroom to the ceil (e.g. ceil(-0.97) = 0,
-      // putting the octave bracket into the note, see test_octaveshift_extragraphicalmeasure).
-      // The tolerance is smaller than the pixel-based values' granularity (0.1), so their results are unchanged.
-      const headroom: number = Math.ceil(parentStaffline.SkyBottomLineCalculator.getSkyLineMinInRange(startX, stopX) - 0.05);
-      if (headroom === Infinity) { // will cause Vexflow error
+      // The clearance also keeps the tolerance the upstream ceil had: the geometric skyline gives exact values where the
+      //   pixel-based one snapped to pixels, and a minimum a fraction of a pixel inside a whole line would otherwise lose
+      //   that line (ceil(-0.97) = 0 put the bracket into the note, see test_octaveshift_extragraphicalmeasure).
+      const skylineMin: number = parentStaffline.SkyBottomLineCalculator.getSkyLineMinInRange(startX, stopX);
+      if (!isFinite(skylineMin)) { // will cause Vexflow error
         return;
       }
-      (textBracket.start.getStave().options as any).top_text_position = Math.abs(headroom);
-      parentStaffline.SkyBottomLineCalculator.updateSkyLineInRange(startX, stopX, headroom - fontSize * 2);
+      // The text's bottom is at line -(1 + top_text_position) (TextBracket line 1): the least whole number of lines that
+      //   leaves OctaveShiftClearance between it and the skyline (the upstream Math.ceil(min - 0.05) is the same with a
+      //   clearance of 0.05; it put the 8 on a slur whose middle line came just under a whole line, Prokofiev Op. 19).
+      let topTextPosition: number = Math.max(0, Math.ceil(-skylineMin + this.rules.OctaveShiftClearance - 1));
+      // Another bracket starting on the same stave (a second octave shift from the end of the measure) shares its one top
+      //   text position: both go at the higher one, and the other's skyline goes up with it. The later one overwrote it, and
+      //   the first bracket could fall onto its notes (Prokofiev Op. 19 III full score m98 in osmd-dart).
+      const stave: VF.Stave = textBracket.start.getStave();
+      const others: VexFlowOctaveShift[] = parentStaffline.OctaveShifts.filter(other =>
+        other !== vfOctaveShift && other instanceof VexFlowOctaveShift && other.topTextPosition !== undefined &&
+        other.startNote?.getStave() === stave) as VexFlowOctaveShift[];
+      for (const other of others) {
+        topTextPosition = Math.max(topTextPosition, other.topTextPosition);
+      }
+      for (const other of others) {
+        if (other.topTextPosition < topTextPosition) {
+          other.topTextPosition = topTextPosition;
+          parentStaffline.SkyBottomLineCalculator.updateSkyLineInRange(other.skylineStartX, other.skylineStopX,
+                                                                        -topTextPosition - fontSize * 2);
+        }
+      }
+      vfOctaveShift.topTextPosition = topTextPosition;
+      vfOctaveShift.skylineStartX = startX;
+      vfOctaveShift.skylineStopX = stopX;
+      (stave.options as any).top_text_position = topTextPosition;
+      parentStaffline.SkyBottomLineCalculator.updateSkyLineInRange(startX, stopX, -topTextPosition - fontSize * 2);
     } else {
       const footroom: number = parentStaffline.SkyBottomLineCalculator.getBottomLineMaxInRange(startX, stopX);
       if (footroom === Infinity) { // will cause Vexflow error

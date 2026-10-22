@@ -525,6 +525,11 @@ export class EngravingRules {
     public RepeatEndStartPadding: number;
     public OctaveShiftLineWidth: number;
     public OctaveShiftVerticalLineLength: number;
+    /** The least gap (staff spaces) between the skyline under an octave shift's bracket and the bottom of its text (8va, 15ma).
+     *  The skyline has a slur's middle line, its drawn outer edge is up to 0.3 higher (VexFlowMusicSheetDrawer.drawSlur),
+     *  so the bracket keeps above the slur's ink only with more than 0.3; the upstream rounding (0.05) put the 8 on the slur
+     *  (Prokofiev Op. 19). 0.5 as under a rehearsal mark (user decision 10-22: a slur and an 8va do not overlap). */
+    public OctaveShiftClearance: number;
     public OctaveShiftOnWholeMeasureNoteUntilEndOfMeasure: boolean;
     public GraceLineWidth: number;
     public MinimumStaffLineDistance: number;
@@ -1151,6 +1156,7 @@ export class EngravingRules {
         this.RepeatEndStartPadding = 2.0; // set to 0.0 to restore old padding/width with :||: measures
         this.OctaveShiftLineWidth = 0.12;
         this.OctaveShiftVerticalLineLength = EngravingRules.unit;
+        this.OctaveShiftClearance = 0.5;
         this.OctaveShiftOnWholeMeasureNoteUntilEndOfMeasure = false;
         this.GraceLineWidth = this.StaffLineWidth * this.GraceNoteScalingFactor;
 
