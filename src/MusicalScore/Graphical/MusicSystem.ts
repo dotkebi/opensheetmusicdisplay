@@ -87,11 +87,13 @@ export abstract class MusicSystem extends GraphicalObject {
     /**
      * Takes the stafflines out of the system whose staff the MusicXML hides in all measures of the system
      * (StaffLine.hiddenInSystem, see SourceMeasure.HiddenStaffIndices). A part label goes with the part's last staffline,
-     * and the system lines (e.g. the barline joining the staves of a part) of their measures go too.
+     * and the system lines (e.g. the barline joining the staves of a part) of their measures go too; the barlines drawn
+     * between the staves are joined to the stafflines left (see reconnectAroundHiddenStaffLines()).
      * @returns whether one was taken out
      */
     public removeHiddenStaffLines(): boolean {
         const hidden: StaffLine[] = this.staffLines.filter(line => line.hiddenInSystem);
+        const staffLinesBefore: StaffLine[] = this.staffLines.slice();
         for (const staffLine of hidden) {
             this.staffLines.splice(this.staffLines.indexOf(staffLine), 1);
             // (its box no longer counts for the system's borders)
@@ -110,7 +112,19 @@ export abstract class MusicSystem extends GraphicalObject {
             this.systemLines = this.systemLines.filter(line => line.parentTopStaffLine !== staffLine &&
                 line.bottomMeasure?.ParentStaffLine !== staffLine);
         }
+        if (hidden.length > 0) {
+            this.reconnectAroundHiddenStaffLines(staffLinesBefore);
+        }
         return hidden.length > 0;
+    }
+
+    /**
+     * Joins the lines drawn between the staves (barlines, the system's left line) that ended at a staffline just taken out
+     * of the system (removeHiddenStaffLines()) to the first and last staffline left between their ends.
+     * @param staffLinesBefore the system's stafflines before the hidden ones were taken out, in order
+     */
+    protected reconnectAroundHiddenStaffLines(staffLinesBefore: StaffLine[]): void {
+        // no impl here
     }
     public set StaffLines(value: StaffLine[]) {
         this.staffLines = value;
