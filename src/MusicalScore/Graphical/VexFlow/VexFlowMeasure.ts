@@ -110,15 +110,6 @@ export class VexFlowMeasure extends GraphicalMeasure {
     public interchangeableTimeSignatureSpec: string;
     /** VexFlow StaveConnectors (vertical lines) */
     protected connectors: VF.StaveConnector[] = [];
-
-    /** The StaveConnectors (vertical lines) drawn with this measure, from the stave of a measure above down to this one (lineTo()). */
-    public get Connectors(): VF.StaveConnector[] {
-        return this.connectors;
-    }
-
-    public set Connectors(value: VF.StaveConnector[]) {
-        this.connectors = value;
-    }
     /** Intermediate object to construct beams */
     private beams: { [voiceID: number]: [Beam, VexFlowVoiceEntry[]] [] } = {};
     /** Beams created by (optional) autoBeam function. */

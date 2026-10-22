@@ -85,15 +85,30 @@ export abstract class MusicSystem extends GraphicalObject {
     }
 
     /**
+     * Labels the system again from its stafflines not hidden in it (StaffLine.hiddenInSystem), so a part taken out of
+     * the system (removeHiddenStaffLines) leaves no room for its label before the staves (Nielsen Op. 57: the first
+     * system indented by the names of the percussion staves hidden in it).
+     * @returns whether it did
+     */
+    public relabelWithoutHiddenStaffLines(instrumentLabelTextHeight: number, systemLabelsRightMargin: number,
+                                          labelMarginBorderFactor: number, isFirstSystem: boolean): boolean {
+        const shown: StaffLine[] = this.staffLines.filter(line => !line.hiddenInSystem);
+        if (shown.length === 0 || shown.length === this.staffLines.length) {
+            return false;
+        }
+        this.createMusicSystemLabel(instrumentLabelTextHeight, systemLabelsRightMargin, labelMarginBorderFactor,
+                                    isFirstSystem, shown);
+        return true;
+    }
+
+    /**
      * Takes the stafflines out of the system whose staff the MusicXML hides in all measures of the system
      * (StaffLine.hiddenInSystem, see SourceMeasure.HiddenStaffIndices). A part label goes with the part's last staffline,
-     * and the system lines (e.g. the barline joining the staves of a part) of their measures go too; the barlines drawn
-     * between the staves are joined to the stafflines left (see reconnectAroundHiddenStaffLines()).
+     * and the system lines (e.g. the barline joining the staves of a part) of their measures go too.
      * @returns whether one was taken out
      */
     public removeHiddenStaffLines(): boolean {
         const hidden: StaffLine[] = this.staffLines.filter(line => line.hiddenInSystem);
-        const staffLinesBefore: StaffLine[] = this.staffLines.slice();
         for (const staffLine of hidden) {
             this.staffLines.splice(this.staffLines.indexOf(staffLine), 1);
             // (its box no longer counts for the system's borders)
@@ -112,19 +127,7 @@ export abstract class MusicSystem extends GraphicalObject {
             this.systemLines = this.systemLines.filter(line => line.parentTopStaffLine !== staffLine &&
                 line.bottomMeasure?.ParentStaffLine !== staffLine);
         }
-        if (hidden.length > 0) {
-            this.reconnectAroundHiddenStaffLines(staffLinesBefore);
-        }
         return hidden.length > 0;
-    }
-
-    /**
-     * Joins the lines drawn between the staves (barlines, the system's left line) that ended at a staffline just taken out
-     * of the system (removeHiddenStaffLines()) to the first and last staffline left between their ends.
-     * @param staffLinesBefore the system's stafflines before the hidden ones were taken out, in order
-     */
-    protected reconnectAroundHiddenStaffLines(staffLinesBefore: StaffLine[]): void {
-        // no impl here
     }
     public set StaffLines(value: StaffLine[]) {
         this.staffLines = value;
@@ -217,13 +220,11 @@ export abstract class MusicSystem extends GraphicalObject {
         const staffLine: StaffLine = measure.ParentStaffLine;
         const staffLineRelative: PointF2D = new PointF2D(staffLine.PositionAndShape.RelativePosition.x,
                                                          staffLine.PositionAndShape.RelativePosition.y);
-        // the part's first and last stafflines in the system (a staff hidden in the system is taken out later, and the line
-        //   joined to the stafflines left, see reconnectAroundHiddenStaffLines(); osmd-dart makes it after, from those left)
-        const partLines: StaffLine[] = this.staffLines.filter(line => line.ParentStaff.ParentInstrument === staffLine.ParentStaff.ParentInstrument);
-        if (partLines[0] === staffLine) {
+        const staves: Staff[] = staffLine.ParentStaff.ParentInstrument.Staves;
+        if (staffLine.ParentStaff === staves[0]) {
             let bottomMeasure: GraphicalMeasure = undefined;
-            if (partLines.length > 1) {
-                bottomMeasure = partLines[partLines.length - 1].Measures[measureIndex];
+            if (staves.length > 1) {
+                bottomMeasure = this.getBottomStaffLine(staffLine).Measures[measureIndex];
             }
             const singleVerticalLineAfterMeasure: SystemLine = this.createSystemLine(xPosition, lineWidth, lineType,
                                                                                      linePosition, this, measure, bottomMeasure);
@@ -344,19 +345,31 @@ export abstract class MusicSystem extends GraphicalObject {
 
     /**
      * Create the Instrument's Labels (only for the first [[MusicSystem]] of the first MusicPage).
+     * The labels created before are dropped. All of the system's stafflines are moved to the right of the labels;
+     * whether the system has a single staff (part abbreviations) is judged on all of them.
      * @param instrumentLabelTextHeight
      * @param systemLabelsRightMargin
      * @param labelMarginBorderFactor
+     * @param labelled the stafflines whose parts (and groups) get labels, all of the system's by default
      */
     public createMusicSystemLabel(  instrumentLabelTextHeight: number, systemLabelsRightMargin: number,
-                                    labelMarginBorderFactor: number, isFirstSystem: boolean = false): void {
+                                    labelMarginBorderFactor: number, isFirstSystem: boolean = false,
+                                    labelled: StaffLine[] = this.staffLines): void {
 
+        for (const label of [...this.labels.values(), ...this.groupLabels.values()]) {
+            const childIndex: number = this.PositionAndShape.ChildElements.indexOf(label.PositionAndShape);
+            if (childIndex >= 0) {
+                this.PositionAndShape.ChildElements.splice(childIndex, 1);
+            }
+        }
+        this.labels.clear();
+        this.groupLabels.clear();
         const originalSystemLabelsRightMargin: number = systemLabelsRightMargin;
         const groupLabelsByDepth: GraphicalLabel[][] = [];
-        const groups: InstrumentalGroup[] = this.staffLines[0]?.ParentStaff.ParentInstrument.GetMusicSheet.InstrumentalGroups ?? [];
-        this.createGroupLabels(groups, 0, isFirstSystem, instrumentLabelTextHeight, groupLabelsByDepth);
-        for (let idx: number = 0, len: number = this.staffLines.length; idx < len; ++idx) {
-            const instrument: Instrument = this.staffLines[idx].ParentStaff.ParentInstrument;
+        const groups: InstrumentalGroup[] = labelled[0]?.ParentStaff.ParentInstrument.GetMusicSheet.InstrumentalGroups ?? [];
+        this.createGroupLabels(groups, 0, isFirstSystem, instrumentLabelTextHeight, groupLabelsByDepth, labelled);
+        for (let idx: number = 0, len: number = labelled.length; idx < len; ++idx) {
+            const instrument: Instrument = labelled[idx].ParentStaff.ParentInstrument;
             let instrNameLabel: Label;
             if (isFirstSystem) {
                 instrNameLabel = instrument.NameLabel;
@@ -429,7 +442,7 @@ export abstract class MusicSystem extends GraphicalObject {
     }
 
     private createGroupLabels(groups: InstrumentalGroup[], depth: number, isFirstSystem: boolean,
-                              textHeight: number, byDepth: GraphicalLabel[][]): void {
+                              textHeight: number, byDepth: GraphicalLabel[][], labelled: StaffLine[]): void {
         if (!this.rules.RenderPartGroupNames) {
             return;
         }
@@ -441,7 +454,7 @@ export abstract class MusicSystem extends GraphicalObject {
             const print: boolean = isFirstSystem ? group.PrintName && this.rules.RenderPartNames
                 : group.PrintAbbreviation && this.rules.RenderPartNames && this.rules.RenderPartAbbreviations
                     && (this.staffLines.length !== 1 || this.rules.RenderPartAbbreviationsForSingleStaff);
-            if (print && text?.trim() && this.staffLinesForGroup(group).length > 0) {
+            if (print && text?.trim() && this.staffLinesForGroup(group, labelled).length > 0) {
                 const label: GraphicalLabel = new GraphicalLabel(
                     new Label(text), textHeight, TextAlignmentEnum.LeftCenter, this.rules, this.boundingBox
                 );
@@ -452,7 +465,7 @@ export abstract class MusicSystem extends GraphicalObject {
                 }
                 byDepth[depth].push(label);
             }
-            this.createGroupLabels(group.InstrumentalGroups, depth + 1, isFirstSystem, textHeight, byDepth);
+            this.createGroupLabels(group.InstrumentalGroups, depth + 1, isFirstSystem, textHeight, byDepth, labelled);
         }
     }
 
@@ -467,8 +480,8 @@ export abstract class MusicSystem extends GraphicalObject {
         return false;
     }
 
-    private staffLinesForGroup(group: InstrumentalGroup): StaffLine[] {
-        return this.staffLines.filter((line: StaffLine): boolean =>
+    private staffLinesForGroup(group: InstrumentalGroup, lines: StaffLine[] = this.staffLines): StaffLine[] {
+        return lines.filter((line: StaffLine): boolean =>
             this.instrumentBelongsToGroup(line.ParentStaff.ParentInstrument, group));
     }
 

@@ -1,5 +1,3 @@
-import Vex from "vexflow";
-import VF = Vex.Flow;
 import {MusicSystem} from "../MusicSystem";
 import {SystemLinesEnum} from "../SystemLinesEnum";
 import {SystemLinePosition} from "../SystemLinePosition";
@@ -44,55 +42,6 @@ export class VexFlowMusicSystem extends MusicSystem {
 
         this.boundingBox.XBordersHaveBeenSet = true;
         this.boundingBox.YBordersHaveBeenSet = true;
-    }
-
-    /**
-     * A StaveConnector (VexFlowMeasure.lineTo()) is drawn with its bottom measure from the stave of its top measure. One that
-     * ends at a staffline taken out of the system (hidden in all of its measures) is joined to the first and last staffline left
-     * between its ends instead, or dropped where fewer than two are left. Before, a hidden top staff, whose stave is never drawn
-     * and so never placed, drew each barline of the system from the page top (Glière, Op. 91, piano, its top staff shown in
-     * m85-93 only), and a hidden bottom staff took the barlines between the other staves with it. Same as osmd-dart.
-     */
-    protected reconnectAroundHiddenStaffLines(staffLinesBefore: StaffLine[]): void {
-        const staveAt: Map<VF.Stave, [number, number]> = new Map();
-        staffLinesBefore.forEach((staffLine, lineIndex) => {
-            staffLine.Measures.forEach((measure, measureIndex) => {
-                const stave: VF.Stave = (measure as VexFlowMeasure).getVFStave?.();
-                if (stave) {
-                    staveAt.set(stave, [lineIndex, measureIndex]);
-                }
-            });
-        });
-        const moved: [VexFlowMeasure, VF.StaveConnector][] = [];
-        for (const staffLine of staffLinesBefore) {
-            for (const measure of staffLine.Measures) {
-                const vfMeasure: VexFlowMeasure = measure as VexFlowMeasure;
-                if (!vfMeasure.Connectors?.length) {
-                    continue;
-                }
-                vfMeasure.Connectors = vfMeasure.Connectors.filter(connector => {
-                    const top: [number, number] = staveAt.get((connector as any).top_stave);
-                    const bottom: [number, number] = staveAt.get((connector as any).bottom_stave);
-                    if (!top || !bottom || (!staffLinesBefore[top[0]].hiddenInSystem && !staffLinesBefore[bottom[0]].hiddenInSystem)) {
-                        return true;
-                    }
-                    const left: StaffLine[] = staffLinesBefore.slice(top[0], bottom[0] + 1).filter(line => !line.hiddenInSystem);
-                    if (left.length >= 2) {
-                        const newTop: VexFlowMeasure = left[0].Measures[top[1]] as VexFlowMeasure;
-                        const newBottom: VexFlowMeasure = left[left.length - 1].Measures[bottom[1]] as VexFlowMeasure;
-                        if (newTop && newBottom) {
-                            (connector as any).top_stave = newTop.getVFStave();
-                            (connector as any).bottom_stave = newBottom.getVFStave();
-                            moved.push([newBottom, connector]);
-                        }
-                    }
-                    return false;
-                });
-            }
-        }
-        for (const [measure, connector] of moved) {
-            measure.Connectors.push(connector);
-        }
     }
 
     /**
