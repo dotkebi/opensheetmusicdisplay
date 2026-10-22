@@ -262,8 +262,15 @@ export class MusicSystemBuilder {
             checkExtraInstructionMeasure) {
             this.checkAndCreateExtraInstructionMeasure(measures);
         }
+        // (the hidden stafflines are known before the stretch, so that the system is stretched to the width its labels
+        //   leave without them)
+        const musicSystem: MusicSystem = this.currentSystemParams.currentSystem;
+        this.removeStaffLinesHiddenInSystem(musicSystem);
+        if (musicSystem.relabelWithoutHiddenStaffLines(this.rules.InstrumentLabelTextHeight, this.rules.SystemLabelsRightMargin,
+                                                       this.rules.LabelMarginBorderFactor, musicSystem === this.musicSystems[0])) {
+            this.currentSystemParams.maxLabelLength = musicSystem.MaxLabelLength;
+        }
         this.stretchMusicSystem(systemEndsPart);
-        this.removeStaffLinesHiddenInSystem(this.currentSystemParams.currentSystem);
     }
 
     /**
