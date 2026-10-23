@@ -826,11 +826,9 @@ export class ExpressionReader {
         if (dynamicsNode.hasElements) {
             const numberXml: number = this.readNumber(dynamicsNode); // probably never given, just to comply with createExpressionIfNeeded()
             const dynamicsElements: IXmlElement[] = dynamicsNode.elements();
-            // A single <dynamics> element may contain multiple symbols, e.g. <sf/><mp/>.
-            const expressionText: string = dynamicsElements
-                .map((element: IXmlElement): string => element.name === "other-dynamics" ? element.value : element.name)
-                .join("")
-                .trim(); // e.g. Finale writes <other-dynamics> marcato</other-dynamics> with a leading space
+            // A single <dynamics> element may contain multiple symbols, e.g. <sf/><mp/>, and texts: joined as osmd-dart does.
+            const expressionText: string = InstantaneousDynamicExpression.joinMarkingPieces(dynamicsElements
+                .map((element: IXmlElement): string => element.name === "other-dynamics" ? element.value : element.name));
             if (expressionText) {
                 // The playback dynamic of the marking: sf for <sf/><mp/> (sfmp) as well as for the same marking spelled
                 //   letter by letter, ff for <other-dynamics>ffz</other-dynamics>, f for "f con fuoco", none for "cresc.".

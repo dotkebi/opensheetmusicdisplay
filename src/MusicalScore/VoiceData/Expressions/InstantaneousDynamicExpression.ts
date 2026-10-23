@@ -137,10 +137,15 @@ export class InstantaneousDynamicExpression extends AbstractExpression {
      * - for a text, its leading dynamic word: "f con fuoco" -> f, "p dolce" -> p. A dynamic letter that merely starts a
      *   longer word doesn't count ("fine", "forte", "pesante"), nor does a text not starting with a dynamic ("cresc.", "più f").
      * - for an editorial dynamic in parentheses or brackets, the same for the text inside: "(p)", "[ f ]", "[p] dolce" -> p, f, p
-     *   (Haydn Hob. VIIb:2, IMC edition, m59 (p)/(mf); OpenScore's [p]). Same rule as osmd-dart, which reads "( p )".
+     *   (Haydn Hob. VIIb:2, IMC edition, m59 (p)/(mf); OpenScore's [p]).
+     * - "sempre X" and "subito X" are X: "sempre pp" -> pp. A relative marking (più, meno, poco ...) has none: in playback
+     *   it keeps the staff's preceding level (02front midi-extraction, user decision 2026-10-24 (a)).
+     * Same rules as osmd-dart.
      */
     public static dynamicEnumFromText(text: string): DynamicEnum {
-        const normalized: string = InstantaneousDynamicExpression.withoutLeadingBrackets(text?.trim().toLowerCase());
+        const normalized: string = InstantaneousDynamicExpression.withoutLeadingBrackets(
+            InstantaneousDynamicExpression.withoutLeadingQualifier(
+                InstantaneousDynamicExpression.withoutLeadingBrackets(text?.trim().toLowerCase())));
         if (!normalized) {
             return undefined;
         }
@@ -162,6 +167,28 @@ export class InstantaneousDynamicExpression extends AbstractExpression {
             return DynamicEnum[leadingDynamic];
         }
         return undefined; // the dynamic letter(s) just start a longer word, e.g. "fine"
+    }
+
+    /** "sempre pp" -> "pp", "subito p" -> "p": the text without a leading sempre or subito. */
+    private static withoutLeadingQualifier(text: string): string {
+        return text?.replace(/^(sempre|subito)\s+/, "");
+    }
+
+    /** The text of a marking from the pieces of its <dynamics> (element names and <other-dynamics> texts), as osmd-dart
+     *  joins them: trimmed, with a space between them except between dynamic letters (<sf/><mp/> "sfmp", "s" + <fp/> "sfp",
+     *  also SMuFL dynamics glyphs), after an opening bracket and before a closing bracket or a period ("(f)", "m.v.").
+     *  <ff/> + "très marqué" is "ff très marqué", "più " + <f/> "più f". */
+    public static joinMarkingPieces(pieces: string[]): string {
+        const isDynamicLetters: (piece: string) => boolean = (piece: string): boolean => /^[pfmsrzn\uE520-\uE54F]+$/i.test(piece);
+        let text: string = "";
+        let previous: string = undefined;
+        for (const piece of pieces.map((value: string): string => (value ?? "").trim()).filter((value: string): boolean => !!value)) {
+            const glued: boolean = previous === undefined || isDynamicLetters(previous) && isDynamicLetters(piece) ||
+                /[([]$/.test(previous) || /^[)\].,]/.test(piece);
+            text += (glued ? "" : " ") + piece;
+            previous = piece;
+        }
+        return text;
     }
 
     /** The text with the parentheses or brackets around its start removed: "( p )" -> "p", "[p]dolce" -> "p dolce".

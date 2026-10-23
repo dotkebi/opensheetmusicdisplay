@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<!-- Dynamics made of several pieces (OpenScore spellings): joined with a space except between dynamic letters, after an
+     opening and before a closing bracket or a period; sempre/subito X plays X, più/poco X has no level of its own. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Violin</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1"><attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><!-- Cherubini Quartet 1 m46 -->
+      <direction placement="below"><direction-type><dynamics><ff/><other-dynamics>très marqué</other-dynamics></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="2">
+      <direction placement="below"><direction-type><dynamics><other-dynamics>s</other-dynamics><fp/></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="3"><!-- Nielsen Op.13 -->
+      <direction placement="below"><direction-type><dynamics><f/><other-dynamics>z</other-dynamics><pp/></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="4"><!-- Bach BWV 1048 -->
+      <direction placement="below"><direction-type><dynamics><other-dynamics>( </other-dynamics><f/><other-dynamics>)</other-dynamics></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="5"><!-- Bach BWV 1049 ii -->
+      <direction placement="below"><direction-type><dynamics><other-dynamics>[ </other-dynamics><f/><other-dynamics>&#160;]</other-dynamics></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="6"><!-- Haydn Op.20/4 -->
+      <direction placement="below"><direction-type><dynamics><other-dynamics>m</other-dynamics><other-dynamics>.v.</other-dynamics></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="7"><!-- Mozart K.575 -->
+      <direction placement="below"><direction-type><dynamics><other-dynamics>m</other-dynamics><other-dynamics>&#xE534;</other-dynamics></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="8">
+      <direction placement="below"><direction-type><dynamics><other-dynamics>più </other-dynamics><f/></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="9">
+      <direction placement="below"><direction-type><dynamics><other-dynamics>sempre pp</other-dynamics></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="10">
+      <direction placement="below"><direction-type><dynamics><other-dynamics>subito</other-dynamics><p/></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="11">
+      <direction placement="below"><direction-type><dynamics><other-dynamics>poco</other-dynamics><f/></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+    <measure number="12"><!-- Busoni BV 208 -->
+      <direction placement="below"><direction-type><dynamics><mf/><other-dynamics>stacc.</other-dynamics></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>

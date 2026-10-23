@@ -84,7 +84,20 @@ describe("ExpressionReader", () => {
                 ["[ f\u00a0]", DynamicEnum.f], ["[pp]", DynamicEnum.pp], ["(sfz)", DynamicEnum.sfz], ["( f)", DynamicEnum.f],
                 ["[p] dolce", DynamicEnum.p], ["[ p ] dolciss.", DynamicEnum.p], ["[p]dolce", DynamicEnum.p],
                 ["(", undefined], ["()", undefined], ["(p", undefined], ["[p)", undefined], ["(cresc.)", undefined],
-                ["(più f)", undefined], ["(fine)", undefined], ["sempre (p)", undefined],
+                ["(più f)", undefined], ["(fine)", undefined],
+            ];
+            for (const testCase of cases) {
+                expect(InstantaneousDynamicExpression.dynamicEnumFromText(testCase[0]), `"${testCase[0]}"`).to.equal(testCase[1]);
+            }
+        });
+
+        it("dynamicEnumFromText: sempre/subito X is X, a relative marking (più, meno, poco) has none", () => {
+            // user decision 2026-10-24 (a): the relative ones keep the staff's preceding level in playback (02front, 03app)
+            const cases: [string, DynamicEnum][] = [
+                ["sempre pp", DynamicEnum.pp], ["subito p", DynamicEnum.p], ["SEMPRE   FF", DynamicEnum.ff], ["Subito f", DynamicEnum.f],
+                ["sempre (p)", DynamicEnum.p], ["(sempre p)", DynamicEnum.p], ["sempre p dolce", DynamicEnum.p],
+                ["sempre più f", undefined], ["più f", undefined], ["poco f", undefined], ["meno p", undefined],
+                ["meno mosso", undefined], ["sempre", undefined], ["subito", undefined], ["sempreff", undefined],
             ];
             for (const testCase of cases) {
                 expect(InstantaneousDynamicExpression.dynamicEnumFromText(testCase[0]), `"${testCase[0]}"`).to.equal(testCase[1]);
@@ -100,6 +113,18 @@ describe("ExpressionReader", () => {
             expect(dynamics.map((dynamic: InstantaneousDynamicExpression): DynamicEnum => dynamic.DynEnum))
                 .to.deep.equal([DynamicEnum.mf, DynamicEnum.p, DynamicEnum.mf, DynamicEnum.pp, DynamicEnum.f, undefined]);
             expect(dynamics[1].Volume).to.equal(InstantaneousDynamicExpression.dynamicToRelativeVolumeDict.getValue(DynamicEnum.p));
+        });
+
+        it("joins the pieces of a marking as osmd-dart does: a space between words, none between dynamic letters", () => {
+            // OpenScore spellings; "fftrès marqué" (Cherubini Quartet 1 m46) lost its ff, osmd-dart read "( f )", "s fp", "f z pp"
+            const dynamics: InstantaneousDynamicExpression[] =
+                collectDynamics(readSheet("test/data/test_dynamics_joined_pieces_and_qualifiers.musicxml"));
+            expect(dynamics.map((dynamic: InstantaneousDynamicExpression): string => dynamic.DynamicExpression))
+                .to.deep.equal(["ff très marqué", "sfp", "fzpp", "(f)", "[f]", "m.v.", "m\ue534", "più f", "sempre pp", "subito p",
+                                "poco f", "mf stacc."]);
+            expect(dynamics.map((dynamic: InstantaneousDynamicExpression): DynamicEnum => dynamic.DynEnum))
+                .to.deep.equal([DynamicEnum.ff, DynamicEnum.sfp, DynamicEnum.fz, DynamicEnum.f, DynamicEnum.f, undefined, undefined,
+                                undefined, DynamicEnum.pp, DynamicEnum.p, undefined, DynamicEnum.mf]);
         });
     });
 
