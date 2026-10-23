@@ -320,7 +320,12 @@ export abstract class MusicSystem extends GraphicalObject {
     }
 
     /**
-     * Create a GroupBracket for an [[InstrumentalGroup]].
+     * Create a GroupBracket for each [[InstrumentalGroup]], from the group's first staffline in the system down to the first
+     * staffline of its last part in the system: a part hidden in the system (removeHiddenStaffLines()) is not in it, so the
+     * bracket joins the parts left, if there are two or more of them. Before, it was only made when the first staff of the
+     * group's first and last parts were both in the system, so a hidden first or last part took the whole bracket with it, as
+     * did a hidden top staff of a piano at either end, or a nested group hidden at either end. Same rule as
+     * createInstrumentBrackets(); same as osmd-dart.
      * @param instrumentGroups
      * @param staffHeight
      * @param recursionDepth
@@ -331,23 +336,21 @@ export abstract class MusicSystem extends GraphicalObject {
             if (instrumentGroup.InstrumentalGroups.length < 1) {
                 continue;
             }
-            const instrument1: Instrument = this.findFirstVisibleInstrumentInInstrumentalGroup(instrumentGroup);
-            const instrument2: Instrument = this.findLastVisibleInstrumentInInstrumentalGroup(instrumentGroup);
-            if (!instrument1 || !instrument2) {
-                continue;
-            }
+            const instruments: Set<Instrument> = this.instrumentsInInstrumentalGroup(instrumentGroup);
             let firstStaffLine: StaffLine = undefined;
             let lastStaffLine: StaffLine = undefined;
             for (let idx2: number = 0, len2: number = this.staffLines.length; idx2 < len2; ++idx2) {
                 const staffLine: StaffLine = this.staffLines[idx2];
-                if (staffLine.ParentStaff === instrument1.Staves[0]) {
-                    firstStaffLine = staffLine;
+                const instrument: Instrument = staffLine.ParentStaff.ParentInstrument;
+                if (!instruments.has(instrument) || !staffLine.ParentStaff.Visible) {
+                    continue;
                 }
-                if (staffLine.ParentStaff === instrument2.Staves[0]) {
-                    lastStaffLine = staffLine;
+                firstStaffLine = firstStaffLine ?? staffLine;
+                if (lastStaffLine?.ParentStaff.ParentInstrument !== instrument) {
+                    lastStaffLine = staffLine; // the first staffline of the last part left
                 }
             }
-            if (firstStaffLine && lastStaffLine) {
+            if (firstStaffLine && lastStaffLine && firstStaffLine.ParentStaff.ParentInstrument !== lastStaffLine.ParentStaff.ParentInstrument) {
                 if (instrumentGroup.GroupSymbol !== "none") {
                     this.createGroupBracket(firstStaffLine, lastStaffLine, recursionDepth, instrumentGroup.GroupSymbol);
                 }
@@ -638,33 +641,16 @@ export abstract class MusicSystem extends GraphicalObject {
         // no impl here
     }
 
-    private findFirstVisibleInstrumentInInstrumentalGroup(instrumentalGroup: InstrumentalGroup): Instrument {
-        for (let idx: number = 0, len: number = instrumentalGroup.InstrumentalGroups.length; idx < len; ++idx) {
-            const groupOrInstrument: InstrumentalGroup = instrumentalGroup.InstrumentalGroups[idx];
+    /** The parts of an [[InstrumentalGroup]], also those of the groups nested in it. */
+    private instrumentsInInstrumentalGroup(instrumentalGroup: InstrumentalGroup, instruments: Set<Instrument> = new Set()): Set<Instrument> {
+        for (const groupOrInstrument of instrumentalGroup.InstrumentalGroups) {
             if (groupOrInstrument instanceof Instrument) {
-                if ((<Instrument>groupOrInstrument).isVisible()) {
-                    return <Instrument>groupOrInstrument;
-                }
-                continue;
+                instruments.add(groupOrInstrument);
+            } else {
+                this.instrumentsInInstrumentalGroup(groupOrInstrument, instruments);
             }
-            return this.findFirstVisibleInstrumentInInstrumentalGroup(groupOrInstrument);
         }
-        return undefined;
-    }
-
-    private findLastVisibleInstrumentInInstrumentalGroup(instrumentalGroup: InstrumentalGroup): Instrument {
-        let groupOrInstrument: InstrumentalGroup;
-        for (let i: number = instrumentalGroup.InstrumentalGroups.length - 1; i >= 0; i--) {
-            groupOrInstrument = instrumentalGroup.InstrumentalGroups[i];
-            if (groupOrInstrument instanceof Instrument) {
-                if ((<Instrument>groupOrInstrument).isVisible()) {
-                    return <Instrument>groupOrInstrument;
-                }
-                continue;
-            }
-            return this.findLastVisibleInstrumentInInstrumentalGroup(groupOrInstrument);
-        }
-        return undefined;
+        return instruments;
     }
 
     /**
