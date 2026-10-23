@@ -76,6 +76,31 @@ describe("ExpressionReader", () => {
                 expect(InstantaneousDynamicExpression.dynamicEnumFromText(testCase[0]), `"${testCase[0]}"`).to.equal(testCase[1]);
             }
         });
+
+        it("dynamicEnumFromText: an editorial dynamic in parentheses or brackets is the dynamic inside", () => {
+            // Haydn Hob. VIIb:2 (IMC) m59 (p)/(mf), OpenScore [p] [ f\u00a0]; osmd-dart reads "( p )" for the same XML
+            const cases: [string, DynamicEnum][] = [
+                ["(p)", DynamicEnum.p], ["( p )", DynamicEnum.p], ["(mf)", DynamicEnum.mf], ["[f]", DynamicEnum.f],
+                ["[ f\u00a0]", DynamicEnum.f], ["[pp]", DynamicEnum.pp], ["(sfz)", DynamicEnum.sfz], ["( f)", DynamicEnum.f],
+                ["[p] dolce", DynamicEnum.p], ["[ p ] dolciss.", DynamicEnum.p], ["[p]dolce", DynamicEnum.p],
+                ["(", undefined], ["()", undefined], ["(p", undefined], ["[p)", undefined], ["(cresc.)", undefined],
+                ["(più f)", undefined], ["(fine)", undefined], ["sempre (p)", undefined],
+            ];
+            for (const testCase of cases) {
+                expect(InstantaneousDynamicExpression.dynamicEnumFromText(testCase[0]), `"${testCase[0]}"`).to.equal(testCase[1]);
+            }
+        });
+
+        it("reads (p) written as <other-dynamics>(</other-dynamics><p/><other-dynamics>)</other-dynamics> as p", () => {
+            const dynamics: InstantaneousDynamicExpression[] =
+                collectDynamics(readSheet("test/data/test_dynamics_parenthesized_playback.musicxml"));
+            // the marking is drawn as written; only the playback enum (and so Volume) is the dynamic inside
+            expect(dynamics.map((dynamic: InstantaneousDynamicExpression): string => dynamic.DynamicExpression))
+                .to.deep.equal(["mf", "(p)", "(mf)", "pp", "[f]", "più f"]);
+            expect(dynamics.map((dynamic: InstantaneousDynamicExpression): DynamicEnum => dynamic.DynEnum))
+                .to.deep.equal([DynamicEnum.mf, DynamicEnum.p, DynamicEnum.mf, DynamicEnum.pp, DynamicEnum.f, undefined]);
+            expect(dynamics[1].Volume).to.equal(InstantaneousDynamicExpression.dynamicToRelativeVolumeDict.getValue(DynamicEnum.p));
+        });
     });
 
     describe("IgnoreRepeatedDynamics with combined dynamics", () => {

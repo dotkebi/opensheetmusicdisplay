@@ -136,9 +136,11 @@ export class InstantaneousDynamicExpression extends AbstractExpression {
      *   combined marking: "sfmp" -> sf, "ffz" -> ff (also how Finale, Sibelius and MuseScore write these in <other-dynamics>)
      * - for a text, its leading dynamic word: "f con fuoco" -> f, "p dolce" -> p. A dynamic letter that merely starts a
      *   longer word doesn't count ("fine", "forte", "pesante"), nor does a text not starting with a dynamic ("cresc.", "più f").
+     * - for an editorial dynamic in parentheses or brackets, the same for the text inside: "(p)", "[ f ]", "[p] dolce" -> p, f, p
+     *   (Haydn Hob. VIIb:2, IMC edition, m59 (p)/(mf); OpenScore's [p]). Same rule as osmd-dart, which reads "( p )".
      */
     public static dynamicEnumFromText(text: string): DynamicEnum {
-        const normalized: string = text?.trim().toLowerCase();
+        const normalized: string = InstantaneousDynamicExpression.withoutLeadingBrackets(text?.trim().toLowerCase());
         if (!normalized) {
             return undefined;
         }
@@ -160,6 +162,17 @@ export class InstantaneousDynamicExpression extends AbstractExpression {
             return DynamicEnum[leadingDynamic];
         }
         return undefined; // the dynamic letter(s) just start a longer word, e.g. "fine"
+    }
+
+    /** The text with the parentheses or brackets around its start removed: "( p )" -> "p", "[p]dolce" -> "p dolce".
+     *  Unchanged if it doesn't start with one or the closing one is missing ("(p", "[p)"). */
+    private static withoutLeadingBrackets(text: string): string {
+        const closing: string = text?.startsWith("(") ? ")" : text?.startsWith("[") ? "]" : undefined;
+        const end: number = closing ? text.indexOf(closing, 1) : -1;
+        if (end < 0) {
+            return text;
+        }
+        return `${text.substring(1, end).trim()} ${text.substring(end + 1).trim()}`.trim();
     }
 
     /** All known dynamics (the DynamicEnum names except "other"), longest first. See dynamicEnumFromText(). */
