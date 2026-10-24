@@ -122,7 +122,17 @@ export class SourceMeasure {
     public multipleRestMeasureNumber: number = 0;
     private staffLinkedExpressions: MultiExpression[][] = [];
     private tempoExpressions: MultiTempoExpression[] = [];
-    public rehearsalExpression: RehearsalExpression;
+    /** The rehearsal marks at this measure, at most one per part (ExpressionReader.interpretRehearsalMark), each drawn
+     *  above its own part (VexFlowMusicSheetCalculator.calculateRehearsalMark). */
+    public rehearsalExpressions: RehearsalExpression[] = [];
+    /** The first rehearsal mark of the measure (undefined without one): its label reads as the measure number
+     *  (MusicSheetCalculator.rehearsalMarkShowsMeasureNumber) whichever part it is on. */
+    public get rehearsalExpression(): RehearsalExpression {
+        return this.rehearsalExpressions[0];
+    }
+    public set rehearsalExpression(value: RehearsalExpression) {
+        this.rehearsalExpressions = value ? [value] : [];
+    }
     private verticalSourceStaffEntryContainers: VerticalSourceStaffEntryContainer[] = [];
     private implicitMeasure: boolean;
     private hasEndLine: boolean;
