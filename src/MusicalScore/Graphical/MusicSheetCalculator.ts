@@ -4605,7 +4605,7 @@ export abstract class MusicSheetCalculator {
             } else if (useLeftStaffEntryBorder &&
                 (leftStaffEntry.getAbsoluteTimestamp().RealValue === timestamp.RealValue || endAfterRightStaffEntry)
             ) {
-                leftX = leftStaffEntry.PositionAndShape.RelativePosition.x + leftStaffEntry.PositionAndShape.BorderLeft + measureRelativeX;
+                leftX = leftStaffEntry.PositionAndShape.RelativePosition.x + leftStaffEntry.ExpressionBorderLeft + measureRelativeX;
                 rightX = leftX;
             }
             let timestampQuotient: number = 0.0;
