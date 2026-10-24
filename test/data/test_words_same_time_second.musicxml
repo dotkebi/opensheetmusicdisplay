@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A second words at the same time as another marking, each a direction-type or a direction of its own:
+     m1 one direction with a dynamic (mf) and words (espressivo) direction-type (Glière, Horn Concerto Op. 91 horn m200);
+     m2 two directions of words below at the same time (dim., poco rall.; Nielsen, Clarinet Concerto m399);
+     m3 words above (allarg.), words below (cresc.) and a dynamic (f) below at the same time (Bowen, Viola Sonata Op. 22
+     III m277); m4 words below (cresc.) and bold words above (:) at the same time (Saint-Saëns, Violin Concerto No. 3
+     m731). Every words is printed. Synthetic pitches. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Horn</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>2</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <direction placement="above"><direction-type><words>Tranquillo</words></direction-type></direction>
+      <direction placement="below"><direction-type><dynamics default-x="-36" default-y="-80"><mf/></dynamics></direction-type><direction-type><words relative-x="24" font-style="italic">espressivo</words></direction-type><sound dynamics="69"/></direction>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+      <direction placement="below"><direction-type><words default-y="-65">dim.</words></direction-type></direction>
+      <direction placement="below"><direction-type><words default-y="-100">poco rall.</words></direction-type></direction>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+    </measure>
+    <measure number="3">
+      <direction placement="above"><direction-type><words>allarg.</words></direction-type></direction>
+      <direction placement="below"><direction-type><words>cresc.</words></direction-type></direction>
+      <direction placement="below"><direction-type><dynamics><f/></dynamics></direction-type></direction>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+    </measure>
+    <measure number="4">
+      <direction placement="below"><direction-type><words default-y="-65">cresc.</words></direction-type></direction>
+      <direction placement="above"><direction-type><words default-y="85" font-weight="bold">:</words></direction-type></direction>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>half</type></note>
+    </measure>
+  </part>
+</score-partwise>

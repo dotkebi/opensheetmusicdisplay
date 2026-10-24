@@ -1337,6 +1337,10 @@ export abstract class MusicSheetCalculator {
         if ((multiExpression.MoodList.length > 0) || (multiExpression.UnknownList.length > 0)) {
             // words above and below the staff at the same time are drawn as one label each on their own side
             for (const entries of multiExpression.getEntryGroupsByPlacement()) {
+                if (!entries.some(MultiExpression.isMoodOrUnknownEntry)) {
+                    // a verbal dynamic alone on its side ("cresc." below "allarg."): drawn as a dynamic (calculateDynamicExpressions())
+                    continue;
+                }
                 this.calculateMoodAndUnknownExpressionEntries(multiExpression, entries, measureIndex, staffIndex);
             }
         }
@@ -1594,7 +1598,8 @@ export abstract class MusicSheetCalculator {
      * there; the words are then placed as before.
      */
     protected placeWordsBesideSameTimeDynamic(multiExpression: MultiExpression, staffLine: StaffLine, measure: GraphicalMeasure,
-                                              text: string, style: FontStyles, placement: PlacementEnum, fontHeight: number): GraphicalLabel {
+                                              text: string, style: FontStyles, placement: PlacementEnum, fontHeight: number,
+                                              self: AbstractGraphicalExpression = undefined): GraphicalLabel {
         // the words of one direction with the dynamic are joined with the dynamic's empty label (and an exporter's empty words,
         //   Gounod Méditation m33 "piu" + " " + f): "piu   "
         text = text.trim();
@@ -1651,7 +1656,7 @@ export abstract class MusicSheetCalculator {
         // Only the first words beside a dynamic move it: a second one ("sempre" before and "stacc." after an ff) would take it
         //   off the first one's line.
         if (dynamic.HasWordsBeside && (dynamicShift !== 0 || carry !== 0) ||
-            ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic))) {
+            ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic, self))) {
             return undefined;
         }
         dynamic.HasWordsBeside = true;
@@ -1756,10 +1761,12 @@ export abstract class MusicSheetCalculator {
 
     /** Whether rect [left, right, top, bottom] (relative to staffLine) is clear of the dynamics, wedges and words placed on
      *  staffLine, except the given dynamic. */
-    private clearOfExpressions(staffLine: StaffLine, rect: number[], except: AbstractGraphicalExpression): boolean {
+    private clearOfExpressions(staffLine: StaffLine, rect: number[], except: AbstractGraphicalExpression,
+                               except2: AbstractGraphicalExpression = undefined): boolean {
         const [left, right, top, bottom] = rect;
         for (const expression of staffLine.AbstractExpressions) {
-            if (expression === except) {
+            if (expression === except || expression === except2) {
+                // (except2: a verbal dynamic being placed beside the dynamic is already on the staff line)
                 continue;
             }
             let other: BoundingBox;
@@ -3002,8 +3009,19 @@ export abstract class MusicSheetCalculator {
         const dashesEndX: number = this.expressionDashesEndX(continuousDynamic, staffLine, staffIndex);
         const rangeRight: number = dashesEndX > right ? dashesEndX : right;
 
+        // A verbal dynamic with a dynamic sign at its time and side goes beside it, on its baseline, as words do ("f cresc.",
+        //   Bowen, Viola Sonata Op. 22 III m277 viola): placed from the bottom line alone it went under the sign. As osmd-dart.
+        //   The sign can be in another multi expression of the time (two <direction>s): calculateDynamicExpressions() places it
+        //   first.
+        const startMulti: MultiExpression = continuousDynamic.StartMultiExpression;
+        const label: Label = graphicalContinuousDynamic.Label?.Label;
+        const beside: GraphicalLabel = startMulti && label ?
+            this.placeWordsBesideSameTimeDynamic(startMulti, staffLine, graphicalContinuousDynamic.StartMeasure, label.text,
+                                                 label.fontStyle, placement, label.fontHeight, graphicalContinuousDynamic) : undefined;
         let drawingHeight: number;
-        if (placement === PlacementEnum.Below) {
+        if (beside) {
+            box.RelativePosition = new PointF2D(beside.PositionAndShape.RelativePosition.x, beside.PositionAndShape.RelativePosition.y);
+        } else if (placement === PlacementEnum.Below) {
             drawingHeight = skyBottomLineCalculator.getBottomLineMaxForLabel(left, rangeRight);    // Bottom line
             box.RelativePosition = new PointF2D(startPosInStaffline.x, drawingHeight - box.BorderMarginTop);
         } else {
@@ -3204,6 +3222,36 @@ export abstract class MusicSheetCalculator {
         return leftX + (rightX - leftX) * Fraction.minus(time, leftTime).RealValue / span;
     }
 
+    /** The x in the staff line of the start of the source measure, the measure at whose start a wedge's stop was written
+     *  (ContinuousDynamicExpression.StopWrittenAtNextMeasureStart, or a stop the reader left there): the staff's first staff entry
+     *  there (its left border for a diminuendo, or with grace notes before it, as a stop at a note of the measure takes it), or,
+     *  on a staff with only a whole-measure rest there, the time in the system (systemTimeX(); Enescu, Concertstück, Piano m1-2:
+     *  the diminuendo reaches the left hand's first note under the right hand's whole rest). Undefined when the measure is not in
+     *  the staff line (the wedge then keeps the barline, as before the next system), the staff has no entry at its start, or that
+     *  entry is a rest (Intrada, Honegger m38: a quarter rest before the f; the crescendo through the held m36-37 does not point at
+     *  the rest). Same as osmd-dart. */
+    protected measureStartNoteX(sourceMeasure: SourceMeasure, staffIndex: number, staffLine: StaffLine, leftBorder: boolean): number {
+        const measure: GraphicalMeasure = this.graphicalMusicSheet.getGraphicalMeasureFromSourceMeasureAndIndex(sourceMeasure, staffIndex);
+        if (!measure || measure.ParentStaffLine !== staffLine) {
+            return undefined;
+        }
+        const measureX: number = measure.PositionAndShape.RelativePosition.x;
+        if (this.onlyWholeMeasureRest(measure)) {
+            return this.systemTimeX(measure, new Fraction(0, 1), measureX + measure.PositionAndShape.BorderRight);
+        }
+        for (const se of measure.staffEntries) {
+            if (se.relInMeasureTimestamp.RealValue !== 0 || se.graphicalVoiceEntries.length === 0) {
+                continue;
+            }
+            if (se.graphicalVoiceEntries.every(gve => gve.parentVoiceEntry.Notes.every(n => n.isRest()))) {
+                return undefined;
+            }
+            const grace: boolean = se.graphicalVoiceEntries.some(gve => gve.parentVoiceEntry.IsGrace && !gve.parentVoiceEntry.GraceAfterMainNote);
+            return measureX + se.PositionAndShape.RelativePosition.x + (leftBorder || grace ? se.ExpressionBorderLeft : 0);
+        }
+        return undefined;
+    }
+
     /** Whether an instantaneous dynamic of the wedge's staff and side is at its stop (StopTimestamp) in the measure of its
      *  EndMultiExpression. Same as osmd-dart. */
     protected dynamicAtWedgeStop(wedge: ContinuousDynamicExpression, staffIndex: number): boolean {
@@ -3301,24 +3349,32 @@ export abstract class MusicSheetCalculator {
             log.warn("MusicSheetCalculator.calculateGraphicalContinuousDynamic: No endMeasure found");
             return;
         }
-        // A stop at the start of a later measure that the reader left there: the wedge started after the last entry of the staff in
-        //   the previous measure (ExpressionReader.wedgeStopAtPreviousMeasureEnd() closes the other stops at a measure's start at the
-        //   previous measure's last entry). It is drawn to the previous measure's barline as well (Enescu, Concertstück, Piano m1-2: a
-        //   diminuendo from an <offset> into the right hand's whole rest, stopped at m2 q0, ran to the end of m2). Drawn only: the
-        //   playback keeps the stop at the start of the measure. Same as osmd-dart.
+        // A stop written at the start of the measure after the end measure's (ContinuousDynamicExpression
+        //   .StopWrittenAtNextMeasureStart: the reader closed it at the previous measure's last entry, where the playback ends), or
+        //   at the start of a later measure that the reader left there (the wedge started after the last entry of the staff in the
+        //   previous measure; Enescu, Concertstück, Piano m1-2: a diminuendo from an <offset> into the right hand's whole rest,
+        //   stopped at m2 q0, ran to the end of m2): the wedge is drawn to that measure's first note when it is in the same system,
+        //   as it is written (user decision 2026-10-24 B1-SOURCE-DEFAULT; Bowen, Viola Sonata No. 2 m139-140, Enescu Viola
+        //   m19-20, Intrada m35-38, Davydov Op. 11 m128-129: it ended at the barline before the note, 10-07), else to the barline
+        //   (as before the next system). Drawn only: the playback keeps its end. Same as osmd-dart.
         let previousBarlineX: number = undefined;
+        let stopMeasure: SourceMeasure = undefined;
         {
             const wedge: ContinuousDynamicExpression = graphicalContinuousDynamic.ContinuousDynamic;
             const startSourceMeasure: SourceMeasure = wedge.StartMultiExpression?.SourceMeasureParent;
             const endSourceMeasure: SourceMeasure = wedge.EndMultiExpression.SourceMeasureParent;
-            if (!isSoftAccent && startSourceMeasure && startSourceMeasure.measureListIndex < endSourceMeasure.measureListIndex &&
+            const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+            if (!isSoftAccent && wedge.StopWrittenAtNextMeasureStart && endSourceMeasure.measureListIndex + 1 < sourceMeasures.length) {
+                stopMeasure = sourceMeasures[endSourceMeasure.measureListIndex + 1];
+            } else if (!isSoftAccent && startSourceMeasure && startSourceMeasure.measureListIndex < endSourceMeasure.measureListIndex &&
                 wedge.EndMultiExpression.Timestamp.RealValue === 0 && !wedge.StopTimestamp &&
                 (!wedge.EndOffsetFraction || wedge.EndOffsetFraction.RealValue === 0)) {
                 const previous: GraphicalMeasure = this.graphicalMusicSheet.getGraphicalMeasureFromSourceMeasureAndIndex(
-                    this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures[endSourceMeasure.measureListIndex - 1], staffIndex);
+                    sourceMeasures[endSourceMeasure.measureListIndex - 1], staffIndex);
                 if (previous?.ParentStaffLine) {
                     endMeasure = previous;
                     previousBarlineX = previous.PositionAndShape.RelativePosition.x + previous.PositionAndShape.BorderRight;
+                    stopMeasure = endSourceMeasure;
                 }
             }
         }
@@ -3326,6 +3382,9 @@ export abstract class MusicSheetCalculator {
         graphicalContinuousDynamic.EndMeasure = endMeasure;
         const staffLine: StaffLine = graphicalContinuousDynamic.ParentStaffLine;
         const endStaffLine: StaffLine = endMeasure.ParentStaffLine;
+        const nextMeasureStartX: number = stopMeasure === undefined ? undefined : this.measureStartNoteX(
+            stopMeasure, staffIndex, endStaffLine,
+            graphicalContinuousDynamic.ContinuousDynamic.DynamicType === ContDynamicEnum.diminuendo);
 
         // check if Expression spreads over the same StaffLine or not
         const sameStaffLine: boolean = endStaffLine && staffLine === endStaffLine;
@@ -3465,6 +3524,10 @@ export abstract class MusicSheetCalculator {
             //startPosInStaffline.x -= 1;
             startPosInStaffline.x -= staffEntryWidth / 2 * sizeFactor + wedgePadding;
             endPosInStaffLine.x = startPosInStaffline.x + staffEntryWidth / 2 * sizeFactor;
+        } else if (nextMeasureStartX !== undefined &&
+            (!sameStaffLine || nextMeasureStartX - this.rules.WedgeHorizontalMargin > startPosInStaffline.x)) {
+            // the stop written at the next measure's start: its first note
+            endPosInStaffLine.x = nextMeasureStartX - this.rules.WedgeHorizontalMargin;
         } else if (previousBarlineX !== undefined) {
             endPosInStaffLine.x = previousBarlineX - this.rules.WedgeHorizontalMargin;
         } else if (pairEndX !== undefined) {
@@ -4685,7 +4748,7 @@ export abstract class MusicSheetCalculator {
             } else if (useLeftStaffEntryBorder &&
                 (leftStaffEntry.getAbsoluteTimestamp().RealValue === timestamp.RealValue || endAfterRightStaffEntry)
             ) {
-                leftX = leftStaffEntry.PositionAndShape.RelativePosition.x + leftStaffEntry.PositionAndShape.BorderLeft + measureRelativeX;
+                leftX = leftStaffEntry.PositionAndShape.RelativePosition.x + leftStaffEntry.ExpressionBorderLeft + measureRelativeX;
                 rightX = leftX;
             }
             let timestampQuotient: number = 0.0;
@@ -6592,18 +6655,39 @@ export abstract class MusicSheetCalculator {
                     }
 
                     if (this.graphicalMusicSheet.MeasureList[i][j].isVisible()) {
-                        for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
-                            const multiExpression: MultiExpression = sourceMeasure.StaffLinkedExpressions[j][k];
-                            if (insideWedges.has(multiExpression) !== firstPass) {
-                                continue;
+                        const multiExpressions: MultiExpression[] = sourceMeasure.StaffLinkedExpressions[j];
+                        const placed: Set<MultiExpression> = new Set<MultiExpression>();
+                        const place: (multiExpression: MultiExpression) => void = (multiExpression: MultiExpression): void => {
+                            if (placed.has(multiExpression)) {
+                                return;
                             }
+                            placed.add(multiExpression);
                             if (multiExpression.InstantaneousDynamic !== undefined ||
                                 (multiExpression.StartingContinuousDynamic !== undefined &&
                                     multiExpression.StartingContinuousDynamic.StartMultiExpression ===
-                                    multiExpression && multiExpression.UnknownList.length === 0)
+                                    multiExpression && !multiExpression.wordsCarryStartingContinuousDynamic())
                             ) {
                                 this.calculateDynamicExpressionsForMultiExpression(multiExpression, i, j);
                             }
+                        };
+                        for (let k: number = 0; k < multiExpressions.length; k++) {
+                            const multiExpression: MultiExpression = multiExpressions[k];
+                            if (insideWedges.has(multiExpression) !== firstPass) {
+                                continue;
+                            }
+                            // A verbal dynamic ("cresc.") goes beside the dynamic sign of its time and side, so the sign is placed
+                            //   first when it comes later, in a multi expression of its own (calculateGraphicalVerbalContinuousDynamic()).
+                            const verbal: ContinuousDynamicExpression = multiExpression.StartingContinuousDynamic;
+                            if (!multiExpression.InstantaneousDynamic && verbal?.Label && verbal.StartMultiExpression === multiExpression) {
+                                for (let m: number = k + 1; m < multiExpressions.length; m++) {
+                                    const other: MultiExpression = multiExpressions[m];
+                                    if (other.InstantaneousDynamic?.Placement === verbal.Placement && other.Timestamp.Equals(multiExpression.Timestamp) &&
+                                        insideWedges.has(other) === firstPass) {
+                                        place(other);
+                                    }
+                                }
+                            }
+                            place(multiExpression);
                         }
                     }
                 }

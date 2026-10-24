@@ -26,6 +26,7 @@ import { SkyBottomLineCalculator } from "./SkyBottomLineCalculator";
  * The graphical counterpart of a [[SourceStaffEntry]].
  */
 export abstract class GraphicalStaffEntry extends GraphicalObject {
+
     constructor(parentMeasure: GraphicalMeasure, sourceStaffEntry: SourceStaffEntry = undefined, staffEntryParent: GraphicalStaffEntry = undefined) {
         super();
         this.parentMeasure = parentMeasure;
@@ -62,6 +63,13 @@ export abstract class GraphicalStaffEntry extends GraphicalObject {
     private graphicalTies: GraphicalTie[] = [];
     private lyricsEntries: GraphicalLyricEntry[] = [];
     public FingeringEntries: GraphicalLabel[];
+
+    /** The left border an expression anchored to this entry takes (MusicSheetCalculator.getRelativePositionInStaffLineFromTimestamp()
+     *  with useLeftStaffEntryBorder: a wedge's start, a diminuendo's end at a note): PositionAndShape.BorderLeft, without a clef or
+     *  key signature drawn inside the measure before the notes (VexFlowStaffEntry). Same as osmd-dart. */
+    public get ExpressionBorderLeft(): number {
+        return this.PositionAndShape.BorderLeft;
+    }
 
     public get GraphicalInstructions(): AbstractGraphicalInstruction[] {
         return this.graphicalInstructions;

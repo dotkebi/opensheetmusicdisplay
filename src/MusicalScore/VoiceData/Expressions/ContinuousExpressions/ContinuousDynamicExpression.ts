@@ -38,6 +38,13 @@ export class ContinuousDynamicExpression extends AbstractExpression {
      *  one voice sounds: over a dotted half rest in a second voice a crescendo stopping on the third beat ran to the end of the
      *  measure, under the diminuendo starting there (Bononcini, Deh più a me non v'ascondete, piano m4). */
     public StopTimestamp: Fraction;
+    /** Whether the wedge's stop was written at the very start of the measure after the one of EndMultiExpression (no <offset>):
+     *  the reader closes such a stop at the last staff entry of its staff in the previous measure
+     *  (ExpressionReader.wedgeStopAtPreviousMeasureEnd()), where the playback ends. The drawn end goes to the first note of that
+     *  next measure when it is in the same system, as the wedge is written (Bowen, Viola Sonata No. 2 m139-140; Enescu,
+     *  Concertstück, Viola m19-20; Intrada, Honegger m35-38; user decision 2026-10-24 B1-SOURCE-DEFAULT), else to the barline.
+     *  Same as osmd-dart. */
+    public StopWrittenAtNextMeasureStart: boolean = false;
     private startVolume: number;
     private endVolume: number;
     private staffNumber: number;
