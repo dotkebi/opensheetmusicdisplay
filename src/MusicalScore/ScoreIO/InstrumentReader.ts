@@ -2,7 +2,7 @@ import {Instrument} from "../Instrument";
 import {MusicSheet} from "../MusicSheet";
 import {PendingTieStops, VoiceGenerator} from "./VoiceGenerator";
 import {Staff} from "../VoiceData/Staff";
-import {SourceMeasure} from "../VoiceData/SourceMeasure";
+import {BarlineFermata, SourceMeasure} from "../VoiceData/SourceMeasure";
 import {SourceStaffEntry} from "../VoiceData/SourceStaffEntry";
 import {ClefInstruction} from "../VoiceData/Instructions/ClefInstruction";
 import {KeyInstruction} from "../VoiceData/Instructions/KeyInstruction";
@@ -666,6 +666,16 @@ export class InstrumentReader {
             if (stringValue) {
               this.currentMeasure.endingBarStyleXml = stringValue;
               this.currentMeasure.endingBarStyleEnum = SystemLinesEnumHelper.xmlBarlineStyleToSystemLinesEnum(stringValue);
+            }
+            // a fermata on the barline (beside any on the notes): the upright one over the part's first staff, the inverted
+            //   one under its last (Saint-Saëns, Oboe Sonata Op. 166 II m6/63; Enesco, Concertstück m73). Was read nowhere.
+            for (const fermataNode of xmlNode.elements("fermata")) {
+              const inverted: boolean = fermataNode.attribute("type")?.value === "inverted";
+              const staffIndex: number = this.inSourceMeasureInstrumentIndex + (inverted ? this.instrument.Staves.length - 1 : 0);
+              if (!this.currentMeasure.endingBarlineFermatas.some(
+                (fermata: BarlineFermata) => fermata.staffIndex === staffIndex && fermata.inverted === inverted)) {
+                this.currentMeasure.endingBarlineFermatas.push({ staffIndex, inverted });
+              }
             }
           }
           // TODO do we need to process bars with left location too?

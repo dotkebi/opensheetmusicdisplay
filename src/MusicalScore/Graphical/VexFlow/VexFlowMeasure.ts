@@ -2,7 +2,7 @@ import Vex from "vexflow";
 import VF = Vex.Flow;
 import {GraphicalMeasure} from "../GraphicalMeasure";
 import {VexFlowMeasureRepeat} from "./VexFlowMeasureRepeat";
-import {SourceMeasure} from "../../VoiceData/SourceMeasure";
+import {BarlineFermata, SourceMeasure} from "../../VoiceData/SourceMeasure";
 import {Staff} from "../../VoiceData/Staff";
 import {StaffLine} from "../StaffLine";
 import {SystemLinesEnum} from "../SystemLinesEnum";
@@ -804,6 +804,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
 
         // Draw stave lines
         this.stave.setContext(ctx).draw();
+        this.drawBarlineFermatas(ctx);
         if (this.MeasureRepeat) {
             this.MeasureRepeat.draw(ctx, this);
         } else {
@@ -818,6 +819,46 @@ export class VexFlowMeasure extends GraphicalMeasure {
             ctx.closeGroup();
         }
         this.correctNotePositions();
+    }
+
+    /**
+     * Draws the fermatas on this measure's ending barline at this staff (SourceMeasure.endingBarlineFermatas): the upright
+     * one 1.5 spaces over the top line, the inverted one 1.5 spaces under the bottom line, centred on the barline. Drawn with
+     * the stave, so the sky/bottom line of the staff takes them in.
+     */
+    private drawBarlineFermatas(ctx: Vex.IRenderContext): void {
+        const fermatas: BarlineFermata[] = this.parentSourceMeasure?.endingBarlineFermatas;
+        if (!fermatas?.length) {
+            return;
+        }
+        const staffIndex: number = this.parentSourceMeasure.VerticalMeasureList?.indexOf(this);
+        const spacing: number = this.stave.getSpacingBetweenLines();
+        const x: number = this.stave.getX() + this.stave.getWidth() - this.endBarlineCentreOffset();
+        for (const fermata of fermatas) {
+            if (fermata.staffIndex !== staffIndex) {
+                continue;
+            }
+            const y: number = fermata.inverted ?
+                this.stave.getYForLine(this.stave.getNumLines() - 1) + 1.5 * spacing :
+                this.stave.getYForLine(0) - 1.5 * spacing;
+            (VF.Glyph as any).renderGlyph(ctx, x, y, (VF as any).DEFAULT_NOTATION_FONT_SCALE, fermata.inverted ? "v5b" : "v43");
+        }
+    }
+
+    /** How far (px) left of the stave's end the centre of its ending barline is: Vexflow draws a double barline's two lines
+     *  3px apart ending at the stave's end, an end barline's thin and thick line from 5px before it. */
+    private endBarlineCentreOffset(): number {
+        const style: SystemLinesEnum = this.parentSourceMeasure.endsWithLineRepetition() ?
+            SystemLinesEnum.DotsThinBold : this.parentSourceMeasure.endingBarStyleEnum;
+        switch (style) {
+            case SystemLinesEnum.DoubleThin:
+                return 1.5;
+            case SystemLinesEnum.ThinBold:
+            case SystemLinesEnum.DotsThinBold:
+                return 2.5;
+            default:
+                return 0;
+        }
     }
 
     /**
