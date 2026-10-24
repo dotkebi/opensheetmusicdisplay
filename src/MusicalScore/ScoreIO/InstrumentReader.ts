@@ -667,6 +667,17 @@ export class InstrumentReader {
               this.currentMeasure.endingBarStyleXml = stringValue;
               this.currentMeasure.endingBarStyleEnum = SystemLinesEnumHelper.xmlBarlineStyleToSystemLinesEnum(stringValue);
             }
+            // a wavy line that stops at the barline (MusicXML `<barline>` `<wavy-line type="stop">`, Dittersdorf D major
+            //   bass concerto Full m54): it ends at the end of the measure. It was never closed and ran to the end of the score.
+            for (const wavyLineNode of xmlNode.elements("wavy-line")) {
+              if (wavyLineNode.attribute("type")?.value !== "stop") {
+                continue;
+              }
+              const end: Fraction = Fraction.max(this.measureEndFraction, currentFraction).clone();
+              for (const expressionReader of this.expressionReaders) {
+                expressionReader?.addWavyLine(wavyLineNode, this.currentMeasure, end, previousFraction);
+              }
+            }
           }
           // TODO do we need to process bars with left location too?
         } else if (xmlNode.name === "sound") {

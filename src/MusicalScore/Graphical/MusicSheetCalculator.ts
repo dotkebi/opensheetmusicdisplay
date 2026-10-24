@@ -788,8 +788,88 @@ export abstract class MusicSheetCalculator {
         musicSystem.MeasureNumberLabels.push(graphicalLabel);
     }
     //So we can apply slurs first, then do these
+    /** A staff line's sky line as it was before its measure numbers were put into it (calculateMeasureNumberSkyline), for
+     *  skyLineMinIgnoringMeasureNumbers. */
+    private skyLineBeforeMeasureNumbers: WeakMap<StaffLine, number[]> = new WeakMap<StaffLine, number[]>();
+
+    /** The sky line's minimum in a range (in units of the staff line), reading the sky line under a measure number where
+     *  nothing was placed over the number since: a trill's wavy line is placed at its mark and the numbers under it are raised
+     *  over it (raiseMeasureNumbersOverWavyLine), as over a slur. */
+    protected skyLineMinIgnoringMeasureNumbers(staffLine: StaffLine, start: number, end: number): number {
+        const calculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        const current: number = calculator.getSkyLineMinInRange(start, end);
+        const before: number[] = this.skyLineBeforeMeasureNumbers.get(staffLine);
+        const system: MusicSystem = staffLine.ParentMusicSystem;
+        if (!before || this.measureNumberStaffLine(system) !== staffLine || before.length !== calculator.SkyLine.length) {
+            return current;
+        }
+        const labels: GraphicalLabel[] = system.MeasureNumberLabels;
+        if (labels.length === 0) {
+            return current;
+        }
+        const staffX: number = staffLine.PositionAndShape.RelativePosition.x;
+        const samplingUnit: number = this.rules.SamplingUnit;
+        const sky: number[] = calculator.SkyLine;
+        let lowest: number = Infinity;
+        const from: number = Math.max(0, Math.floor(start * samplingUnit));
+        const to: number = Math.min(sky.length - 1, Math.ceil(end * samplingUnit));
+        for (let i: number = from; i <= to; i++) {
+            let value: number = sky[i];
+            const x: number = i / samplingUnit;
+            for (const label of labels) {
+                const box: BoundingBox = label.PositionAndShape;
+                // the range the number went into the sky line with (calculateMeasureNumberSkyline), one sample wider on each side
+                const labelStart: number = box.RelativePosition.x - staffX;
+                const left: number = labelStart - 1 / samplingUnit;
+                const right: number = labelStart - box.BorderLeft + box.BorderRight + 1 / samplingUnit;
+                if (x < left || x > right) {
+                    continue;
+                }
+                const labelTop: number = box.RelativePosition.y + box.BorderMarginTop;
+                if (value >= labelTop - 1e-6) {
+                    // the number is the top here: what was under it counts
+                    value = before[i];
+                }
+            }
+            lowest = Math.min(lowest, value);
+        }
+        return lowest;
+    }
+
+    /** Raises the measure numbers of a staff line's system that a wavy line (its x range, in the staff line, and its top)
+     *  would run through over the line, by measureNumberClearance, and puts them into the sky line there. Same rule as
+     *  raiseMeasureNumberOverSlurs. */
+    protected raiseMeasureNumbersOverWavyLine(staffLine: StaffLine, start: number, end: number, wavyTop: number): void {
+        const system: MusicSystem = staffLine.ParentMusicSystem;
+        if (this.measureNumberStaffLine(system) !== staffLine) {
+            return;
+        }
+        const staffX: number = staffLine.PositionAndShape.RelativePosition.x;
+        const side: number = this.measureNumberInkSide;
+        const limit: number = wavyTop - MusicSheetCalculator.measureNumberClearance;
+        for (const label of system.MeasureNumberLabels) {
+            const box: BoundingBox = label.PositionAndShape;
+            const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffX;
+            const right: number = box.RelativePosition.x + box.BorderMarginRight - staffX;
+            if (right < start - side || left > end + side) {
+                continue;
+            }
+            const labelBottom: number = box.RelativePosition.y + box.BorderMarginBottom;
+            if (labelBottom <= limit) {
+                continue;
+            }
+            box.RelativePosition = new PointF2D(box.RelativePosition.x, box.RelativePosition.y - (labelBottom - limit));
+            const labelStart: number = box.RelativePosition.x - staffX;
+            staffLine.SkyBottomLineCalculator.updateSkyLineInRange(labelStart, labelStart - box.BorderLeft + box.BorderRight,
+                box.RelativePosition.y + box.BorderMarginTop);
+        }
+    }
+
     private calculateMeasureNumberSkyline(musicSystem: MusicSystem): void {
         const staffLine: StaffLine = this.measureNumberStaffLine(musicSystem);
+        if (musicSystem.MeasureNumberLabels.length > 0) {
+            this.skyLineBeforeMeasureNumbers.set(staffLine, staffLine.SkyBottomLineCalculator.SkyLine.slice());
+        }
         for(const measureNumberLabel of musicSystem.MeasureNumberLabels) {
             this.raiseMeasureNumberOverSlurs(measureNumberLabel, staffLine);
             // and the corresponding SkyLine indices
