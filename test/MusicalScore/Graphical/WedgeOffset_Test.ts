@@ -13,8 +13,9 @@ import { TestUtils } from "../../Util/TestUtils";
  *   previous note's length);
  * - 18 m30-31: a stop and the next wedge's start at the same time share a MultiExpression, so the end offset belongs to the
  *   wedge, not to it (the second wedge's stop offset lengthened the first one);
- * - 19 m5-6: a stop at the start of a measure ends the wedge at the end of the previous measure, not under the first note of
- *   the next measure (and in the next system at a system break).
+ * - 19 m5-6: a stop at the start of a measure closes the wedge at the end of the previous measure (its playback end; in the
+ *   next system at a system break the drawn end too), drawn to the next measure's first note when it is in the same system
+ *   (10-24, see WedgeStopNextMeasureStart_Test).
  * - Medium High 24 Italian Songs (Gasparini, Il mio bel foco m52-53; Caccini, Amarilli m44): a stop written at the start of
  *   the measure, before its notes, with the <offset> of its time ends the wedge under the last note before that time, not
  *   under the measure's first note.
@@ -124,10 +125,11 @@ ${below(wedge("stop"))}${below(wedge("crescendo"))}${note("E", 5, 4, "half")}${b
         const second: GraphicalContinuousDynamicExpression = all.find(w => w !== first);
         expect(first.ContinuousDynamic.EndOffsetFraction?.RealValue ?? 0).to.be.closeTo(0, 1e-9);
         expect(second.ContinuousDynamic.EndOffsetFraction.RealValue).to.be.closeTo(3 / 8, 1e-9);
-        // the first ends at the barline (in measure 1), the second follows it
+        // the first closes at the barline (in measure 1) and is drawn to the second's note (10-24), the second follows it
         expect(first.ContinuousDynamic.EndMultiExpression.SourceMeasureParent.MeasureNumberXML).to.equal(1);
         expect(right(first)).to.be.lessThan(left(second) + 0.01);
-        expect(right(first)).to.be.at.most(measures(osmd)[1].PositionAndShape.RelativePosition.x + 0.01);
+        expect(right(first)).to.be.greaterThan(measures(osmd)[1].PositionAndShape.RelativePosition.x);
+        expect(right(first)).to.be.at.most(entryX(osmd, 1, 0) + 0.01);
     });
 
     /** 19 m5-6: a crescendo over a whole measure, stopped at the start of the next one (optionally on a new system) */
@@ -144,15 +146,16 @@ ${below(wedge("stop"), offset)}${note("D", 5, 8, "whole")}
 </part></score-partwise>`;
     }
 
-    it("ends a wedge stopped at a measure start at the previous measure's end", async () => {
+    it("closes a wedge stopped at a measure start at the previous measure's end and draws it to the next measure's first note",
+       async () => {
         const osmd: OpenSheetMusicDisplay = await render(stopAtMeasureStart());
         const all: GraphicalContinuousDynamicExpression[] = wedges(osmd);
         expect(all.length).to.equal(1);
         const end: MultiExpression = all[0].ContinuousDynamic.EndMultiExpression;
         expect(end.SourceMeasureParent.MeasureNumberXML).to.equal(1);
         expect(end.Timestamp.RealValue).to.be.closeTo(3 / 4, 1e-9);
-        expect(right(all[0])).to.be.at.most(measures(osmd)[1].PositionAndShape.RelativePosition.x + 0.01);
-        expect(right(all[0])).to.be.greaterThan(entryX(osmd, 0, 3 / 4));
+        expect(all[0].ContinuousDynamic.StopWrittenAtNextMeasureStart).to.equal(true);
+        expect(right(all[0])).to.be.closeTo(entryX(osmd, 1, 0) - osmd.EngravingRules.WedgeHorizontalMargin, 0.05);
     });
 
     it("leaves a wedge stopped at the start of a new system on its system", async () => {

@@ -65,6 +65,8 @@ export class ExpressionReader {
     private offsetDivisions: number;
     private staffNumber: number;
     private globalStaffIndex: number;
+    /** The part this reader reads the directions of (one reader per staff of the part). */
+    private instrument: Instrument;
     private directionTimestamp: Fraction;
     private currentMultiTempoExpression: MultiTempoExpression;
     /** The last simple metronome mark read, to attach further marks at the same time to it. */
@@ -86,6 +88,7 @@ export class ExpressionReader {
     private dashesMeasure: SourceMeasure;
     constructor(musicSheet: MusicSheet, instrument: Instrument, staffNumber: number) {
         this.musicSheet = musicSheet;
+        this.instrument = instrument;
         this.staffNumber = staffNumber;
         this.globalStaffIndex = musicSheet.getGlobalStaffIndexOfFirstStaff(instrument) + (staffNumber - 1);
         this.initialize();
@@ -1101,6 +1104,11 @@ export class ExpressionReader {
             const previousEnd: {measure: SourceMeasure, timestamp: Fraction} =
                 this.wedgeStopAtPreviousMeasureEnd(currentMeasure, wedgeNumberXml, stopReadAt);
             if (previousEnd) {
+                // (the drawn end goes to this measure's first note when it is in the same system,
+                //   ContinuousDynamicExpression.StopWrittenAtNextMeasureStart)
+                for (const open of this.openContinuousDynamicExpressions.filter(dyn => dyn.NumberXml === wedgeNumberXml)) {
+                    open.StopWrittenAtNextMeasureStart = true;
+                }
                 this.addWedge(wedgeNode, previousEnd.measure, previousEnd.timestamp, endOffset);
                 return;
             }
@@ -1196,7 +1204,17 @@ export class ExpressionReader {
         rehearsalNode: IXmlElement, currentMeasure: SourceMeasure,
         inSourceMeasureCurrentFraction: Fraction, currentMeasureIndex: number): void {
         // TODO create multi expression? for now we just need to have a static rehearsal mark though.
-        currentMeasure.rehearsalExpression = new RehearsalExpression(rehearsalNode.value, this.placement);
+        // One mark per part (user decision 10-24, as printed): the mark is drawn above its own part, so a part's mark that
+        //   the XML repeats on its second staff (Sibelius Op. 47 III piano, Mozart K. 313 II/III piano) is read once, while
+        //   marks of different parts at the same measure (Prokofiev Op. 19 full score) are each kept.
+        const firstStaffIndex: number = this.globalStaffIndex - (this.staffNumber - 1);
+        const staffCount: number = this.instrument.Staves.length;
+        const ofThisPart: boolean = currentMeasure.rehearsalExpressions.some(
+            (existing: RehearsalExpression) => existing.staffIndex >= firstStaffIndex && existing.staffIndex < firstStaffIndex + staffCount);
+        if (ofThisPart) {
+            return;
+        }
+        currentMeasure.rehearsalExpressions.push(new RehearsalExpression(rehearsalNode.value, this.placement, this.globalStaffIndex));
     }
     private createNewMultiExpressionIfNeeded(currentMeasure: SourceMeasure, numberXml: number,
         timestamp: Fraction = undefined, playbackTimestamp: Fraction = undefined): MultiExpression {

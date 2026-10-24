@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A key change in the middle of a measure (Schubert, Ganymed m46: four flats to four sharps after a double barline in the
+     middle of the measure): the following systems start with the new key. The app began them with the old key; the web
+     was right. m3 starts a new system. Synthetic pitches. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><key><fifths>-4</fifths></key><time><beats>2</beats><beat-type>4</beat-type></time><staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>
+      <note><pitch><step>A</step><alter>-1</alter><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><staff>1</staff></note>
+      <backup><duration>2</duration></backup>
+      <note><pitch><step>A</step><alter>-1</alter><octave>2</octave></pitch><duration>2</duration><voice>5</voice><type>half</type><staff>2</staff></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>A</step><alter>-1</alter><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+      <barline location="middle"><bar-style>light-light</bar-style></barline>
+      <attributes><key><fifths>4</fifths></key></attributes>
+      <note><pitch><step>C</step><alter>1</alter><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+      <backup><duration>2</duration></backup>
+      <note><pitch><step>A</step><alter>-1</alter><octave>2</octave></pitch><duration>1</duration><voice>5</voice><type>quarter</type><staff>2</staff></note>
+      <note><pitch><step>C</step><alter>1</alter><octave>3</octave></pitch><duration>1</duration><voice>5</voice><type>quarter</type><staff>2</staff></note>
+    </measure>
+    <measure number="3">
+      <print new-system="yes"/>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><staff>1</staff></note>
+      <backup><duration>2</duration></backup>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>2</duration><voice>5</voice><type>half</type><staff>2</staff></note>
+    </measure>
+    <measure number="4">
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><staff>1</staff></note>
+      <backup><duration>2</duration></backup>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>2</duration><voice>5</voice><type>half</type><staff>2</staff></note>
+    </measure>
+  </part>
+</score-partwise>

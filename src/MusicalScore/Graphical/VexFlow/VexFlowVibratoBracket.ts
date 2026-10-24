@@ -18,6 +18,10 @@ export class VexFlowVibratoBracket extends GraphicalWavyLine {
     public nextVfVoiceEntry: VexFlowVoiceEntry;
     //Line where vexflow renders the bracket. VF default is 1
     public line: number = 1;
+    /** The stop note carries its own trill mark (a new trill starts there, e.g. Weber Op.74 III m236·237, Schubert Ganymed
+     *  piano m57): the bracket ends in front of that note's trill mark and modifiers, not at the end of the note, which drew
+     *  it through the next trill mark and raised it over everything on that note (81sabo review rows, bundle C 10-24). */
+    public stopBeforeEndNote: boolean = false;
     private isVibrato: boolean = false;
     private toEndOfStopStave: boolean = false;
     public get ToEndOfStopStave(): boolean {
@@ -68,6 +72,13 @@ export class VexFlowVibratoBracket extends GraphicalWavyLine {
         //If this is the last staff entry of the stave (measure), render line to end of measure
         this.toEndOfStopStave = (lastStaffEntry === vve.parentStaffEntry);
         return true;
+    }
+
+    /** Lets the bracket end in front of its end note (stopBeforeEndNote): not at the end of the stave or the end note. */
+    public endInFrontOfEndNote(): void {
+        this.stopBeforeEndNote = true;
+        this.toEndOfStopStave = false;
+        this.nextVfVoiceEntry = undefined;
     }
 
     /** Whether the bracket ends at the grace note that its wavy line stops at (see WavyLine.EndGraceVoiceEntry). */
@@ -166,7 +177,8 @@ export class VexFlowVibratoBracket extends GraphicalWavyLine {
 			start: this.startNote,
 			stop: this.endNote,
             toEndOfStopStave: this.toEndOfStopStave,
-            stopBeforeNote: this.nextVfVoiceEntry?.vfStaveNote
+            stopBeforeNote: this.nextVfVoiceEntry?.vfStaveNote,
+            stopBeforeEndNote: this.stopBeforeEndNote
 		});
         bracket.setLine(this.line);
         if (this.isVibrato) {
