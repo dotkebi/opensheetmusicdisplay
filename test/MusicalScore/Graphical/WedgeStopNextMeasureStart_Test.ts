@@ -146,6 +146,18 @@ describe("Wedge stopped at the next measure's start", () => {
         expect(right(w)).to.be.closeTo(leftHandFirst - osmd.EngravingRules.WedgeHorizontalMargin, 0.05);
     });
 
+    it("keeps the barline when the next measure starts with a rest (Intrada m38)", async () => {
+        // m2 RH: a quarter rest, then quarters (the f on the note after the rest)
+        const rest: string = "<note><rest/><duration>4</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>";
+        const osmd: OpenSheetMusicDisplay = await render(score([
+            measureXml(1, wedgeXml("crescendo"), rightHandQuarters()),
+            measureXml(2, wedgeXml("stop"), rest + ["D", "E", "F"].map(s => note(s, 5, 4, "quarter", 1)).join("")),
+        ]));
+        const w: GraphicalContinuousDynamicExpression = wedges(osmd)[0];
+        expect(w.ContinuousDynamic.StopWrittenAtNextMeasureStart).to.equal(true);
+        expect(right(w)).to.be.closeTo(measureEnd(measure(osmd, 0, 0)) - osmd.EngravingRules.WedgeHorizontalMargin, 0.05);
+    });
+
     it("ends at the barline when the next measure starts a new system", async () => {
         const osmd: OpenSheetMusicDisplay = await render(score([
             measureXml(1, wedgeXml("crescendo"), rightHandQuarters()),

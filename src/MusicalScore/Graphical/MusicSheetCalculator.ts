@@ -3129,8 +3129,9 @@ export abstract class MusicSheetCalculator {
      *  there (its left border for a diminuendo, or with grace notes before it, as a stop at a note of the measure takes it), or,
      *  on a staff with only a whole-measure rest there, the time in the system (systemTimeX(); Enescu, Concertstück, Piano m1-2:
      *  the diminuendo reaches the left hand's first note under the right hand's whole rest). Undefined when the measure is not in
-     *  the staff line (the wedge then keeps the barline, as before the next system) or the staff has no entry at its start.
-     *  Same as osmd-dart. */
+     *  the staff line (the wedge then keeps the barline, as before the next system), the staff has no entry at its start, or that
+     *  entry is a rest (Intrada, Honegger m38: a quarter rest before the f; the crescendo through the held m36-37 does not point at
+     *  the rest). Same as osmd-dart. */
     protected measureStartNoteX(sourceMeasure: SourceMeasure, staffIndex: number, staffLine: StaffLine, leftBorder: boolean): number {
         const measure: GraphicalMeasure = this.graphicalMusicSheet.getGraphicalMeasureFromSourceMeasureAndIndex(sourceMeasure, staffIndex);
         if (!measure || measure.ParentStaffLine !== staffLine) {
@@ -3143,6 +3144,9 @@ export abstract class MusicSheetCalculator {
         for (const se of measure.staffEntries) {
             if (se.relInMeasureTimestamp.RealValue !== 0 || se.graphicalVoiceEntries.length === 0) {
                 continue;
+            }
+            if (se.graphicalVoiceEntries.every(gve => gve.parentVoiceEntry.Notes.every(n => n.isRest()))) {
+                return undefined;
             }
             const grace: boolean = se.graphicalVoiceEntries.some(gve => gve.parentVoiceEntry.IsGrace && !gve.parentVoiceEntry.GraceAfterMainNote);
             return measureX + se.PositionAndShape.RelativePosition.x + (leftBorder || grace ? se.ExpressionBorderLeft : 0);
