@@ -1257,6 +1257,10 @@ export abstract class MusicSheetCalculator {
         if ((multiExpression.MoodList.length > 0) || (multiExpression.UnknownList.length > 0)) {
             // words above and below the staff at the same time are drawn as one label each on their own side
             for (const entries of multiExpression.getEntryGroupsByPlacement()) {
+                if (!entries.some(MultiExpression.isMoodOrUnknownEntry)) {
+                    // a verbal dynamic alone on its side ("cresc." below "allarg."): drawn as a dynamic (calculateDynamicExpressions())
+                    continue;
+                }
                 this.calculateMoodAndUnknownExpressionEntries(multiExpression, entries, measureIndex, staffIndex);
             }
         }
@@ -1514,7 +1518,8 @@ export abstract class MusicSheetCalculator {
      * there; the words are then placed as before.
      */
     protected placeWordsBesideSameTimeDynamic(multiExpression: MultiExpression, staffLine: StaffLine, measure: GraphicalMeasure,
-                                              text: string, style: FontStyles, placement: PlacementEnum, fontHeight: number): GraphicalLabel {
+                                              text: string, style: FontStyles, placement: PlacementEnum, fontHeight: number,
+                                              self: AbstractGraphicalExpression = undefined): GraphicalLabel {
         // the words of one direction with the dynamic are joined with the dynamic's empty label (and an exporter's empty words,
         //   Gounod Méditation m33 "piu" + " " + f): "piu   "
         text = text.trim();
@@ -1571,7 +1576,7 @@ export abstract class MusicSheetCalculator {
         // Only the first words beside a dynamic move it: a second one ("sempre" before and "stacc." after an ff) would take it
         //   off the first one's line.
         if (dynamic.HasWordsBeside && (dynamicShift !== 0 || carry !== 0) ||
-            ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic))) {
+            ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic, self))) {
             return undefined;
         }
         dynamic.HasWordsBeside = true;
@@ -1676,10 +1681,12 @@ export abstract class MusicSheetCalculator {
 
     /** Whether rect [left, right, top, bottom] (relative to staffLine) is clear of the dynamics, wedges and words placed on
      *  staffLine, except the given dynamic. */
-    private clearOfExpressions(staffLine: StaffLine, rect: number[], except: AbstractGraphicalExpression): boolean {
+    private clearOfExpressions(staffLine: StaffLine, rect: number[], except: AbstractGraphicalExpression,
+                               except2: AbstractGraphicalExpression = undefined): boolean {
         const [left, right, top, bottom] = rect;
         for (const expression of staffLine.AbstractExpressions) {
-            if (expression === except) {
+            if (expression === except || expression === except2) {
+                // (except2: a verbal dynamic being placed beside the dynamic is already on the staff line)
                 continue;
             }
             let other: BoundingBox;
@@ -2922,8 +2929,19 @@ export abstract class MusicSheetCalculator {
         const dashesEndX: number = this.expressionDashesEndX(continuousDynamic, staffLine, staffIndex);
         const rangeRight: number = dashesEndX > right ? dashesEndX : right;
 
+        // A verbal dynamic with a dynamic sign at its time and side goes beside it, on its baseline, as words do ("f cresc.",
+        //   Bowen, Viola Sonata Op. 22 III m277 viola): placed from the bottom line alone it went under the sign. As osmd-dart.
+        //   The sign can be in another multi expression of the time (two <direction>s): calculateDynamicExpressions() places it
+        //   first.
+        const startMulti: MultiExpression = continuousDynamic.StartMultiExpression;
+        const label: Label = graphicalContinuousDynamic.Label?.Label;
+        const beside: GraphicalLabel = startMulti && label ?
+            this.placeWordsBesideSameTimeDynamic(startMulti, staffLine, graphicalContinuousDynamic.StartMeasure, label.text,
+                                                 label.fontStyle, placement, label.fontHeight, graphicalContinuousDynamic) : undefined;
         let drawingHeight: number;
-        if (placement === PlacementEnum.Below) {
+        if (beside) {
+            box.RelativePosition = new PointF2D(beside.PositionAndShape.RelativePosition.x, beside.PositionAndShape.RelativePosition.y);
+        } else if (placement === PlacementEnum.Below) {
             drawingHeight = skyBottomLineCalculator.getBottomLineMaxForLabel(left, rangeRight);    // Bottom line
             box.RelativePosition = new PointF2D(startPosInStaffline.x, drawingHeight - box.BorderMarginTop);
         } else {
@@ -6557,18 +6575,39 @@ export abstract class MusicSheetCalculator {
                     }
 
                     if (this.graphicalMusicSheet.MeasureList[i][j].isVisible()) {
-                        for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
-                            const multiExpression: MultiExpression = sourceMeasure.StaffLinkedExpressions[j][k];
-                            if (insideWedges.has(multiExpression) !== firstPass) {
-                                continue;
+                        const multiExpressions: MultiExpression[] = sourceMeasure.StaffLinkedExpressions[j];
+                        const placed: Set<MultiExpression> = new Set<MultiExpression>();
+                        const place: (multiExpression: MultiExpression) => void = (multiExpression: MultiExpression): void => {
+                            if (placed.has(multiExpression)) {
+                                return;
                             }
+                            placed.add(multiExpression);
                             if (multiExpression.InstantaneousDynamic !== undefined ||
                                 (multiExpression.StartingContinuousDynamic !== undefined &&
                                     multiExpression.StartingContinuousDynamic.StartMultiExpression ===
-                                    multiExpression && multiExpression.UnknownList.length === 0)
+                                    multiExpression && !multiExpression.wordsCarryStartingContinuousDynamic())
                             ) {
                                 this.calculateDynamicExpressionsForMultiExpression(multiExpression, i, j);
                             }
+                        };
+                        for (let k: number = 0; k < multiExpressions.length; k++) {
+                            const multiExpression: MultiExpression = multiExpressions[k];
+                            if (insideWedges.has(multiExpression) !== firstPass) {
+                                continue;
+                            }
+                            // A verbal dynamic ("cresc.") goes beside the dynamic sign of its time and side, so the sign is placed
+                            //   first when it comes later, in a multi expression of its own (calculateGraphicalVerbalContinuousDynamic()).
+                            const verbal: ContinuousDynamicExpression = multiExpression.StartingContinuousDynamic;
+                            if (!multiExpression.InstantaneousDynamic && verbal?.Label && verbal.StartMultiExpression === multiExpression) {
+                                for (let m: number = k + 1; m < multiExpressions.length; m++) {
+                                    const other: MultiExpression = multiExpressions[m];
+                                    if (other.InstantaneousDynamic?.Placement === verbal.Placement && other.Timestamp.Equals(multiExpression.Timestamp) &&
+                                        insideWedges.has(other) === firstPass) {
+                                        place(other);
+                                    }
+                                }
+                            }
+                            place(multiExpression);
                         }
                     }
                 }

@@ -26,6 +26,7 @@ import { SkyBottomLineCalculator } from "./SkyBottomLineCalculator";
  * The graphical counterpart of a [[SourceStaffEntry]].
  */
 export abstract class GraphicalStaffEntry extends GraphicalObject {
+
     constructor(parentMeasure: GraphicalMeasure, sourceStaffEntry: SourceStaffEntry = undefined, staffEntryParent: GraphicalStaffEntry = undefined) {
         super();
         this.parentMeasure = parentMeasure;

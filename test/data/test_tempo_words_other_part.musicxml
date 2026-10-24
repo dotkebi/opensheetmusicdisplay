@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A tempo word of one part at the time of another part's longer tempo word: the piano's "tempo" at the clarinet's
+     "a tempo" (Nielsen, Clarinet Concerto m425). Both are printed; the app dropped the piano's as a doublette because the
+     clarinet's text contains it. Synthetic pitches. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Clarinet</part-name></score-part><score-part id="P2"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+    </measure>
+    <measure number="2">
+      <direction placement="above"><direction-type><words default-y="70">a tempo</words></direction-type></direction>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+    </measure>
+  </part>
+  <part id="P2">
+    <measure number="1">
+      <attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+    </measure>
+    <measure number="2">
+      <direction placement="below"><direction-type><words default-y="-65">tempo</words></direction-type></direction>
+      <direction placement="below"><direction-type><dynamics><p/></dynamics></direction-type></direction>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+    </measure>
+  </part>
+</score-partwise>

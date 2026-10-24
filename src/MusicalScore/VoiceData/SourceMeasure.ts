@@ -24,6 +24,12 @@ import { RhythmInstruction } from "./Instructions";
  * The Source Measure represents the source data of a unique measure, including all instruments with their staves.
  * There exists one source measure per XML measure or per paper sheet measure (e.g. the source measures are not doubled in repetitions)
  */
+/** A fermata on a measure's ending barline (MusicXML <barline location="right"><fermata>), at a staff (index in the music sheet). */
+export interface BarlineFermata {
+    staffIndex: number;
+    inverted: boolean;
+}
+
 export class SourceMeasure {
     /**
      * The data entries and data lists will be filled with null values according to the total number of staves,
@@ -56,6 +62,10 @@ export class SourceMeasure {
      */
     public endingBarStyleXml: string;
     public endingBarStyleEnum: SystemLinesEnum;
+    /** The fermatas on the ending barline (MusicXML <barline location="right"><fermata>, a hold on the barline beside the
+     *  notes' own fermatas): the upright one at the part's first staff, the inverted one at its last (Saint-Saëns, Oboe
+     *  Sonata Op. 166 II m6/63; Enesco, Concertstück m73). Drawn by VexFlowMeasure.drawBarlineFermatas(). */
+    public endingBarlineFermatas: BarlineFermata[] = [];
     /** Whether the MusicXML says to print a new system (line break). See OSMDOptions.newSystemFromXML */
     public printNewSystemXml: boolean = false;
     /**
