@@ -1606,10 +1606,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           left: box.BorderMarginLeft, right: box.BorderMarginRight, text: DynamicEnum[instantaneous.DynEnum], timestamp,
         });
       }
-      // calculateDynamicExpressions() skips a continuous dynamic that comes with words unless there is an instantaneous dynamic too.
+      // calculateDynamicExpressions() skips a continuous dynamic that its words carry unless there is an instantaneous dynamic too.
       const continuous: ContinuousDynamicExpression = multiExpression.StartingContinuousDynamic;
       if (continuous && continuous.StartMultiExpression === multiExpression &&
-          (instantaneous || multiExpression.UnknownList.length === 0)) {
+          (instantaneous || !multiExpression.wordsCarryStartingContinuousDynamic())) {
         const below: boolean = continuous.Placement === PlacementEnum.Below;
         if (continuous.Label && continuous.Label.length > 0) {
           const box: BoundingBox = VexFlowContinuousDynamicExpression.createVerbalLabel(continuous, this.rules).PositionAndShape;

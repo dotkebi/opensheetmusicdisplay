@@ -1003,6 +1003,11 @@ export class ExpressionReader {
             const previousEnd: {measure: SourceMeasure, timestamp: Fraction} =
                 this.wedgeStopAtPreviousMeasureEnd(currentMeasure, wedgeNumberXml, stopReadAt);
             if (previousEnd) {
+                // (the drawn end goes to this measure's first note when it is in the same system,
+                //   ContinuousDynamicExpression.StopWrittenAtNextMeasureStart)
+                for (const open of this.openContinuousDynamicExpressions.filter(dyn => dyn.NumberXml === wedgeNumberXml)) {
+                    open.StopWrittenAtNextMeasureStart = true;
+                }
                 this.addWedge(wedgeNode, previousEnd.measure, previousEnd.timestamp, endOffset);
                 return;
             }

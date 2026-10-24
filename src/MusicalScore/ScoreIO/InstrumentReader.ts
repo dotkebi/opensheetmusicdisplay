@@ -2,7 +2,7 @@ import {Instrument} from "../Instrument";
 import {MusicSheet} from "../MusicSheet";
 import {PendingTieStops, VoiceGenerator} from "./VoiceGenerator";
 import {Staff} from "../VoiceData/Staff";
-import {SourceMeasure} from "../VoiceData/SourceMeasure";
+import {BarlineFermata, SourceMeasure} from "../VoiceData/SourceMeasure";
 import {SourceStaffEntry} from "../VoiceData/SourceStaffEntry";
 import {ClefInstruction} from "../VoiceData/Instructions/ClefInstruction";
 import {KeyInstruction} from "../VoiceData/Instructions/KeyInstruction";
@@ -666,6 +666,16 @@ export class InstrumentReader {
             if (stringValue) {
               this.currentMeasure.endingBarStyleXml = stringValue;
               this.currentMeasure.endingBarStyleEnum = SystemLinesEnumHelper.xmlBarlineStyleToSystemLinesEnum(stringValue);
+            }
+            // a fermata on the barline (beside any on the notes): the upright one over the part's first staff, the inverted
+            //   one under its last (Saint-Saëns, Oboe Sonata Op. 166 II m6/63; Enesco, Concertstück m73). Was read nowhere.
+            for (const fermataNode of xmlNode.elements("fermata")) {
+              const inverted: boolean = fermataNode.attribute("type")?.value === "inverted";
+              const staffIndex: number = this.inSourceMeasureInstrumentIndex + (inverted ? this.instrument.Staves.length - 1 : 0);
+              if (!this.currentMeasure.endingBarlineFermatas.some(
+                (fermata: BarlineFermata) => fermata.staffIndex === staffIndex && fermata.inverted === inverted)) {
+                this.currentMeasure.endingBarlineFermatas.push({ staffIndex, inverted });
+              }
             }
           }
           // TODO do we need to process bars with left location too?
@@ -1605,8 +1615,14 @@ export class InstrumentReader {
           const afterGraceNotes: boolean = this.currentStaffEntry !== undefined && this.currentStaffEntry.hasNotes() &&
             this.currentStaffEntry.VoiceEntries.every(voiceEntry =>
               voiceEntry.Notes.length === 0 || voiceEntry.IsGrace && !voiceEntry.GraceAfterMainNote);
+          // The staff entry at the clef's time may already hold a note of another voice (a voice crossing to this staff:
+          //   Enesco, Concertstück piano m53, the G clef inside a cross-staff septuplet). The clef is at that time all the
+          //   same, before that note too, so it goes to that entry; it was left pending for ever (an entry with notes was
+          //   never taken) and the staff kept the old clef.
+          const atEntryTime: boolean = this.currentStaffEntry !== undefined && instructionTimestamp !== undefined &&
+            Math.abs(instructionTimestamp.RealValue - this.currentStaffEntry.Timestamp.RealValue) <= 0.01;
           if ((!beginOfMeasure || afterGraceNotes) && this.currentStaffEntry !== undefined &&
-            (!this.currentStaffEntry.hasNotes() || afterGraceNotes) &&
+            (!this.currentStaffEntry.hasNotes() || afterGraceNotes || (!beginOfMeasure && atEntryTime)) &&
             key - 1 === this.instrument.Staves.indexOf(this.currentStaffEntry.ParentStaff)) {
             const newClefInstruction: ClefInstruction = clefInstruction;
             const staffEntry: SourceStaffEntry = this.currentStaffEntry;
