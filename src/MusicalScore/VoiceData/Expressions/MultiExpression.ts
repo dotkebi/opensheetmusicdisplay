@@ -160,7 +160,7 @@ export class MultiExpression {
     public getEntryGroupsByPlacement(): MultiExpressionEntry[][] {
         const wordsPlacements: PlacementEnum[] = [];
         for (const entry of this.expressions) {
-            if (entry.expression instanceof MoodExpression || entry.expression instanceof UnknownExpression) {
+            if (MultiExpression.isWordsEntry(entry)) {
                 const placement: PlacementEnum = MultiExpression.getPlacementOfEntry(entry);
                 if (!wordsPlacements.includes(placement)) {
                     wordsPlacements.push(placement);
@@ -172,10 +172,39 @@ export class MultiExpression {
         }
         const groups: MultiExpressionEntry[][] = wordsPlacements.map((): MultiExpressionEntry[] => []);
         for (const entry of this.expressions) {
-            const isWords: boolean = entry.expression instanceof MoodExpression || entry.expression instanceof UnknownExpression;
-            groups[isWords ? wordsPlacements.indexOf(MultiExpression.getPlacementOfEntry(entry)) : 0].push(entry);
+            groups[MultiExpression.isWordsEntry(entry) ? wordsPlacements.indexOf(MultiExpression.getPlacementOfEntry(entry)) : 0].push(entry);
         }
         return groups;
+    }
+
+    /** Whether an entry's expression is printed text: words (a mood or unknown expression) or a verbal dynamic ("cresc.",
+     *  "dim."), not a dynamic sign or a wedge. The words of one side at one time are one label (see getEntryGroupsByPlacement());
+     *  a verbal dynamic below went with words above (Bowen, Viola Sonata Op. 22 III m277: "allarg." above, "cresc." below;
+     *  Saint-Saëns, Violin Concerto No. 3 m731: ":" above, "cresc." below). */
+    public static isWordsEntry(entry: MultiExpressionEntry): boolean {
+        const expression: AbstractExpression = entry.expression;
+        return expression instanceof MoodExpression || expression instanceof UnknownExpression ||
+            (expression instanceof ContinuousDynamicExpression && expression.Label?.length > 0);
+    }
+
+    /** Whether an entry's expression is words (a mood or unknown expression). */
+    public static isMoodOrUnknownEntry(entry: MultiExpressionEntry): boolean {
+        return entry.expression instanceof MoodExpression || entry.expression instanceof UnknownExpression;
+    }
+
+    /** Whether the words at this time stand in for the starting continuous dynamic, which is then not drawn by itself: a verbal
+     *  dynamic ("cresc.") joins the words label of its side (Nielsen, Clarinet Concerto m399: "dim. poco rall."); a wedge
+     *  with words at its time was left to them before and still is. */
+    public wordsCarryStartingContinuousDynamic(): boolean {
+        const dynamic: ContinuousDynamicExpression = this.startingContinuousDynamic;
+        if (!dynamic) {
+            return false;
+        }
+        if (!(dynamic.Label?.length > 0)) {
+            return this.unknownList.length > 0;
+        }
+        return this.expressions.some((entry: MultiExpressionEntry) =>
+            MultiExpression.isMoodOrUnknownEntry(entry) && MultiExpression.getPlacementOfEntry(entry) === dynamic.Placement);
     }
 
     public getColorXMLOfFirstEntry(): string {

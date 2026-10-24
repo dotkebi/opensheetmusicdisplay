@@ -1420,13 +1420,15 @@ describe("VexFlow Measure", () => {
       }).catch(done);
    });
 
-   // A measure makes no VexFlow tuplet for a tuplet with fewer than two notes to draw in it, e.g. a cross-staff tuplet with
-   //   one note in the staff, or a tuplet with invisible rests. draw() pairs the measure's tuplets with its VexFlow tuplets
-   //   by index, so each VexFlow tuplet after such a tuplet showed or hid its number as decided for the tuplet before its own.
+   // A measure makes no VexFlow tuplet for a tuplet with fewer than two notes to draw in it, e.g. a tuplet with invisible
+   //   rests. draw() pairs the measure's tuplets with its VexFlow tuplets by index, so each VexFlow tuplet after such a tuplet
+   //   showed or hid its number as decided for the tuplet before its own.
    // In test_tuplet_crossstaff_first_triplet_number, voice 1 plays four triplets without brackets, the first one with its
    //   first two notes on the lower staff, and the default rules show the numbers of the first two triplets only. The upper
    //   staff showed the 3rd triplet's number too, as it got the 2nd triplet's decision. The same with the first two notes as
    //   invisible rests on the upper staff.
+   // A tuplet crossing the staves is now drawn once, by the staff of its placement, over all its notes (see
+   //   CrossStaffTupletNumber_Test): the first triplet's number is on the upper staff, centred over its three notes.
    for (const [variant, invisibleRests] of [
       ["a cross-staff tuplet with one note in the staff", false],
       ["a tuplet with invisible rests", true],
@@ -1459,7 +1461,8 @@ describe("VexFlow Measure", () => {
 
          // The indices of the triplets with a number drawn in the measure. The numbers are the glyphs (filled paths) in the
          //   measure's SVG group that belong to no note, beam, clef, key or time signature, which have groups of their own
-         //   (the staff lines are stroked). A number is centered over the triplet's notes in the staff.
+         //   (the staff lines are stroked). A number is centered over the triplet's drawn notes (of both staves for a
+         //   triplet crossing them).
          const numberedTriplets: (measure: GraphicalMeasure) => number[] = (measure: GraphicalMeasure): number[] => {
             const measureGroup: Element = (measure.staffEntries[0].graphicalVoiceEntries[0].notes[0] as VexFlowGraphicalNote)
                .getSVGGElement().closest("g.vf-measure");
@@ -1469,15 +1472,15 @@ describe("VexFlow Measure", () => {
                const numberBox: DOMRect = (tupletNumber as SVGGraphicsElement).getBBox();
                const centerX: number = numberBox.x + numberBox.width / 2;
                return triplets.findIndex((tuplet: Tuplet) => {
-                  const noteBoxes: DOMRect[] = drawnNotes(tuplet, measure).map((note: Note) =>
+                  const noteBoxes: DOMRect[] = tuplet.Notes.flat().filter((note: Note) => note.PrintObject).map((note: Note) =>
                      (osmd.EngravingRules.GNote(note) as VexFlowGraphicalNote).getSVGGElement().getBBox());
                   return noteBoxes.length > 0 && Math.min(...noteBoxes.map((box: DOMRect) => box.x)) <= centerX &&
                      centerX <= Math.max(...noteBoxes.map((box: DOMRect) => box.x + box.width));
                });
             });
          };
-         expect(numberedTriplets(upperMeasure), "triplets with a number on the upper staff").to.deep.equal([1]);
-         expect(numberedTriplets(lowerMeasure), "triplets with a number on the lower staff").to.deep.equal(invisibleRests ? [] : [0]);
+         expect(numberedTriplets(upperMeasure), "triplets with a number on the upper staff").to.deep.equal(invisibleRests ? [1] : [0, 1]);
+         expect(numberedTriplets(lowerMeasure), "triplets with a number on the lower staff").to.deep.equal([]);
       });
    }
 
