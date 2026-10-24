@@ -1,6 +1,6 @@
 import Vex from "vexflow";
 import VF = Vex.Flow;
-import { VoiceEntry } from "../../VoiceData/VoiceEntry";
+import { StemDirectionType, VoiceEntry } from "../../VoiceData/VoiceEntry";
 import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
 import { GraphicalStaffEntry } from "../GraphicalStaffEntry";
 import { unitInPixels } from "./VexFlowMusicSheetDrawer";
@@ -124,6 +124,15 @@ export class VexFlowVoiceEntry extends GraphicalVoiceEntry {
      * (test_unison_hidden_tremolo_playback_notes_actor_prelude_measure33). */
     private drawnAsSharedUnisonNote(note: Note): boolean {
         return this.inDrawnBeam && note.sharesNoteheadWithVisibleUnisonNote();
+    }
+
+    /** See color(): a printed note whose head is notehead="none", with an XML stem up or down, sharing a visible unison
+     * head of another voice. */
+    private explicitStemOnSharedHead(note: Note): boolean {
+        const xml: StemDirectionType = this.parentVoiceEntry.StemDirectionXml;
+        return note.PrintObject && note.Notehead?.Shape === NoteHeadShape.NONE &&
+            (xml === StemDirectionType.Up || xml === StemDirectionType.Down) &&
+            note.sharesNoteheadWithVisibleUnisonNote();
     }
 
     /** Whether the Vexflow note is part of a beam that is drawn. VexFlowMeasure.finalizeBeams() creates a Vexflow beam
@@ -291,6 +300,14 @@ export class VexFlowVoiceEntry extends GraphicalVoiceEntry {
             // notehead and is beamed (see drawnAsSharedUnisonNote): its stem emanates from the shared notehead and
             // has to reach the beam, otherwise the beam appears to hang in the air over a missing stem.
             if (this.drawnAsSharedUnisonNote(note)) {
+                stemTransparent = false;
+                break;
+            }
+            // A notehead="none" note (printed, only its head left out) with an XML <stem> on a visible unison head of
+            // another voice: the shared head has that stem too, beamed or not (81sabo Mozart K.313 I Piano m33, beat 4:
+            // a quarter A4 stem up on the A4 of a stem-down chord). A print-object="no" note stays hidden. Same as
+            // osmd-dart (VexFlowVoiceEntry.color()).
+            if (this.explicitStemOnSharedHead(note)) {
                 stemTransparent = false;
                 break;
             }
