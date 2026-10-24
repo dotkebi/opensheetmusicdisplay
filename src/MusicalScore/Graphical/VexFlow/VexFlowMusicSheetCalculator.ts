@@ -3392,6 +3392,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
                 nextWavyLine.endNote = nextWavyLine.startNote;
                 nextWavyLine.endVfVoiceEntry = nextWavyLine.startVfVoiceEntry;
               }
+              if (endMeasure.ParentStaffLine === nextWavyLineStaffline && this.stopWavyLineBeforeOwnTrill(nextWavyLine, wavyLine) &&
+                  nextWavyLine.endVfVoiceEntry === nextWavyLine.startVfVoiceEntry) {
+                continue; // the piece after the system break would begin at the note it ends in front of: nothing to draw
+              }
               nextWavyLineStaffline.WavyLines.push(nextWavyLine);
               nextWavyLine.CalculateBoundingBox();
               this.calculateWavyLineSkyBottomLine(nextWavyLine.startVfVoiceEntry, nextWavyLine.endVfVoiceEntry, nextWavyLine, nextWavyLineStaffline);
@@ -3404,6 +3408,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           graphicalWavyLine.endNote = graphicalWavyLine.startNote;
           graphicalWavyLine.endVfVoiceEntry = graphicalWavyLine.startVfVoiceEntry;
         }
+        this.stopWavyLineBeforeOwnTrill(graphicalWavyLine, wavyLine);
         if (wavyLine.ParentEndMultiExpression === wavyLine.ParentStartMultiExpression && !graphicalWavyLine.EndsAtGraceNote) {
           // it starts and stops at the same note, e.g. a trill line over one note from Dolet for Sibelius or MuseScore:
           //   trill-mark, wavy-line start and wavy-line stop
@@ -3417,6 +3422,41 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       log.warn("End measure or staffLines for wavy line are undefined! This should not happen!");
     }
   }
+  /** Between a raised trill mark's baseline and the ink under it (a slur, a note), in units. */
+  private static readonly wavyLineInkClearance: number = 0.25;
+
+  /** Whether a voice entry starts a trill of its own: it has a trill mark. A wavy line that stops on such a note ends in
+   *  front of it. */
+  private static startsOwnTrill(voiceEntry: VexFlowVoiceEntry): boolean {
+    return voiceEntry?.parentVoiceEntry?.OrnamentContainer?.GetOrnament === OrnamentEnum.Trill;
+  }
+
+  /** Lets a bracket whose stop note starts a trill of its own end in front of that note (VexFlowVibratoBracket.stopBeforeEndNote).
+   *  A stop with no note at its time (at the barline) falls back to the measure's last note, which may be the trill's own:
+   *  the stop has to be at the end note's time.
+   *  @returns whether it does */
+  private stopWavyLineBeforeOwnTrill(bracket: VexFlowVibratoBracket, wavyLine: WavyLine): boolean {
+    const stopTimestamp: Fraction = wavyLine.ParentEndMultiExpression?.Timestamp;
+    if (!stopTimestamp || wavyLine.ParentEndMultiExpression === wavyLine.ParentStartMultiExpression ||
+        !VexFlowMusicSheetCalculator.startsOwnTrill(bracket.endVfVoiceEntry) ||
+        Math.abs(bracket.endVfVoiceEntry.parentStaffEntry.relInMeasureTimestamp.RealValue - stopTimestamp.RealValue) > 1e-9) {
+      return false;
+    }
+    bracket.stopBeforeEndNote = true;
+    bracket.endInFrontOfEndNote();
+    return true;
+  }
+
+  /** The wavy line's height and the skyline under it: a trill's line goes at its trill mark (through the middle of the mark),
+   *  or higher where something along it is higher (then the staves' top text position moves up and the mark with it:
+   *  VexFlow draws an ornament at min(getYForTopText(text_line), its note-relative place)).
+   *
+   *  The mark's height is its own ink (ornament.js layoutInk), not the skyline over it, which a measure number next to the
+   *  mark set higher (Mozart K.313 III m263: the line went up to the number); a measure number under the line is raised over
+   *  it instead, as over a slur (raiseMeasureNumbersOverWavyLine; Nielsen Op.57 m593·595, Viotti No.22 III m348, 81sabo
+   *  bundle C 10-24). The line's VexFlow line is relative to the stave's top text position, which an earlier line on the
+   *  stave can have raised: it is never lowered again, and the line at the mark takes it into account (Weber Op.74 III m237
+   *  was drawn 8 units over its mark). */
   private calculateWavyLineSkyBottomLine(startVfVoiceEntry: VexFlowVoiceEntry, endVfVoiceEntry: VexFlowVoiceEntry,
     vfVibratoBracket: VexFlowVibratoBracket, parentStaffline: StaffLine): void {
     const startStave: Vex.Flow.Stave = vfVibratoBracket.startNote.getStave();
@@ -3435,30 +3475,52 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     //Whichever is higher, set the other to match
     startStave.options.top_text_position = highestVFTopTextPosition;
     endStave.options.top_text_position = highestVFTopTextPosition;
-    let headroom: number = -highestVFTopTextPosition;
     let trillStartX: number = 0;
     let trillEndX: number = 0;
-    let trillSkyline: number = Infinity;
-    let trillWavyLineBottom: number = Infinity;
+    // the trill mark's ink top and bottom, in staff-line units
+    let trillTop: number = Infinity;
+    let trillBottom: number = Infinity;
+    // the mark's VexFlow text line: VexFlow draws it at min(getYForTopText(text_line), its note-relative place), so over a
+    //   raised top text position a mark stacked over an articulation (text line 1.5, Weber Op.74 III m137·235) sits
+    //   that much higher than one at line 0
+    let trillTextLine: number = 0;
     const TRILL_HEIGHT: number = 1.85;
 
     let startX: number = startVfVoiceEntry.PositionAndShape.AbsolutePosition.x + startVfVoiceEntry.PositionAndShape.BorderLeft;
-    if (startVfVoiceEntry.parentVoiceEntry?.OrnamentContainer?.GetOrnament === OrnamentEnum.Trill) {
+    if (VexFlowMusicSheetCalculator.startsOwnTrill(startVfVoiceEntry)) {
       trillStartX = startX;
       //Width of trill mark
       startX += 2;
       trillEndX = startX;
-      //Since the trill mark is not managed or calculated by our bounding boxes, we have to get the location this way
-      //Also at this point the skyline has already been updated with the trill mark. So we can't determine if it should go lower
-      //Need to trust Vexflow later on, unless the wavy line must be rendered higher
-      trillSkyline = parentStaffline.SkyBottomLineCalculator.getSkyLineMinInRange(trillStartX, trillEndX);
-      //height of the trill mark
-      trillWavyLineBottom = trillSkyline + TRILL_HEIGHT;
+      const ink: any = this.trillMarkInk(vfVibratoBracket.startNote);
+      trillTextLine = ink?.textLine ?? 0;
+      if (ink) {
+        // the mark's ink where it was drawn: centred over the notehead it can reach past those 2
+        const measureX: number = startVfVoiceEntry.parentStaffEntry.parentMeasure.PositionAndShape.AbsolutePosition.x;
+        trillStartX = measureX + ink.left;
+        trillEndX = measureX + ink.right;
+        startX = Math.max(startX, trillEndX);
+        // the ink is from the layout draw, without the raise over a slur decided after the slurs (slurClearanceYShift, px;
+        //   Weber Op.74 III m237: the line was read 1.5 units under the mark drawn over its slur)
+        trillTop = ink.top + (ink.slurClearanceYShift ?? 0) / unitInPixels;
+        // the nominal mark height: the line keeps its place under the mark's top, whatever the glyph's own descent
+        trillBottom = trillTop + TRILL_HEIGHT;
+      } else {
+        //Since the trill mark is not managed or calculated by our bounding boxes, we have to get the location this way
+        //Also at this point the skyline has already been updated with the trill mark.
+        trillTop = parentStaffline.SkyBottomLineCalculator.getSkyLineMinInRange(trillStartX, trillEndX);
+        trillBottom = trillTop + TRILL_HEIGHT;
+      }
     }
 
     let stopX: number = undefined;
+    if (vfVibratoBracket.stopBeforeEndNote) {
+      // in front of the stop note's trill mark and modifiers (VexFlowPatch vibratobracket.js stopBeforeNoteX)
+      const stopNote: Vex.Flow.StemmableNote = vfVibratoBracket.endNote;
+      const measureX: number = endVfVoiceEntry.parentStaffEntry.parentMeasure.PositionAndShape.AbsolutePosition.x;
+      stopX = measureX + ((Vex.Flow.VibratoBracket as any).stopBeforeNoteX(stopNote) - stopNote.getStave().getX()) / unitInPixels;
+    } else if (vfVibratoBracket.ToEndOfStopStave) {
     //If the end of the line is the last note in the measure, go all the way to the end of the stave
-    if(vfVibratoBracket.ToEndOfStopStave) {
       //vexflow backs off by 1 unit (10 pixels) from stave edge
       stopX = endVfVoiceEntry.parentStaffEntry.parentMeasure.PositionAndShape.AbsolutePosition.x +
         endVfVoiceEntry.parentStaffEntry.parentMeasure.PositionAndShape.BorderRight - 1;
@@ -3476,23 +3538,69 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       }
     }
 
-    headroom = parentStaffline.SkyBottomLineCalculator.getSkyLineMinInRange(startX, stopX);
+    stopX = Math.max(stopX, startX + 0.5);
+    // measure numbers under the line move over it afterwards; a line ending in front of the next trill's note is not read
+    //   under that note's mark and stem (the sky line's last sample reaches into them)
+    // the sky line's samples at the mark's right edge still hold the mark's own top (getMinInRange floors the start): read
+    //   from the second sample after it
+    const headroomStart: number = trillTop !== Infinity ?
+      Math.min((Math.floor(startX * this.rules.SamplingUnit) + 2) / this.rules.SamplingUnit, stopX) : startX;
+    const headroom: number = this.skyLineMinIgnoringMeasureNumbers(parentStaffline, headroomStart,
+      vfVibratoBracket.stopBeforeEndNote ? Math.max(stopX - 0.5, headroomStart) : stopX);
     if (headroom === Infinity) { // will cause Vexflow error
       return;
     }
-    //If somewhere in our wavy line path we have to render higher than where the trill mark is set...
-    if (headroom < trillSkyline) {
-      startStave.options.top_text_position = -headroom;
-      endStave.options.top_text_position = -headroom;
-      //A decent enough approximation. Better than recalculating via Canvas or SVG sampling
-      parentStaffline.SkyBottomLineCalculator.updateSkyLineInRange(trillStartX, trillEndX, headroom - TRILL_HEIGHT);
-    } else { //Else just render where Vexflow has set the trill mark
-      vfVibratoBracket.line = -trillWavyLineBottom;
-      headroom = trillWavyLineBottom;
+    const topTextPosition: number = highestVFTopTextPosition;
+    const height: number = vfVibratoBracket.PositionAndShape.Size.height;
+    // the line at its mark: through the middle of the mark, which itself is at the stave's top text position where that was
+    //   raised above the default
+    const baselineAtMark: number = topTextPosition > 1 ? Math.min(-topTextPosition - trillTextLine, trillBottom) : trillBottom;
+    const centreAtMark: number = baselineAtMark - (trillBottom - trillTop) / 2;
+    // the middle of the line, in staff-line units
+    let wavyCentre: number;
+    // (no mark: always at the top text position, as before)
+    const raiseBelow: number = trillTop !== Infinity ? centreAtMark + height / 2 + VexFlowMusicSheetCalculator.wavyLineInkClearance : Infinity;
+    if (headroom < raiseBelow) {
+      // something along the line is higher than the line at its mark (a slur under the mark ran through the line: Weber
+      //   Op.74 III m80): the line goes one line over it, at the stave's top text position (VexFlow line 1), and the mark up
+      //   to the top text position with it, its baseline clear of the ink under it (a slur's: Weber m166, the mark's lower
+      //   stroke ran into the slur)
+      let raised: number = Math.max(topTextPosition, -headroom + VexFlowMusicSheetCalculator.wavyLineInkClearance);
+      // never under the mark's own place (a mark already high over a low obstacle: Weber Op.74 III m235·237 at 1024, the
+      //   line went 0.5 units under the mark)
+      if (trillBottom !== Infinity) {
+        raised = Math.max(raised, -trillBottom - trillTextLine);
+      }
+      startStave.options.top_text_position = raised;
+      endStave.options.top_text_position = raised;
+      // one line over the mark, which VexFlow draws at its text line over the top text position
+      vfVibratoBracket.line = 1 + trillTextLine;
+      wavyCentre = -raised - trillTextLine - 1;
+      if (trillTop !== Infinity) {
+        //A decent enough approximation. Better than recalculating via Canvas or SVG sampling
+        parentStaffline.SkyBottomLineCalculator.updateSkyLineInRange(trillStartX, trillEndX, -raised - trillTextLine - (trillBottom - trillTop));
+      }
+    } else {
+      wavyCentre = centreAtMark;
+      vfVibratoBracket.line = -wavyCentre - topTextPosition;
     }
     //Update skyline to include height of the wavy line
-    headroom -= vfVibratoBracket.PositionAndShape.Size.height;
-    parentStaffline.SkyBottomLineCalculator.updateSkyLineInRange(startX, stopX, headroom);
+    parentStaffline.SkyBottomLineCalculator.updateSkyLineInRange(startX, stopX, wavyCentre + 1 - height);
+    this.raiseMeasureNumbersOverWavyLine(parentStaffline, startX, stopX, wavyCentre - height / 2);
+  }
+
+  /** The ink of a note's trill mark as the layout drew it (ornament.js layoutInk), in units relative to its stave's left
+   *  edge and top line, or undefined. */
+  private trillMarkInk(note: Vex.Flow.StemmableNote):
+    { left: number, top: number, right: number, bottom: number, slurClearanceYShift: number, textLine: number } {
+    for (const modifier of (note as any).modifiers ?? []) {
+      if (modifier?.type === "tr" && modifier.layoutInk && modifier.position === Vex.Flow.Modifier.Position.ABOVE) {
+        const ink: any = modifier.layoutInk;
+        return { left: ink.left / unitInPixels, top: ink.top / unitInPixels, right: ink.right / unitInPixels, bottom: ink.bottom / unitInPixels,
+          slurClearanceYShift: modifier.slurClearanceYShift ?? 0, textLine: modifier.text_line ?? 0 };
+      }
+    }
+    return undefined;
   }
 
   /** A staff line's bottom line as it was before its first pedal mark, by the bottom line array (a new layout makes a
