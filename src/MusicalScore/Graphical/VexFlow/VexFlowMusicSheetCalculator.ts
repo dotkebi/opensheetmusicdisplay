@@ -2372,18 +2372,51 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   }
 
   protected calculateRehearsalMark(measure: SourceMeasure): void {
-    const rehearsalExpression: RehearsalExpression = measure.rehearsalExpression;
-    if (!rehearsalExpression) {
+    if (measure.rehearsalExpressions.length === 0) {
       return;
     }
     const firstMeasureNumber: number = this.graphicalMusicSheet.MeasureList[0][0].MeasureNumber; // 0 for pickup, 1 otherwise
     const measureNumber: number = Math.max(measure.MeasureNumber - firstMeasureNumber, 0);
-    // const staffNumber: number = 0;
-    for (const gMeasure of this.graphicalMusicSheet.MeasureList[measureNumber]) {
-      const vfStave: VF.Stave = (gMeasure as VexFlowMeasure)?.getVFStave();
-      if (!vfStave || !gMeasure.isVisible()) { // potentially multi measure rest
+    const column: GraphicalMeasure[] = this.graphicalMusicSheet.MeasureList[measureNumber];
+    // a staff a mark can be drawn on: visible, with a stave (not e.g. inside a multi measure rest)
+    const drawable: (gMeasure: GraphicalMeasure) => boolean =
+      (gMeasure: GraphicalMeasure) => !!(gMeasure as VexFlowMeasure)?.getVFStave() && gMeasure.isVisible();
+    const used: GraphicalMeasure[] = [];
+    for (const rehearsalExpression of measure.rehearsalExpressions) {
+      // The mark is drawn above its own part, as printed (user decision 10-24: Weber Op. 74 III piano 28-52, Haydn
+      //   Hob. VIIg:C1 I piano A-C, Saint-Saëns Op. 61 piano D/F), on the part's first visible staff; it used to be drawn on
+      //   the system's first visible staff whichever part it was read on. A part with no visible staff in the measure, or
+      //   a mark without a staff, still gets the system's first visible staff; two marks landing on one staff draw once.
+      const [first, end]: [number, number] = this.partStaffRange(rehearsalExpression.staffIndex, column.length);
+      const gMeasure: GraphicalMeasure = column.slice(first, end).find(drawable) ?? column.find(drawable);
+      if (!gMeasure || used.includes(gMeasure)) {
         continue;
       }
+      used.push(gMeasure);
+      this.drawRehearsalMark(gMeasure as VexFlowMeasure, measure, rehearsalExpression);
+    }
+  }
+
+  /** The columns of GraphicalMusicSheet.MeasureList (indices into MusicSheet.Staves) of the part the staff staffIndex
+   *  belongs to, [first, end); the whole column for an undefined or out-of-range index. */
+  private partStaffRange(staffIndex: number, columnLength: number): [number, number] {
+    if (staffIndex >= 0) {
+      let first: number = 0;
+      for (const instrument of this.graphicalMusicSheet.ParentMusicSheet.Instruments) {
+        const end: number = first + instrument.Staves.length;
+        if (staffIndex < end) {
+          return [first, end];
+        }
+        first = end;
+      }
+    }
+    return [0, columnLength];
+  }
+
+  /** Draws rehearsalExpression of measure above gMeasure's staff, lifted above what rises above the staff there. */
+  private drawRehearsalMark(gMeasure: VexFlowMeasure, measure: SourceMeasure, rehearsalExpression: RehearsalExpression): void {
+    const vfStave: VF.Stave = gMeasure.getVFStave();
+    {
       let yOffset: number = -this.rules.RehearsalMarkYOffsetDefault - this.rules.RehearsalMarkYOffset;
       if (gMeasure.parentSourceMeasure.isReducedToMultiRest) {
         // we could add other conditions here where we want more offset to avoid collisions
@@ -2434,13 +2467,20 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         const topRelative: number = Math.min(
           staffLine.SkyBottomLineCalculator.getSkyLineMinInRange(start - marginInUnits, end + marginInUnits),
           this.slurOuterEdgeTopInRange(staffLine, start - marginInUnits, end + marginInUnits));
+        const markHeightInUnits: number = fontSize / unitInPixels * 1.6 + marginInUnits; // conservative StaveSection box height
         if (topRelative < 0) { // only lift if something actually rises above the staff here
           // StaveSection.draw (VexFlowPatch) shifts the mark up so its box bottom doesn't exceed
           //   stave.getYForLine(0) + minBottomY (px), keeping the mark above that element:
           minBottomY = (topRelative - marginInUnits - boxLineHalfWidthInUnits) * unitInPixels;
           // reserve skyline over the range so updateStaffLineBorders/calculateSystemYLayout make room for the lifted mark
-          const markHeightInUnits: number = fontSize / unitInPixels * 1.6 + marginInUnits; // conservative StaveSection box height
           staffLine.SkyBottomLineCalculator.updateSkyLineInRange(start, end, topRelative - markHeightInUnits);
+        } else if (staffLine !== staffLine.ParentMusicSystem?.StaffLines[0]) {
+          // Below the system's first staff the box stands in the staff distance, so its footprint is reserved even when
+          //   nothing rises above the staff, for calculateSystemYLayout to keep the staff above clear of it (Weber Op. 74 III
+          //   m218: box 49 over the piano's rests met the clarinet's low notes). The first staff's box is in the system's
+          //   top margin as before.
+          // (yOffset is the box bottom's height above the top staff line, in px)
+          staffLine.SkyBottomLineCalculator.updateSkyLineInRange(start, end, -yOffset / unitInPixels - markHeightInUnits);
         }
       }
 
@@ -2448,7 +2488,6 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       (vfStave as any).setSection(rehearsalExpression.label, yOffset, xOffset, fontSize, minBottomY);
       const section: VF.StaveModifier = vfStave.getModifiers().last();
       VexFlowConverter.setVexFlowTextFontFamily((section as any).font, this.rules);
-      return; // only draw one rehearsal mark at top (visible) instrument
     }
   }
 
