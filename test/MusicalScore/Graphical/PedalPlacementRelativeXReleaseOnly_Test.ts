@@ -238,4 +238,53 @@ describe("Pedal placement above, relative-x and a stop that closed nothing", () 
         const secondDepress: number = pedals[1].startNote.getAbsoluteX() + (pedals[1].DepressXOffset ?? 0);
         expect(firstRelease, "Ped. * Ped. *, as engraved").to.be.below(secondDepress);
     });
+    it("keeps a Ped. above clear of a high chord under its glyph and a * moved by relative-x before the barline", async () => {
+        // As Viotti No.22 III piano m84-87. Same fixture as osmd-dart
+        //   test/fixtures/pedal_above_high_chord_and_rx_at_measure_end.musicxml.
+        const s16: (step: string, octave: number, chord?: boolean) => string = (step: string, octave: number, chord: boolean = false): string =>
+            `<note>${chord ? "<chord/>" : ""}<pitch><step>${step}</step><octave>${octave}</octave></pitch><duration>1</duration>` +
+            "<voice>5</voice><type>16th</type><staff>2</staff></note>";
+        const highTreble: string = ["C", "D", "E"].map(step => `<note><pitch><step>${step}</step><octave>6</octave></pitch>` +
+            "<duration>4</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>").join("") +
+            "<backup><duration>12</duration></backup>";
+        const group: string = s16("G", 2) + s16("E", 4) + s16("G", 4, true) + s16("C", 5, true);
+        const chordXml: string = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\"><part-list>" +
+            "<score-part id=\"P1\"><part-name>Piano</part-name></score-part></part-list><part id=\"P1\">" +
+            "<measure number=\"1\"><attributes><divisions>4</divisions><time><beats>3</beats><beat-type>4</beat-type></time>" +
+            "<staves>2</staves><clef number=\"1\"><sign>G</sign><line>2</line></clef><clef number=\"2\"><sign>F</sign><line>4</line>" +
+            "</clef></attributes>" + highTreble + pedalXml("start", "above") + group + group + group + group +
+            pedalXml("stop", "above", 60) + note("G", 3, 2) + "</measure><measure number=\"2\">" +
+            "<note><pitch><step>C</step><octave>6</octave></pitch><duration>12</duration><voice>1</voice><type>half</type><dot/>" +
+            "<staff>1</staff></note><backup><duration>12</duration></backup>" + pedalXml("start", "above") +
+            "<note><pitch><step>C</step><octave>3</octave></pitch><duration>12</duration><voice>5</voice><type>half</type><dot/>" +
+            "<staff>2</staff></note>" + pedalXml("stop", "above") + "</measure></part></score-partwise>";
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        div.style.width = "1000px";
+        const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
+        await osmd.load(chordXml);
+        osmd.render();
+        const pedals: VexFlowPedal[] = osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines[1].Pedals as VexFlowPedal[];
+        expect(pedals.length).to.equal(2);
+        const first: VexFlowPedal = pedals[0];
+        const marking: any = first.getPedalMarking();
+        const stave: any = first.startNote.getStave();
+        const baseline: number = stave.getYForBottomText(marking.line + 3);
+        // the Ped. glyph is drawn 10px left of its x
+        const pedLeft: number = first.startNote.getAbsoluteX() + (first.DepressXOffset ?? 0) - 10;
+        const pedRight: number = pedLeft + marking.constructor.depressGlyphWidth(marking.render_options.glyph_point_size);
+        for (const entry of osmd.GraphicSheet.MeasureList[0][1].staffEntries) {
+            const vfNote: any = (entry.graphicalVoiceEntries[0] as any).vfStaveNote;
+            const x: number = vfNote.getAbsoluteX();
+            if (x > pedRight || x + 12 < pedLeft) {
+                continue;
+            }
+            const top: number = Math.min(...vfNote.getYs()) - 5;
+            expect(baseline, `Ped. clear of the chord at x ${x}`).to.be.below(top);
+        }
+        // the * moved by relative-x 60 stops before the measure's end (the glyph is drawn 2px left of its x)
+        const releaseWidth: number = marking.constructor.releaseGlyphWidth(marking.render_options.glyph_point_size);
+        const releaseX: number = first.endNote.getAbsoluteX() + (first.ReleaseXOffset ?? 0);
+        expect(releaseX - 2 + releaseWidth).to.be.at.most((first.endNote.getStave() as any).getNoteEndX() + 1e-6);
+        expect(releaseX).to.be.above(first.endNote.getAbsoluteX());
+    });
 });

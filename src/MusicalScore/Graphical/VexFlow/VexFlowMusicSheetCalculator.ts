@@ -3674,7 +3674,13 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       vfPedal.ReleaseAfterDepress = true;
       return;
     }
-    vfPedal.ReleaseXOffset = (vfPedal.ReleaseXOffset ?? 0) + shift;
+    // The * stays before its measure's end (the next Ped. is after the barline): a relative-x past it took the * over the
+    //   barline into the next measure's Ped. (Viotti No.22 III m84-85). The glyph is drawn 2px left of its x.
+    const before: number = vfPedal.ReleaseXOffset ?? 0;
+    const cap: number = (vfPedal.endNote.getStave() as any).getNoteEndX() -
+      VexFlowMusicSheetCalculator.pedalReleaseGlyphWidth(vfPedal.getPedalMarking()) + 2 - vfPedal.endNote.getAbsoluteX();
+    const moved: number = before + shift;
+    vfPedal.ReleaseXOffset = shift > 0 && moved > cap ? Math.max(before, cap) : moved;
   }
 
   /** The x (in the staff line, units) where a bracket pedal's line stops: the stave end, the release, or before the end note
@@ -3730,29 +3736,49 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const lineOf: (baseline: number) => number = (baseline: number): number => baseline - 3 - numLines;
     const clearance: number = 0.5;
     const styles: any = Vex.Flow.PedalMarking.Styles;
-    /** The x ranges of a pedal's drawn marks and how far above its baseline they reach (units). */
+    /** The x ranges of a pedal's drawn marks (where drawText() puts them: the Ped. glyph 10px left of its anchor, CHANGE_GAP
+     *  right of it for a change, the * 2px left of its release x, right-aligned before the stave end or before a change's
+     *  note), a bit wider, and how far they reach above and below the baseline (units). (The bottom-line pass reads the
+     *  Ped. from 1.6 units left of its note; the glyph's right end was missed: Viotti No.22 III m85, 87.) */
+    const pad: number = 0.3;
     const marksOf: (pedal: VexFlowPedal) => { ranges: [number, number][], ascent: number, descent: number } =
       (pedal: VexFlowPedal): { ranges: [number, number][], ascent: number, descent: number } => {
         const marking: any = pedal.getPedalMarking();
         const marginXOffset: number = marking.render_options.text_margin_right / 10;
-        const endEntry: VexFlowVoiceEntry = pedal.endVfVoiceEntry;
-        const endBbox: BoundingBox = endEntry?.PositionAndShape ?? pedal.endMeasure.PositionAndShape;
-        let startX: number = xOf(pedal.startVfVoiceEntry.PositionAndShape) + (pedal.DepressXOffset ?? 0) / unitInPixels - marginXOffset;
-        if (marking.style === styles.MIXED || marking.style === styles.MIXED_OPEN_END || marking.style === styles.TEXT) {
-          startX -= 1; // the Ped. sign
-        }
+        const startNoteU: number = xOf(pedal.startVfVoiceEntry.PositionAndShape);
         if (pedal.EndSymbolPositionAndShape) {
           const ranges: [number, number][] = [];
+          const gap: number = (Vex.Flow.PedalMarking as any).CHANGE_GAP ?? 3;
           if (!pedal.DepressText) {
-            ranges.push([startX, startX + 3.4]);
+            const anchorPx: number = pedal.getPedal.BeginsStave ? 0 : (pedal.DepressXOffset ?? 0);
+            const left: number = startNoteU + (anchorPx + (pedal.ChangeBegin ? gap : -10)) / unitInPixels;
+            ranges.push([left - pad, left + VexFlowMusicSheetCalculator.pedalDepressGlyphWidth(marking) / unitInPixels + pad]);
           }
           if (!pedal.ReleaseText) {
-            const startX2: number = this.pedalReleaseStartX(pedal, endBbox, marginXOffset, parentStaffline);
-            ranges.push([startX2, startX2 + 1.5]);
+            const releaseW: number = VexFlowMusicSheetCalculator.pedalReleaseGlyphWidth(marking) / unitInPixels;
+            const endBbox: BoundingBox = pedal.endVfVoiceEntry?.PositionAndShape ?? pedal.endMeasure.PositionAndShape;
+            const endNoteU: number = xOf(endBbox);
+            const endsStave: boolean = pedal.getPedal.EndsStave && !pedal.ReleaseAfterDepress;
+            let left: number;
+            if (pedal.ReleaseXOffset !== undefined && !endsStave) {
+              left = endNoteU + (pedal.ReleaseXOffset - 2) / unitInPixels;
+            } else if (endsStave) {
+              left = this.pedalReleaseStartX(pedal, endBbox, marginXOffset, parentStaffline);
+            } else if (pedal.ChangeEnd) {
+              left = endNoteU - gap / unitInPixels - releaseW;
+            } else {
+              left = endNoteU - 2 / unitInPixels;
+            }
+            ranges.push([left - pad, left + releaseW + pad]);
           }
           return { ranges, ascent: marking.render_options.glyph_point_size / 20, descent: 0.3 };
         }
-        const stopX: number = this.pedalBracketStopX(pedal, endEntry, endBbox, marginXOffset, parentStaffline);
+        let startX: number = startNoteU + (pedal.DepressXOffset ?? 0) / unitInPixels - marginXOffset;
+        if (marking.style === styles.MIXED || marking.style === styles.MIXED_OPEN_END) {
+          startX -= 1; // the Ped. sign
+        }
+        const bracketEndBbox: BoundingBox = pedal.endVfVoiceEntry?.PositionAndShape ?? pedal.endMeasure.PositionAndShape;
+        const stopX: number = this.pedalBracketStopX(pedal, pedal.endVfVoiceEntry, bracketEndBbox, marginXOffset, parentStaffline);
         return { ranges: [[Math.min(startX, stopX), Math.max(startX, stopX)]], ascent: marking.render_options.bracket_height / 10, descent: 0 };
       };
     const marks: { ranges: [number, number][], ascent: number, descent: number } = marksOf(vfPedal);
