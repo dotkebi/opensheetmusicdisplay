@@ -138,6 +138,10 @@ export class VexFlowMeasure extends GraphicalMeasure {
     public crossStaffCurves: CrossStaffCurve[] = [];
     /** Intermediate object to construct tuplets */
     protected tuplets: { [voiceID: number]: [Tuplet, VexFlowVoiceEntry[]][] } = {};
+    /** The measures of this column that draw tuplets of this measure's notes crossing the staves (see crossStaffTupletOwner()). */
+    private crossStaffTupletOwners: VexFlowMeasure[] = [];
+    /** [voiceID, index in tuplets[voiceID]] of the tuplets crossing the staves whose VexFlow tuplet is still to be made. */
+    private incompleteCrossStaffTuplets: [number, number][] = [];
     /** VexFlow Tuplets */
     private vftuplets: { [voiceID: number]: VF.Tuplet[] } = {};
     // The engraving rules of OSMD.
@@ -1040,6 +1044,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
                             // (vftuplet as any).numerator_glyphs_stored = undefined;
                             (vftuplet as any).RenderTupletNumber = true;
                         }
+                        this.applyTupletStaveBound(vftuplet);
                         // an unbracketed number under up-stems (over down-stems) at the middle of the noteheads
                         (vftuplet as any).numberXShift = VexFlowMeasure.tupletNumberHeadShift(vftuplet);
                         // ... and close to them, outside the staff
@@ -1714,23 +1719,96 @@ export class VexFlowMeasure extends GraphicalMeasure {
         const voiceID: number = graphicalNote.sourceNote.ParentVoiceEntry.ParentVoice.VoiceId;
         // use the passed tuplet (a note can belong to multiple nested tuplets); previously this was overridden
         // with the note's single NoteTuplet, which collapsed nested tuplets onto only their innermost tuplet.
+        const currentTupletBuilder: [Tuplet, VexFlowVoiceEntry[]] = this.tupletBuilder(voiceID, tuplet);
+        const parent: VexFlowVoiceEntry = graphicalNote.parentVoiceEntry as VexFlowVoiceEntry;
+        if (currentTupletBuilder[1].indexOf(parent) < 0) {
+            currentTupletBuilder[1].push(parent);
+        }
+    }
+
+    /** The builder (tuplet, its voice entries in this measure) of a tuplet of a voice, made when missing. */
+    private tupletBuilder(voiceID: number, tuplet: Tuplet): [Tuplet, VexFlowVoiceEntry[]] {
         let tuplets: [Tuplet, VexFlowVoiceEntry[]][] = this.tuplets[voiceID];
         if (!tuplets) {
             tuplets = this.tuplets[voiceID] = [];
         }
-        let currentTupletBuilder: [Tuplet, VexFlowVoiceEntry[]];
         for (const t of tuplets) {
             if (t[0] === tuplet) {
-                currentTupletBuilder = t;
+                return t;
             }
         }
-        if (!currentTupletBuilder) {
-            currentTupletBuilder = [tuplet, []];
-            tuplets.push(currentTupletBuilder);
+        const builder: [Tuplet, VexFlowVoiceEntry[]] = [tuplet, []];
+        tuplets.push(builder);
+        return builder;
+    }
+
+    /**
+     * Takes the voice entries of a tuplet crossing the staves from another staff's measure (see crossStaffTupletOwner()):
+     * this measure draws it, with all its notes. A VexFlow tuplet already made of this measure's share alone is made
+     * again (completeCrossStaffTuplets(), called by that measure once its notes exist).
+     */
+    private adoptCrossStaffTupletEntries(voiceID: number, tuplet: Tuplet, entries: VexFlowVoiceEntry[]): void {
+        const builder: [Tuplet, VexFlowVoiceEntry[]] = this.tupletBuilder(voiceID, tuplet);
+        for (const entry of entries) {
+            if (builder[1].indexOf(entry) < 0) {
+                builder[1].push(entry);
+            }
         }
-        const parent: VexFlowVoiceEntry = graphicalNote.parentVoiceEntry as VexFlowVoiceEntry;
-        if (currentTupletBuilder[1].indexOf(parent) < 0) {
-            currentTupletBuilder[1].push(parent);
+        const index: number = this.tuplets[voiceID].indexOf(builder);
+        const vftuplet: VF.Tuplet = this.vftuplets[voiceID]?.[index];
+        if (vftuplet) {
+            (vftuplet as any).detach?.();
+            this.vftuplets[voiceID][index] = undefined;
+        }
+        if (this.vftuplets[voiceID] && !this.incompleteCrossStaffTuplets.some(([v, i]: [number, number]) => v === voiceID && i === index)) {
+            this.incompleteCrossStaffTuplets.push([voiceID, index]);
+        }
+    }
+
+    /**
+     * The measure that draws a tuplet: this one for a tuplet within its staff. A tuplet whose notes cross the staves of
+     * its instrument (Enesco, Concertstück piano m51-54; Bruch, Scottish Fantasy piano m68/394) is one group, with one
+     * number and one bracket over all its notes, as engravers print it: the measure of the topmost staff of its notes
+     * when its number goes above, of the bottommost when it goes below. Each staff drew its own share of the notes as
+     * a tuplet of its own, so the number appeared once per staff. This measure when that one isn't in its column.
+     */
+    private crossStaffTupletOwner(tuplet: Tuplet): VexFlowMeasure {
+        const column: GraphicalMeasure[] = this.parentSourceMeasure?.VerticalMeasureList;
+        if (!column) {
+            return this;
+        }
+        let top: number = -1;
+        let bottom: number = -1;
+        for (const notes of tuplet.Notes) {
+            for (const note of notes) {
+                const index: number = column.findIndex((measure: GraphicalMeasure) => measure?.ParentStaff === note.ParentStaffEntry?.ParentStaff);
+                if (index < 0) {
+                    continue;
+                }
+                if (top < 0 || index < top) {
+                    top = index;
+                }
+                if (bottom < 0 || index > bottom) {
+                    bottom = index;
+                }
+            }
+        }
+        if (top < 0 || top === bottom) {
+            return this;
+        }
+        const owner: GraphicalMeasure = column[tuplet.tupletLabelNumberPlacement === PlacementEnum.Below ? bottom : top];
+        return owner instanceof VexFlowMeasure ? owner : this;
+    }
+
+    /**
+     * Makes the VexFlow tuplets of the tuplets crossing the staves that finalizeTuplets() left (the other staff's notes
+     * weren't created yet). Called by the other staff's measure once its notes are created.
+     */
+    public completeCrossStaffTuplets(): void {
+        const pending: [number, number][] = this.incompleteCrossStaffTuplets;
+        this.incompleteCrossStaffTuplets = [];
+        for (const [voiceID, index] of pending) {
+            this.vftuplets[voiceID][index] = this.createVfTuplet(this.tuplets[voiceID][index], voiceID, index);
         }
     }
 
@@ -2311,6 +2389,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
         // created them brand new. Is this needed? And more importantly,
         // should the old tuplets be removed manually from the notes?
         this.vftuplets = {};
+        this.incompleteCrossStaffTuplets = [];
         for (const voiceID in this.tuplets) {
             if (this.tuplets.hasOwnProperty(voiceID)) {
                 let vftuplets: VF.Tuplet[] = this.vftuplets[voiceID];
@@ -2318,8 +2397,51 @@ export class VexFlowMeasure extends GraphicalMeasure {
                     vftuplets = this.vftuplets[voiceID] = [];
                 }
                 for (const tupletBuilder of this.tuplets[voiceID]) {
+                    vftuplets.push(this.createVfTuplet(tupletBuilder, Number(voiceID), vftuplets.length));
+                }
+            }
+        }
+    }
+
+    /** Whether the graphical voice entries hold every voice entry of the tuplet's notes (a tuplet crossing the staves is
+     *  complete once both staves' measures brought theirs, see createVfTuplet()). */
+    private static coversTupletVoiceEntries(tuplet: Tuplet, entries: VexFlowVoiceEntry[]): boolean {
+        for (const notes of tuplet.Notes) {
+            for (const note of notes) {
+                if (!entries.some((entry: VexFlowVoiceEntry) => entry.parentVoiceEntry === note.ParentVoiceEntry)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** The VexFlow tuplet of a tuplet builder (see finalizeTuplets()), undefined when it gets none. */
+    private createVfTuplet(tupletBuilder: [Tuplet, VexFlowVoiceEntry[]], voiceID: number, index: number): VF.Tuplet {
                     const tupletStaveNotes: VF.StaveNote[] = [];
-                    const tupletVoiceEntries: VexFlowVoiceEntry[] = tupletBuilder[1];
+                    let tupletVoiceEntries: VexFlowVoiceEntry[] = tupletBuilder[1];
+                    const owner: VexFlowMeasure = this.crossStaffTupletOwner(tupletBuilder[0]);
+                    if (owner !== this) {
+                        // a tuplet crossing the staves is one group of the measure on its number's side (see crossStaffTupletOwner())
+                        owner.adoptCrossStaffTupletEntries(voiceID, tupletBuilder[0], tupletVoiceEntries);
+                        if (this.crossStaffTupletOwners.indexOf(owner) < 0) {
+                            this.crossStaffTupletOwners.push(owner);
+                        }
+                        return undefined;
+                    }
+                    if (tupletVoiceEntries.some((entry: VexFlowVoiceEntry) => entry.parentStaffEntry.parentMeasure !== this) ||
+                        !VexFlowMeasure.coversTupletVoiceEntries(tupletBuilder[0], tupletVoiceEntries)) {
+                        // a tuplet crossing the staves: its notes in time order, once the other staff's measure has created
+                        //   them (it follows this one in the column, see completeCrossStaffTuplets())
+                        if (tupletVoiceEntries.some((entry: VexFlowVoiceEntry) => !entry.vfStaveNote) ||
+                            !VexFlowMeasure.coversTupletVoiceEntries(tupletBuilder[0], tupletVoiceEntries)) {
+                            this.incompleteCrossStaffTuplets.push([voiceID, index]);
+                            return undefined;
+                        }
+                        tupletVoiceEntries = tupletVoiceEntries.slice().sort((a: VexFlowVoiceEntry, b: VexFlowVoiceEntry) =>
+                            a.parentVoiceEntry.Timestamp.RealValue - b.parentVoiceEntry.Timestamp.RealValue ||
+                            Number(b.parentVoiceEntry.IsGrace) - Number(a.parentVoiceEntry.IsGrace));
+                    }
                     for (const tupletVoiceEntry of tupletVoiceEntries) {
                       tupletStaveNotes.push(((tupletVoiceEntry).vfStaveNote as StaveNote));
                     }
@@ -2348,7 +2470,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
                             }
                         }
                       }
-                      const vftuplet: VF.Tuplet = new VF.Tuplet(tupletStaveNotes,
+                      return new VF.Tuplet(tupletStaveNotes,
                         {
                           bracketed: bracketed,
                           location: location,
@@ -2357,17 +2479,12 @@ export class VexFlowMeasure extends GraphicalMeasure {
                           ratioed: tuplet.Ratioed,
                           y_offset: yOffset,
                         });
-                      vftuplets.push(vftuplet);
-                    } else {
-                        // Fewer than two notes to draw in this measure, e.g. a cross-staff tuplet with one note in this staff, or a tuplet
-                        //   with invisible rests (MusicSheetCalculator adds a hidden note to its tuplet only if it shares its notehead with
-                        //   a visible unison note). No VexFlow tuplet for it, but keep its place in the list, so that
-                        //   this.vftuplets[voiceID][i] stays the VexFlow tuplet of this.tuplets[voiceID][i], as draw() pairs them.
-                        vftuplets.push(undefined);
                     }
-                }
-            }
-        }
+                    // Fewer than two notes to draw in this measure, e.g. a cross-staff tuplet with one note in this staff, or a tuplet
+                    //   with invisible rests (MusicSheetCalculator adds a hidden note to its tuplet only if it shares its notehead with
+                    //   a visible unison note). No VexFlow tuplet for it, but keep its place in the list, so that
+                    //   this.vftuplets[voiceID][i] stays the VexFlow tuplet of this.tuplets[voiceID][i], as draw() pairs them.
+                    return undefined;
     }
 
     public layoutStaffEntry(graphicalStaffEntry: GraphicalStaffEntry): void {
@@ -2475,6 +2592,9 @@ export class VexFlowMeasure extends GraphicalMeasure {
         // console.log("Call to finalizeBeams in VexFlowMeasure took " + (t1 - t0) + " milliseconds.");
 
         this.finalizeTuplets();
+        for (const owner of this.crossStaffTupletOwners) {
+            owner.completeCrossStaffTuplets();
+        }
 
         const voices: Voice[] = this.getVoicesWithinMeasure();
 
@@ -3072,6 +3192,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
                     tuplet.ShowNumberNoneGivenInXml && this.rules.TupletNumberUseShowNoneXMLValue) {
                     continue;
                 }
+                this.applyTupletStaveBound(vftuplet);
                 const ink: { left: number, right: number, top: number, bottom: number } = this.tupletNumberInk(vftuplet);
                 if (ink) {
                     inks.push({
@@ -3124,6 +3245,31 @@ export class VexFlowMeasure extends GraphicalMeasure {
 
     /** Moves the tuplet's number by [[tupletNumberHeadSideYShift]], in its y_offset beside the moves of
      *  VexFlowMusicSheetCalculator.layoutFermatasOverSlurs() (each draw takes back the shift of the one before). */
+    /**
+     * Keeps a tuplet's number and bracket outside this measure's staff on their side. VF.Tuplet.getYPosition() starts from
+     * the staff of the tuplet's notes, and the notes of a beam crossing the staves all have the stave of its first note: a
+     * tuplet crossing the staves (crossStaffTupletOwner()) that starts in the other staff was drawn inside this one (Enesco,
+     * Concertstück piano m52; Bruch, Scottish Fantasy piano m68). The bound is Vexflow's own (1.5 spaces over the first line,
+     * 2 under the last), applied through y_offset like the shift below; nothing changes for a tuplet whose notes have this
+     * staff. As in osmd-dart.
+     */
+    private applyTupletStaveBound(vftuplet: any): void {
+        const applied: number = vftuplet.staveBoundShift || 0;
+        vftuplet.options.y_offset = (vftuplet.options.y_offset || 0) - applied;
+        vftuplet.staveBoundShift = 0;
+        if (!this.stave) {
+            return;
+        }
+        const top: boolean = vftuplet.location === VF.Tuplet.LOCATION_TOP;
+        const bound: number = top ? this.stave.getYForLine(0) - 15 : this.stave.getYForLine(4) + 20;
+        const y: number = vftuplet.getYPosition() - (vftuplet.headSideYShift || 0);
+        const shift: number = top ? Math.min(0, bound - y) : Math.max(0, bound - y);
+        if (shift !== 0) {
+            vftuplet.options.y_offset += shift;
+            vftuplet.staveBoundShift = shift;
+        }
+    }
+
     private applyTupletNumberHeadSideYShift(vftuplet: any): void {
         const applied: number = vftuplet.headSideYShift || 0;
         const shift: number = this.tupletNumberHeadSideYShift(vftuplet);
