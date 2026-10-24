@@ -13,8 +13,8 @@ import { TestUtils } from "../../Util/TestUtils";
  * osmd-dart test/octave_shift_skyline_test.dart.
  */
 describe("Octave shift skyline", () => {
-    function note(step: string, octave: number, duration: number = 1, type: string = "16th", slur: string = ""): string {
-        return `<note><pitch><step>${step}</step><octave>${octave}</octave></pitch><duration>${duration}</duration>` +
+    function note(step: string, pitchOctave: number, duration: number = 1, type: string = "16th", slur: string = ""): string {
+        return `<note><pitch><step>${step}</step><octave>${pitchOctave}</octave></pitch><duration>${duration}</duration>` +
             `<voice>1</voice><type>${type}</type>${slur ? `<notations>${slur}</notations>` : ""}</note>`;
     }
     function octave(type: string, num: number = 1): string {

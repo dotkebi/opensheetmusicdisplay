@@ -16,36 +16,36 @@ import { TestUtils } from "../../Util/TestUtils";
  * test/wedge_stop_inside_note_test.dart.
  */
 describe("Wedge stopped inside a held note", () => {
-    const head: string = `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="4.0"><part-list>` +
-        `<score-part id="P1"><part-name>Oboe</part-name></score-part>` +
-        `<score-part id="P2"><part-name>Piano</part-name></score-part></part-list>`;
-    const attributes: string = `<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>` +
-        `<clef><sign>G</sign><line>2</line></clef></attributes>`;
+    const head: string = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\"><part-list>" +
+        "<score-part id=\"P1\"><part-name>Oboe</part-name></score-part>" +
+        "<score-part id=\"P2\"><part-name>Piano</part-name></score-part></part-list>";
+    const attributes: string = "<attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>" +
+        "<clef><sign>G</sign><line>2</line></clef></attributes>";
     const wedgeXml: (type: string, offset?: number) => string = (type, offset) =>
         `<direction placement="below"><direction-type><wedge type="${type}" number="1"/></direction-type>` +
         `${offset === undefined ? "" : `<offset>${offset}</offset>`}</direction>`;
-    const whole: string = `<note><pitch><step>G</step><octave>5</octave></pitch><duration>16</duration><voice>1</voice>` +
-        `<type>whole</type></note>`;
-    const quarter: string = `<note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice>` +
-        `<type>quarter</type></note>`;
+    const whole: string = "<note><pitch><step>G</step><octave>5</octave></pitch><duration>16</duration><voice>1</voice>" +
+        "<type>whole</type></note>";
+    const quarter: string = "<note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice>" +
+        "<type>quarter</type></note>";
     // m1: crescendo 0 to the half (stop with offset 8) over a whole note; m2: crescendo over the whole measure; m3: closing
     const oboe: string = `<part id="P1"><measure number="1">${attributes}${wedgeXml("crescendo")}${wedgeXml("stop", 8)}${whole}` +
         `</measure><measure number="2">${wedgeXml("crescendo")}${whole}${wedgeXml("stop")}</measure>` +
         `<measure number="3">${whole}</measure></part>`;
-    const piano: string = `<part id="P2">` + [1, 2, 3].map(m =>
+    const piano: string = "<part id=\"P2\">" + [1, 2, 3].map(m =>
         `<measure number="${m}">${m === 1 ? attributes : ""}${quarter}${quarter}${quarter}${quarter}</measure>`).join("") +
-        `</part>`;
+        "</part>";
     const duo: string = `${head}${oboe}${piano}</score-partwise>`;
     const solo: string = head.replace(/<score-part id="P2">.*<\/score-part><\/part-list>/, "</part-list>") +
         `${oboe}</score-partwise>`;
 
     // a diminuendo over a whole note to a pp at the half, before a measure starting with a change of key and time (as m438
     //   after m437): the pp, drawn from the oboe's own notes, is right of the half in time
-    const change: string = `<attributes><key><fifths>7</fifths></key><time><beats>3</beats><beat-type>4</beat-type></time></attributes>`;
-    const dottedHalf: string = `<note><pitch><step>G</step><octave>5</octave></pitch><duration>12</duration><voice>1</voice>` +
-        `<type>half</type><dot/></note>`;
-    const ppAtHalf: string = `<direction placement="below"><direction-type><dynamics><pp/></dynamics></direction-type>` +
-        `<offset>8</offset></direction>`;
+    const change: string = "<attributes><key><fifths>7</fifths></key><time><beats>3</beats><beat-type>4</beat-type></time></attributes>";
+    const dottedHalf: string = "<note><pitch><step>G</step><octave>5</octave></pitch><duration>12</duration><voice>1</voice>" +
+        "<type>half</type><dot/></note>";
+    const ppAtHalf: string = "<direction placement=\"below\"><direction-type><dynamics><pp/></dynamics></direction-type>" +
+        "<offset>8</offset></direction>";
     const duoWithPp: string = `${head}<part id="P1"><measure number="1">${attributes}${wedgeXml("diminuendo")}${wedgeXml("stop", 8)}` +
         `${ppAtHalf}${whole}</measure><measure number="2">${change}${dottedHalf}</measure></part>` +
         `<part id="P2"><measure number="1">${attributes}${quarter}${quarter}${quarter}${quarter}</measure>` +
