@@ -1286,6 +1286,7 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
         let instrumentId: number = 0;
         const instrumentDict: { [_: string]: Instrument } = {};
         let currentGroup: InstrumentalGroup;
+        const openGroups: InstrumentalGroup[] = []; // the groups started and not stopped yet, the innermost (currentGroup) last
         // Groups nest by the parts they span, in whatever order the part-list gives their starts and stops.
         const entryArray: IXmlElement[] = this.orderPartGroupsByNesting(entryList);
         // The reader builds a nesting tree; crossing numbered groups cannot be named reliably.
@@ -1425,8 +1426,20 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                             this.musicSheet.InstrumentalGroups.push(iG);
                         }
                         currentGroup = iG;
+                        openGroups.push(iG);
                     } else {
-                        if ((node.name === "part-group") && (node.attribute("type").value === "stop")) {
+                        // A stop closes the open group of its number. A group stopping while a group started inside it is
+                        // still open (crossing groups, e.g. OpenScore Bach BWV 1049/3: 1 start, Principal Violin, 2 start,
+                        // Flute 1, 1 stop, Flute 2, 2 stop) stays that group's parent, so it reaches the later group's end:
+                        // the bracket joins Principal Violin to Flute 2, the square Flute 1 and 2, as in the other movements.
+                        // Before, a stop closed the innermost group whatever its number, which cut the later group off at the
+                        // earlier one's stop (here leaving it one part, dissolved). A stop without an open group of its number
+                        // is left out. Same as osmd-dart.
+                        const stopped: number = node.name === "part-group" && node.attribute("type").value === "stop" ?
+                            this._lastIndexOfGroupNumbered(openGroups, node.attribute("number")?.value ?? "") : -1;
+                        if (stopped >= 0 && openGroups[stopped] !== currentGroup) {
+                            openGroups.splice(stopped, 1);
+                        } else if (stopped >= 0) {
                             if (currentGroup) {
                                 const hasMultipleParts: boolean = this.countInstrumentsInGroup(currentGroup) > 1;
                                 currentGroup.PrintName = currentGroup.PrintName && hasMultipleParts;
@@ -1441,7 +1454,8 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                                         this._removeFromArray(this.musicSheet.InstrumentalGroups, currentGroup);
                                     }
                                 }
-                                currentGroup = currentGroup.Parent;
+                                openGroups.pop();
+                                currentGroup = openGroups[openGroups.length - 1];
                             }
                         }
                     }
@@ -1455,6 +1469,15 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
         }
 
         return instrumentDict;
+    }
+
+    private _lastIndexOfGroupNumbered(groups: InstrumentalGroup[], number: string): number {
+        for (let i: number = groups.length - 1; i >= 0; i--) {
+            if (groups[i].Number === number) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private countInstrumentsInGroup(group: InstrumentalGroup): number {
