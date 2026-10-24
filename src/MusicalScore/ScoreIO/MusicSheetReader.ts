@@ -1444,7 +1444,10 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                                 const hasMultipleParts: boolean = this.countInstrumentsInGroup(currentGroup) > 1;
                                 currentGroup.PrintName = currentGroup.PrintName && hasMultipleParts;
                                 currentGroup.PrintAbbreviation = currentGroup.PrintAbbreviation && hasMultipleParts;
-                                if (currentGroup.InstrumentalGroups.length === 1) {
+                                // A group around one part is dissolved; a group around one group (the same parts, e.g. a bracket
+                                // and a brace on the horns of OpenScore Beach, Gaelic Symphony/2) stays, so both are drawn, as in
+                                // osmd-dart. Before, it was dissolved too and only the inner one was drawn.
+                                if (currentGroup.InstrumentalGroups.length === 1 && currentGroup.InstrumentalGroups[0] instanceof Instrument) {
                                     const instr: InstrumentalGroup = currentGroup.InstrumentalGroups[0];
                                     if (currentGroup.Parent) {
                                         currentGroup.Parent.InstrumentalGroups.push(instr);
