@@ -13,8 +13,10 @@ import { TestUtils } from "../../Util/TestUtils";
  * later one stays inside it, as the other movements write them. Before, a stop closed the innermost group whatever its number,
  * which cut the later group off at the earlier one's stop (leaving one part here, so the square was gone). Same as osmd-dart
  * test/overlapping_part_groups_test.dart.
+ * A group around one part is dissolved, as before; a group around one group (the same parts: a bracket and a brace on the
+ * horns of Beach, Gaelic Symphony/2) stays, so both are drawn. Before, it was dissolved too and the bracket was gone.
  */
-describe("Crossing part groups", () => {
+describe("Crossing and enclosing part groups", () => {
     /** tokens: "P" a part, "1:bracket" group 1 starts with that symbol, "/1" group 1 stops */
     function scoreXml(tokens: string[]): string {
         let partList: string = "";
@@ -65,6 +67,9 @@ describe("Crossing part groups", () => {
             "bracket1[P1 P2] square1[P3 P4]", [[0, 1, 0], [2, 3, 0]]],
         ["a stop of another number inside a group", ["1:bracket", "P", "/2", "P", "/1", "P"],
             "bracket1[P1 P2] P3", [[0, 1, 0]]],
+        ["a group around a group of the same parts (Beach, Gaelic Symphony/2, the horns)",
+            ["1:bracket", "2:brace", "P", "P", "/2", "/1", "P"], "bracket1[brace2[P1 P2]] P3", [[0, 1, 0], [0, 1, 1]]],
+        ["a group around one part", ["1:bracket", "P", "/1", "2:bracket", "P", "P", "/2"], "P1 bracket2[P2 P3]", [[1, 2, 0]]],
     ];
     for (const [name, tokens, expectedTree, expectedBrackets] of cases) {
         it(`reads and brackets them (${name})`, async () => {
