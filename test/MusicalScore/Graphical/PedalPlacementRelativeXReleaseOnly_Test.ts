@@ -200,4 +200,42 @@ describe("Pedal placement above, relative-x and a stop that closed nothing", () 
         expect(depressX(m2[1])).to.be.closeTo(beat2, 1e-6);
         expect(m2[1].ChangeBegin).to.equal(true);
     });
+    it("gives a stop read after the next start but earlier in time to the pedal that start ended", async () => {
+        // As Schumann, Myrthen 9 (Lied der Suleika) piano m17: start 0, start 2, stop 1.75, stop 2.75 quarters, in this order.
+        //   Same fixture as osmd-dart test/fixtures/pedal_late_stop_after_next_start.musicxml.
+        const bass: (step: string, duration: number, type: string) => string = (step: string, duration: number, type: string): string =>
+            `<note><pitch><step>${step}</step><octave>3</octave></pitch><duration>${duration}</duration>` +
+            `<voice>5</voice><type>${type}</type><staff>2</staff></note>`;
+        const lateXml: string = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\"><part-list>" +
+            "<score-part id=\"P1\"><part-name>Piano</part-name></score-part></part-list><part id=\"P1\">" +
+            "<measure number=\"1\"><attributes><divisions>4</divisions><time><beats>3</beats><beat-type>4</beat-type></time>" +
+            "<staves>2</staves><clef number=\"1\"><sign>G</sign><line>2</line></clef><clef number=\"2\"><sign>F</sign><line>4</line>" +
+            "</clef></attributes>" + treble + pedalXml("start", "below") + bass("C", 4, "quarter") + bass("E", 2, "eighth") +
+            bass("F", 1, "16th") + bass("F", 1, "16th") + pedalXml("start", "below") +
+            "<direction placement=\"below\"><direction-type><pedal type=\"stop\" line=\"no\" sign=\"yes\"/></direction-type>" +
+            "<offset>-1</offset><staff>2</staff></direction>" + bass("G", 2, "eighth") + bass("A", 1, "16th") +
+            pedalXml("stop", "below") + bass("B", 1, "16th") + "</measure>" +
+            // m2-m4, as Schumann Op.47 I piano m119-121, across measures: m2 start at beat 3; m3 start at beat 3 written before
+            //   the stop at beat 1; m4 stop at beat 1
+            "<measure number=\"2\">" + treble + bass("C", 4, "quarter") + bass("G", 4, "quarter") + pedalXml("start", "below") +
+            bass("E", 4, "quarter") + "</measure><measure number=\"3\">" + treble + bass("C", 4, "quarter") + bass("G", 4, "quarter") +
+            pedalXml("start", "below") + "<direction placement=\"below\"><direction-type><pedal type=\"stop\" line=\"no\" " +
+            "sign=\"yes\"/></direction-type><offset>-8</offset><staff>2</staff></direction>" + bass("E", 4, "quarter") +
+            "</measure><measure number=\"4\">" + pedalXml("stop", "below") + treble + bass("C", 4, "quarter") + bass("G", 4, "quarter") +
+            bass("E", 4, "quarter") + "</measure></part></score-partwise>";
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        div.style.width = "1000px";
+        const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
+        await osmd.load(lateXml);
+        osmd.render();
+        const at: (m: any) => string = (m: any): string => `${m.SourceMeasureParent.MeasureNumber}@${m.Timestamp}`;
+        expect(sourcePedals(osmd).map(p => `${at(p.ParentStartMultiExpression)}-${at(p.ParentEndMultiExpression)}`))
+            .to.deep.equal(["1@0/1-1@7/16", "1@1/2-1@11/16", "2@1/2-3@0/1", "3@1/2-4@0/1"]);
+        const pedals: VexFlowPedal[] = osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines[1].Pedals as VexFlowPedal[];
+        expect(pedals.length).to.equal(4);
+        expect(pedals.map(p => p.ReleaseText), "every * drawn").to.deep.equal([undefined, undefined, undefined, undefined]);
+        const firstRelease: number = pedals[0].endNote.getAbsoluteX() + (pedals[0].ReleaseXOffset ?? 0);
+        const secondDepress: number = pedals[1].startNote.getAbsoluteX() + (pedals[1].DepressXOffset ?? 0);
+        expect(firstRelease, "Ped. * Ped. *, as engraved").to.be.below(secondDepress);
+    });
 });
