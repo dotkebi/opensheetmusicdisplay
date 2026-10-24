@@ -788,8 +788,88 @@ export abstract class MusicSheetCalculator {
         musicSystem.MeasureNumberLabels.push(graphicalLabel);
     }
     //So we can apply slurs first, then do these
+    /** A staff line's sky line as it was before its measure numbers were put into it (calculateMeasureNumberSkyline), for
+     *  skyLineMinIgnoringMeasureNumbers. */
+    private skyLineBeforeMeasureNumbers: WeakMap<StaffLine, number[]> = new WeakMap<StaffLine, number[]>();
+
+    /** The sky line's minimum in a range (in units of the staff line), reading the sky line under a measure number where
+     *  nothing was placed over the number since: a trill's wavy line is placed at its mark and the numbers under it are raised
+     *  over it (raiseMeasureNumbersOverWavyLine), as over a slur. */
+    protected skyLineMinIgnoringMeasureNumbers(staffLine: StaffLine, start: number, end: number): number {
+        const calculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        const current: number = calculator.getSkyLineMinInRange(start, end);
+        const before: number[] = this.skyLineBeforeMeasureNumbers.get(staffLine);
+        const system: MusicSystem = staffLine.ParentMusicSystem;
+        if (!before || this.measureNumberStaffLine(system) !== staffLine || before.length !== calculator.SkyLine.length) {
+            return current;
+        }
+        const labels: GraphicalLabel[] = system.MeasureNumberLabels;
+        if (labels.length === 0) {
+            return current;
+        }
+        const staffX: number = staffLine.PositionAndShape.RelativePosition.x;
+        const samplingUnit: number = this.rules.SamplingUnit;
+        const sky: number[] = calculator.SkyLine;
+        let lowest: number = Infinity;
+        const from: number = Math.max(0, Math.floor(start * samplingUnit));
+        const to: number = Math.min(sky.length - 1, Math.ceil(end * samplingUnit));
+        for (let i: number = from; i <= to; i++) {
+            let value: number = sky[i];
+            const x: number = i / samplingUnit;
+            for (const label of labels) {
+                const box: BoundingBox = label.PositionAndShape;
+                // the range the number went into the sky line with (calculateMeasureNumberSkyline), one sample wider on each side
+                const labelStart: number = box.RelativePosition.x - staffX;
+                const left: number = labelStart - 1 / samplingUnit;
+                const right: number = labelStart - box.BorderLeft + box.BorderRight + 1 / samplingUnit;
+                if (x < left || x > right) {
+                    continue;
+                }
+                const labelTop: number = box.RelativePosition.y + box.BorderMarginTop;
+                if (value >= labelTop - 1e-6) {
+                    // the number is the top here: what was under it counts
+                    value = before[i];
+                }
+            }
+            lowest = Math.min(lowest, value);
+        }
+        return lowest;
+    }
+
+    /** Raises the measure numbers of a staff line's system that a wavy line (its x range, in the staff line, and its top)
+     *  would run through over the line, by measureNumberClearance, and puts them into the sky line there. Same rule as
+     *  raiseMeasureNumberOverSlurs. */
+    protected raiseMeasureNumbersOverWavyLine(staffLine: StaffLine, start: number, end: number, wavyTop: number): void {
+        const system: MusicSystem = staffLine.ParentMusicSystem;
+        if (this.measureNumberStaffLine(system) !== staffLine) {
+            return;
+        }
+        const staffX: number = staffLine.PositionAndShape.RelativePosition.x;
+        const side: number = this.measureNumberInkSide;
+        const limit: number = wavyTop - MusicSheetCalculator.measureNumberClearance;
+        for (const label of system.MeasureNumberLabels) {
+            const box: BoundingBox = label.PositionAndShape;
+            const left: number = box.RelativePosition.x + box.BorderMarginLeft - staffX;
+            const right: number = box.RelativePosition.x + box.BorderMarginRight - staffX;
+            if (right < start - side || left > end + side) {
+                continue;
+            }
+            const labelBottom: number = box.RelativePosition.y + box.BorderMarginBottom;
+            if (labelBottom <= limit) {
+                continue;
+            }
+            box.RelativePosition = new PointF2D(box.RelativePosition.x, box.RelativePosition.y - (labelBottom - limit));
+            const labelStart: number = box.RelativePosition.x - staffX;
+            staffLine.SkyBottomLineCalculator.updateSkyLineInRange(labelStart, labelStart - box.BorderLeft + box.BorderRight,
+                box.RelativePosition.y + box.BorderMarginTop);
+        }
+    }
+
     private calculateMeasureNumberSkyline(musicSystem: MusicSystem): void {
         const staffLine: StaffLine = this.measureNumberStaffLine(musicSystem);
+        if (musicSystem.MeasureNumberLabels.length > 0) {
+            this.skyLineBeforeMeasureNumbers.set(staffLine, staffLine.SkyBottomLineCalculator.SkyLine.slice());
+        }
         for(const measureNumberLabel of musicSystem.MeasureNumberLabels) {
             this.raiseMeasureNumberOverSlurs(measureNumberLabel, staffLine);
             // and the corresponding SkyLine indices
@@ -1257,6 +1337,10 @@ export abstract class MusicSheetCalculator {
         if ((multiExpression.MoodList.length > 0) || (multiExpression.UnknownList.length > 0)) {
             // words above and below the staff at the same time are drawn as one label each on their own side
             for (const entries of multiExpression.getEntryGroupsByPlacement()) {
+                if (!entries.some(MultiExpression.isMoodOrUnknownEntry)) {
+                    // a verbal dynamic alone on its side ("cresc." below "allarg."): drawn as a dynamic (calculateDynamicExpressions())
+                    continue;
+                }
                 this.calculateMoodAndUnknownExpressionEntries(multiExpression, entries, measureIndex, staffIndex);
             }
         }
@@ -3124,6 +3208,36 @@ export abstract class MusicSheetCalculator {
         return leftX + (rightX - leftX) * Fraction.minus(time, leftTime).RealValue / span;
     }
 
+    /** The x in the staff line of the start of the source measure, the measure at whose start a wedge's stop was written
+     *  (ContinuousDynamicExpression.StopWrittenAtNextMeasureStart, or a stop the reader left there): the staff's first staff entry
+     *  there (its left border for a diminuendo, or with grace notes before it, as a stop at a note of the measure takes it), or,
+     *  on a staff with only a whole-measure rest there, the time in the system (systemTimeX(); Enescu, Concertstück, Piano m1-2:
+     *  the diminuendo reaches the left hand's first note under the right hand's whole rest). Undefined when the measure is not in
+     *  the staff line (the wedge then keeps the barline, as before the next system), the staff has no entry at its start, or that
+     *  entry is a rest (Intrada, Honegger m38: a quarter rest before the f; the crescendo through the held m36-37 does not point at
+     *  the rest). Same as osmd-dart. */
+    protected measureStartNoteX(sourceMeasure: SourceMeasure, staffIndex: number, staffLine: StaffLine, leftBorder: boolean): number {
+        const measure: GraphicalMeasure = this.graphicalMusicSheet.getGraphicalMeasureFromSourceMeasureAndIndex(sourceMeasure, staffIndex);
+        if (!measure || measure.ParentStaffLine !== staffLine) {
+            return undefined;
+        }
+        const measureX: number = measure.PositionAndShape.RelativePosition.x;
+        if (this.onlyWholeMeasureRest(measure)) {
+            return this.systemTimeX(measure, new Fraction(0, 1), measureX + measure.PositionAndShape.BorderRight);
+        }
+        for (const se of measure.staffEntries) {
+            if (se.relInMeasureTimestamp.RealValue !== 0 || se.graphicalVoiceEntries.length === 0) {
+                continue;
+            }
+            if (se.graphicalVoiceEntries.every(gve => gve.parentVoiceEntry.Notes.every(n => n.isRest()))) {
+                return undefined;
+            }
+            const grace: boolean = se.graphicalVoiceEntries.some(gve => gve.parentVoiceEntry.IsGrace && !gve.parentVoiceEntry.GraceAfterMainNote);
+            return measureX + se.PositionAndShape.RelativePosition.x + (leftBorder || grace ? se.ExpressionBorderLeft : 0);
+        }
+        return undefined;
+    }
+
     /** Whether an instantaneous dynamic of the wedge's staff and side is at its stop (StopTimestamp) in the measure of its
      *  EndMultiExpression. Same as osmd-dart. */
     protected dynamicAtWedgeStop(wedge: ContinuousDynamicExpression, staffIndex: number): boolean {
@@ -3221,24 +3335,32 @@ export abstract class MusicSheetCalculator {
             log.warn("MusicSheetCalculator.calculateGraphicalContinuousDynamic: No endMeasure found");
             return;
         }
-        // A stop at the start of a later measure that the reader left there: the wedge started after the last entry of the staff in
-        //   the previous measure (ExpressionReader.wedgeStopAtPreviousMeasureEnd() closes the other stops at a measure's start at the
-        //   previous measure's last entry). It is drawn to the previous measure's barline as well (Enescu, Concertstück, Piano m1-2: a
-        //   diminuendo from an <offset> into the right hand's whole rest, stopped at m2 q0, ran to the end of m2). Drawn only: the
-        //   playback keeps the stop at the start of the measure. Same as osmd-dart.
+        // A stop written at the start of the measure after the end measure's (ContinuousDynamicExpression
+        //   .StopWrittenAtNextMeasureStart: the reader closed it at the previous measure's last entry, where the playback ends), or
+        //   at the start of a later measure that the reader left there (the wedge started after the last entry of the staff in the
+        //   previous measure; Enescu, Concertstück, Piano m1-2: a diminuendo from an <offset> into the right hand's whole rest,
+        //   stopped at m2 q0, ran to the end of m2): the wedge is drawn to that measure's first note when it is in the same system,
+        //   as it is written (user decision 2026-10-24 B1-SOURCE-DEFAULT; Bowen, Viola Sonata No. 2 m139-140, Enescu Viola
+        //   m19-20, Intrada m35-38, Davydov Op. 11 m128-129: it ended at the barline before the note, 10-07), else to the barline
+        //   (as before the next system). Drawn only: the playback keeps its end. Same as osmd-dart.
         let previousBarlineX: number = undefined;
+        let stopMeasure: SourceMeasure = undefined;
         {
             const wedge: ContinuousDynamicExpression = graphicalContinuousDynamic.ContinuousDynamic;
             const startSourceMeasure: SourceMeasure = wedge.StartMultiExpression?.SourceMeasureParent;
             const endSourceMeasure: SourceMeasure = wedge.EndMultiExpression.SourceMeasureParent;
-            if (!isSoftAccent && startSourceMeasure && startSourceMeasure.measureListIndex < endSourceMeasure.measureListIndex &&
+            const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+            if (!isSoftAccent && wedge.StopWrittenAtNextMeasureStart && endSourceMeasure.measureListIndex + 1 < sourceMeasures.length) {
+                stopMeasure = sourceMeasures[endSourceMeasure.measureListIndex + 1];
+            } else if (!isSoftAccent && startSourceMeasure && startSourceMeasure.measureListIndex < endSourceMeasure.measureListIndex &&
                 wedge.EndMultiExpression.Timestamp.RealValue === 0 && !wedge.StopTimestamp &&
                 (!wedge.EndOffsetFraction || wedge.EndOffsetFraction.RealValue === 0)) {
                 const previous: GraphicalMeasure = this.graphicalMusicSheet.getGraphicalMeasureFromSourceMeasureAndIndex(
-                    this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures[endSourceMeasure.measureListIndex - 1], staffIndex);
+                    sourceMeasures[endSourceMeasure.measureListIndex - 1], staffIndex);
                 if (previous?.ParentStaffLine) {
                     endMeasure = previous;
                     previousBarlineX = previous.PositionAndShape.RelativePosition.x + previous.PositionAndShape.BorderRight;
+                    stopMeasure = endSourceMeasure;
                 }
             }
         }
@@ -3246,6 +3368,9 @@ export abstract class MusicSheetCalculator {
         graphicalContinuousDynamic.EndMeasure = endMeasure;
         const staffLine: StaffLine = graphicalContinuousDynamic.ParentStaffLine;
         const endStaffLine: StaffLine = endMeasure.ParentStaffLine;
+        const nextMeasureStartX: number = stopMeasure === undefined ? undefined : this.measureStartNoteX(
+            stopMeasure, staffIndex, endStaffLine,
+            graphicalContinuousDynamic.ContinuousDynamic.DynamicType === ContDynamicEnum.diminuendo);
 
         // check if Expression spreads over the same StaffLine or not
         const sameStaffLine: boolean = endStaffLine && staffLine === endStaffLine;
@@ -3385,6 +3510,10 @@ export abstract class MusicSheetCalculator {
             //startPosInStaffline.x -= 1;
             startPosInStaffline.x -= staffEntryWidth / 2 * sizeFactor + wedgePadding;
             endPosInStaffLine.x = startPosInStaffline.x + staffEntryWidth / 2 * sizeFactor;
+        } else if (nextMeasureStartX !== undefined &&
+            (!sameStaffLine || nextMeasureStartX - this.rules.WedgeHorizontalMargin > startPosInStaffline.x)) {
+            // the stop written at the next measure's start: its first note
+            endPosInStaffLine.x = nextMeasureStartX - this.rules.WedgeHorizontalMargin;
         } else if (previousBarlineX !== undefined) {
             endPosInStaffLine.x = previousBarlineX - this.rules.WedgeHorizontalMargin;
         } else if (pairEndX !== undefined) {
@@ -4605,7 +4734,7 @@ export abstract class MusicSheetCalculator {
             } else if (useLeftStaffEntryBorder &&
                 (leftStaffEntry.getAbsoluteTimestamp().RealValue === timestamp.RealValue || endAfterRightStaffEntry)
             ) {
-                leftX = leftStaffEntry.PositionAndShape.RelativePosition.x + leftStaffEntry.PositionAndShape.BorderLeft + measureRelativeX;
+                leftX = leftStaffEntry.PositionAndShape.RelativePosition.x + leftStaffEntry.ExpressionBorderLeft + measureRelativeX;
                 rightX = leftX;
             }
             let timestampQuotient: number = 0.0;
@@ -6520,7 +6649,7 @@ export abstract class MusicSheetCalculator {
                             if (multiExpression.InstantaneousDynamic !== undefined ||
                                 (multiExpression.StartingContinuousDynamic !== undefined &&
                                     multiExpression.StartingContinuousDynamic.StartMultiExpression ===
-                                    multiExpression && multiExpression.UnknownList.length === 0)
+                                    multiExpression && !multiExpression.wordsCarryStartingContinuousDynamic())
                             ) {
                                 this.calculateDynamicExpressionsForMultiExpression(multiExpression, i, j);
                             }

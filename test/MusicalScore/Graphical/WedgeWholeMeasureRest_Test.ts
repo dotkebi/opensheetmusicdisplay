@@ -13,8 +13,8 @@ import { TestUtils } from "../../Util/TestUtils";
  * and the wedge's x was taken from the entries of its own staff only: a start at the start of the measure began at the middle
  * (Enescu, Concertstück, Piano m109), a stop inside the measure went to its end (Glière, Horn Concerto Op. 91 III, Piano m98). The
  * x of the time comes from the other staves of the system. A diminuendo started by an <offset> into a whole rest and stopped at the
- * next measure's start, which the reader leaves in that measure, is drawn to the barline as the other stops at a measure's start
- * (Enescu m1-2); its playback end stays. Same as osmd-dart test/wedge_whole_measure_rest_test.dart.
+ * next measure's start, which the reader leaves in that measure, is drawn to the time of that start on the other staff
+ * (Enescu m1-2, the left hand's first p; to the barline until 10-24); its playback end stays. Same as osmd-dart test/wedge_whole_measure_rest_test.dart.
  */
 describe("Wedge on a staff with only a whole-measure rest", () => {
     function note(step: string, octave: number, duration: number, type: string, staff: number): string {
@@ -124,12 +124,14 @@ describe("Wedge on a staff with only a whole-measure rest", () => {
         expect(right(parts[0])).to.be.closeTo(secondEighth - margin, 0.05, `measure end ${measureEnd(measure(osmd, 1, 0))}`);
     });
 
-    it("ends a wedge from an offset into a whole rest, stopped at the next measure's start, at the barline", async () => {
-        // m1: diminuendo from q2 (offset 8) to m2 q0
+    it("ends a wedge from an offset into a whole rest, stopped at the next measure's start, at the time of that start on the other staff",
+       async () => {
+        // m1: diminuendo from q2 (offset 8) to m2 q0 (the stop left there by the reader; drawn to the barline until 10-24, see
+        //   WedgeStopNextMeasureStart_Test)
         const osmd: OpenSheetMusicDisplay = await render(score(4, [wedgeXml("diminuendo", 8), wedgeXml("stop"), ""]));
         const margin: number = osmd.EngravingRules.WedgeHorizontalMargin;
         const w: GraphicalContinuousDynamicExpression = wedge(osmd);
-        expect(right(w)).to.be.closeTo(measureEnd(measure(osmd, 0, 0)) - margin, 0.05);
+        expect(right(w)).to.be.closeTo(entryX(measure(osmd, 1, 1), 0) - margin, 0.05);
         expect(left(w)).to.be.closeTo(entryX(measure(osmd, 0, 1), 0.5), 1.5);
         // the playback end stays at m2 q0
         const end: MultiExpression = w.ContinuousDynamic.EndMultiExpression;
