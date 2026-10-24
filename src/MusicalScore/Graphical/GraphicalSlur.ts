@@ -365,6 +365,7 @@ export class GraphicalSlur extends GraphicalCurve {
             this.bezierStartControlPt = new PointF2D(startControlPoint.x, startControlPoint.y - startYOffset);
             this.bezierEndControlPt = new PointF2D(endControlPoint.x, endControlPoint.y - endYOffset);
             this.bezierEndPt = new PointF2D(endX, endY - endYOffset);
+            this.keepTangentsInside();
             if (!slurStartNote) {
                 this.continuedStartY = this.bezierStartPt.y;
             }
@@ -544,6 +545,7 @@ export class GraphicalSlur extends GraphicalCurve {
             this.bezierStartControlPt = new PointF2D(startControlPoint.x, startControlPoint.y + startYOffset);
             this.bezierEndControlPt = new PointF2D(endControlPoint.x, endControlPoint.y + endYOffset);
             this.bezierEndPt = new PointF2D(endX, endY + endYOffset);
+            this.keepTangentsInside();
             if (!slurStartNote) {
                 this.continuedStartY = this.bezierStartPt.y;
             }
@@ -1601,7 +1603,13 @@ export class GraphicalSlur extends GraphicalCurve {
         // A slur between voices (betweenVoices()) stays inside the staff, at its notes (as in osmd-dart, which has no such
         // clamp: the end at a note on the middle line went half a space lower on the web, and the slur under Widmung's
         // arpeggio had no room left over the lower voice).
-        if (this.placement === PlacementEnum.Above) {
+        // Nor a slur on the noteheads' side of its voice among other voices (below an up-stemmed voice, above a
+        //   down-stemmed one): it lies towards the other voice, and pulled to the far half of the staff it ran into it
+        //   (Mozart, K.191 II m195, left hand: voice 3's slurs under its A3 sixteenths dived to voice 2's heads, voice 2's
+        //   slur over its A2 rose through voice 3's). osmd-dart has no clamp at all.
+        if (this.onHeadSideAmongVoices(slurStartNote, slurEndNote)) {
+            // (stays at its notes)
+        } else if (this.placement === PlacementEnum.Above) {
             startY = GraphicalSlur.clampEndPointAbove(startY, staffLine.StaffHeight);
             endY = GraphicalSlur.clampEndPointAbove(endY, staffLine.StaffHeight);
         } else if (!ownVoiceOnly) {
@@ -1614,6 +1622,23 @@ export class GraphicalSlur extends GraphicalCurve {
         endX += GraphicalSlur.graceNoteXOffset(slurEndNote);
 
         return {startX, startY, endX, endY};
+    }
+
+    /** Whether this slur, from and to notes of one voice in a measure with several voices, lies on the noteheads' side
+     *  of that voice: below up stems or above down stems (see calculateStartAndEnd()). */
+    private onHeadSideAmongVoices(slurStartNote: GraphicalNote, slurEndNote: GraphicalNote): boolean {
+        const startEntry: VoiceEntry = slurStartNote?.parentVoiceEntry?.parentVoiceEntry;
+        const endEntry: VoiceEntry = slurEndNote?.parentVoiceEntry?.parentVoiceEntry;
+        if (!startEntry || !endEntry || startEntry.ParentVoice !== endEntry.ParentVoice || startEntry.IsGrace || endEntry.IsGrace ||
+            !this.staffEntries.some(entry => entry.parentMeasure.hasMultipleVoices())) {
+            return false;
+        }
+        const stem: StemDirectionType = startEntry.StemDirection;
+        if (endEntry.StemDirection !== stem) {
+            return false;
+        }
+        return this.placement === PlacementEnum.Below && stem === StemDirectionType.Up ||
+            this.placement === PlacementEnum.Above && stem === StemDirectionType.Down;
     }
 
     /** Distance in units from the staff entry position a grace note shares with its main note to the grace note's
@@ -1654,17 +1679,21 @@ export class GraphicalSlur extends GraphicalCurve {
         return 0;
     }
 
-    /** Y of a slur-above end point: no lower than 1.5 while the point is within the staff. */
+    /** Y of a slur-above end point: no lower than 1.5 while the point is within the staff. A point on the bottom line
+     *  is at a note below the staff, as one under it. */
     private static clampEndPointAbove(y: number, staffHeight: number): number {
-        if (y > staffHeight) {
+        if (y >= staffHeight) {
             return y; // completely below the staff: stay at the note
         }
         return Math.min(y, 1.5);
     }
 
-    /** Y of a slur-below end point: no higher than StaffHeight - 1.5 while the point is within the staff. */
+    /** Y of a slur-below end point: no higher than StaffHeight - 1.5 while the point is within the staff. A point on the
+     *  top line is at a note above the staff, as one over it: pulled into the staff, the slur below a pair of grace notes
+     *  over the staff dived from the first one to the fourth line (Mozart, K.191 III bassoon m270 and m338: B-flat3 and
+     *  C4 after the trill, the B-flat3's ink ending on the top line, the C4's half a space above it). */
     private static clampEndPointBelow(y: number, staffHeight: number): number {
-        if (y < 0) {
+        if (y <= 0) {
             return y; // completely above the staff: stay at the note
         }
         return Math.max(y, staffHeight - 1.5);
@@ -1731,6 +1760,11 @@ export class GraphicalSlur extends GraphicalCurve {
         for (let idx: number = 0, len: number = this.staffEntries.length; idx < len; ++idx) {
             const graphicalStaffEntry: GraphicalStaffEntry = this.staffEntries[idx];
             if (graphicalStaffEntry.parentMeasure.hasMultipleVoices()) {
+                const crossVoiceSide: PlacementEnum = this.crossVoiceMixedStemsSide();
+                if (crossVoiceSide !== undefined) {
+                    this.placement = crossVoiceSide;
+                    return;
+                }
                 if (this.slur.StartNote.ParentVoiceEntry.ParentVoice instanceof LinkedVoice ||
                     this.slur.EndNote?.ParentVoiceEntry.ParentVoice instanceof LinkedVoice) {
                     this.placement = PlacementEnum.Below;
@@ -1782,6 +1816,58 @@ export class GraphicalSlur extends GraphicalCurve {
                 this.placement = PlacementEnum.Above;
             } else { this.placement = PlacementEnum.Below; }
         }
+    }
+
+    /** The angle (from the horizontal) a tangent past the vertical at an end of the curve is turned back to. */
+    private static readonly maxEndTangentDegrees: number = 80;
+
+    /**
+     * Turns a control point whose tangent stands past the vertical (the control point behind its end) back to
+     * maxEndTangentDegrees, at the same distance from its end. The control points come from angles to the line from start
+     * to end: with the ends far apart in height that line is steep, and the end's tangent went past the vertical, the curve
+     * hooking back like ")" (Mozart, K.191 III piano RH m248: the slur under the stems from the B-flat3/F4 chord to the
+     * F4, two units higher). Steep tangents short of the vertical stay. Same as osmd-dart.
+     */
+    private keepTangentsInside(): void {
+        const limit: number = GraphicalSlur.maxEndTangentDegrees * Math.PI / 180;
+        const turn: (end: PointF2D, control: PointF2D, inward: number) => PointF2D = (end, control, inward) => {
+            const dx: number = (control.x - end.x) * inward;
+            const dy: number = control.y - end.y;
+            const length: number = Math.sqrt(dx * dx + dy * dy);
+            if (length === 0 || dx >= 0) {
+                return control;
+            }
+            return new PointF2D(end.x + inward * length * Math.cos(limit), end.y + Math.sign(dy) * length * Math.sin(limit));
+        };
+        this.bezierStartControlPt = turn(this.bezierStartPt, this.bezierStartControlPt, 1);
+        this.bezierEndControlPt = turn(this.bezierEndPt, this.bezierEndControlPt, -1);
+    }
+
+    /**
+     * The side of a slur from a note of one voice to a note of another whose stems point different ways:
+     * the stem side of its start note. By the voices (a second voice's slur below) it went to the other
+     * side and ran from the start note's head to the end of the other note's stem (Mozart K.191 III m309
+     * and m323, left hand: voice 3's A3 half note, its stem up once the crossed voices are re-stemmed, to
+     * the G3 of voice 2's chord with a down stem; the print slurs it above). Not a slur between neighbouring
+     * notes: it joins the noteheads between the voices (isHeadToHeadBetweenVoices(), Boccherini, Cello Concerto
+     * No. 2, cello m504: E4 up to A3 down in bariolage). Undefined for any other slur. Same rule as osmd-dart.
+     */
+    private crossVoiceMixedStemsSide(): PlacementEnum {
+        const startEntry: VoiceEntry = this.slur.StartNote?.ParentVoiceEntry;
+        const endEntry: VoiceEntry = this.slur.EndNote?.ParentVoiceEntry;
+        if (!startEntry || !endEntry || startEntry.ParentVoice === endEntry.ParentVoice || this.staffEntries.length <= 2 ||
+            startEntry.IsGrace || endEntry.IsGrace) {
+            return undefined;
+        }
+        const start: StemDirectionType = startEntry.StemDirection;
+        const end: StemDirectionType = endEntry.StemDirection;
+        if (start === StemDirectionType.Up && end === StemDirectionType.Down) {
+            return PlacementEnum.Above;
+        }
+        if (start === StemDirectionType.Down && end === StemDirectionType.Up) {
+            return PlacementEnum.Below;
+        }
+        return undefined;
     }
 
     /**

@@ -324,6 +324,44 @@ export class VexFlowConverter {
      * @param highestOther the highest halftone of the other voices' notes at the rest's time
      * @param lowestOther the lowest halftone of the other voices' notes at the rest's time
      */
+    /** The side of a voice entry's stem: 1 up, -1 down, undefined without a stem in the MusicXML. The direction the
+     *  entry is drawn with, where the MusicXML gives one: crossed voices are re-stemmed (02front
+     *  osmd-crossed-voice-stems-patch.ts), and by their MusicXML stems voice 3's rest stayed under voice 2's notes after
+     *  voice 3 went up (Mozart, K.191 II m195, left hand: the first 16th rest; the print has it on top). Same as
+     *  osmd-dart. */
+    public static entryStemSide(entry: VoiceEntry): number {
+        if (entry.StemDirectionXml !== StemDirectionType.Up && entry.StemDirectionXml !== StemDirectionType.Down) {
+            return undefined;
+        }
+        const direction: StemDirectionType = entry.WantedStemDirection === StemDirectionType.Up ||
+            entry.WantedStemDirection === StemDirectionType.Down ? entry.WantedStemDirection : entry.StemDirectionXml;
+        return direction === StemDirectionType.Up ? 1 : -1;
+    }
+
+    /** The side of the stems of a rest's voice in its measure on its staff (entryStemSide()): 1 all up, -1 all down, else
+     *  (none, both, or notes without stems) undefined. */
+    public static voiceStemSide(rest: VoiceEntry): number {
+        const measure: SourceMeasure = rest?.ParentSourceStaffEntry?.VerticalContainerParent?.ParentMeasure;
+        const staff: Staff = rest?.ParentSourceStaffEntry?.ParentStaff;
+        if (!measure) {
+            return undefined;
+        }
+        let stemSide: number = undefined;
+        for (const entry of rest.ParentVoice.VoiceEntries) {
+            if (entry === rest || entry.IsGrace || entry.Notes.length === 0 || entry.Notes[0].isRest() || !entry.Notes[0].Pitch ||
+                entry.ParentSourceStaffEntry?.VerticalContainerParent?.ParentMeasure !== measure ||
+                entry.ParentSourceStaffEntry?.ParentStaff !== staff) {
+                continue;
+            }
+            const side: number = VexFlowConverter.entryStemSide(entry);
+            if (side === undefined || stemSide !== undefined && side !== stemSide) {
+                return undefined;
+            }
+            stemSide = side;
+        }
+        return stemSide;
+    }
+
     public static restSideFromVoice(rest: VoiceEntry, highestOther: number, lowestOther: number): number {
         const measure: SourceMeasure = rest?.ParentSourceStaffEntry?.VerticalContainerParent?.ParentMeasure;
         if (!measure || highestOther === undefined) {
@@ -342,8 +380,7 @@ export class VexFlowConverter {
                 entry.ParentSourceStaffEntry?.ParentStaff !== staff) {
                 continue;
             }
-            const side: number = entry.StemDirectionXml === StemDirectionType.Up ? 1 :
-                entry.StemDirectionXml === StemDirectionType.Down ? -1 : undefined;
+            const side: number = VexFlowConverter.entryStemSide(entry);
             if (side === undefined) {
                 stemless = true;
             } else if (stemSide !== undefined && side !== stemSide) {
@@ -415,6 +452,9 @@ export class VexFlowConverter {
         let xShift: number = 0;
         let isRest: boolean = false;
         let restYPitch: Pitch;
+        // a rest's key before it moves away from the other voices' notes, and the side it moves to (see below)
+        let restDefaultKey: string;
+        let restShiftSide: number = 0;
         for (const note of notes) {
             if (numDots < note.numberOfDots) {
                 numDots = note.numberOfDots;
@@ -487,6 +527,7 @@ export class VexFlowConverter {
                     }
                 }
                 //If we have more than one visible voice entry, shift the rests so no collision occurs
+                restDefaultKey = keys[0];
                 if (note.sourceNote.ParentStaff.Voices.length > 1) {
                     const staffGves: GraphicalVoiceEntry[] = note.parentVoiceEntry.parentStaffEntry.graphicalVoiceEntries;
                     //Find all visible voice entries (don't want invisible rests/notes causing visible shift)
@@ -512,6 +553,13 @@ export class VexFlowConverter {
                     if (highestOther !== undefined) {
                         // the side for VexFlow's rest collisions (stavenote.js format()), see below
                         restSideForVexFlow = restSide ?? (restVoiceId === 1 || restVoiceId === 5 ? 1 : -1);
+                    } else if (staffGves.some(other => other !== gve && !other.parentVoiceEntry?.IsGrace &&
+                        other.notes.some(n => n.sourceNote.isRest() && n.sourceNote.PrintObject))) {
+                        // Only another voice's rest at its time: the side of its voice's stems in the measure, for
+                        //   osmdSeparateRests() (stavenote.js). Without a side neither rest moved, and the two lay on each
+                        //   other (Mozart, K.191 II piano RH m200: voice 1's eighth rest, its notes up-stemmed, and voice 2's
+                        //   16th rest, down-stemmed, on beats 1 and 3). Same as osmd-dart.
+                        restSideForVexFlow = VexFlowConverter.voiceStemSide(note.parentVoiceEntry.parentVoiceEntry);
                     }
                     // a rest is on the side of its voice's notes (see restSideFromVoice()).
                     //   Else voice 1 (or 5, the first voice of a second staff) is the upper voice.
@@ -579,6 +627,7 @@ export class VexFlowConverter {
                                 linesShift += (Math.ceil(rules.RestCollisionYPadding) * 0.5); // 0.5 is smallest unit
                                 linesShift *= lineShiftDirection;
                                 note.lineShift = linesShift;
+                                restShiftSide = lineShiftDirection;
                             }
                         }
                     }
@@ -783,6 +832,17 @@ export class VexFlowConverter {
         const lineShift: number = gve.notes[0].lineShift;
         if (lineShift !== 0) {
             vfnote.getKeyProps()[0].line += lineShift;
+        }
+        // A rest moves away from the other voices' notes, never towards them: past its own place it went over the staff
+        //   when those notes were (Mozart, K.191 III bassoon m245-250: the second voice's whole-measure rest under the cue
+        //   notes over the staff, in their beams). It stays at its place then and VexFlow's rest collisions move it if
+        //   need be, as osmd-dart places all rests.
+        if (isRest && restShiftSide !== 0 && restDefaultKey) {
+            const defaultLine: number = (VF as any).keyProperties(restDefaultKey, vfClefType)?.line;
+            const keyProps: any = vfnote.getKeyProps()[0];
+            if (defaultLine !== undefined && (keyProps.line - defaultLine) * restShiftSide < 0) {
+                keyProps.line = defaultLine;
+            }
         }
         // for the lines of rests among other voices' notes (VexFlowPatch stavenote.js osmdPlaceRests()):
         //   not a rest the MusicXML puts on a line (display-step), and invisible notes don't count
