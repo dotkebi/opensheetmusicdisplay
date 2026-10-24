@@ -1615,8 +1615,14 @@ export class InstrumentReader {
           const afterGraceNotes: boolean = this.currentStaffEntry !== undefined && this.currentStaffEntry.hasNotes() &&
             this.currentStaffEntry.VoiceEntries.every(voiceEntry =>
               voiceEntry.Notes.length === 0 || voiceEntry.IsGrace && !voiceEntry.GraceAfterMainNote);
+          // The staff entry at the clef's time may already hold a note of another voice (a voice crossing to this staff:
+          //   Enesco, Concertstück piano m53, the G clef inside a cross-staff septuplet). The clef is at that time all the
+          //   same, before that note too, so it goes to that entry; it was left pending for ever (an entry with notes was
+          //   never taken) and the staff kept the old clef.
+          const atEntryTime: boolean = this.currentStaffEntry !== undefined && instructionTimestamp !== undefined &&
+            Math.abs(instructionTimestamp.RealValue - this.currentStaffEntry.Timestamp.RealValue) <= 0.01;
           if ((!beginOfMeasure || afterGraceNotes) && this.currentStaffEntry !== undefined &&
-            (!this.currentStaffEntry.hasNotes() || afterGraceNotes) &&
+            (!this.currentStaffEntry.hasNotes() || afterGraceNotes || (!beginOfMeasure && atEntryTime)) &&
             key - 1 === this.instrument.Staves.indexOf(this.currentStaffEntry.ParentStaff)) {
             const newClefInstruction: ClefInstruction = clefInstruction;
             const staffEntry: SourceStaffEntry = this.currentStaffEntry;
