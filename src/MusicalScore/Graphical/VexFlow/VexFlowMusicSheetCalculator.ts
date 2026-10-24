@@ -2427,11 +2427,17 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         //   The gap kept under the box is also kept on either side: a slur rising beside the box met its corner
         //   (Glière Op. 91 III Piano m145, osmd-dart at 820/1366).
         const marginInUnits: number = 0.5; // small gap between mark bottom and what's below it
-        const topRelative: number = staffLine.SkyBottomLineCalculator.getSkyLineMinInRange(start - marginInUnits, end + marginInUnits);
+        // The gap is kept from the ink (user decision 10-24): the skyline has a slur's middle line, drawn 0.13-0.29 under
+        //   its outer edge, and the box's 2 px line reaches half its width under minBottomY, so half a space came out as
+        //   0.1-0.27 (Glière Op. 91 III Piano m195 in osmd-dart at 834).
+        const boxLineHalfWidthInUnits: number = 0.1;
+        const topRelative: number = Math.min(
+          staffLine.SkyBottomLineCalculator.getSkyLineMinInRange(start - marginInUnits, end + marginInUnits),
+          this.slurOuterEdgeTopInRange(staffLine, start - marginInUnits, end + marginInUnits));
         if (topRelative < 0) { // only lift if something actually rises above the staff here
           // StaveSection.draw (VexFlowPatch) shifts the mark up so its box bottom doesn't exceed
           //   stave.getYForLine(0) + minBottomY (px), keeping the mark above that element:
-          minBottomY = (topRelative - marginInUnits) * unitInPixels;
+          minBottomY = (topRelative - marginInUnits - boxLineHalfWidthInUnits) * unitInPixels;
           // reserve skyline over the range so updateStaffLineBorders/calculateSystemYLayout make room for the lifted mark
           const markHeightInUnits: number = fontSize / unitInPixels * 1.6 + marginInUnits; // conservative StaveSection box height
           staffLine.SkyBottomLineCalculator.updateSkyLineInRange(start, end, topRelative - markHeightInUnits);
@@ -2444,6 +2450,40 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       VexFlowConverter.setVexFlowTextFontFamily((section as any).font, this.rules);
       return; // only draw one rehearsal mark at top (visible) instrument
     }
+  }
+
+  /** The highest point (lowest y) between startX and endX of the outer edge that the drawer gives a slur above the staff:
+   *  its curve with the end points 0.05 and the control points 0.3 further out (VexFlowMusicSheetDrawer.drawSlur).
+   *  Infinity without one. */
+  private slurOuterEdgeTopInRange(staffLine: StaffLine, startX: number, endX: number): number {
+    let top: number = Number.POSITIVE_INFINITY;
+    for (const slur of staffLine.GraphicalSlurs) {
+      if (slur.placement !== PlacementEnum.Above) {
+        continue;
+      }
+      const p: PointF2D[] = [slur.bezierStartPt, slur.bezierStartControlPt, slur.bezierEndControlPt, slur.bezierEndPt];
+      if (p.some(point => !point || !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
+        continue; // the drawer skips it too
+      }
+      const outward: number[] = [0.05, 0.3, 0.3, 0.05];
+      // a point every 0.02 spaces or closer: a steep slur end rises fast
+      const samples: number = Math.min(2000, Math.max(20, Math.ceil(Math.abs(p[3].x - p[0].x) / 0.02)));
+      for (let i: number = 0; i <= samples; i++) {
+        const t: number = i / samples;
+        const u: number = 1 - t;
+        const b: number[] = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+        const x: number = b[0] * p[0].x + b[1] * p[1].x + b[2] * p[2].x + b[3] * p[3].x;
+        if (x < startX || x > endX) {
+          continue;
+        }
+        let y: number = 0;
+        for (let k: number = 0; k < 4; k++) {
+          y += b[k] * (p[k].y - outward[k]);
+        }
+        top = Math.min(top, y);
+      }
+    }
+    return top;
   }
 
   /** Returns the leftmost (smallest x) Above-placed chord symbol container in the measure, or undefined if there is none.
