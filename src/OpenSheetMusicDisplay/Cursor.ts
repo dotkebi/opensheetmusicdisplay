@@ -177,6 +177,32 @@ export class Cursor {
       x = firstVisibleMeasure.PositionAndShape.AbsolutePosition.x;
       musicSystem = firstVisibleMeasure.ParentMusicSystem;
       iterator.moveToPrevious();
+    } else if (!iterator.EndReached && iterator.CurrentMeasure?.isReducedToMultiRest) {
+      // multiple measure rests aren't used when one
+      //   checked before the empty-position case below: inside a multirest the positions often only carry
+      //   notes of an invisible instrument (e.g. a hidden piano accompanying resting voices), and the cursor
+      //   has to stay at the multirest's progress instead of jumping to the end of the multirest.
+      const multiRestGMeasure: GraphicalMeasure = this.findVisibleGraphicalMeasure(iterator.CurrentMeasureIndex);
+      const totalRestMeasures: number = multiRestGMeasure.parentSourceMeasure.multipleRestMeasures;
+      const currentRestMeasureNumber: number = iterator.CurrentMeasure.multipleRestMeasureNumber;
+      const progressRatio: number = currentRestMeasureNumber / (totalRestMeasures + 1);
+      const effectiveWidth: number = multiRestGMeasure.PositionAndShape.Size.width - (multiRestGMeasure as VexFlowMeasure).beginInstructionsWidth;
+      x = multiRestGMeasure.PositionAndShape.AbsolutePosition.x + (multiRestGMeasure as VexFlowMeasure).beginInstructionsWidth + progressRatio * effectiveWidth;
+
+      musicSystem = multiRestGMeasure.ParentMusicSystem;
+    } else if (!iterator.EndReached && iterator.CurrentVoiceEntries && voiceEntries.length === 0) {
+      // neither this position nor the previous one has a visible note (e.g. consecutive positions only played by
+      //   an invisible instrument): interpolate between the closest visible notes instead of treating this as
+      //   the end of the sheet, which put the cursor at the measure's end and moved it back on the next note.
+      const [timestampX, timestampSystem] = this.graphic.calculateXPositionFromTimestamp(iterator.currentTimeStamp);
+      if (timestampSystem) {
+        x = timestampX;
+        musicSystem = timestampSystem;
+      } else {
+        const currentVisibleMeasure: GraphicalMeasure = this.findVisibleGraphicalMeasure(iterator.CurrentMeasureIndex);
+        x = currentVisibleMeasure.PositionAndShape.AbsolutePosition.x;
+        musicSystem = currentVisibleMeasure.ParentMusicSystem;
+      }
     } else if (iterator.EndReached || !iterator.CurrentVoiceEntries || voiceEntries.length === 0) {
       // show end of last measure (of stafflines, to create a visual difference to the first note position)
       //   this position is technically after the sheet/last note - e.g. cursor.Iterator.CurrentTimestamp.RealValue = 99999
@@ -187,16 +213,6 @@ export class Cursor {
       x = lastVisibleMeasure.PositionAndShape.AbsolutePosition.x + lastVisibleMeasure.PositionAndShape.Size.width;
       musicSystem = lastVisibleMeasure.ParentMusicSystem;
       iterator.moveToNext();
-    } else if (iterator.CurrentMeasure.isReducedToMultiRest) {
-      // multiple measure rests aren't used when one
-      const multiRestGMeasure: GraphicalMeasure = this.findVisibleGraphicalMeasure(iterator.CurrentMeasureIndex);
-      const totalRestMeasures: number = multiRestGMeasure.parentSourceMeasure.multipleRestMeasures;
-      const currentRestMeasureNumber: number = iterator.CurrentMeasure.multipleRestMeasureNumber;
-      const progressRatio: number = currentRestMeasureNumber / (totalRestMeasures + 1);
-      const effectiveWidth: number = multiRestGMeasure.PositionAndShape.Size.width - (multiRestGMeasure as VexFlowMeasure).beginInstructionsWidth;
-      x = multiRestGMeasure.PositionAndShape.AbsolutePosition.x + (multiRestGMeasure as VexFlowMeasure).beginInstructionsWidth + progressRatio * effectiveWidth;
-
-      musicSystem = multiRestGMeasure.ParentMusicSystem;
     } else {
       // get all staff entries inside the current voice entry
       const gseArr: VexFlowStaffEntry[] = voiceEntries.map(ve => this.getStaffEntryFromVoiceEntry(ve));
