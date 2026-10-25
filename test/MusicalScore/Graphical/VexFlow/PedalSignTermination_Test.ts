@@ -72,11 +72,11 @@ describe("Pedal signs: termination, release position and changes", () => {
         expect(graphical[1].ReleaseText, "its explicit stop draws *").to.equal(undefined);
     });
 
-    it("draws the last pedal without any stop with Ped. once and * once, nothing in the systems between", async () => {
+    it("draws the last pedal without any stop with Ped. once and no *, nothing in the systems between", async () => {
         const osmd: OpenSheetMusicDisplay = await load("pedal_sign_unterminated_three_systems.musicxml", true);
         const staffLines: StaffLine[] = bassStaffLines(osmd);
         expect(staffLines.length).to.be.greaterThanOrEqual(3);
-        // upstream draws Ped. in the first system and * in the last; the systems between have no segment
+        // upstream draws Ped. in the first system and * in the last (hidden here, see below); the systems between have no segment
         const first: VexFlowPedal = staffLines[0].Pedals[0] as VexFlowPedal;
         const last: VexFlowPedal = staffLines[staffLines.length - 1].Pedals[0] as VexFlowPedal;
         expect(first, "Ped. segment").to.not.equal(undefined);
@@ -84,7 +84,8 @@ describe("Pedal signs: termination, release position and changes", () => {
         expect(first.DepressText).to.equal(undefined);
         expect(first.ReleaseText).to.equal(" ");
         expect(last.DepressText).to.equal(" ");
-        expect(last.ReleaseText).to.equal(undefined);
+        // held to the end as engraved: no * after the final Ped. (10-25)
+        expect(last.ReleaseText).to.equal(" ");
         for (const staffLine of staffLines.slice(1, -1)) {
             expect(staffLine.Pedals.length, "systems between").to.equal(0);
         }
