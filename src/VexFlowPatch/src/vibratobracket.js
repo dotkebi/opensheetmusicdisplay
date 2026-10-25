@@ -9,6 +9,7 @@
 import { Vex } from './vex';
 import { Element } from './element';
 import { Vibrato } from './vibrato';
+import { Modifier } from './modifier';
 
 // To enable logging for this class. Set `Vex.Flow.VibratoBracket.DEBUG` to `true`.
 function L(...args) { if (VibratoBracket.DEBUG) Vex.L('Vex.Flow.VibratoBracket', args); }
@@ -31,6 +32,9 @@ export class VibratoBracket extends Element {
     this.toEndOfStopStave = bracket_data.toEndOfStopStave;
     //VexFlowPatch: option to render up to this note, e.g. the note after the stop note, to cover the stop note's whole duration
     this.stopBeforeNote = bracket_data.stopBeforeNote;
+    //VexFlowPatch: option to end in front of the stop note itself, before its modifiers and its own trill mark's ink: the
+    //  stop note starts a trill of its own (Weber Op.74 III m236·237, Schubert Ganymed piano m57)
+    this.stopBeforeEndNote = bracket_data.stopBeforeEndNote;
 
     this.line = 1;
 
@@ -40,6 +44,36 @@ export class VibratoBracket extends Element {
       wave_width: 4,
       wave_girth: 2,
     };
+  }
+
+  // VexFlowPatch: where a bracket ends in front of a note (stopBeforeEndNote), in pixels: left of the note's modifiers
+  //   (accidentals, grace notes), and of its trill mark's ink where that reaches further left (ornament.js layoutInk)
+  static stopBeforeNoteX(note) {
+    const metrics = note.getMetrics();
+    let x = note.getAbsoluteX() - metrics.modLeftPx - metrics.extraLeftPx - 5;
+    const ink = VibratoBracket.trillMarkInkPx(note);
+    if (ink) {
+      x = Math.min(x, ink.left - 3);
+    }
+    return x;
+  }
+
+  // VexFlowPatch: the ink of a note's trill mark as the layout drew it (ornament.js layoutInk, relative to the stave's
+  //   left edge and top line), in absolute pixels, or undefined
+  static trillMarkInkPx(note) {
+    for (const modifier of note.modifiers) {
+      if (modifier && modifier.type === 'tr' && modifier.layoutInk && modifier.position === Modifier.Position.ABOVE) {
+        const stave = note.getStave();
+        const ink = modifier.layoutInk;
+        return {
+          left: stave.getX() + ink.left,
+          top: stave.getYForLine(0) + ink.top,
+          right: stave.getX() + ink.right,
+          bottom: stave.getYForLine(0) + ink.bottom,
+        };
+      }
+    }
+    return undefined;
   }
 
   // Set line position of the vibrato bracket
@@ -76,7 +110,9 @@ export class VibratoBracket extends Element {
     let stop_x = 0;
 
     if(this.stop) {
-      if (this.toEndOfStopStave) {
+      if (this.stopBeforeEndNote) {
+        stop_x = VibratoBracket.stopBeforeNoteX(this.stop);
+      } else if (this.toEndOfStopStave) {
         stop_x = this.stop.getStave().getTieEndX() - 10;
       } else if (this.stopBeforeNote) {
         // VexFlowPatch: Render up to the stopBeforeNote, in front of its modifiers (e.g. accidentals, grace notes)

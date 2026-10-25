@@ -6,12 +6,12 @@ import { MusicSystem } from "../../../src/MusicalScore/Graphical/MusicSystem";
 import { TestUtils } from "../../Util/TestUtils";
 
 /**
- * A part group's bracket joins the group's first staffline in the system to the first staffline of its last part there. A
- * staff the MusicXML hides in a whole system (<staff-details print-object="no">) is taken out of the system before the bracket
- * is made; the bracket was only made when the first staff of the group's first and last parts were both in the system, so a
- * hidden first or last part took the whole bracket with it, as did a hidden top staff of a piano at either end, or a nested
- * group hidden at either end. With two or more parts left it joins them now; with one left there is none. Same as osmd-dart
- * test/hidden_part_group_bracket_test.dart.
+ * A part group's bracket joins the group's first staffline in the system to its last one there (the last staff of a piano
+ * at the end, see GroupBracketShape_Test.ts). A staff the MusicXML hides in a whole system (<staff-details
+ * print-object="no">) is taken out of the system before the bracket is made; the bracket was only made when the first staff
+ * of the group's first and last parts were both in the system, so a hidden first or last part took the whole bracket with
+ * it, as did a hidden top staff of a piano at either end, or a nested group hidden at either end. With two or more parts
+ * left it joins them now; with one left there is none. Same as osmd-dart test/hidden_part_group_bracket_test.dart.
  */
 describe("Part group bracket of the parts left when a part is hidden in the system", () => {
     const names: { [abbr: string]: string } = { Hn: "Horn", Vn: "Violin", Vc: "Violoncello", Fl: "Flute", Ob: "Oboe", Va: "Viola", Pno: "Piano" };
@@ -76,17 +76,17 @@ describe("Part group bracket of the parts left when a part is hidden in the syst
 
     // name, layout, hidden staves, stafflines left in each system, the group brackets [top, bottom staffline] in each system
     const cases: [string, string[], { [abbr: string]: number }, number, number[][]][] = [
-        ["none hidden", ["[", "Hn", "Vn", "Pno", "]"], {}, 4, [[0, 2]]],
-        ["first part hidden", ["[", "Hn", "Vn", "Pno", "]"], { Hn: 1 }, 3, [[0, 1]]],
-        ["middle part hidden", ["[", "Vn", "Hn", "Pno", "]"], { Hn: 1 }, 3, [[0, 1]]],
-        ["last part hidden", ["[", "Vn", "Pno", "Hn", "]"], { Hn: 1 }, 3, [[0, 1]]],
+        ["none hidden", ["[", "Hn", "Vn", "Pno", "]"], {}, 4, [[0, 3]]],
+        ["first part hidden", ["[", "Hn", "Vn", "Pno", "]"], { Hn: 1 }, 3, [[0, 2]]],
+        ["middle part hidden", ["[", "Vn", "Hn", "Pno", "]"], { Hn: 1 }, 3, [[0, 2]]],
+        ["last part hidden", ["[", "Vn", "Pno", "Hn", "]"], { Hn: 1 }, 3, [[0, 2]]],
         ["first part's top staff hidden", ["[", "Pno", "Vn", "Vc", "]"], { Pno: 1 }, 3, [[0, 2]]],
         ["last part's top staff hidden", ["[", "Vn", "Vc", "Pno", "]"], { Pno: 1 }, 3, [[0, 2]]],
         ["nested, none hidden", ["[", "Fl", "Ob", "[", "Vn", "Va", "]", "]"], {}, 4, [[0, 3], [2, 3]]],
         ["nested group's last part hidden", ["[", "Fl", "Ob", "[", "Vn", "Va", "]", "]"], { Va: 1 }, 3, [[0, 2]]],
         ["nested group hidden, first", ["[", "[", "Vn", "Va", "]", "Fl", "Ob", "]"], { Vn: 1, Va: 1 }, 2, [[0, 1]]],
         ["one part left", ["[", "Hn", "Vn", "]"], { Hn: 1 }, 1, []],
-        ["group of one part", ["[", "Vn", "]", "[", "Vc", "Pno", "]"], {}, 4, [[1, 2]]],
+        ["group of one part", ["[", "Vn", "]", "[", "Vc", "Pno", "]"], {}, 4, [[1, 3]]],
     ];
     for (const [name, layout, hidden, left, brackets] of cases) {
         it(brackets.length ? `brackets the parts left (${name})` : `has no bracket for the one part left (${name})`, () => {

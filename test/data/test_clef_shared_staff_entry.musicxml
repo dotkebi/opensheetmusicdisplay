@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A clef change in the middle of a measure at a time where another voice has already put a note on that staff: in m1
+     voice 1 crosses to the lower staff at beat 2, and the lower staff's own voice 5 reads the G clef before its rest at
+     beat 2 (Enesco, Concertstück piano m53: the clef inside a cross-staff septuplet). The clef was left pending for ever,
+     as the staff entry at its time already had a note, so the lower staff's notes from beat 2 were drawn in the bass clef.
+     m2 is a control: the clef back to F at beat 1 in the lower staff's own voice before any note. Synthetic pitches. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>2</staff></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><rest/><duration>1</duration><voice>5</voice><type>quarter</type><staff>2</staff></note>
+      <attributes><clef number="2"><sign>G</sign><line>2</line></clef></attributes>
+      <note><rest/><duration>1</duration><voice>5</voice><type>quarter</type><staff>2</staff></note>
+      <note><pitch><step>B</step><octave>3</octave></pitch><duration>1</duration><voice>5</voice><type>quarter</type><staff>2</staff></note>
+      <note><pitch><step>B</step><octave>3</octave></pitch><duration>1</duration><voice>5</voice><type>quarter</type><staff>2</staff></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>B</step><octave>3</octave></pitch><duration>1</duration><voice>5</voice><type>quarter</type><staff>2</staff></note>
+      <attributes><clef number="2"><sign>F</sign><line>4</line></clef></attributes>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration><voice>5</voice><type>quarter</type><staff>2</staff></note>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>2</duration><voice>5</voice><type>half</type><staff>2</staff></note>
+    </measure>
+  </part>
+</score-partwise>

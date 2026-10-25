@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A fermata on a barline (MusicXML <barline><fermata>): m1 ends in a double barline with an upright fermata (Saint-Saëns,
+     Oboe Sonata Op. 166 II m6/63), m2 in a plain barline with an upright and an inverted fermata (Enesco, Concertstück
+     m73, where the fermata element is empty), m3 has a fermata on its note (a control). The lower staff of the piano
+     part gets the inverted one, the upper staff the upright one. Both were read nowhere and drawn nowhere.
+     Synthetic pitches. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Oboe</part-name></score-part><score-part id="P2"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+      <barline location="right"><bar-style>light-light</bar-style><fermata type="upright">normal</fermata></barline>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type></note>
+      <barline location="right"><fermata type="upright"/><fermata type="inverted"/></barline>
+    </measure>
+    <measure number="3">
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type><notations><fermata type="upright">normal</fermata></notations></note>
+    </measure>
+  </part>
+  <part id="P2">
+    <measure number="1">
+      <attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>4</duration><voice>5</voice><type>whole</type><staff>2</staff></note>
+      <barline location="right"><bar-style>light-light</bar-style><fermata type="upright">normal</fermata></barline>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>4</duration><voice>5</voice><type>whole</type><staff>2</staff></note>
+      <barline location="right"><fermata type="upright"/><fermata type="inverted"/></barline>
+    </measure>
+    <measure number="3">
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>4</duration><voice>5</voice><type>whole</type><staff>2</staff></note>
+    </measure>
+  </part>
+</score-partwise>

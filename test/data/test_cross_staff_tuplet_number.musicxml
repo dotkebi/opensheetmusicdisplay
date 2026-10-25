@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A tuplet whose notes cross the staves of a piano (three notes in each staff) is one group: one number and one
+     bracket, placed above the upper staff (placement above, m1) or below the lower staff (placement below, m2), as
+     engravers print it (Enesco, Concertstück piano m51-54; Bruch, Scottish Fantasy piano m68/394). Each staff drew its
+     own share of the notes as a tuplet of its own, so the number appeared twice. The second group of m1 lies in one
+     staff (a control). Synthetic pitches and rhythms. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>6</divisions><key><fifths>0</fifths></key><time><beats>2</beats><beat-type>4</beat-type></time><staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>2</staff><beam number="1">begin</beam><beam number="2">begin</beam><notations><tuplet type="start" number="1" bracket="yes" show-number="actual" placement="above"/></notations></note>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>2</staff><beam number="1">continue</beam><beam number="2">continue</beam></note>
+      <note><pitch><step>G</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>2</staff><beam number="1">continue</beam><beam number="2">continue</beam></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>1</staff><beam number="1">continue</beam><beam number="2">continue</beam></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>1</staff><beam number="1">continue</beam><beam number="2">continue</beam></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>1</staff><beam number="1">end</beam><beam number="2">end</beam><notations><tuplet type="stop" number="1"/></notations></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>1</staff><beam number="1">begin</beam><beam number="2">begin</beam><notations><tuplet type="start" number="1" bracket="yes" show-number="actual" placement="above"/></notations></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>1</staff><beam number="1">continue</beam><beam number="2">continue</beam></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>1</staff><beam number="1">continue</beam><beam number="2">continue</beam></note>
+      <note><pitch><step>C</step><octave>6</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>1</staff><beam number="1">continue</beam><beam number="2">continue</beam></note>
+      <note><pitch><step>E</step><octave>6</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>1</staff><beam number="1">continue</beam><beam number="2">continue</beam></note>
+      <note><pitch><step>G</step><octave>6</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>1</staff><beam number="1">end</beam><beam number="2">end</beam><notations><tuplet type="stop" number="1"/></notations></note>
+      <backup><duration>12</duration></backup>
+      <note><rest measure="yes"/><duration>12</duration><voice>5</voice><staff>2</staff></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>1</staff><beam number="1">begin</beam><beam number="2">begin</beam><notations><tuplet type="start" number="1" bracket="yes" show-number="actual" placement="below"/></notations></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>1</staff><beam number="1">continue</beam><beam number="2">continue</beam></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>1</staff><beam number="1">continue</beam><beam number="2">continue</beam></note>
+      <note><pitch><step>G</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>2</staff><beam number="1">continue</beam><beam number="2">continue</beam></note>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>2</staff><beam number="1">continue</beam><beam number="2">continue</beam></note>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration><voice>1</voice><type>16th</type><time-modification><actual-notes>6</actual-notes><normal-notes>4</normal-notes></time-modification><staff>2</staff><beam number="1">end</beam><beam number="2">end</beam><notations><tuplet type="stop" number="1"/></notations></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+      <backup><duration>12</duration></backup>
+      <note><rest measure="yes"/><duration>12</duration><voice>5</voice><staff>2</staff></note>
+    </measure>
+  </part>
+</score-partwise>

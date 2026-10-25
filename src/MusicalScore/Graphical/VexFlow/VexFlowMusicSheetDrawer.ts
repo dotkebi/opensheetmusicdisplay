@@ -978,6 +978,13 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         if (Math.abs(slant) > maxSlant) {
             slant = Math.sign(slant) * maxSlant;
         }
+        // that is the rise or fall from one anchor to the other: the strokes lie on that line, so a stroke shorter than the
+        //   space between the anchors rises or falls only its part of it. The whole slant over the short, centred strokes
+        //   between long notes stood them up steeply (Mozart, K.191 III piano RH m380: A4/C5 and E-flat4 dotted halves, one
+        //   unit over about one unit of stroke; the print's strokes run along the line of the stem tips). Same as osmd-dart.
+        if (availableSpace > 0) {
+            slant *= strokeLength / availableSpace;
+        }
         let startY: number = yMiddle - slant / 2;
         let stopY: number = yMiddle + slant / 2;
 

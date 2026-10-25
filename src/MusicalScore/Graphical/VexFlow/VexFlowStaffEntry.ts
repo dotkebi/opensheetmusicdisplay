@@ -30,6 +30,24 @@ export class VexFlowStaffEntry extends GraphicalStaffEntry {
      * This is needed in order to set the OSMD staff entries (which are almost the same as tickables) to the correct positions.
      * It is also needed to be done after formatting!
      */
+    /** PositionAndShape.BorderLeft without the in-staff clef (vfClefBefore) and key signature (vfKeys) attached to the notes as
+     *  NoteSubGroups: their width widens the note's VexFlow bounding box, so a diminuendo starting at a note after a key change
+     *  began under the key signature, 10 spaces left of the note (Schubert, Ganymed, Piano m46 q1). Same as osmd-dart. */
+    public get ExpressionBorderLeft(): number {
+        let width: number = 0;
+        for (const gve of this.graphicalVoiceEntries as VexFlowVoiceEntry[]) {
+            const modifiers: any[] = (gve.vfStaveNote as any)?.getModifiers?.() ?? [];
+            for (const modifier of modifiers) {
+                if (modifier instanceof VF.NoteSubGroup &&
+                    ((modifier as any).subNotes ?? []).some((subNote: any) => subNote === this.vfClefBefore || this.vfKeys.includes(subNote))) {
+                    width += modifier.getWidth();
+                }
+            }
+        }
+        const border: number = this.PositionAndShape.BorderLeft;
+        return width > 0 ? Math.min(0, border + width / unitInPixels) : border;
+    }
+
     public calculateXPosition(): void {
         const stave: VF.Stave = (this.parentMeasure as VexFlowMeasure).getVFStave();
 
