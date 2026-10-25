@@ -78,16 +78,23 @@ describe("Words at the same time as another marking", () => {
         // m2: dim. (a verbal dynamic) and poco rall. below, one label
         expect(labels[1].above).to.deep.equal([]);
         expect(labels[1].below).to.deep.equal(["dim. poco rall."]);
-        // m3: allarg. above; cresc. (a verbal dynamic alone on its side) below, drawn as a dynamic beside the f: "f cresc."
+        // m3: allarg. above; cresc. (a verbal dynamic alone on its side) below, drawn as a dynamic: on a row of its own, not
+        //   beside the f of the same time (81sabo B rows, user decision 10-25: two rows, as the dynamics alignment places them)
         expect(labels[2].above).to.deep.equal(["allarg."]);
-        expect(labels[2].below).to.deep.equal(["f", "cresc."]);
+        expect(labels[2].below).to.include("cresc.");
+        expect(labels[2].below.join(" ")).to.not.contain("allarg.");
         const m3Left: number = osmd.GraphicSheet.MeasureList[2][0].PositionAndShape.RelativePosition.x;
         const m3: AbstractGraphicalExpression[] = (osmd.GraphicSheet.MeasureList[0][0].ParentStaffLine.AbstractExpressions as AbstractGraphicalExpression[])
             .filter(e => e.Label?.Label?.text?.trim().length > 0 && e.PositionAndShape.RelativePosition.x >= m3Left);
         const f: AbstractGraphicalExpression = m3.find(e => e.Label.Label.text === "f");
         const cresc: AbstractGraphicalExpression = m3.find(e => e.Label.Label.text === "cresc.");
-        expect(cresc.PositionAndShape.RelativePosition.x + cresc.PositionAndShape.BorderMarginLeft)
-            .to.be.at.least(f.PositionAndShape.RelativePosition.x + f.PositionAndShape.BorderMarginRight - 0.01, "cresc. after the f");
+        const fBox: { top: number, bottom: number } = { top: f.PositionAndShape.RelativePosition.y + f.PositionAndShape.BorderMarginTop,
+                                                       bottom: f.PositionAndShape.RelativePosition.y + f.PositionAndShape.BorderMarginBottom };
+        const crescBox: { top: number, bottom: number } = {
+            top: cresc.PositionAndShape.RelativePosition.y + cresc.PositionAndShape.BorderMarginTop,
+            bottom: cresc.PositionAndShape.RelativePosition.y + cresc.PositionAndShape.BorderMarginBottom };
+        expect(crescBox.top >= fBox.bottom - 0.01 || fBox.top >= crescBox.bottom - 0.01,
+               `f ${JSON.stringify(fBox)} and cresc. ${JSON.stringify(crescBox)} on two rows`).to.equal(true);
         // m4: the bold colon above, cresc. below
         expect(labels[3].above).to.deep.equal([":"]);
         expect(labels[3].below).to.deep.equal(["cresc."]);
