@@ -86,12 +86,13 @@ describe("Tempo direction timing", (): void => {
     it("does not use a deferred first sound tempo at the start of the piece", async (): Promise<void> => {
         await osmd.load(score(note("C") + note("D") +
             tempo(120, '<offset sound="yes">-1</offset>') + note("E") + note("F")));
-        expect(bpms()).to.deep.equal([100, 120, 120, 120]);
-        expect(osmd.Sheet.getExpressionsStartTempoInBPM()).to.equal(100);
+        // the start tempo without a tempo at the start of the piece: Moderato 106, as osmd-dart
+        expect(bpms()).to.deep.equal([106, 120, 120, 120]);
+        expect(osmd.Sheet.getExpressionsStartTempoInBPM()).to.equal(106);
         const iterator: MusicPartManagerIterator = osmd.Sheet.MusicPartManager.getIterator();
         iterator.moveToNext();
         iterator.moveToPrevious();
-        expect(iterator.CurrentBpm).to.equal(100);
+        expect(iterator.CurrentBpm).to.equal(106);
     });
 
     it("uses default-x only for display and retains the direction's sound offset", async (): Promise<void> => {
