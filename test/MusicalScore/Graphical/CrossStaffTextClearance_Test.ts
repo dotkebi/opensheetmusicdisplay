@@ -17,7 +17,8 @@ import { GraphicalContinuousDynamicExpression } from "../../../src/MusicalScore/
  *
  * Fixture test_cross_staff_between_text.musicxml (synthetic, piano, A major, 4/4): m1 a slur placed below from the left
  * hand's A2 to the right hand's G#4 on beat 3, an sf below the right hand there (Myrthen 9 m2; the slur rises from staff
- * to staff across the sf's width: no move clears it, it stays); m2 the same slur with a crescendo wedge below the right
+ * to staff across the sf's width: no move up or down clears it; since 2026-10-27 it is moved sideways,
+ * CrossStaffSidewaysText_Test); m2 the same slur with a crescendo wedge below the right
  * hand up to beat 3 (a wedge is not moved); m3 an f below the right hand under a sixteenth beam from the right hand's G5
  * C5 A4 F4 to the left hand's C4 F3, all stems down in the XML (centred: the beam under the F4's stem, corpus 0064 m1);
  * m4 words "R. H." below the right hand on beat 4 under a slur placed above from the right hand's D5 down to the left
@@ -111,7 +112,15 @@ describe("Text expressions clear of cross-staff beams and curves", () => {
         expect(inkOf.touchesInk(box(p, dy).inflated(CrossStaffExpressionClearance.Clearance - 1e-6))).to.equal(false);
         expect(drawnY(p) - drawnY(label(off, "p"))).to.be.closeTo(dy * 10, 1e-6);
         expect(p.PositionAndShape.AbsolutePosition.y).to.be.closeTo(label(off, "p").PositionAndShape.AbsolutePosition.y, 1e-9);
-        // the sf: the slur rises from staff to staff across its width (no move clears it); the others are clear
+        // the sf: the slur rises from staff to staff across its width (no move up or down clears it): it is moved
+        // sideways, off the slur; the others are clear
+        const sf: GraphicalLabel = label(on, "sf");
+        const sfDx: number = on.Drawer.CrossStaffExpressionShifts.get(sf);
+        expect(sfDx).to.not.equal(0);
+        expect(Math.abs(sfDx)).to.be.at.most(CrossStaffExpressionClearance.MaxShift + 1e-9);
+        const sfBox: ClearanceBox = box(sf);
+        expect(inkOf.touchesInk(new ClearanceBox(sfBox.left + sfDx, sfBox.top, sfBox.right + sfDx, sfBox.bottom)
+            .inflated(CrossStaffExpressionClearance.Clearance - 1e-6))).to.equal(false);
         for (const text of ["sf", "f", "R. H.", "ritard."]) {
             expect(offsets.get(label(on, text)), text).to.equal(0);
             expect(drawnY(label(on, text)), text).to.equal(drawnY(label(off, text)));

@@ -138,8 +138,9 @@ export class EngravingRules {
      *  stay centred. False centres an all-up beam too (the rule before 2026-10-08). Layout only. Same as osmd-dart. */
     public CrossStaffBeamsFollowUniformUpXmlStems: boolean;
     /** The drawer moves a text expression (a dynamic, a verbal dynamic, words, a tempo text) that the cross-staff beams
-     *  or curves come to lie over, up or down within 1.5 staff spaces, to a free place (CrossStaffExpressionClearance;
-     *  the layout is not changed). Default true. Drawing only. Same as osmd-dart. */
+     *  or curves come to lie over, up or down within 1.5 staff spaces, else sideways (3 spaces to the right, to the left
+     *  3 or its width and one space), to a free place (CrossStaffExpressionClearance; the layout is not changed).
+     *  Default true. Drawing only. Same as osmd-dart. */
     public CrossStaffTextClearance: boolean;
     public SetWantedStemDirectionByXml: boolean;
     /** Whether a secondary voice (any voice after the first one on a staff, e.g. MusicXML voice 2) that is the only
