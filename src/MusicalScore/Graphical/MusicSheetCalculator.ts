@@ -1523,8 +1523,13 @@ export abstract class MusicSheetCalculator {
             return;
         }
         const otherStaffX: number = this.otherStaffSameTimeX(measures, staffIndex, absoluteTimestamp);
+        const ownMeasure: GraphicalMeasure = measures[staffIndex];
         relative = otherStaffX !== undefined ? new PointF2D(otherStaffX, 0) :
-            this.getRelativePositionInStaffLineFromTimestamp(absoluteTimestamp, staffIndex, staffLine, staffLine?.isPartOfMultiStaffInstrument());
+            this.takesTimeFromSystem(ownMeasure, multiExpression.Timestamp) ?
+                new PointF2D(this.systemTimeX(ownMeasure, multiExpression.Timestamp,
+                                              ownMeasure.PositionAndShape.RelativePosition.x + ownMeasure.PositionAndShape.BorderRight), 0) :
+                this.getRelativePositionInStaffLineFromTimestamp(absoluteTimestamp, staffIndex, staffLine,
+                                                                 staffLine?.isPartOfMultiStaffInstrument());
 
         if (Math.abs(relative.x - 0) < 0.0001) {
             relative.x = this.trailingExpressionX(measures[staffIndex], absoluteTimestamp) ??
@@ -3164,11 +3169,70 @@ export abstract class MusicSheetCalculator {
         return wholeMeasureRest;
     }
 
+    /** Whether the entry holds only rests as long as the source measure, which VexFlow draws in the middle of the measure. */
+    private static wholeMeasureRestEntry(entry: GraphicalStaffEntry, sourceMeasure: SourceMeasure): boolean {
+        if (entry.graphicalVoiceEntries.length === 0) {
+            return false;
+        }
+        for (const gve of entry.graphicalVoiceEntries) {
+            for (const note of gve.parentVoiceEntry.Notes) {
+                if (!note.isRest() || !(note.IsWholeMeasureRest || !note.Length.lt(sourceMeasure.Duration))) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Whether a text expression (words, a tempo, a verbal dynamic and its dynamics) at the time of the measure's staff takes its x
+     * from the time in the system (systemTimeX()) rather than from its staff's entries: the staff has no entry in the measure
+     * (Schumann, Piano Quartet Op. 47 III, Piano m117: the right hand's "dim." was interpolated between its notes of m114 and m119,
+     * into m116 or m118), only a whole-measure rest (onlyWholeMeasureRest(); Nielsen, Clarinet Concerto, piano m251 "rall." and
+     * m471 "poco accel." were drawn at the right hand's whole rest in the middle of the measure), or at the time only a rest as
+     * long as the measure (Bowen, Viola Sonata No. 2, Piano m279: "dim." at an invisible rest under the left hand's notes crossing
+     * to the right hand). User decision 2026-10-27 (A+D). Only where another staff of the system has an entry in the measure to
+     * give the time (a solo part's whole rest keeps its text where it was: there is no time in the system to take). Same as
+     * osmd-dart.
+     */
+    protected takesTimeFromSystem(measure: GraphicalMeasure, time: Fraction): boolean {
+        const sourceMeasure: SourceMeasure = measure.parentSourceMeasure;
+        if (!sourceMeasure || !this.otherStaffGivesTime(measure)) {
+            return false;
+        }
+        if (measure.staffEntries.every(se => se.graphicalVoiceEntries.length === 0)) {
+            return true;
+        }
+        if (this.onlyWholeMeasureRest(measure)) {
+            return true;
+        }
+        return measure.staffEntries.some(se => se.relInMeasureTimestamp.Equals(time) &&
+            MusicSheetCalculator.wholeMeasureRestEntry(se, sourceMeasure));
+    }
+
+    /** Whether another staff of the measure's system has an entry in its source measure that systemTimeX() can take the time from. */
+    private otherStaffGivesTime(measure: GraphicalMeasure): boolean {
+        const sourceMeasure: SourceMeasure = measure.parentSourceMeasure;
+        const system: MusicSystem = measure.ParentStaffLine?.ParentMusicSystem;
+        for (const staffLine of system?.StaffLines ?? []) {
+            for (const other of staffLine.Measures) {
+                if (other === measure || other.parentSourceMeasure !== sourceMeasure || this.onlyWholeMeasureRest(other)) {
+                    continue;
+                }
+                if (other.staffEntries.some(se => se.graphicalVoiceEntries.length > 0 &&
+                    !MusicSheetCalculator.wholeMeasureRestEntry(se, sourceMeasure))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /**
      * The x of the time (in the measure's source measure) in score time: from the staff entries of all staves of its system at or
      * around it, else between the last one and the end of the measure (endOfMeasure), or between the start of the measure's notes
-     * and the first one. Entries of a staff with only a whole-measure rest there, drawn in the middle of the measure, are not used.
-     * Same as osmd-dart.
+     * and the first one. Entries of a staff with only a whole-measure rest there, and entries holding only a rest as long as the
+     * measure, drawn in the middle of the measure, are not used. Same as osmd-dart.
      */
     protected systemTimeX(measure: GraphicalMeasure, time: Fraction, endOfMeasure: number): number {
         const sourceMeasure: SourceMeasure = measure.parentSourceMeasure;
@@ -3184,7 +3248,7 @@ export abstract class MusicSheetCalculator {
                     continue;
                 }
                 for (const se of other.staffEntries) {
-                    if (se.graphicalVoiceEntries.length === 0) {
+                    if (se.graphicalVoiceEntries.length === 0 || MusicSheetCalculator.wholeMeasureRestEntry(se, sourceMeasure)) {
                         continue;
                     }
                     const entryTime: Fraction = se.relInMeasureTimestamp;
@@ -4099,6 +4163,7 @@ export abstract class MusicSheetCalculator {
                                                                         staffLine,
                                                                         staffLine.isPartOfMultiStaffInstrument(),
                                                                         firstVisibleMeasureX);
+            const xFromStaff: number = relative.x;
 
             // also placement Above
             if (!onOwnStaff && multiTempoExpression.EntriesList.length > 0 &&
@@ -4122,6 +4187,14 @@ export abstract class MusicSheetCalculator {
                             staffLine.Measures[0].PositionAndShape.RelativePosition.x;
                     }
                 }
+            }
+            // its staff gives no x for the time (takesTimeFromSystem()); not a tempo mark placed at the start of the score
+            //   above (just above)
+            const tempoMeasure: GraphicalMeasure = measures[verticalIndex];
+            if (relative.x === xFromStaff && tempoMeasure?.ParentStaffLine === staffLine &&
+                this.takesTimeFromSystem(tempoMeasure, multiTempoExpression.Timestamp)) {
+                relative.x = this.systemTimeX(tempoMeasure, multiTempoExpression.Timestamp,
+                                              tempoMeasure.PositionAndShape.RelativePosition.x + tempoMeasure.PositionAndShape.BorderRight);
             }
 
             // const addAtLastList: GraphicalObject[] = [];

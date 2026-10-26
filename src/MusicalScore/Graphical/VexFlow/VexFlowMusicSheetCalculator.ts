@@ -2065,8 +2065,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     }
     // On a staff with only a whole-measure rest the time is taken from the other staves of the system (onlyWholeMeasureRest()):
     //   the rest is drawn in the middle of the measure (Enescu, Concertstück, Piano m109: the crescendo and the p at the start of the
-    //   measure began at the right hand's whole rest, after the left hand's first note). Same as osmd-dart.
-    if (this.onlyWholeMeasureRest(startMeasure)) {
+    //   measure began at the right hand's whole rest, after the left hand's first note); so on a staff with no entry in the
+    //   measure or only a rest as long as the measure at the time (takesTimeFromSystem(), 2026-10-27). Same as osmd-dart.
+    if (this.takesTimeFromSystem(startMeasure, multiExpression.Timestamp)) {
       dynamicStartPosition.x = this.systemTimeX(startMeasure, multiExpression.Timestamp,
         startMeasure.PositionAndShape.RelativePosition.x + startMeasure.PositionAndShape.BorderRight);
     }
