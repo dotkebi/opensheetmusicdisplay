@@ -120,7 +120,8 @@ describe("Metronome marks at the same time", () => {
         expect(marks[0].followingMetronomeMarks.map((m) => [m.TempoInBpm, m.perMinuteText, m.dotted, m.beatUnit]))
             .to.deep.equal([[50, undefined, true, "quarter"]]);
         expect(measure.TempoInBPM, "dotted quarter 80").to.equal(120);
-        expect(osmd.Sheet.DefaultStartTempoInBpm).to.equal(80);
+        // played in quarter notes per minute, as osmd-dart: dotted quarter 80 = 120
+        expect(osmd.Sheet.DefaultStartTempoInBpm).to.equal(120);
     });
 
     it("draws the metronome marks above the tempo words without overlapping them", async () => {

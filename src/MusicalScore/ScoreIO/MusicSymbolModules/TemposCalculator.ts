@@ -6,6 +6,7 @@ import { PlacementEnum } from "../../VoiceData/Expressions/AbstractExpression";
 import { ContinuousTempoExpression } from "../../VoiceData/Expressions/ContinuousExpressions/ContinuousTempoExpression";
 import { ChangeSubType, InstantaneousTempoExpression, InstTempo, TempoType } from "../../VoiceData/Expressions/InstantaneousTempoExpression";
 import { MultiTempoExpression } from "../../VoiceData/Expressions/MultiTempoExpression";
+import { NoteTypeHandler } from "../../VoiceData/NoteType";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 
 /** Process the TempoExpressions of a MusicSheet
@@ -52,6 +53,7 @@ export class TemposCalculator implements IAfterSheetReadingModule {
             }
         }
         AllExp.sort(TempoSorter.Compare);
+        TemposCalculator.playMetronomeMarksInQuarters(AllExp);
         const primoTempo: number = TemposCalculator.cleanExpListStartingEntry(musicSheet, AllExp);
         const ExpressionsList: MultiTempoExpression[] = [];
         let previousMte: MultiTempoExpression = null;
@@ -69,6 +71,12 @@ export class TemposCalculator implements IAfterSheetReadingModule {
                     if (ite.isMetronomeMark) {
                         const factor: Fraction = ite.getNoteEquationTempoFactor();
                         ite.TempoInBpm = previousTempo * factor.GetExpandedNumerator() / factor.Denominator;
+                    } else if (ite.TempoType === TempoType.addon) {
+                        /** A word that only qualifies the tempo ("poco rit.", "Grazioso", "Sostenuto") has no BPM of its own:
+                         *  it keeps the tempo in force, as osmd-dart. The default for its missing InstTempo (60) would play
+                         *  the rest of the piece at 60 BPM until the next tempo with a BPM.
+                         */
+                        ite.TempoInBpm = previousTempo;
                     } else if (ite instanceof InstantaneousTempoExpression && ite.TempoType !== TempoType.change) {
                         // An inst tempo should normally have a non-zero BPM.
                         ite.TempoInBpm = InstantaneousTempoExpression.getDefaultValueForInstTempo(ite.InstTempo);
@@ -203,6 +211,43 @@ export class TemposCalculator implements IAfterSheetReadingModule {
             musicSheet.DefaultStartTempoInBpm = primoTempo;
         }
     }
+    /** A metronome mark plays at its value in quarter notes per minute (dotted quarter = 126 at 189, eighth = 88 at 44),
+     *  unless a <sound tempo> is written at the same time, which wins as before. As osmd-dart. Expects ExpList sorted.
+     */
+    private static playMetronomeMarksInQuarters(ExpList: MultiTempoExpression[]): void {
+        for (let start: number = 0; start < ExpList.length;) {
+            let end: number = start + 1;
+            while (end < ExpList.length && ExpList[end].AbsolutePlaybackTimestamp.Equals(ExpList[start].AbsolutePlaybackTimestamp)) {
+                end++;
+            }
+            const instant: MultiTempoExpression[] = ExpList.slice(start, end);
+            if (!instant.some(mte => mte.PlaybackTempoInBpm > 0)) {
+                for (const mte of instant) {
+                    const mark: InstantaneousTempoExpression = mte.InstantaneousTempo;
+                    const beatLength: Fraction = mark?.isMetronomeMark && mark.TempoInBpm > 0 ?
+                        TemposCalculator.metronomeBeatLength(mark) : undefined;
+                    if (beatLength) {
+                        mte.PlaybackTempoInBpm = mark.TempoInBpm * beatLength.RealValue * 4;
+                    }
+                }
+            }
+            start = end;
+        }
+    }
+
+    /** The length of a metronome mark's beat unit in whole notes (a dot adds half), or undefined without a known unit. */
+    private static metronomeBeatLength(mark: InstantaneousTempoExpression): Fraction {
+        if (!mark.beatUnit) {
+            return undefined;
+        }
+        try {
+            const length: Fraction = NoteTypeHandler.getNoteDurationFromType(mark.beatUnit);
+            return mark.dotted ? Fraction.multiply(length, new Fraction(3, 2)) : length;
+        } catch {
+            return undefined;
+        }
+    }
+
     /** Clean the start of the  expressions list and return the TempoPrimo BPM.
      *
      * Use the initial setting until the first playback instruction, or resolve an instruction at time zero.

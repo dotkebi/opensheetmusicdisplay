@@ -44,7 +44,9 @@ export class MusicSheet /*implements ISettableMusicSheet, IComparable<MusicSheet
         // FIXME?
         // initialize SheetPlaybackSetting with default values
         this.playbackSettings.rhythm = new Fraction(4, 4, 0, false);
-        this.userStartTempoInBPM = 100;
+        // Moderato, as osmd-dart's start tempo: a score with no tempo at its start plays at it until its first tempo,
+        //   and a first tempo word that only qualifies the tempo ("A tempo giusto.") keeps it.
+        this.userStartTempoInBPM = 106;
         this.pageWidth = 120;
         // create MusicPartManager
         this.MusicPartManager = new MusicPartManager(this);
