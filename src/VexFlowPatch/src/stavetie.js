@@ -123,6 +123,11 @@ export class StaveTie extends Element {
     } else if (Math.abs(params.last_x_px - params.first_x_px) < 10) {
       cp1 = 2; cp2 = 8;
     }
+    // VexFlowPatch: a tie may move both control points out to pass ink between its ends (GraceNoteGroup's arc over
+    //   its main note's accidental, see curveLift()). 0 keeps the curve.
+    const lift = this.curveLift(params, cp1);
+    cp1 += lift;
+    cp2 += lift;
 
     const first_x_shift = this.render_options.first_x_shift;
     const last_x_shift = this.render_options.last_x_shift;
@@ -156,6 +161,12 @@ export class StaveTie extends Element {
       ctx.closeGroup();
     }
   }
+
+  /**
+   * VexFlowPatch: how far (px) both control points move out beyond cp1 (inner) and cp2 for the tie of renderTie()'s params.
+   * 0 here; GraceNoteGroup's arc moves them out past its main note's accidental.
+   */
+  curveLift(params, cp1) { return 0; }
 
   renderText(first_x_px, last_x_px) {
     if (!this.text) return;
