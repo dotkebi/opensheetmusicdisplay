@@ -1,4 +1,5 @@
 import { CrossStaffBeam } from "./VexFlow/CrossStaffBeam";
+import { CrossStaffExpressionClearance } from "./VexFlow/CrossStaffExpressionClearance";
 import { GraphicalStaffEntry } from "./GraphicalStaffEntry";
 import { StaffLine } from "./StaffLine";
 import { GraphicalMusicSheet } from "./GraphicalMusicSheet";
@@ -1621,8 +1622,10 @@ export abstract class MusicSheetCalculator {
         const dynamicLeft: number = dynamicBox.RelativePosition.x + dynamicBox.BorderMarginLeft;
         const dynamicRight: number = dynamicBox.RelativePosition.x + dynamicBox.BorderMarginRight;
         const width: number = box.BorderMarginRight - box.BorderMarginLeft;
-        // the boxes touch: their margins leave about a word space between the texts
-        let wordsLeft: number = dynamicRight;
+        // the boxes touch: their margins leave about a word space between the texts. A dynamic's f reaches out of its box with
+        //   its hook (dynamicGlyphReach()): the words start that much later (Sibelius, Violin Concerto Op. 47 III m188 "mf Poco
+        //   a poco", the f's hook on the P; 81sabo SIB3C-APP1024-09).
+        let wordsLeft: number = dynamicRight + MusicSheetCalculator.dynamicGlyphReach(dynamic.Label.Label.text).right;
         let dynamicShift: number = 0;
         if (MusicSheetCalculator.wordsQualifyFollowingDynamic(text)) {
             wordsLeft = dynamicLeft - width;
@@ -2051,6 +2054,13 @@ export abstract class MusicSheetCalculator {
             if (hitsOtherText) {
                 continue;
             }
+            // nor onto a metronome mark: drawn by VexFlow, it is not an expression label (Bruch, Scottish Fantasy m406:
+            //   "Tempo I." at the end of "rit. - - -" moved onto the line, into "♩ = 66" placed over it)
+            const hitsMetronomeMark: boolean = this.metronomeMarkBoxes(staffLine).some(mark =>
+                mark.left < right && left < mark.right && mark.top < bottom && top < mark.bottom);
+            if (hitsMetronomeMark) {
+                continue;
+            }
             textBox.RelativePosition.y += shift;
             if (below) {
                 skyBottomLine.updateBottomLineInRange(left, right, bottom);
@@ -2265,6 +2275,7 @@ export abstract class MusicSheetCalculator {
         // Reserve space for multi-measure repeat counts before placing measure numbers.
         this.reserveSkylineForMeasureRepeats();
         this.calculateKeyboardHandBrackets();
+        this.reserveTremolosBetweenNotes();
 
         // calculate MeasureNumbers
         if (this.rules.RenderMeasureNumbers) {
@@ -2562,6 +2573,7 @@ export abstract class MusicSheetCalculator {
         await step(() => this.calculateTupletNumbers(), 0.87);
         await step(() => this.reserveSkylineForMeasureRepeats());
         await step(() => this.calculateKeyboardHandBrackets());
+        await step(() => this.reserveTremolosBetweenNotes());
 
         if (this.rules.RenderMeasureNumbers) {
             await step(() => {
@@ -3975,8 +3987,13 @@ export abstract class MusicSheetCalculator {
             return; // TODO can happen when drawing range modified (osmd.setOptions({drawFromMeasureNumber...}))
         }
 
-        const left: number = startPosInStaffline.x + graphicalInstantaneousDynamic.PositionAndShape.BorderMarginLeft;
-        const right: number = startPosInStaffline.x + graphicalInstantaneousDynamic.PositionAndShape.BorderMarginRight;
+        // The sky (bottom) line is read under the dynamic's glyphs: an f reaches out of the label's box with its tail and its
+        //   hook (dynamicGlyphReach()), over the stem and the beam right of an f placed by its box alone (Mozart, Flute Concerto
+        //   K.313 I m209, the f over the D5 after it; 81sabo K313I-RENDER-WEB-F209). Its position and width stay as they are.
+        const box: BoundingBox = graphicalInstantaneousDynamic.PositionAndShape;
+        const reach: {left: number, right: number} = MusicSheetCalculator.dynamicGlyphReach(graphicalInstantaneousDynamic.Label?.Label?.text);
+        const left: number = startPosInStaffline.x + Math.min(box.BorderMarginLeft, box.BorderLeft - reach.left);
+        const right: number = startPosInStaffline.x + Math.max(box.BorderMarginRight, box.BorderRight + reach.right);
         const skyBottomLineCalculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
         let yPosition: number = 0;
 
@@ -4049,6 +4066,14 @@ export abstract class MusicSheetCalculator {
     protected layoutSingleRepetitionEnding(start: GraphicalMeasure, end: GraphicalMeasure, numberText: string,
                                            offset: number, leftOpen: boolean, rightOpen: boolean): void {
         return;
+    }
+
+    /** How far the glyphs of a dynamic reach out of its label's box (its borders), left and right, in units: a first f's tail
+     *  and a last f's hook, as CrossStaffExpressionClearance.dynamicBox() (the f glyph's box). Same as osmd-dart. */
+    public static dynamicGlyphReach(text: string): {left: number, right: number} {
+        const t: string = (text ?? "").trim();
+        return {left: t.startsWith("f") ? CrossStaffExpressionClearance.ForteReachLeft : 0,
+                right: t.endsWith("f") ? CrossStaffExpressionClearance.ForteReachRight : 0};
     }
 
     /** An expression's label with its borders, not yet positioned (see calculateLabel()). */
@@ -4363,6 +4388,13 @@ export abstract class MusicSheetCalculator {
 
     protected layoutMetronomeMarks(): void {
         return;
+    }
+
+    /** The boxes (in units, relative to staffLine) of the metronome marks drawn above staffLine, which are not expression
+     *  labels: the words moving onto a dashed line keep off them (moveWordsOntoExpressionDashes()). Implemented by
+     *  VexFlowMusicSheetCalculator. Same as osmd-dart (metronomeMarkBoxes). */
+    protected metronomeMarkBoxes(staffLine: StaffLine): {left: number, right: number, top: number, bottom: number}[] {
+        return [];
     }
 
     protected graphicalMeasureCreatedCalculations(measure: GraphicalMeasure): void {
@@ -5727,6 +5759,13 @@ export abstract class MusicSheetCalculator {
     /** Reserves skyline space for measure-repeat counts. */
     protected reserveSkylineForMeasureRepeats(): void {
         // override
+    }
+
+    /** Reserves the strokes of the tremolos between two notes in the sky and bottom lines, which the skyline calculation
+     *  doesn't draw (VexFlowMusicSheetDrawer.drawTremolosBetweenNotes() draws them), before anything is placed by them.
+     *  Implemented by VexFlowMusicSheetCalculator. */
+    protected reserveTremolosBetweenNotes(): void {
+        // implemented by VexFlowMusicSheetCalculator
     }
 
     /** Calculates the keyboard hand brackets of the stafflines (StaffLine.KeyboardHandBrackets) from the formatted notes and reserves

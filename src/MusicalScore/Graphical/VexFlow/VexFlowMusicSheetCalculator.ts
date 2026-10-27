@@ -31,7 +31,7 @@ import { VexFlowTextMeasurer } from "./VexFlowTextMeasurer";
 import Vex from "vexflow";
 import VF = Vex.Flow;
 import log from "loglevel";
-import { unitInPixels } from "./VexFlowMusicSheetDrawer";
+import { ITremoloNoteFrame, ITremoloStrokes, unitInPixels, VexFlowMusicSheetDrawer } from "./VexFlowMusicSheetDrawer";
 import { VexFlowGraphicalNote } from "./VexFlowGraphicalNote";
 import { CrossStaffCurve, CrossStaffCurveLayoutGeometry } from "./CrossStaffCurve";
 import { TechnicalInstruction } from "../../VoiceData/Instructions/TechnicalInstruction";
@@ -484,6 +484,62 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     for (const display of this.measureRepeatUnitsPendingSkyline) {
       display.reserveSkyline();
     }
+  }
+
+  /**
+   * Reserves the strokes of the tremolos between two notes in the sky and bottom lines of their staffline, with the geometry the
+   * drawer draws them with (VexFlowMusicSheetDrawer.tremoloStrokesBetweenNotes()), from where the skyline calculation formatted
+   * and drew the notes: the skyline calculation doesn't draw the strokes, so the texts placed by the lines went on them where they
+   * reach past the stems (Bowen, Viola Sonata No. 2 m119 viola: "trem." under the strokes between A3 and C4, its start kept
+   * after the beginning of the measure, right of the first stem; 81sabo B6-P02-14-APP020). Same as osmd-dart.
+   */
+  protected reserveTremolosBetweenNotes(): void {
+    for (const musicSystem of this.musicSystems) {
+      for (const staffLine of musicSystem.StaffLines) {
+        for (const measure of staffLine.Measures as VexFlowMeasure[]) {
+          if (!measure || measure.isTabMeasure || measure.NotesAreAbbreviated) {
+            continue;
+          }
+          for (const staffEntry of measure.staffEntries) {
+            for (const voiceEntry of staffEntry.graphicalVoiceEntries) {
+              for (const graphicalNote of voiceEntry.notes) {
+                const tremolo: TremoloBetweenNotes = graphicalNote.sourceNote.TremoloInfo?.tremoloBetweenNotes;
+                if (!tremolo || tremolo.stopNote !== graphicalNote.sourceNote || !(tremolo.strokes > 0)) {
+                  continue;
+                }
+                try {
+                  const strokes: ITremoloStrokes = VexFlowMusicSheetDrawer.tremoloStrokesBetweenNotes(tremolo,
+                    graphicalNote as VexFlowGraphicalNote, staffLine, this.rules, VexFlowMusicSheetCalculator.tremoloNoteFrame);
+                  if (strokes) {
+                    VexFlowMusicSheetDrawer.mergeTremoloStrokesIntoSkyBottomLine(staffLine.SkyBottomLineCalculator, strokes, 0, 0);
+                  }
+                } catch (ex) {
+                  log.warn("VexFlowMusicSheetCalculator.reserveTremolosBetweenNotes", ex);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /** The VexFlow pixels of a note to units in its staffline: relative to its stave, which the skyline calculation may have moved
+   *  (as calculateKeyboardHandBracket()). The note's y values are taken again from where its stave is now, as drawing the voices
+   *  does (Voice.draw() sets each note's stave): a lazily reused skyline skips that draw. */
+  private static tremoloNoteFrame(graphicalNote: VexFlowGraphicalNote): ITremoloNoteFrame {
+    const measure: VexFlowMeasure = graphicalNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure;
+    const stave: VF.Stave = measure.getVFStave();
+    const vfNote: VF.StemmableNote = graphicalNote.vfnote[0];
+    if (vfNote.getStave() === stave) {
+      vfNote.setStave(stave);
+    }
+    const left: number = measure.PositionAndShape.RelativePosition.x;
+    const top: number = stave.getYForLine(0);
+    return {
+      x: (px: number): number => left + (px - stave.getX()) / unitInPixels,
+      y: (px: number): number => (px - top) / unitInPixels
+    };
   }
 
   /** Text of a hand in a keyboard score: l.h., r.h. (also without dots and spaces), m.s., m.d. (sinistra, destra). */
@@ -2265,6 +2321,17 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     bounds.bottom += offset * unitInPixels;
     this.metronomePlacements.push({measure, expression, mark, bounds, yShift: (yShift + offset) * unitInPixels,
       existingPosition: atMeasureStart && offset === 0 && !below, below});
+  }
+
+  protected metronomeMarkBoxes(staffLine: StaffLine): IMetronomeBounds[] {
+    return this.metronomePlacements
+      .filter((placement: IMetronomePlacement): boolean => !placement.below && placement.measure.ParentStaffLine === staffLine)
+      .map((placement: IMetronomePlacement): IMetronomeBounds => ({
+        left: placement.bounds.left / unitInPixels,
+        right: placement.bounds.right / unitInPixels,
+        top: placement.bounds.top / unitInPixels,
+        bottom: placement.bounds.bottom / unitInPixels
+      }));
   }
 
   protected layoutMetronomeMarks(): void {
