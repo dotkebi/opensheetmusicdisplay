@@ -26,8 +26,9 @@ import { GraphicalContinuousDynamicExpression } from "../../../src/MusicalScore/
  * right hand (Myrthen 15 m16); m6 a p below the right hand a sixteenth after the beat, between the stems of an eighth
  * beam from the right hand's E4 D4 to the left hand's C3 A2 (all stems down in the XML: centred).
  *
- * Same rule, different layout: here (the web's spacing and text widths) the p lies on the eighth beam and is moved, the
- * "R. H." and the ritard. are clear, and the f's box is clear but the f glyph (dynamicBox, 2026-10-28)
+ * Same rule, different layout: here (the web's spacing and text widths) the p's box lies on the eighth beam but not its
+ * glyph (dynamicBox: the p's x-height begins 0.99 below the box's top, 2026-10-28 second batch): it stays; the "R. H."
+ * and the ritard. are clear, and the f's box is clear but the f glyph (dynamicBox, 2026-10-28)
  * reaches the beam: it is moved a little; in osmd-dart the f (beam) and the ritard. (curve) are moved. A text cleared
  * of a curve on the web: the Myrthen 9 and 15 regression captures (HANDOFF).
  */
@@ -75,6 +76,12 @@ describe("Text expressions clear of cross-staff beams and curves", () => {
         const text: Element = node?.tagName === "text" ? node : node?.querySelector?.("text");
         return Number(text.getAttribute("y"));
     };
+    /** the x of the label's drawn text (SVG) */
+    const drawnX: (l: GraphicalLabel) => number = (l: GraphicalLabel) => {
+        const node: any = l.SVGNode;
+        const text: Element = node?.tagName === "text" ? node : node?.querySelector?.("text");
+        return Number(text.getAttribute("x"));
+    };
     const cleanups: (() => void)[] = [];
     afterEach(() => {
         cleanups.splice(0).forEach(c => c());
@@ -101,18 +108,16 @@ describe("Text expressions clear of cross-staff beams and curves", () => {
         expect([...osmd.Drawer.CrossStaffExpressionOffsets.values()].every(v => v === 0)).to.equal(true);
     });
 
-    it("the drawer moves the p clear, within reach, the layout unchanged", async () => {
+    it("the drawer moves the dynamics clear by their glyphs, within reach, the layout unchanged", async () => {
         const off: OpenSheetMusicDisplay = keep(await render(false));
         const on: OpenSheetMusicDisplay = keep(await render(true));
         const inkOf: CrossStaffExpressionClearance = ink(on);
         const offsets: Map<GraphicalLabel, number> = on.Drawer.CrossStaffExpressionOffsets;
+        // the p: its box (a line high) on the beam, its glyph clear of it where it is: it stays
         const p: GraphicalLabel = label(on, "p");
-        const dy: number = offsets.get(p);
-        expect(dy).to.be.greaterThan(0); // down, away from its staff
-        expect(Math.abs(dy)).to.be.at.most(CrossStaffExpressionClearance.MaxMove + 1e-9);
-        expect(inkOf.touchesInk(box(p, dy).inflated(CrossStaffExpressionClearance.Clearance - 1e-6))).to.equal(false);
-        expect(drawnY(p) - drawnY(label(off, "p"))).to.be.closeTo(dy * 10, 1e-6);
-        expect(p.PositionAndShape.AbsolutePosition.y).to.be.closeTo(label(off, "p").PositionAndShape.AbsolutePosition.y, 1e-9);
+        expect(inkOf.touchesInk(CrossStaffExpressionClearance.dynamicBox(box(p), "p"))).to.equal(false);
+        expect(offsets.get(p)).to.equal(0);
+        expect(drawnY(p)).to.equal(drawnY(label(off, "p")));
         // the sf: the slur rises from staff to staff across its width (no move up or down clears it): it is moved
         // sideways, off the slur; the others are clear
         const sf: GraphicalLabel = label(on, "sf");
@@ -154,11 +159,12 @@ describe("Text expressions clear of cross-staff beams and curves", () => {
         });
         await osmd.load(TestUtils.getScore("test_cross_staff_between_text.musicxml"));
         await osmd.renderAsync();
-        const dy: number = osmd.Drawer.CrossStaffExpressionOffsets.get(label(osmd, "p"));
-        expect(dy).to.not.equal(0);
-        expect(dy).to.equal(sync.Drawer.CrossStaffExpressionOffsets.get(label(sync, "p")));
-        expect(drawnY(label(osmd, "p"))).to.be.closeTo(drawnY(label(sync, "p")), 1e-6);
+        // the sf, moved sideways off the slur
+        const dx: number = osmd.Drawer.CrossStaffExpressionShifts.get(label(osmd, "sf"));
+        expect(dx).to.not.equal(0);
+        expect(dx).to.equal(sync.Drawer.CrossStaffExpressionShifts.get(label(sync, "sf")));
+        expect(drawnX(label(osmd, "sf"))).to.be.closeTo(drawnX(label(sync, "sf")), 1e-6);
         const texts: string[] = Array.from(container.querySelectorAll("text")).map(t => t.textContent);
-        expect(texts.filter(t => t === "p").length).to.equal(1);
+        expect(texts.filter(t => t === "sf").length).to.equal(1);
     });
 });

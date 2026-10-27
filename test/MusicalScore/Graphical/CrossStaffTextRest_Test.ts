@@ -20,6 +20,12 @@ import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
  * Same rule, different layout: on the web the two mp are moved up off the beams within reach (base and fix alike; the
  * 81sabo rows are the app's), so here they only check the drawn mp clear of the beams and the barlines; "Harmonieux et
  * fondu" is moved over the slur only with MaxMoveAway (1024 px).
+ *
+ * 2026-10-28 (second batch): a dynamic's box is its glyphs' (dynamicBox) and a moved text keeps NoteGap beside it of
+ * the staves' notes. test_cross_staff_sf_beam_stem.musicxml (Schumann, Myrthen 9 "Lied der Suleika", full score m1-4):
+ * in osmd-dart (820) m2's sf is moved up beside the stem of the right hand's beam and kept NoteGap from it; on the web
+ * it is moved down off the slur (the case does not show), so here it only checks the drawn sf clear of the ink and of
+ * the staves' notes by NoteGap.
  */
 describe("Text expressions between the staves: barlines, stems' samples, over a slur", () => {
     const render: (fixture: string, width: number, clearance: boolean) => Promise<{ osmd: OpenSheetMusicDisplay, container: HTMLElement }> =
@@ -101,6 +107,32 @@ describe("Text expressions between the staves: barlines, stems' samples, over a 
             expect(inkOf.touchesBarline(moved)).to.equal(false);
         });
     }
+
+    it("draws the sf of test_cross_staff_sf_beam_stem.musicxml clear of the slur and of the staves' notes beside it", async () => {
+        const on: OpenSheetMusicDisplay = keep(await render("test_cross_staff_sf_beam_stem.musicxml", 820, true));
+        const [e, sf] = expression(on, "sf");
+        const system: MusicSystem = e.ParentStaffLine.ParentMusicSystem;
+        const inkOf: CrossStaffExpressionClearance = ink(on, system);
+        const dx: number = on.Drawer.CrossStaffExpressionShifts.get(sf) ?? 0;
+        const dy: number = on.Drawer.CrossStaffExpressionOffsets.get(sf);
+        expect(dx !== 0 || dy !== 0, "moved off the slur").to.equal(true);
+        const moved: ClearanceBox = box(sf, dx, dy, true);
+        expect(inkOf.touchesInk(moved.inflated(CrossStaffExpressionClearance.Clearance - 1e-6))).to.equal(false);
+        // wholly above a staff's sky line or below its bottom line, 0.2 beside it too
+        const su: number = on.EngravingRules.SamplingUnit;
+        for (const line of system.StaffLines) {
+            const o: any = line.PositionAndShape.AbsolutePosition;
+            const i0: number = Math.floor((moved.left - 0.2 - o.x) * su);
+            const i1: number = Math.floor((moved.right + 0.2 - o.x) * su);
+            let top: number = Number.POSITIVE_INFINITY;
+            let low: number = Number.NEGATIVE_INFINITY;
+            for (let i: number = Math.max(0, i0); i <= i1 && i < line.NotesSkyLine.length; i++) {
+                top = Math.min(top, line.NotesSkyLine[i]);
+                low = Math.max(low, line.NotesBottomLine[i]);
+            }
+            expect(moved.bottom <= o.y + top + 1e-6 || moved.top >= o.y + low - 1e-6).to.equal(true);
+        }
+    });
 
     it("moves words with no free place within reach farther up, over the slur, not into the system above", async () => {
         const fixture: string = "test_cross_staff_words_over_slur.musicxml";
