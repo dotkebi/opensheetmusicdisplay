@@ -2265,6 +2265,7 @@ export abstract class MusicSheetCalculator {
         // Reserve space for multi-measure repeat counts before placing measure numbers.
         this.reserveSkylineForMeasureRepeats();
         this.calculateKeyboardHandBrackets();
+        this.reserveTremolosBetweenNotes();
 
         // calculate MeasureNumbers
         if (this.rules.RenderMeasureNumbers) {
@@ -2562,6 +2563,7 @@ export abstract class MusicSheetCalculator {
         await step(() => this.calculateTupletNumbers(), 0.87);
         await step(() => this.reserveSkylineForMeasureRepeats());
         await step(() => this.calculateKeyboardHandBrackets());
+        await step(() => this.reserveTremolosBetweenNotes());
 
         if (this.rules.RenderMeasureNumbers) {
             await step(() => {
@@ -5734,6 +5736,13 @@ export abstract class MusicSheetCalculator {
     /** Reserves skyline space for measure-repeat counts. */
     protected reserveSkylineForMeasureRepeats(): void {
         // override
+    }
+
+    /** Reserves the strokes of the tremolos between two notes in the sky and bottom lines, which the skyline calculation
+     *  doesn't draw (VexFlowMusicSheetDrawer.drawTremolosBetweenNotes() draws them), before anything is placed by them.
+     *  Implemented by VexFlowMusicSheetCalculator. */
+    protected reserveTremolosBetweenNotes(): void {
+        // implemented by VexFlowMusicSheetCalculator
     }
 
     /** Calculates the keyboard hand brackets of the stafflines (StaffLine.KeyboardHandBrackets) from the formatted notes and reserves
