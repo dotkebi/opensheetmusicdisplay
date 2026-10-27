@@ -1,0 +1,1269 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<score-partwise version="4.0">
+  <work><work-title>Sibelius Op.47 III piano m152-156 (excerpt)</work-title></work><part-list>
+    <score-part id="Pbdd0f9a98748bd2555f2b97a1fc4b575">
+      <part-name>Piano</part-name>
+      <part-abbreviation>Pno.</part-abbreviation>
+      <score-instrument id="Id7bed31a812fd67411f426903c99da80">
+        <instrument-name>Piano</instrument-name>
+        <instrument-abbreviation>Pno</instrument-abbreviation>
+      </score-instrument>
+      <midi-instrument id="Id7bed31a812fd67411f426903c99da80">
+        <midi-channel>1</midi-channel>
+        <midi-program>1</midi-program>
+      </midi-instrument>
+    </score-part>
+  </part-list>
+  
+  <part id="Pbdd0f9a98748bd2555f2b97a1fc4b575">
+    
+    <measure implicit="no" number="152">
+      <attributes><divisions>221760</divisions>
+        <key>
+          <fifths>2</fifths>
+        </key>
+      <time>
+          <beats>3</beats>
+          <beat-type>4</beat-type>
+        </time>
+        <staves>2</staves>
+        <clef>
+          <sign>F</sign>
+          <line>4</line>
+        </clef>
+      <clef number="1">
+          <sign>F</sign>
+          <line>4</line>
+        </clef>
+        <clef number="2">
+          <sign>F</sign>
+          <line>4</line>
+        </clef>
+      </attributes><note id="Piano-RH-152-1-0">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-152-1-1">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-152-1-2">
+        <pitch>
+          <step>D</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-152-1-2-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-152-1-2-chord-2">
+        <chord />
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-152-1-3">
+        <pitch>
+          <step>A</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-152-1-4">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-152-1-5">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-152-1-6">
+        <pitch>
+          <step>D</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-152-1-6-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-152-1-6-chord-2">
+        <chord />
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-152-1-7">
+        <pitch>
+          <step>A</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-152-1-8">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-152-1-9">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-152-1-10">
+        <pitch>
+          <step>D</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-152-1-10-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-152-1-10-chord-2">
+        <chord />
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-152-1-11">
+        <pitch>
+          <step>A</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <backup>
+        <duration>665280</duration>
+      </backup>
+      <note id="Piano-LH-152-1-0" print-object="no" print-spacing="yes">
+        <rest measure="yes" />
+        <duration>665280</duration>
+        <voice>2</voice>
+        <staff>2</staff>
+      </note>
+    </measure>
+    
+    <measure implicit="no" number="153">
+      <note id="Piano-RH-153-1-0">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-153-1-1">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-153-1-2">
+        <pitch>
+          <step>D</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-153-1-2-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-153-1-2-chord-2">
+        <chord />
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-153-1-3">
+        <pitch>
+          <step>A</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-153-1-4">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-153-1-5">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-153-1-6">
+        <pitch>
+          <step>D</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-153-1-6-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-153-1-6-chord-2">
+        <chord />
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-153-1-7">
+        <pitch>
+          <step>A</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-153-1-8">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-153-1-9">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-153-1-10">
+        <pitch>
+          <step>D</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-153-1-10-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-153-1-10-chord-2">
+        <chord />
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-153-1-11">
+        <pitch>
+          <step>A</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <backup>
+        <duration>665280</duration>
+      </backup>
+      <note id="Piano-LH-153-1-0" print-object="no" print-spacing="yes">
+        <rest measure="yes" />
+        <duration>665280</duration>
+        <voice>2</voice>
+        <staff>2</staff>
+      </note>
+    </measure>
+    
+    <measure implicit="no" number="154">
+      <note id="Piano-RH-154-1-0">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-154-1-1">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-154-1-2">
+        <pitch>
+          <step>D</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-154-1-2-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-154-1-2-chord-2">
+        <chord />
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-154-1-3">
+        <pitch>
+          <step>A</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-154-1-4">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-154-1-5">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-154-1-6">
+        <pitch>
+          <step>E</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <accidental>flat</accidental>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-154-1-6-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-154-1-6-chord-2">
+        <chord />
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-154-1-7">
+        <pitch>
+          <step>C</step>
+          <alter>0</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <accidental>natural</accidental>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-154-1-8">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-154-1-9">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-154-1-10">
+        <pitch>
+          <step>E</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-154-1-10-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-154-1-10-chord-2">
+        <chord />
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-154-1-11">
+        <pitch>
+          <step>C</step>
+          <alter>0</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <backup>
+        <duration>665280</duration>
+      </backup>
+      <note id="Piano-LH-154-1-0" print-object="no" print-spacing="yes">
+        <rest measure="yes" />
+        <duration>665280</duration>
+        <voice>2</voice>
+        <staff>2</staff>
+      </note>
+    </measure>
+    
+    <measure implicit="no" number="155">
+      <print />
+      <note id="Piano-RH-155-1-0">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-155-1-1">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-155-1-2">
+        <pitch>
+          <step>E</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <accidental>flat</accidental>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-155-1-2-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-155-1-2-chord-2">
+        <chord />
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-155-1-3">
+        <pitch>
+          <step>C</step>
+          <alter>0</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <accidental>natural</accidental>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <direction>
+        <direction-type>
+          <dynamics default-x="-36" default-y="-80">
+            <mp />
+          </dynamics>
+        </direction-type>
+        <staff>1</staff>
+        <sound dynamics="57" />
+      </direction>
+      <note id="Piano-RH-155-1-4">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-155-1-5">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-155-1-6">
+        <pitch>
+          <step>E</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-155-1-6-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-155-1-6-chord-2">
+        <chord />
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <accidental>flat</accidental>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-155-1-7">
+        <pitch>
+          <step>C</step>
+          <alter>0</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-155-1-8">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-155-1-9">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-155-1-10">
+        <pitch>
+          <step>E</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-155-1-10-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-155-1-10-chord-2">
+        <chord />
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-155-1-11">
+        <pitch>
+          <step>C</step>
+          <alter>0</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <backup>
+        <duration>665280</duration>
+      </backup>
+      <note id="Piano-LH-155-1-0" print-object="no" print-spacing="yes">
+        <rest measure="yes" />
+        <duration>665280</duration>
+        <voice>2</voice>
+        <staff>2</staff>
+      </note>
+    </measure>
+    
+    <measure implicit="no" number="156">
+      <note id="Piano-RH-156-1-0">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-156-1-1">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-156-1-2">
+        <pitch>
+          <step>E</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <accidental>flat</accidental>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-156-1-2-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-156-1-2-chord-2">
+        <chord />
+        <pitch>
+          <step>B</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <accidental>flat</accidental>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-156-1-3">
+        <pitch>
+          <step>C</step>
+          <alter>0</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <accidental>natural</accidental>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <direction placement="above">
+        <direction-type>
+          <words>poco cresc.</words>
+        </direction-type>
+        <staff>1</staff>
+      </direction>
+      <note id="Piano-RH-156-1-4">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-156-1-5">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-156-1-6">
+        <pitch>
+          <step>E</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-156-1-6-chord-1">
+        <chord />
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-156-1-6-chord-2">
+        <chord />
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-156-1-7">
+        <pitch>
+          <step>C</step>
+          <alter>0</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-156-1-8">
+        <pitch>
+          <step>D</step>
+          <octave>1</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">begin</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-156-1-9">
+        <pitch>
+          <step>D</step>
+          <octave>2</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>up</stem>
+        <staff>2</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">end</beam>
+      </note>
+      <note id="Piano-RH-156-1-10">
+        <pitch>
+          <step>F</step>
+          <alter>1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">continue</beam>
+        <beam number="2">begin</beam>
+      </note>
+      <note id="Piano-RH-156-1-10-chord-1">
+        <chord />
+        <pitch>
+          <step>A</step>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-156-1-10-chord-2">
+        <chord />
+        <pitch>
+          <step>D</step>
+          <octave>4</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <staff>1</staff>
+      </note>
+      <note id="Piano-RH-156-1-11">
+        <pitch>
+          <step>E</step>
+          <alter>-1</alter>
+          <octave>3</octave>
+        </pitch>
+        <duration>55440</duration>
+        <voice>1</voice>
+        <type>16th</type>
+        <stem>down</stem>
+        <staff>1</staff>
+        <beam number="1">end</beam>
+        <beam number="2">end</beam>
+      </note>
+      <backup>
+        <duration>665280</duration>
+      </backup>
+      <note id="Piano-LH-156-1-0" print-object="no" print-spacing="yes">
+        <rest measure="yes" />
+        <duration>665280</duration>
+        <voice>2</voice>
+        <staff>2</staff>
+      </note>
+    </measure>
+    
+    </part>
+</score-partwise>
