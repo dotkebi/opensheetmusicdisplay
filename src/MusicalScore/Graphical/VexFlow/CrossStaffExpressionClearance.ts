@@ -109,13 +109,22 @@ class Ink {
  * and m36 "mp" before the first beam, m31 "p" between the stems), each with the vertical moves within reach; a text moved
  * sideways keeps TextGap from the other texts (Parisotti, Sebben crudele: "a tempo" moved onto "rit." read "rit.a tempo")
  * and does not go more than MaxOverStart left of the staves' start (Enescu, Concertstück m51: "Harmonieux et fondu" went
- * 4.5 spaces out over the brace; Sibelius m1 "poco f" goes a quarter space over it, before the first beam). A text with no
- * free place within reach stays. Wedges are not moved (a hairpin row is aligned with its dynamics). Same as
- * osmd-dart cross_staff_expression_clearance.dart.
+ * 4.5 spaces out over the brace; Sibelius m1 "poco f" goes a quarter space over it, before the first beam). The barlines
+ * drawn across the room between the staves of an instrument are kept clear as the beams are (a dynamic lying on one is
+ * moved; other texts, whose boxes reach beyond their letters, only keep clear of them when moved: "R. H." of the fixture
+ * ends half its box short of the barline the box crosses), and the samples of the staves' sky and bottom lines within
+ * StemReach of a cross-staff beam's stem are left to the stem's ink (2026-10-28, Sibelius m36 "mp" lay on the barline;
+ * m155 "mp" was kept off the room between two beams by the next stem, which the bottom line holds a sample to its
+ * right). A text with no free place up, down or sideways is moved away from its staff up to MaxMoveAway staff spaces,
+ * not into the neighbouring systems (Enescu m51: "Harmonieux et fondu" lies under the slur from the first note, which
+ * the source prints it above). A text with no free place within reach stays. Wedges are not moved (a hairpin row is
+ * aligned with its dynamics). Same as osmd-dart cross_staff_expression_clearance.dart.
  */
 export class CrossStaffExpressionClearance {
-    /** the farthest move, in staff spaces */
+    /** the farthest move up or down, in staff spaces */
     public static readonly MaxMove: number = 1.5;
+    /** the farthest move away from the text's staff when no move up, down or sideways clears it, in staff spaces */
+    public static readonly MaxMoveAway: number = 3;
     /** the farthest sideways move to the right, in staff spaces (to the left: this or the text's width and one space,
      *  whichever is more) */
     public static readonly MaxShift: number = 3;
@@ -129,13 +138,20 @@ export class CrossStaffExpressionClearance {
     public static readonly Step: number = 0.1;
     /** the least distance of a moved text from a beam's or curve's ink */
     public static readonly Clearance: number = 0.1;
+    /** how far from a cross-staff beam's stem the staves' sky and bottom lines are not read (the stem's ink is), in
+     *  staff spaces */
+    public static readonly StemReach: number = 0.5;
 
     private readonly ink: Ink[];
+    private readonly barlines: Ink[];
+    private readonly stems: number[];
     private readonly lines: StaffLine[];
     private readonly sampling: number;
 
-    private constructor(ink: Ink[], lines: StaffLine[], sampling: number) {
+    private constructor(ink: Ink[], barlines: Ink[], stems: number[], lines: StaffLine[], sampling: number) {
         this.ink = ink;
+        this.barlines = barlines;
+        this.stems = stems;
         this.lines = lines;
         this.sampling = sampling;
     }
@@ -145,10 +161,13 @@ export class CrossStaffExpressionClearance {
     }
 
     /** The ink of the curves (calculated for drawing: their segments in absolute units) and the beams (post-formatted at
-     *  the staves' final positions, VexFlow pixels over unitInPixels) of the system of the lines. */
+     *  the staves' final positions, VexFlow pixels over unitInPixels) of the system of the lines, and its barlines across
+     *  the room between staves ([x, top, bottom]). */
     public static build(curves: Iterable<CrossStaffCurve>, beams: Iterable<CrossStaffBeam>, lines: StaffLine[],
-                        sampling: number, unitInPixels: number): CrossStaffExpressionClearance {
+                        sampling: number, unitInPixels: number,
+                        barlines: [number, number, number][] = []): CrossStaffExpressionClearance {
         const ink: Ink[] = [];
+        const stems: number[] = [];
         for (const curve of curves) {
             if (curve.segments.length === 0) {
                 continue;
@@ -163,6 +182,7 @@ export class CrossStaffExpressionClearance {
                 }
                 const n: any = note;
                 const x: number = n.getStemX() / unitInPixels;
+                stems.push(x);
                 const extents: any = n.getStemExtents();
                 const tip: number = extents.topY / unitInPixels;
                 const base: number = extents.baseY / unitInPixels;
@@ -183,16 +203,26 @@ export class CrossStaffExpressionClearance {
                                   new PointF2D(b[0], b[2]), new PointF2D(a[0], a[2])]));
             }
         }
-        return new CrossStaffExpressionClearance(ink, lines, sampling);
+        // VexFlow's single barline: one pixel right of its x
+        const barlineInk: Ink[] = barlines.map(([x, top, bottom]) =>
+            new Ink([new PointF2D(x - 0.05, top), new PointF2D(x + 0.1, top),
+                     new PointF2D(x + 0.1, bottom), new PointF2D(x - 0.05, bottom)]));
+        return new CrossStaffExpressionClearance(ink, barlineInk, stems, lines, sampling);
     }
 
-    /** Whether the box touches the beams' and curves' ink. */
+    /** Whether the box touches the beams', curves' and barlines' ink. */
     public touchesInk(box: ClearanceBox): boolean {
-        return this.ink.some(ink => ink.intersects(box));
+        return this.ink.some(ink => ink.intersects(box)) || this.touchesBarline(box);
+    }
+
+    /** Whether the box touches the barlines between the staves. */
+    public touchesBarline(box: ClearanceBox): boolean {
+        return this.barlines.some(ink => ink.intersects(box));
     }
 
     /** Whether the box lies clear of the notes of every staff of the system: wholly above a staff's sky line or wholly
-     *  below its bottom line (both before the expressions) over its width. */
+     *  below its bottom line (both before the expressions) over its width, but for the samples near the cross-staff
+     *  beams' stems (StemReach). */
     private clearOfStaves(box: ClearanceBox): boolean {
         for (const line of this.lines) {
             const sky: number[] = line.NotesSkyLine;
@@ -209,6 +239,10 @@ export class CrossStaffExpressionClearance {
             let top: number = Number.POSITIVE_INFINITY;
             let low: number = Number.NEGATIVE_INFINITY;
             for (let i: number = Math.max(0, i0); i <= Math.min(sky.length - 1, i1); i++) {
+                const x: number = origin.x + (i + 0.5) / this.sampling;
+                if (this.stems.some(stem => Math.abs(x - stem) <= CrossStaffExpressionClearance.StemReach)) {
+                    continue;
+                }
                 top = Math.min(top, sky[i]);
                 low = Math.max(low, bottom[i]);
             }
@@ -220,13 +254,18 @@ export class CrossStaffExpressionClearance {
     }
 
     /** The move of the box (a text expression's, absolute units): none when it does not touch the beams' and curves'
-     *  ink or when no free place is in reach. Up or down first, the nearest; else sideways, the nearest column (to the
-     *  left first) with its nearest vertical move. below: the text lies below its staff (tried downwards first, away
-     *  from its staff), else above (tried upwards first). others: the boxes of the system's other expressions, lyrics,
-     *  pedals and octave shifts, as drawn. */
-    public offset(box: ClearanceBox, below: boolean, others: ClearanceBox[]): { dx: number, dy: number } {
+     *  ink (or the barlines', for onBarline: a dynamic's box) or when no free place is in reach. Up or down first, the
+     *  nearest; else sideways, the nearest column (to the left first) with its nearest vertical move; else farther away
+     *  from its staff, the nearest, its top not above ceiling (a text above its staff) or its bottom not below floor
+     *  (below). below: the text lies below its staff (tried downwards first, away from its staff), else above (tried
+     *  upwards first). others: the boxes of the system's other expressions, lyrics, pedals and octave shifts, as
+     *  drawn. */
+    public offset(box: ClearanceBox, below: boolean, others: ClearanceBox[], onBarline: boolean = false,
+                  ceiling: number = Number.NEGATIVE_INFINITY,
+                  floor: number = Number.POSITIVE_INFINITY): { dx: number, dy: number } {
         const none: { dx: number, dy: number } = { dx: 0, dy: 0 };
-        if (this.ink.length === 0 || !this.touchesInk(box)) {
+        if (this.ink.length === 0 ||
+            !(this.ink.some(ink => ink.intersects(box)) || onBarline && this.touchesBarline(box))) {
             return none;
         }
         const free: (moved: ClearanceBox) => boolean = (moved: ClearanceBox): boolean =>
@@ -267,6 +306,15 @@ export class CrossStaffExpressionClearance {
                         }
                     }
                 }
+            }
+        }
+        for (let k: number = steps + 1; k <= Math.round(CrossStaffExpressionClearance.MaxMoveAway / step); k++) {
+            const moved: ClearanceBox = box.shifted(away * k * step);
+            if (moved.top < ceiling - 1e-6 || moved.bottom > floor + 1e-6) {
+                break;
+            }
+            if (free(moved)) {
+                return { dx: 0, dy: away * k * step };
             }
         }
         return none;

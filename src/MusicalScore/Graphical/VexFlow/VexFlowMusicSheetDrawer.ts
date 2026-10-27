@@ -11,6 +11,7 @@ import { PointF2D } from "../../../Common/DataObjects/PointF2D";
 import { GraphicalLabel } from "../GraphicalLabel";
 import { VexFlowTextMeasurer } from "./VexFlowTextMeasurer";
 import { MusicSystem } from "../MusicSystem";
+import { BoundingBox } from "../BoundingBox";
 import { GraphicalObject } from "../GraphicalObject";
 import { GraphicalLayers } from "../DrawingEnums";
 import { GraphicalStaffEntry } from "../GraphicalStaffEntry";
@@ -517,7 +518,8 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                         this.prepareCrossStaffBeams(measure);
                     }
                 }
-                clearance = CrossStaffExpressionClearance.build(drawable, beams, system.StaffLines, this.rules.SamplingUnit, unitInPixels);
+                clearance = CrossStaffExpressionClearance.build(drawable, beams, system.StaffLines, this.rules.SamplingUnit, unitInPixels,
+                                                                VexFlowMusicSheetDrawer.barlinesBetweenStavesOf(system));
                 if (clearance.isEmpty) {
                     clearance = undefined;
                 }
@@ -528,6 +530,29 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         }
         this.crossStaffClearances.set(system, clearance);
         return clearance;
+    }
+
+    /** The barlines of the system drawn across the room between two staves of an instrument at the measures' ends
+     *  ([x, from the upper staff's top line to the lower staff's bottom line]), for CrossStaffExpressionClearance; not the
+     *  line at the system's start (Sibelius m1 "poco f" goes before the first beam a quarter space over it, as S.9336
+     *  prints it). */
+    private static barlinesBetweenStavesOf(system: MusicSystem): [number, number, number][] {
+        const barlines: [number, number, number][] = [];
+        const lines: StaffLine[] = system.StaffLines;
+        for (let i: number = 0; i + 1 < lines.length; i++) {
+            const upper: StaffLine = lines[i];
+            const lower: StaffLine = lines[i + 1];
+            if (upper.ParentStaff.ParentInstrument !== lower.ParentStaff.ParentInstrument) {
+                continue;
+            }
+            const top: number = upper.PositionAndShape.AbsolutePosition.y;
+            const bottom: number = lower.PositionAndShape.AbsolutePosition.y + lower.StaffHeight;
+            for (const measure of upper.Measures) {
+                const box: BoundingBox = measure.PositionAndShape;
+                barlines.push([box.AbsolutePosition.x + box.BorderRight, top, bottom]);
+            }
+        }
+        return barlines;
     }
 
     /** The box of the label as drawn (its move applied when decided). */
@@ -622,7 +647,23 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                 }
                 const below: boolean = (box.top + box.bottom) / 2 >
                     staffLine.PositionAndShape.AbsolutePosition.y + staffLine.StaffHeight / 2;
-                const move: { dx: number, dy: number } = clearance.offset(box, below, this.otherBoxesOf(system, label));
+                // not into the neighbouring systems of the page (the first's top, the last's bottom: its own)
+                const systems: MusicSystem[] = system.Parent.MusicSystems;
+                const index: number = systems.indexOf(system);
+                const own: BoundingBox = system.PositionAndShape;
+                let ceiling: number = own.AbsolutePosition.y + own.BorderMarginTop;
+                let floor: number = own.AbsolutePosition.y + own.BorderMarginBottom;
+                if (index > 0) {
+                    const previous: BoundingBox = systems[index - 1].PositionAndShape;
+                    ceiling = previous.AbsolutePosition.y + previous.BorderMarginBottom + CrossStaffExpressionClearance.TextGap;
+                }
+                if (index >= 0 && index + 1 < systems.length) {
+                    const next: BoundingBox = systems[index + 1].PositionAndShape;
+                    floor = next.AbsolutePosition.y + next.BorderMarginTop - CrossStaffExpressionClearance.TextGap;
+                }
+                const move: { dx: number, dy: number } = clearance.offset(box, below, this.otherBoxesOf(system, label),
+                                                                          expression instanceof GraphicalInstantaneousDynamicExpression,
+                                                                          ceiling, floor);
                 dy = move.dy;
                 if (move.dx !== 0) {
                     this.crossStaffExpressionShifts.set(label, move.dx);
