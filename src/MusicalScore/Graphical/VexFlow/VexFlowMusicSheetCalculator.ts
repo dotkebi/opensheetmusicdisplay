@@ -4861,7 +4861,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (ornamentsOfEntry.indexOf(ink.ornament) < 0) {
         continue;
       }
-      const raise: number = VexFlowMusicSheetCalculator.raiseOverSlursAbove(ink, staffLine);
+      const raise: number = Math.max(VexFlowMusicSheetCalculator.raiseOverSlursAbove(ink, staffLine),
+                                     VexFlowMusicSheetCalculator.raiseOverRaisedAccents(measure, ink));
       if (raise > 0) {
         ink.ornament.slurClearanceYShift = -raise * unitInPixels;
         staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
@@ -4880,6 +4881,35 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         staffLine.SkyBottomLineCalculator.updateBottomLineInRange(ink.left, ink.right, ink.bottom + drop);
       }
     }
+  }
+
+  /** How far an ornament above the notes goes up over an accent (marcato) of its note that layoutFermatasOverSlurs() moved
+   *  over a slur (0: none). VexFlow stacks the ornament over the accent by their text lines (the ornament's text line is
+   *  the accent's plus the accent's height + 0.5 rounded up to a half line, 1.5 for an accent), and the accent's move leaves
+   *  that out: the trill of Weber Op.74 III m135 and m137 (an accent on the note the slur starts from) was drawn on the
+   *  moved accent (81sabo WIII-RENDER09; in osmd-dart too). It goes up to that text line over the moved accent as drawn
+   *  (snapped to the staff, articulation.js raisedInkTop()), with its accidental mark and wavy line (user decision 10-28,
+   *  D1 1). As in osmd-dart (_raiseOverRaisedAccents). */
+  private static raiseOverRaisedAccents(measure: VexFlowMeasure,
+                                        ink: { ornament: any, left: number, right: number, top: number, bottom: number }): number {
+    const note: any = ink.ornament.getNote();
+    let raise: number = 0;
+    for (const accent of measure.AccentInk) {
+      if (!accent.above || accent.accent.getNote() !== note) {
+        continue;
+      }
+      const lift: number = -(accent.accent.slurClearanceYShift ?? 0) / unitInPixels;
+      if (lift <= 0) {
+        continue;
+      }
+      // where the accent is drawn: snapped to the staff, it can go up by more than its shift
+      const top: number = accent.accent.raisedInkTop?.(accent.accent.slurClearanceYShift) ?? accent.top - lift;
+      const bottom: number = top + accent.bottom - accent.top;
+      // (Articulation.format's text lines of an articulation above: its height + 0.5, rounded up to a half line)
+      const increment: number = Math.ceil((accent.accent.glyph.getMetrics().height / 10 + 0.5) / 0.5) * 0.5;
+      raise = Math.max(raise, ink.bottom - (bottom - increment));
+    }
+    return raise;
   }
 
   /** How far ink below the notes goes down to clear the slurs below that would touch it (0: none), like raiseOverSlursAbove(). */

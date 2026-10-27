@@ -310,6 +310,25 @@ export class Articulation extends Modifier {
     return this.drawnInk;
   }
 
+  // VexFlowPatch: the top of the articulation's ink, in staff spaces from its stave's top line, as draw() would put it
+  //   with the slur clearance shift `slurClearanceYShift` (px), snapped to the staff as there: an accent moved over a slur
+  //   goes up by more than the shift when that puts it between half lines (Weber Op.74 III m135, the trill over it:
+  //   VexFlowMusicSheetCalculator.raiseOverRaisedAccents()). Undefined before it is drawn. As in osmd-dart
+  //   (VexFlowOtherVoicesArticulation.raisedInkTop).
+  raisedInkTop(slurClearanceYShift) {
+    const state = this.snapState;
+    if (!state) return undefined;
+    const position = this.position;
+    const offsetDirection = position === ABOVE ? -1 : +1;
+    let y = state.y + slurClearanceYShift;
+    const articLine = (state.noteY - y) / state.staffSpace + state.noteLine;
+    const snappedLine = snapLineToStaff(state.canSitBetweenLines, articLine, position, offsetDirection);
+    const centred = isWithinLines(snappedLine, position);
+    y += Math.abs(snappedLine - articLine) * state.staffSpace * offsetDirection;
+    const top = centred ? y - state.height / 2 : position === ABOVE ? y - state.height : y;
+    return top / state.staffSpace;
+  }
+
   // Render articulation in position next to note.
   draw() {
     const {
@@ -395,6 +414,12 @@ export class Articulation extends Modifier {
       const distanceFromNote = (note.getYs()[index] - y) / staffSpace;
       const articLine = distanceFromNote + noteLine;
       const snappedLine = snapLineToStaff(canSitBetweenLines, articLine, position, offsetDirection);
+      // VexFlowPatch: what the place depends on, without the slur clearance shift, for raisedInkTop()
+      this.snapState = {
+        y: y - this.slurClearanceYShift - stave.getYForLine(0),
+        noteY: note.getYs()[index] - stave.getYForLine(0),
+        noteLine, canSitBetweenLines, staffSpace, height: glyph.getMetrics().height,
+      };
 
       if (isWithinLines(snappedLine, position)) {
         glyph.setOrigin(0.5, 0.5);
