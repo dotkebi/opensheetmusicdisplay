@@ -641,9 +641,8 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             if (clearance) {
                 let box: ClearanceBox = this.drawnBoxOf(label);
                 if (expression instanceof GraphicalInstantaneousDynamicExpression) {
-                    // its glyphs' tails reach below the label's box
-                    box = new ClearanceBox(box.left, box.top, box.right,
-                                           box.bottom + CrossStaffExpressionClearance.DynamicDescent);
+                    // its glyphs reach beyond the label's box
+                    box = CrossStaffExpressionClearance.dynamicBox(box, label.Label.text);
                 }
                 const below: boolean = (box.top + box.bottom) / 2 >
                     staffLine.PositionAndShape.AbsolutePosition.y + staffLine.StaffHeight / 2;

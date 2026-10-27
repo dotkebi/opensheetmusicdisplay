@@ -50,11 +50,11 @@ describe("Text expressions between the staves: barlines, stems' samples, over a 
     const box: (l: GraphicalLabel, dx?: number, dy?: number, dynamic?: boolean) => ClearanceBox =
         (l: GraphicalLabel, dx: number = 0, dy: number = 0, dynamic: boolean = false) => {
             const b: any = l.PositionAndShape;
-            return new ClearanceBox(b.AbsolutePosition.x + b.BorderLeft + dx, b.AbsolutePosition.y + b.BorderTop + dy,
-                                    b.AbsolutePosition.x + b.BorderRight + dx,
-                                    b.AbsolutePosition.y + b.BorderBottom + dy + (dynamic ? CrossStaffExpressionClearance.DynamicDescent : 0));
+            const plain: ClearanceBox = new ClearanceBox(b.AbsolutePosition.x + b.BorderLeft + dx, b.AbsolutePosition.y + b.BorderTop + dy,
+                                                         b.AbsolutePosition.x + b.BorderRight + dx, b.AbsolutePosition.y + b.BorderBottom + dy);
+            return dynamic ? CrossStaffExpressionClearance.dynamicBox(plain, l.Label.text) : plain;
         };
-    /** the cross-staff beams', curves' and barlines' ink of the system as drawn */
+    /** the cross-staff beams' and curves' ink of the system as drawn, and its barlines between the staves */
     const ink: (osmd: OpenSheetMusicDisplay, system: MusicSystem) => CrossStaffExpressionClearance =
         (osmd: OpenSheetMusicDisplay, system: MusicSystem) => {
             const curves: Set<CrossStaffCurve> = new Set<CrossStaffCurve>();
@@ -96,7 +96,9 @@ describe("Text expressions between the staves: barlines, stems' samples, over a 
             const inkOf: CrossStaffExpressionClearance = ink(on, e.ParentStaffLine.ParentMusicSystem);
             const dx: number = on.Drawer.CrossStaffExpressionShifts.get(mp) ?? 0;
             const dy: number = on.Drawer.CrossStaffExpressionOffsets.get(mp);
-            expect(inkOf.touchesInk(box(mp, dx, dy, true).inflated(CrossStaffExpressionClearance.Clearance - 1e-6))).to.equal(false);
+            const moved: ClearanceBox = box(mp, dx, dy, true).inflated(CrossStaffExpressionClearance.Clearance - 1e-6);
+            expect(inkOf.touchesInk(moved)).to.equal(false);
+            expect(inkOf.touchesBarline(moved)).to.equal(false);
         });
     }
 

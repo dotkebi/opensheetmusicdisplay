@@ -27,7 +27,8 @@ import { GraphicalContinuousDynamicExpression } from "../../../src/MusicalScore/
  * beam from the right hand's E4 D4 to the left hand's C3 A2 (all stems down in the XML: centred).
  *
  * Same rule, different layout: here (the web's spacing and text widths) the p lies on the eighth beam and is moved, the
- * f, the "R. H." and the ritard. are clear; in osmd-dart the f (beam) and the ritard. (curve) are moved. A text cleared
+ * "R. H." and the ritard. are clear, and the f's box is clear but the f glyph (dynamicBox, 2026-10-28)
+ * reaches the beam: it is moved a little; in osmd-dart the f (beam) and the ritard. (curve) are moved. A text cleared
  * of a curve on the web: the Myrthen 9 and 15 regression captures (HANDOFF).
  */
 describe("Text expressions clear of cross-staff beams and curves", () => {
@@ -121,7 +122,12 @@ describe("Text expressions clear of cross-staff beams and curves", () => {
         const sfBox: ClearanceBox = box(sf);
         expect(inkOf.touchesInk(new ClearanceBox(sfBox.left + sfDx, sfBox.top, sfBox.right + sfDx, sfBox.bottom)
             .inflated(CrossStaffExpressionClearance.Clearance - 1e-6))).to.equal(false);
-        for (const text of ["sf", "f", "R. H.", "ritard."]) {
+        // the f's hook reaches the beam: moved within reach, clear with its hook
+        const f: GraphicalLabel = label(on, "f");
+        expect(Math.abs(offsets.get(f))).to.be.at.most(CrossStaffExpressionClearance.MaxMove + 1e-9);
+        expect(inkOf.touchesInk(CrossStaffExpressionClearance.dynamicBox(box(f, offsets.get(f)), "f")
+            .inflated(CrossStaffExpressionClearance.Clearance - 1e-6))).to.equal(false);
+        for (const text of ["sf", "R. H.", "ritard."]) {
             expect(offsets.get(label(on, text)), text).to.equal(0);
             expect(drawnY(label(on, text)), text).to.equal(drawnY(label(off, text)));
         }

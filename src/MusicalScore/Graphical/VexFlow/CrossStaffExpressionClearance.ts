@@ -109,10 +109,10 @@ class Ink {
  * and m36 "mp" before the first beam, m31 "p" between the stems), each with the vertical moves within reach; a text moved
  * sideways keeps TextGap from the other texts (Parisotti, Sebben crudele: "a tempo" moved onto "rit." read "rit.a tempo")
  * and does not go more than MaxOverStart left of the staves' start (Enescu, Concertstück m51: "Harmonieux et fondu" went
- * 4.5 spaces out over the brace; Sibelius m1 "poco f" goes a quarter space over it, before the first beam). The barlines
- * drawn across the room between the staves of an instrument are kept clear as the beams are (a dynamic lying on one is
- * moved; other texts, whose boxes reach beyond their letters, only keep clear of them when moved: "R. H." of the fixture
- * ends half its box short of the barline the box crosses), and the samples of the staves' sky and bottom lines within
+ * 4.5 spaces out over the brace; Sibelius m1 "poco f" goes a quarter space over it, before the first beam). A dynamic
+ * keeps clear of the barlines drawn across the room between the staves of an instrument as of the beams (not other
+ * texts: their boxes reach beyond their letters, "R. H." of the fixture ends half its box short of the barline the box
+ * crosses, and the texts moved sideways in 81sabo would lose their places), and the samples of the staves' sky and bottom lines within
  * StemReach of a cross-staff beam's stem are left to the stem's ink (2026-10-28, Sibelius m36 "mp" lay on the barline;
  * m155 "mp" was kept off the room between two beams by the next stem, which the bottom line holds a sample to its
  * right). A text with no free place up, down or sideways is moved away from its staff up to MaxMoveAway staff spaces,
@@ -135,6 +135,21 @@ export class CrossStaffExpressionClearance {
     /** how far a dynamic's glyphs (the tails of p and f) reach below its label's box, in staff spaces: its box for the
      *  clearance is this much deeper */
     public static readonly DynamicDescent: number = 0.3;
+    /** how far the glyphs of a dynamic with an f reach beyond its label's box, in staff spaces (the f glyph's box, 81sabo
+     *  captures 2026-10-28): a first f's tail to the left, a last f's hook to the right, the tail below (Myrthen 6 "f"
+     *  and Sibelius Op.47 I piano "mf" moved off a barline still touched it, Myrthen 9 "sf" moved onto a slur). The p's
+     *  reach is left at DynamicDescent: the 10-27 moves (Sibelius m31 "p" between the stems) hold with it. */
+    public static readonly ForteReachLeft: number = 0.35;
+    public static readonly ForteReachRight: number = 0.5;
+    public static readonly ForteDescent: number = 0.44;
+
+    /** The box of a dynamic's glyphs from its label's box and text. */
+    public static dynamicBox(box: ClearanceBox, text: string): ClearanceBox {
+        const t: string = text.trim();
+        return new ClearanceBox(box.left - (t.startsWith("f") ? CrossStaffExpressionClearance.ForteReachLeft : 0), box.top,
+                                box.right + (t.endsWith("f") ? CrossStaffExpressionClearance.ForteReachRight : 0),
+                                box.bottom + (t.includes("f") ? CrossStaffExpressionClearance.ForteDescent : CrossStaffExpressionClearance.DynamicDescent));
+    }
     public static readonly Step: number = 0.1;
     /** the least distance of a moved text from a beam's or curve's ink */
     public static readonly Clearance: number = 0.1;
@@ -210,9 +225,9 @@ export class CrossStaffExpressionClearance {
         return new CrossStaffExpressionClearance(ink, barlineInk, stems, lines, sampling);
     }
 
-    /** Whether the box touches the beams', curves' and barlines' ink. */
+    /** Whether the box touches the beams' and curves' ink. */
     public touchesInk(box: ClearanceBox): boolean {
-        return this.ink.some(ink => ink.intersects(box)) || this.touchesBarline(box);
+        return this.ink.some(ink => ink.intersects(box));
     }
 
     /** Whether the box touches the barlines between the staves. */
@@ -254,22 +269,22 @@ export class CrossStaffExpressionClearance {
     }
 
     /** The move of the box (a text expression's, absolute units): none when it does not touch the beams' and curves'
-     *  ink (or the barlines', for onBarline: a dynamic's box) or when no free place is in reach. Up or down first, the
+     *  ink (and the barlines', for offBarlines: a dynamic's box, kept clear of them too) or when no free place is in reach. Up or down first, the
      *  nearest; else sideways, the nearest column (to the left first) with its nearest vertical move; else farther away
      *  from its staff, the nearest, its top not above ceiling (a text above its staff) or its bottom not below floor
      *  (below). below: the text lies below its staff (tried downwards first, away from its staff), else above (tried
      *  upwards first). others: the boxes of the system's other expressions, lyrics, pedals and octave shifts, as
      *  drawn. */
-    public offset(box: ClearanceBox, below: boolean, others: ClearanceBox[], onBarline: boolean = false,
+    public offset(box: ClearanceBox, below: boolean, others: ClearanceBox[], offBarlines: boolean = false,
                   ceiling: number = Number.NEGATIVE_INFINITY,
                   floor: number = Number.POSITIVE_INFINITY): { dx: number, dy: number } {
         const none: { dx: number, dy: number } = { dx: 0, dy: 0 };
-        if (this.ink.length === 0 ||
-            !(this.ink.some(ink => ink.intersects(box)) || onBarline && this.touchesBarline(box))) {
+        if (this.ink.length === 0 || !(this.touchesInk(box) || offBarlines && this.touchesBarline(box))) {
             return none;
         }
         const free: (moved: ClearanceBox) => boolean = (moved: ClearanceBox): boolean =>
             !this.touchesInk(moved.inflated(CrossStaffExpressionClearance.Clearance)) &&
+            !(offBarlines && this.touchesBarline(moved.inflated(CrossStaffExpressionClearance.Clearance))) &&
             !others.some(other => other.overlaps(moved)) && this.clearOfStaves(moved);
         const step: number = CrossStaffExpressionClearance.Step;
         const away: number = below ? 1 : -1;

@@ -61,9 +61,9 @@ describe("Text expressions moved sideways off cross-staff stems", () => {
     const box: (l: GraphicalLabel, dx?: number, dy?: number, dynamic?: boolean) => ClearanceBox =
         (l: GraphicalLabel, dx: number = 0, dy: number = 0, dynamic: boolean = false) => {
             const b: any = l.PositionAndShape;
-            return new ClearanceBox(b.AbsolutePosition.x + b.BorderLeft + dx, b.AbsolutePosition.y + b.BorderTop + dy,
-                                    b.AbsolutePosition.x + b.BorderRight + dx,
-                                    b.AbsolutePosition.y + b.BorderBottom + dy + (dynamic ? CrossStaffExpressionClearance.DynamicDescent : 0));
+            const plain: ClearanceBox = new ClearanceBox(b.AbsolutePosition.x + b.BorderLeft + dx, b.AbsolutePosition.y + b.BorderTop + dy,
+                                                         b.AbsolutePosition.x + b.BorderRight + dx, b.AbsolutePosition.y + b.BorderBottom + dy);
+            return dynamic ? CrossStaffExpressionClearance.dynamicBox(plain, l.Label.text) : plain;
         };
     const beamsOf: (osmd: OpenSheetMusicDisplay) => Set<CrossStaffBeam> = (osmd: OpenSheetMusicDisplay) => {
         const beams: Set<CrossStaffBeam> = new Set<CrossStaffBeam>();
