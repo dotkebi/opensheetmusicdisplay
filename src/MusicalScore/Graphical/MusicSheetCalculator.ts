@@ -2044,6 +2044,13 @@ export abstract class MusicSheetCalculator {
             if (hitsOtherText) {
                 continue;
             }
+            // nor onto a metronome mark: drawn by VexFlow, it is not an expression label (Bruch, Scottish Fantasy m406:
+            //   "Tempo I." at the end of "rit. - - -" moved onto the line, into "♩ = 66" placed over it)
+            const hitsMetronomeMark: boolean = this.metronomeMarkBoxes(staffLine).some(mark =>
+                mark.left < right && left < mark.right && mark.top < bottom && top < mark.bottom);
+            if (hitsMetronomeMark) {
+                continue;
+            }
             textBox.RelativePosition.y += shift;
             if (below) {
                 skyBottomLine.updateBottomLineInRange(left, right, bottom);
@@ -4356,6 +4363,13 @@ export abstract class MusicSheetCalculator {
 
     protected layoutMetronomeMarks(): void {
         return;
+    }
+
+    /** The boxes (in units, relative to staffLine) of the metronome marks drawn above staffLine, which are not expression
+     *  labels: the words moving onto a dashed line keep off them (moveWordsOntoExpressionDashes()). Implemented by
+     *  VexFlowMusicSheetCalculator. Same as osmd-dart (metronomeMarkBoxes). */
+    protected metronomeMarkBoxes(staffLine: StaffLine): {left: number, right: number, top: number, bottom: number}[] {
+        return [];
     }
 
     protected graphicalMeasureCreatedCalculations(measure: GraphicalMeasure): void {

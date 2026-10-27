@@ -2267,6 +2267,17 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       existingPosition: atMeasureStart && offset === 0 && !below, below});
   }
 
+  protected metronomeMarkBoxes(staffLine: StaffLine): IMetronomeBounds[] {
+    return this.metronomePlacements
+      .filter((placement: IMetronomePlacement): boolean => !placement.below && placement.measure.ParentStaffLine === staffLine)
+      .map((placement: IMetronomePlacement): IMetronomeBounds => ({
+        left: placement.bounds.left / unitInPixels,
+        right: placement.bounds.right / unitInPixels,
+        top: placement.bounds.top / unitInPixels,
+        bottom: placement.bounds.bottom / unitInPixels
+      }));
+  }
+
   protected layoutMetronomeMarks(): void {
     const occupiedByStaffLine: Map<StaffLine, IMetronomeBounds[]> = new Map<StaffLine, IMetronomeBounds[]>();
     const padding: number = this.rules.TempoYSpacing * unitInPixels;
