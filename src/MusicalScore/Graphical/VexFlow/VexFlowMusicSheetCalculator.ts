@@ -5240,6 +5240,35 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   }
 
   /**
+   * Widens the tuplet numbers (with their brackets) in the sky and bottom lines by VexFlowMeasure.TupletNumberSideClearance
+   * on their left and right, after the notes' lines are saved and before the expressions are placed: the lines have a
+   * number's ink only where it is, so a dynamic whose box ended just short of a number beside it was placed by the notes
+   * under it, at the number's height (Stamitz, Flute Concerto Op. 29 m73: the mf left of the 3 under a triplet, touching it
+   * on the web; the app's mf, a glyph box 0.6 wider, reached the 3 and went under it). Where the numbers are now, after their
+   * moves outside the slurs. As in osmd-dart.
+   */
+  protected reserveTupletNumberSides(): void {
+    const side: number = VexFlowMeasure.TupletNumberSideClearance;
+    for (const musicSystem of this.musicSystems) {
+      for (const staffLine of musicSystem.StaffLines) {
+        const lines: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+        for (const measure of staffLine.Measures) {
+          if (!(measure instanceof VexFlowMeasure)) {
+            continue;
+          }
+          for (const ink of measure.TupletNumberInk) {
+            if (ink.above) {
+              lines.updateSkyLineInRange(ink.left - side, ink.right + side, ink.top);
+            } else {
+              lines.updateBottomLineInRange(ink.left - side, ink.right + side, ink.bottom);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * For a slur placed above whose two notes lie on one staff while its voice's notes between them lie on the staff
    * above (Bellini, Sogno d'infanzia m36 and 41 more, L'allegro marinaro m33-41: the left hand's E3 to its G3 over the
    * right hand's E4 C4 under a cross-staff beam — the source arches over the beam and those notes, an ordinary slur,
