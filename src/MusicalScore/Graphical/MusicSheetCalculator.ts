@@ -1867,6 +1867,13 @@ export abstract class MusicSheetCalculator {
             }
         }
         this.reserveCrossStaffCurves();
+        this.reserveTupletNumberSides();
+    }
+
+    /** Widens the tuplet numbers in the sky and bottom lines on both sides, after the notes' lines are saved (see
+     *  VexFlowMusicSheetCalculator). */
+    protected reserveTupletNumberSides(): void {
+        // implemented by VexFlowMusicSheetCalculator
     }
 
     /** Reserves the outer sides of the curves between staves in the sky and bottom lines, after the notes' lines are

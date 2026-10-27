@@ -3283,6 +3283,12 @@ export class VexFlowMeasure extends GraphicalMeasure {
     public static readonly TupletNumberStaffClearance: number = 0.2;
     /** How far (units) such a number stays from the noteheads (and their accidentals) over (under) it. As in osmd-dart. */
     public static readonly TupletNumberHeadClearance: number = 0.4;
+    /** How far (units) the sky and bottom lines take a tuplet's number (and bracket) on its left and right for the expressions
+     *  placed after the notes (VexFlowMusicSheetCalculator.reserveTupletNumberSides()): a dynamic or a text beside the number
+     *  keeps clear of it as of anything under (over) it. More than the 0.2 by which a dynamic's box stayed short of the 3 it
+     *  touched (Stamitz, Flute Concerto Op. 29 m73, web) and the lines' sampling (1/3), at most half a space so that only
+     *  what is beside the number moves. As in osmd-dart. */
+    public static readonly TupletNumberSideClearance: number = 0.4;
 
     /** Moves the tuplet's number by [[tupletNumberHeadSideYShift]], in its y_offset beside the moves of
      *  VexFlowMusicSheetCalculator.layoutFermatasOverSlurs() (each draw takes back the shift of the one before). */
