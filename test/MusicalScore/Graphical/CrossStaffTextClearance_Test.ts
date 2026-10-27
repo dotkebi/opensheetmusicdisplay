@@ -28,7 +28,8 @@ import { GraphicalContinuousDynamicExpression } from "../../../src/MusicalScore/
  *
  * Same rule, different layout: here (the web's spacing and text widths) the p's box lies on the eighth beam but not its
  * glyph (dynamicBox: the p's x-height begins 0.99 below the box's top, 2026-10-28 second batch): it stays; the "R. H."
- * and the ritard. are clear, and the f's box is clear but the f glyph (dynamicBox, 2026-10-28)
+ * is clear, the ritard. lies within Clearance of the slur's top and is moved a little (since 2026-10-28, second batch),
+ * and the f's box is clear but the f glyph (dynamicBox, 2026-10-28)
  * reaches the beam: it is moved a little; in osmd-dart the f (beam) and the ritard. (curve) are moved. A text cleared
  * of a curve on the web: the Myrthen 9 and 15 regression captures (HANDOFF).
  */
@@ -132,10 +133,15 @@ describe("Text expressions clear of cross-staff beams and curves", () => {
         expect(Math.abs(offsets.get(f))).to.be.at.most(CrossStaffExpressionClearance.MaxMove + 1e-9);
         expect(inkOf.touchesInk(CrossStaffExpressionClearance.dynamicBox(box(f, offsets.get(f)), "f")
             .inflated(CrossStaffExpressionClearance.Clearance - 1e-6))).to.equal(false);
-        for (const text of ["sf", "R. H.", "ritard."]) {
+        for (const text of ["sf", "R. H."]) {
             expect(offsets.get(label(on, text)), text).to.equal(0);
             expect(drawnY(label(on, text)), text).to.equal(drawnY(label(off, text)));
         }
+        // the ritard. lies within Clearance of the slur's top (not on it): moved a little, clear by Clearance
+        const ritard: GraphicalLabel = label(on, "ritard.");
+        expect(Math.abs(offsets.get(ritard))).to.be.at.most(CrossStaffExpressionClearance.MaxMove + 1e-9);
+        expect(inkOf.touchesInk(box(ritard, offsets.get(ritard)).inflated(CrossStaffExpressionClearance.Clearance - 1e-6)))
+            .to.equal(false);
         // the layout (staves, wedge) is the same; a wedge is never moved
         const linesOff: any[] = systems(off)[0].StaffLines;
         systems(on)[0].StaffLines.forEach((line, i) =>

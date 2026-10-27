@@ -108,6 +108,53 @@ describe("Text expressions between the staves: barlines, stems' samples, over a 
         });
     }
 
+    it("moves a dynamic nearer the ink than Clearance, not touching it (Enescu m179 p: 0.1 short of the slur stayed on it)",
+       async () => {
+        const on: OpenSheetMusicDisplay = keep(await render("test_cross_staff_mp_between_beams.musicxml", 1707, true));
+        const [e, mp] = expression(on, "mp");
+        const staffLine: StaffLine = e.ParentStaffLine;
+        const inkOf: CrossStaffExpressionClearance = ink(on, staffLine.ParentMusicSystem);
+        // the mp's glyphs' box (where the label lies) moved sideways off the beam until it just clears it
+        let near: ClearanceBox = box(mp, 0, 0, true);
+        expect(inkOf.touchesInk(near)).to.equal(true);
+        let dx: number = 0;
+        while (inkOf.touchesInk(near.shifted(0, dx)) && dx > -4) {
+            dx -= 0.01;
+        }
+        near = near.shifted(0, dx);
+        expect(inkOf.touchesInk(near)).to.equal(false);
+        expect(inkOf.touchesInk(near.inflated(CrossStaffExpressionClearance.Clearance / 2))).to.equal(true);
+        const below: boolean = (near.top + near.bottom) / 2 >
+            staffLine.PositionAndShape.AbsolutePosition.y + staffLine.StaffHeight / 2;
+        const move: { dx: number, dy: number } = inkOf.offset(near, below, []);
+        expect(move.dx !== 0 || move.dy !== 0).to.equal(true);
+        expect(inkOf.touchesInk(near.shifted(move.dy, move.dx).inflated(CrossStaffExpressionClearance.Clearance - 1e-6)))
+            .to.equal(false);
+    });
+
+    it("keeps a moved dynamic's glyphs the clearance and a tenth more above and below off the ink", async () => {
+        const cases: [string, number, string][] = [["test_cross_staff_mp_barline.musicxml", 1024, "mp"],
+                                                   ["test_cross_staff_mp_between_beams.musicxml", 1707, "mp"],
+                                                   ["test_cross_staff_sf_beam_stem.musicxml", 820, "sf"]];
+        for (const [fixture, width, text] of cases) {
+            const on: OpenSheetMusicDisplay = keep(await render(fixture, width, true));
+            const [e, label] = expression(on, text);
+            const inkOf: CrossStaffExpressionClearance = ink(on, e.ParentStaffLine.ParentMusicSystem);
+            const dx: number = on.Drawer.CrossStaffExpressionShifts.get(label) ?? 0;
+            const dy: number = on.Drawer.CrossStaffExpressionOffsets.get(label) ?? 0;
+            // the glyphs' box without the margin, by the measured numbers (p/m: 0.99 below the top; f: 0.47)
+            const b: ClearanceBox = box(label, dx, dy);
+            const f: boolean = text.includes("f");
+            const glyphs: ClearanceBox = new ClearanceBox(b.left - (text.startsWith("p") ? 0.18 : 0), b.top + (f ? 0.47 : 0.99),
+                                                          b.right + (text.endsWith("f") ? 0.5 : text.endsWith("p") ? 0.08 : 0),
+                                                          b.bottom + (f ? 0.44 : 0.43));
+            const tall: ClearanceBox = new ClearanceBox(glyphs.left, glyphs.top - 0.1, glyphs.right, glyphs.bottom + 0.1)
+                .inflated(CrossStaffExpressionClearance.Clearance - 1e-6);
+            expect(inkOf.touchesInk(tall), fixture).to.equal(false);
+            expect(inkOf.touchesBarline(tall), fixture).to.equal(false);
+        }
+    });
+
     it("draws the sf of test_cross_staff_sf_beam_stem.musicxml clear of the slur and of the staves' notes beside it", async () => {
         const on: OpenSheetMusicDisplay = keep(await render("test_cross_staff_sf_beam_stem.musicxml", 820, true));
         const [e, sf] = expression(on, "sf");
