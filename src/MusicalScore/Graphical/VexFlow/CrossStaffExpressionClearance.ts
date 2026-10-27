@@ -19,8 +19,8 @@ export class ClearanceBox {
         this.bottom = bottom;
     }
 
-    public shifted(dy: number): ClearanceBox {
-        return new ClearanceBox(this.left, this.top + dy, this.right, this.bottom + dy);
+    public shifted(dy: number, dx: number = 0): ClearanceBox {
+        return new ClearanceBox(this.left + dx, this.top + dy, this.right + dx, this.bottom + dy);
     }
 
     public inflated(d: number): ClearanceBox {
@@ -102,13 +102,30 @@ class Ink {
  * a text up or down to the nearest free place within MaxMove staff spaces: clear of the beams' and curves' ink by
  * Clearance, of the other expressions, lyrics, pedals and octave shifts of the system, and of the staves' notes (their
  * sky and bottom lines before the expressions, StaffLine.NotesSkyLine/NotesBottomLine). The layout (sky lines, the
- * staves' distance, the systems) is not changed: only where the text is drawn. A text with no free place within reach
- * stays (a stem or curve crossing the whole room between the staves cannot be cleared by any move). Wedges are not
- * moved (a hairpin row is aligned with its dynamics). Same as osmd-dart cross_staff_expression_clearance.dart.
+ * staves' distance, the systems) is not changed: only where the text is drawn. A text with no free place up or down is
+ * moved sideways (2026-10-27, user decision "LW", 81sabo Sibelius Op.47 III piano, where the stems of the cross-staff
+ * sixteenths cross the whole room between the staves): to the nearest free place within MaxShift staff spaces to the
+ * right, or to the left within MaxShift or its own width and one space, whichever is more (S.9336 prints m1 "poco f"
+ * and m36 "mp" before the first beam, m31 "p" between the stems), each with the vertical moves within reach; a text moved
+ * sideways keeps TextGap from the other texts (Parisotti, Sebben crudele: "a tempo" moved onto "rit." read "rit.a tempo")
+ * and does not go more than MaxOverStart left of the staves' start (Enescu, Concertstück m51: "Harmonieux et fondu" went
+ * 4.5 spaces out over the brace; Sibelius m1 "poco f" goes a quarter space over it, before the first beam). A text with no
+ * free place within reach stays. Wedges are not moved (a hairpin row is aligned with its dynamics). Same as
+ * osmd-dart cross_staff_expression_clearance.dart.
  */
 export class CrossStaffExpressionClearance {
     /** the farthest move, in staff spaces */
     public static readonly MaxMove: number = 1.5;
+    /** the farthest sideways move to the right, in staff spaces (to the left: this or the text's width and one space,
+     *  whichever is more) */
+    public static readonly MaxShift: number = 3;
+    /** the least horizontal room between a text moved sideways and the other texts, in staff spaces */
+    public static readonly TextGap: number = 0.5;
+    /** how far a text moved sideways may reach left of the staves' start (over the brace), in staff spaces */
+    public static readonly MaxOverStart: number = 1;
+    /** how far a dynamic's glyphs (the tails of p and f) reach below its label's box, in staff spaces: its box for the
+     *  clearance is this much deeper */
+    public static readonly DynamicDescent: number = 0.3;
     public static readonly Step: number = 0.1;
     /** the least distance of a moved text from a beam's or curve's ink */
     public static readonly Clearance: number = 0.1;
@@ -202,27 +219,56 @@ export class CrossStaffExpressionClearance {
         return true;
     }
 
-    /** The vertical move of the box (a text expression's, absolute units): 0 when it does not touch the beams' and
-     *  curves' ink or when no free place is in reach. below: the text lies below its staff (tried downwards first, away
+    /** The move of the box (a text expression's, absolute units): none when it does not touch the beams' and curves'
+     *  ink or when no free place is in reach. Up or down first, the nearest; else sideways, the nearest column (to the
+     *  left first) with its nearest vertical move. below: the text lies below its staff (tried downwards first, away
      *  from its staff), else above (tried upwards first). others: the boxes of the system's other expressions, lyrics,
      *  pedals and octave shifts, as drawn. */
-    public offset(box: ClearanceBox, below: boolean, others: ClearanceBox[]): number {
+    public offset(box: ClearanceBox, below: boolean, others: ClearanceBox[]): { dx: number, dy: number } {
+        const none: { dx: number, dy: number } = { dx: 0, dy: 0 };
         if (this.ink.length === 0 || !this.touchesInk(box)) {
-            return 0;
+            return none;
         }
+        const free: (moved: ClearanceBox) => boolean = (moved: ClearanceBox): boolean =>
+            !this.touchesInk(moved.inflated(CrossStaffExpressionClearance.Clearance)) &&
+            !others.some(other => other.overlaps(moved)) && this.clearOfStaves(moved);
+        const step: number = CrossStaffExpressionClearance.Step;
         const away: number = below ? 1 : -1;
-        const steps: number = Math.round(CrossStaffExpressionClearance.MaxMove / CrossStaffExpressionClearance.Step);
+        const steps: number = Math.round(CrossStaffExpressionClearance.MaxMove / step);
         for (let k: number = 1; k <= steps; k++) {
             for (const direction of [away, -away]) {
-                const dy: number = direction * k * CrossStaffExpressionClearance.Step;
-                const moved: ClearanceBox = box.shifted(dy);
-                if (this.touchesInk(moved.inflated(CrossStaffExpressionClearance.Clearance)) ||
-                    others.some(other => other.overlaps(moved)) || !this.clearOfStaves(moved)) {
-                    continue;
+                const dy: number = direction * k * step;
+                if (free(box.shifted(dy))) {
+                    return { dx: 0, dy: dy };
                 }
-                return dy;
             }
         }
-        return 0;
+        const staffStart: number = Math.min(...this.lines.map(line => line.PositionAndShape.AbsolutePosition.x));
+        const freeSideways: (moved: ClearanceBox) => boolean = (moved: ClearanceBox): boolean =>
+            moved.left >= staffStart - CrossStaffExpressionClearance.MaxOverStart - 1e-6 && free(moved) &&
+            !others.some(other => other.overlaps(new ClearanceBox(moved.left - CrossStaffExpressionClearance.TextGap, moved.top,
+                                                                  moved.right + CrossStaffExpressionClearance.TextGap, moved.bottom)));
+        const right: number = Math.round(CrossStaffExpressionClearance.MaxShift / step);
+        const left: number = Math.max(right, Math.round((box.right - box.left + 1) / step));
+        for (let i: number = 1; i <= left; i++) {
+            for (const side of [-1, 1]) {
+                if (i > (side < 0 ? left : right)) {
+                    continue;
+                }
+                const dx: number = side * i * step;
+                if (freeSideways(box.shifted(0, dx))) {
+                    return { dx: dx, dy: 0 };
+                }
+                for (let k: number = 1; k <= steps; k++) {
+                    for (const direction of [away, -away]) {
+                        const dy: number = direction * k * step;
+                        if (freeSideways(box.shifted(dy, dx))) {
+                            return { dx: dx, dy: dy };
+                        }
+                    }
+                }
+            }
+        }
+        return none;
     }
 }
