@@ -22,8 +22,8 @@ describe("Dynamic beside a tuplet number", () => {
 
     it("puts the mf left of the 3 under the 3 (Stamitz Op. 29 m73)", async () => {
         container = TestUtils.getDivElement(document);
-        // before: the mf's box 0.47 short of the 3, beside it at its height
-        container.style.width = "1024px";
+        // before: the mf's box 0.35 short of the 3, beside it at its height
+        container.style.width = "800px";
         osmd = TestUtils.createOpenSheetMusicDisplay(container);
         await osmd.load(TestUtils.getScore("test_tuplet_number_beside_dynamic.musicxml"));
         osmd.render();
