@@ -2154,9 +2154,8 @@ export abstract class MusicSheetCalculator {
         }
         this.staffEntriesWithGraphicalTies.length = 0;
         // Reset the tuplet number visibility decisions of calculateTupletNumbers() to the default:
-        // it runs after calculateSkyBottomLines(), so without the reset, a re-render's skyline
-        // would include the previous render's decisions, where the first render's skyline saw the
-        // default (true) - making re-renders differ from the first render.
+        // it decides from the default each render (it runs before calculateSkyBottomLines(), so the
+        // skyline has only the numbers drawn), making re-renders the same as the first render.
         // (Also makes sure all numbers come back when TupletNumberLimitConsecutiveRepetitions is
         // disabled between renders, as calculateTupletNumbers() then doesn't re-activate them.)
         for (const instrument of this.graphicalMusicSheet.ParentMusicSheet.Instruments) {
@@ -2277,11 +2276,14 @@ export abstract class MusicSheetCalculator {
                 this.calculateTieCurves();
             }
         }
+        // calculate TupletsNumbers: before the sky and bottom lines, which then have only the numbers drawn (a number hidden as
+        //   a consecutive repetition was in them, and a slur over its tuplet went over it: Boccherini/Piatti, Cello Sonata 1
+        //   m142, the 3 of a triplet under staccatos raised over their text lines, 10-28). The reset in calculate() makes the
+        //   decisions the same for each render.
+        this.calculateTupletNumbers();
         // calculate Sky- and BottomLine
         // will have reasonable values only between ObjectsBorders (eg StaffEntries)
         this.calculateSkyBottomLines();
-        // calculate TupletsNumbers
-        this.calculateTupletNumbers();
         // Reserve space for multi-measure repeat counts before placing measure numbers.
         this.reserveSkylineForMeasureRepeats();
         this.calculateKeyboardHandBrackets();
@@ -2571,6 +2573,8 @@ export abstract class MusicSheetCalculator {
         }
         onProgress?.(preSkylineEnd);
 
+        // (before the sky and bottom lines, see calculateMusicSystems())
+        await step(() => this.calculateTupletNumbers(), preSkylineEnd);
         const skylineStartedAt: number = performance.now();
         await this.calculateSkyBottomLinesAsync(yielder,
             (done: number, total: number): void => {
@@ -2580,8 +2584,7 @@ export abstract class MusicSheetCalculator {
             });
         const skylineCompletedAt: number = performance.now();
 
-        await step(() => this.calculateTupletNumbers(), 0.87);
-        await step(() => this.reserveSkylineForMeasureRepeats());
+        await step(() => this.reserveSkylineForMeasureRepeats(), 0.87);
         await step(() => this.calculateKeyboardHandBrackets());
         await step(() => this.reserveTremolosBetweenNotes());
 
