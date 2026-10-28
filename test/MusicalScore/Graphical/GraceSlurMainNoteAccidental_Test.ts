@@ -13,8 +13,8 @@ import Vex from "vexflow";
  * - Sibelius, Violin Concerto III m93 (SIB3C-VIS-pages33_36-014): a stem-down grace A5 slurred (above) to Gb5 — the
  *   flat's stem went through the arc.
  * R1: the ends stay at the noteheads; only the arc's bulge grows, by as much as the arc's inner edge needs to pass the
- * accidental's end on its side by GraceNoteGroup.ACCIDENTAL_CLEARANCE, at most MAX_ACCIDENTAL_LIFT. An arc with no
- * accidental in its way keeps its shape. Same as osmd-dart test/grace_slur_main_note_accidental_test.dart.
+ * accidental's end on its side by GraceNoteGroup.ACCIDENTAL_CLEARANCE. An arc with no accidental in its way, or one that
+ * would need more than MAX_ACCIDENTAL_LIFT, keeps its shape. Same as osmd-dart test/grace_slur_main_note_accidental_test.dart.
  */
 describe("Grace note arc over the main note's accidental", () => {
     const score: (clef: string, notes: string) => string = (clef: string, notes: string): string =>

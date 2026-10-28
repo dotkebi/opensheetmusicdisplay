@@ -191,7 +191,7 @@ export class GraceNoteGroup extends Modifier {
    * vexflowpatch: how far (px) both control points of the arc from (first_x, first_y) to (last_x, last_y) (its ends,
    * y shift included) on `direction`'s side (1 below, -1 above) must move out beyond `inner_cp` for the inner edge to
    * pass every ink box's end on that side by GraceNoteGroup.ACCIDENTAL_CLEARANCE where the box lies between the ends;
-   * at most 2 x GraceNoteGroup.MAX_ACCIDENTAL_LIFT spaces, 0 when the arc clears them. The control points lie halfway
+   * 0 when the arc clears them or would need more than 2 x GraceNoteGroup.MAX_ACCIDENTAL_LIFT spaces. The control points lie halfway
    * between the ends, so x runs linearly with t and the inner edge lies 2·t·(1−t)·cp off the line between the ends.
    * Same as osmd-dart VexFlowGraceNoteGroup.arcLiftOverAccidentals.
    */
@@ -209,8 +209,7 @@ export class GraceNoteGroup extends Modifier {
         if (cp - inner_cp > need) need = cp - inner_cp;
       }
     }
-    const most = 2 * GraceNoteGroup.MAX_ACCIDENTAL_LIFT * spacing;
-    return need > most ? most : need;
+    return need > 2 * GraceNoteGroup.MAX_ACCIDENTAL_LIFT * spacing ? 0 : need;
   }
 
   draw() {
@@ -273,9 +272,12 @@ export class GraceNoteGroup extends Modifier {
 GraceNoteGroup.ACCIDENTAL_CLEARANCE = 0.2;
 /**
  * vexflowpatch: the most (staff spaces) the arc's bulge grows to pass an accidental. A quadratic curve bulges by half
- * its control point offset: both control points move out by at most twice this.
+ * its control point offset: both control points move out by at most twice this. An arc that would need more keeps
+ * VexFlow's shape: raised to a cap, a short arc stood high over its notes and pushed the text over it away (Sibelius,
+ * Violin Concerto III m241, the B♮5's arc and the arco 2.8 spaces up, 10-28). The arcs it was made for need 0.7 and
+ * 0.93 (Sibelius m93, Goltermann m187). As in osmd-dart.
  */
-GraceNoteGroup.MAX_ACCIDENTAL_LIFT = 1.5;
+GraceNoteGroup.MAX_ACCIDENTAL_LIFT = 1.0;
 
 /**
  * vexflowpatch: a grace note group's arc to its main note, arching out past the main note's accidentals' `inks`
