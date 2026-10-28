@@ -23,6 +23,9 @@ import { AbstractGraphicalExpression } from "../../../src/MusicalScore/Graphical
  * piano m156 eighths (an upper-staff eighth stemmed down beamed with three lower-staff eighths stemmed up) with a p below
  * the upper staff.
  *
+ * Since 2026-10-28 (second batch) a dynamic's box is its glyphs' (the p's tail 0.18 left and 0.43 below, its x-height
+ * 0.99 below the label's top, checked here by these measured numbers): the m31 p may fit with a move up or down.
+ *
  * Same rule, different layout: on the web the words "poco f" measure 5 spaces (12 in osmd-dart) and start right of the
  * first stem; the place before the first beam is 7 spaces to the left, beyond its reach (its width and one space): it
  * goes between the stems to the right. In osmd-dart it is moved before the first beam.
@@ -65,6 +68,12 @@ describe("Text expressions moved sideways off cross-staff stems", () => {
                                                          b.AbsolutePosition.x + b.BorderRight + dx, b.AbsolutePosition.y + b.BorderBottom + dy);
             return dynamic ? CrossStaffExpressionClearance.dynamicBox(plain, l.Label.text) : plain;
         };
+    /** a p's box by its glyph as measured in the 81sabo app captures (2026-10-28) */
+    const pGlyphBox: (l: GraphicalLabel, dx?: number, dy?: number) => ClearanceBox =
+        (l: GraphicalLabel, dx: number = 0, dy: number = 0) => {
+            const b: ClearanceBox = box(l, dx, dy);
+            return new ClearanceBox(b.left - 0.18, b.top + 0.99, b.right + 0.08, b.bottom + 0.43);
+        };
     const beamsOf: (osmd: OpenSheetMusicDisplay) => Set<CrossStaffBeam> = (osmd: OpenSheetMusicDisplay) => {
         const beams: Set<CrossStaffBeam> = new Set<CrossStaffBeam>();
         for (const line of systems(osmd)[0].StaffLines) {
@@ -97,7 +106,7 @@ describe("Text expressions moved sideways off cross-staff stems", () => {
             return r.osmd;
         };
 
-    it("moves the texts the stems cross from staff to staff sideways, within reach; the layout unchanged", async () => {
+    it("moves the texts the stems cross from staff to staff, within reach (poco f sideways, the p by its glyph); the layout unchanged", async () => {
         const off: OpenSheetMusicDisplay = keep(await render(false));
         const on: OpenSheetMusicDisplay = keep(await render(true));
         expect(systems(on).length).to.equal(1);
@@ -119,12 +128,14 @@ describe("Text expressions moved sideways off cross-staff stems", () => {
             .to.equal(false);
 
         const p: GraphicalLabel = labels(on, "p", 2)[0]; // m31
-        expect(inkOf.touchesInk(box(p, 0, 0, true)), "the p on the beam and a stem").to.equal(true);
-        const pDx: number = shifts.get(p);
-        expect(Math.abs(pDx)).to.be.greaterThan(0);
+        expect(inkOf.touchesInk(pGlyphBox(p)), "the p on the beam and a stem").to.equal(true);
+        const pDx: number = shifts.get(p) ?? 0;
+        const pDy: number = offsets.get(p);
+        expect(pDx !== 0 || pDy !== 0).to.equal(true);
         expect(Math.abs(pDx)).to.be.at.most(CrossStaffExpressionClearance.MaxShift + 1e-9);
-        expect(Math.abs(offsets.get(p))).to.be.at.most(CrossStaffExpressionClearance.MaxMove + 1e-9);
-        expect(inkOf.touchesInk(box(p, pDx, offsets.get(p), true).inflated(CrossStaffExpressionClearance.Clearance - 1e-6)))
+        expect(Math.abs(pDy)).to.be.at.most(CrossStaffExpressionClearance.MaxMove + 1e-9);
+        // clear by its glyph (its tail left and below)
+        expect(inkOf.touchesInk(pGlyphBox(p, pDx, pDy).inflated(CrossStaffExpressionClearance.Clearance - 1e-6)))
             .to.equal(false);
 
         // only where they are drawn moves
