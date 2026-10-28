@@ -115,7 +115,10 @@ class Ink {
  * crosses, and the texts moved sideways in 81sabo would lose their places), and the samples of the staves' sky and bottom lines within
  * StemReach of a cross-staff beam's stem are left to the stem's ink (2026-10-28, Sibelius m36 "mp" lay on the barline;
  * m155 "mp" was kept off the room between two beams by the next stem, which the bottom line holds a sample to its
- * right). A text with no free place up, down or sideways is moved away from its staff up to MaxMoveAway staff spaces,
+ * right). A dynamic's box is its glyphs' (f, p and the x-height of the others, dynamicBox()), and a moved text keeps
+ * NoteGap beside it of the staves' notes (2026-10-28, Sibelius m36 "mp" at 820 wide, Myrthen 9 "sf" at 834 wide on a
+ * beam's stem); a text nearer the ink than Clearance is moved too, and a moved text keeps Clearance above or below the
+ * staves' notes. A text with no free place up, down or sideways is moved away from its staff up to MaxMoveAway staff spaces,
  * not into the neighbouring systems (Enescu m51: "Harmonieux et fondu" lies under the slur from the first note, which
  * the source prints it above). A text with no free place within reach stays. Wedges are not moved (a hairpin row is
  * aligned with its dynamics). Same as osmd-dart cross_staff_expression_clearance.dart.
@@ -133,22 +136,45 @@ export class CrossStaffExpressionClearance {
     /** how far a text moved sideways may reach left of the staves' start (over the brace), in staff spaces */
     public static readonly MaxOverStart: number = 1;
     /** how far a dynamic's glyphs (the tails of p and f) reach below its label's box, in staff spaces: its box for the
-     *  clearance is this much deeper */
+     *  clearance is this much deeper (a dynamic not drawn in the dynamic glyphs p, m, f, r, s, z) */
     public static readonly DynamicDescent: number = 0.3;
     /** how far the glyphs of a dynamic with an f reach beyond its label's box, in staff spaces (the f glyph's box, 81sabo
      *  captures 2026-10-28): a first f's tail to the left, a last f's hook to the right, the tail below (Myrthen 6 "f"
-     *  and Sibelius Op.47 I piano "mf" moved off a barline still touched it, Myrthen 9 "sf" moved onto a slur). The p's
-     *  reach is left at DynamicDescent: the 10-27 moves (Sibelius m31 "p" between the stems) hold with it. */
+     *  and Sibelius Op.47 I piano "mf" moved off a barline still touched it, Myrthen 9 "sf" moved onto a slur; the hook
+     *  measures 0.51-0.54 in the 81sabo app captures, 0.5 keeps Myrthen 6 m10 "f" between a stem and the barline). */
     public static readonly ForteReachLeft: number = 0.35;
     public static readonly ForteReachRight: number = 0.5;
     public static readonly ForteDescent: number = 0.44;
+    /** how far the p glyph reaches beyond its label's box, in staff spaces (81sabo app captures 2026-10-28, 883 "p" and
+     *  130 "mp"): a first p's tail to the left, a last p's bowl to the right, the tail below */
+    public static readonly PianoReachLeft: number = 0.18;
+    public static readonly PianoReachRight: number = 0.08;
+    public static readonly PianoDescent: number = 0.43;
+    /** how far below its label's top a dynamic's glyphs begin, in staff spaces (the label's box is a line high; the
+     *  same captures): with an f, the f's top; else the x-height of p, m, s, z, r. Sibelius m36 "mp" at 820 wide had no
+     *  room before the barline but under the upper staff after it, where S.9336 prints it, before the first beam. */
+    public static readonly ForteTop: number = 0.47;
+    public static readonly GlyphTop: number = 0.99;
+    /** how far above and below a dynamic's glyphs its box reaches beyond their outlines, in staff spaces: the glyphs'
+     *  measured boxes are their outlines', drawn anti-aliased, and Clearance alone (0.6 px at the app's 0.6 zoom) left
+     *  the glyphs moved up by the box above joined to the ink over them (81sabo app captures: Sibelius Op.47 I m1 "p"
+     *  under a beam, Suleika piano "sf" under a slur). Not sideways: the reaches are the outlines' as the 10-28 moves
+     *  were (Sibelius Op.47 I m20 "mf" keeps its place between a stem and the barline). */
+    public static readonly GlyphMargin: number = 0.1;
+    private static readonly dynamicGlyphs: RegExp = /^[pmfrsz]+$/;
 
     /** The box of a dynamic's glyphs from its label's box and text. */
     public static dynamicBox(box: ClearanceBox, text: string): ClearanceBox {
         const t: string = text.trim();
-        return new ClearanceBox(box.left - (t.startsWith("f") ? CrossStaffExpressionClearance.ForteReachLeft : 0), box.top,
-                                box.right + (t.endsWith("f") ? CrossStaffExpressionClearance.ForteReachRight : 0),
-                                box.bottom + (t.includes("f") ? CrossStaffExpressionClearance.ForteDescent : CrossStaffExpressionClearance.DynamicDescent));
+        const c: typeof CrossStaffExpressionClearance = CrossStaffExpressionClearance;
+        if (!c.dynamicGlyphs.test(t)) {
+            return new ClearanceBox(box.left, box.top, box.right, box.bottom + c.DynamicDescent);
+        }
+        const forte: boolean = t.includes("f");
+        return new ClearanceBox(box.left - (t.startsWith("f") ? c.ForteReachLeft : t.startsWith("p") ? c.PianoReachLeft : 0),
+                                box.top + (forte ? c.ForteTop : c.GlyphTop) - c.GlyphMargin,
+                                box.right + (t.endsWith("f") ? c.ForteReachRight : t.endsWith("p") ? c.PianoReachRight : 0),
+                                box.bottom + c.GlyphMargin + (forte ? c.ForteDescent : t.includes("p") ? c.PianoDescent : c.DynamicDescent));
     }
     public static readonly Step: number = 0.1;
     /** the least distance of a moved text from a beam's or curve's ink */
@@ -156,6 +182,10 @@ export class CrossStaffExpressionClearance {
     /** how far from a cross-staff beam's stem the staves' sky and bottom lines are not read (the stem's ink is), in
      *  staff spaces */
     public static readonly StemReach: number = 0.5;
+    /** how far beside a moved text the staves' sky and bottom lines are read, in staff spaces: the lines are sampled
+     *  every third of a space, and a stem a hair right of the text lies in the next sample (Myrthen 9 "sf" moved up went
+     *  0.11 from a beam's stem, its f's hook joined to it) */
+    public static readonly NoteGap: number = 0.2;
 
     private readonly ink: Ink[];
     private readonly barlines: Ink[];
@@ -236,8 +266,8 @@ export class CrossStaffExpressionClearance {
     }
 
     /** Whether the box lies clear of the notes of every staff of the system: wholly above a staff's sky line or wholly
-     *  below its bottom line (both before the expressions) over its width, but for the samples near the cross-staff
-     *  beams' stems (StemReach). */
+     *  below its bottom line (both before the expressions), Clearance above or below them, over its width and NoteGap
+     *  beside it, but for the samples near the cross-staff beams' stems (StemReach). */
     private clearOfStaves(box: ClearanceBox): boolean {
         for (const line of this.lines) {
             const sky: number[] = line.NotesSkyLine;
@@ -246,8 +276,8 @@ export class CrossStaffExpressionClearance {
                 continue;
             }
             const origin: PointF2D = line.PositionAndShape.AbsolutePosition;
-            const i0: number = Math.floor((box.left - origin.x) * this.sampling);
-            const i1: number = Math.floor((box.right - origin.x) * this.sampling);
+            const i0: number = Math.floor((box.left - CrossStaffExpressionClearance.NoteGap - origin.x) * this.sampling);
+            const i1: number = Math.floor((box.right + CrossStaffExpressionClearance.NoteGap - origin.x) * this.sampling);
             if (i1 < 0 || i0 >= sky.length) {
                 continue;
             }
@@ -261,15 +291,18 @@ export class CrossStaffExpressionClearance {
                 top = Math.min(top, sky[i]);
                 low = Math.max(low, bottom[i]);
             }
-            if (!(box.bottom <= origin.y + top + 1e-6 || box.top >= origin.y + low - 1e-6)) {
+            const c: number = CrossStaffExpressionClearance.Clearance;
+            if (!(box.bottom <= origin.y + top - c + 1e-6 || box.top >= origin.y + low + c - 1e-6)) {
                 return false;
             }
         }
         return true;
     }
 
-    /** The move of the box (a text expression's, absolute units): none when it does not touch the beams' and curves'
-     *  ink (and the barlines', for offBarlines: a dynamic's box, kept clear of them too) or when no free place is in reach. Up or down first, the
+    /** The move of the box (a text expression's, absolute units): none when it is Clearance or more off the beams' and
+     *  curves' ink (and the barlines', for offBarlines: a dynamic's box, kept clear of them too; nearer, its glyphs join
+     *  the ink drawn: Enescu m179 "p" by its glyph's box 0.1 short of a slur stayed on it) or when no free place is in
+     *  reach. Up or down first, the
      *  nearest; else sideways, the nearest column (to the left first) with its nearest vertical move; else farther away
      *  from its staff, the nearest, its top not above ceiling (a text above its staff) or its bottom not below floor
      *  (below). below: the text lies below its staff (tried downwards first, away from its staff), else above (tried
@@ -279,7 +312,8 @@ export class CrossStaffExpressionClearance {
                   ceiling: number = Number.NEGATIVE_INFINITY,
                   floor: number = Number.POSITIVE_INFINITY): { dx: number, dy: number } {
         const none: { dx: number, dy: number } = { dx: 0, dy: 0 };
-        if (this.ink.length === 0 || !(this.touchesInk(box) || offBarlines && this.touchesBarline(box))) {
+        const near: ClearanceBox = box.inflated(CrossStaffExpressionClearance.Clearance);
+        if (this.ink.length === 0 || !(this.touchesInk(near) || offBarlines && this.touchesBarline(near))) {
             return none;
         }
         const free: (moved: ClearanceBox) => boolean = (moved: ClearanceBox): boolean =>
