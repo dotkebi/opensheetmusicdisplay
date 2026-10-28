@@ -61,6 +61,11 @@
  };
  
  export class Tuplet extends Element {
+   // VexFlowPatch: the distance (staff spaces) of a tuplet's line from the ink of the articulations on its side (see
+   //   getYPosition()): its hooks end half a space from them. As osmd-dart (VexFlowTuplet.articulationClearance).
+   static get ARTICULATION_CLEARANCE() {
+     return 1.5;
+   }
    static get LOCATION_TOP() {
      return 1;
    }
@@ -241,6 +246,44 @@
      return maxTupletCount - minTupletCount;
    }
  
+   // VexFlowPatch: the modifiers of a category in the ModifierContext of a note's time that are on the note's stave
+   static contextModifiers(note, category) {
+     const context = note.modifierContext; // (1.2.93 has no getModifierContext())
+     if (!context || !context.getModifiers) {
+       return [];
+     }
+     const stave = note.getStave();
+     return (context.getModifiers(category) || []).filter(modifier => {
+       const attached = modifier.getNote ? modifier.getNote() : undefined;
+       return attached && attached.getStave() === stave;
+     });
+   }
+
+   // VexFlowPatch: whether a fingering or an ornament is over (top) or under (!top) the notes at a note's time on its
+   //   stave: they are drawn at the text lines (Ornament.format() counts from the staff's outer line over the articulations'
+   //   lines), and the number goes over those lines (modifierTextLines()). Otherwise only articulations can be there, and the
+   //   number goes over their ink (see getYPosition()).
+   static hasTextLineModifiers(note, top) {
+     const side = top ? Modifier.Position.ABOVE : Modifier.Position.BELOW;
+     return ['frethandfingers', 'ornaments'].some(category =>
+       Tuplet.contextModifiers(note, category).some(modifier => modifier.getPosition() === side));
+   }
+
+   // VexFlowPatch: the farthest edge (px) of the ink of the articulations over (top) or under (!top) the notes at a note's
+   //   time on its stave, where they are drawn (Articulation.inkYExtent()); undefined if there is none.
+   static articulationInkEdge(note, top) {
+     const side = top ? Modifier.Position.ABOVE : Modifier.Position.BELOW;
+     let edge;
+     for (const articulation of Tuplet.contextModifiers(note, 'articulations')) {
+       const extent = articulation.getPosition() === side && articulation.inkYExtent ? articulation.inkYExtent() : undefined;
+       if (extent) {
+         edge = top ? Math.min(edge === undefined ? Infinity : edge, extent.top)
+           : Math.max(edge === undefined ? -Infinity : edge, extent.bottom);
+       }
+     }
+     return edge;
+   }
+
    // VexFlowPatch: the text lines (in staff spaces) that the modifiers over (top) and under (bottom) the notes at a note's
    //   time on its stave take, counted as VexFlow 5 counts them in that time's ModifierContext (its state's topTextLine and
    //   textLine), which its Tuplet.getYPosition() reads: the fingerings (FretHandFinger.format(): font size 9 px and half a
@@ -253,15 +296,7 @@
    //   only those, but a VexFlow 5 context is per stave in any case). As in vexflow-dart (tuplet.dart getYPosition()).
    static modifierTextLines(note) {
      const lines = { top: 0, bottom: 0 };
-     const context = note.modifierContext; // (1.2.93 has no getModifierContext())
-     if (!context || !context.getModifiers) {
-       return lines;
-     }
-     const stave = note.getStave();
-     const members = category => (context.getModifiers(category) || []).filter(modifier => {
-       const attached = modifier.getNote ? modifier.getNote() : undefined;
-       return attached && attached.getStave() === stave;
-     });
+     const members = category => Tuplet.contextModifiers(note, category);
      const staffLines = attached => attached.getStave() ? attached.getStave().getNumLines() : 5;
      const stemHeight = attached => {
        const stem = attached.getStem ? attached.getStem() : undefined;
@@ -369,21 +404,44 @@
          if (top_y < y_pos) {
            y_pos = top_y;
          }
-         // VexFlowPatch: 2 spaces over the text lines of the modifiers over the notes at this note's time, as VexFlow 5
-         //   (see modifierTextLines())
+         // VexFlowPatch: over the modifiers over the notes at this note's time: 2 spaces over the text lines of the
+         //   fingerings and ornaments with the articulations under them, as VexFlow 5 (modifierTextLines()), else
+         //   Tuplet.ARTICULATION_CLEARANCE over the articulations' ink. VexFlow 5's text lines add the lines from the note
+         //   to the staff to an articulation drawn at the staff: the 3 went 4.5 spaces over the staff over staccatos inside
+         //   it, 7.4 over an up-bow on G3, and a slur from G3 to a note with a down stem went under the notes for it
+         //   (Prokofiev, Violin Concerto No. 1 I, violin m58). As osmd-dart (VexFlowTuplet.getYPosition()).
          const note = this.notes[i];
-         const mod_lines = Tuplet.modifierTextLines(note).top;
-         if (mod_lines > 0 && (note.hasStem() || note.isRest())) {
-           y_pos = Math.min(y_pos, note.getYForTopText(mod_lines) - 20);
+         if (note.hasStem() || note.isRest()) {
+           if (Tuplet.hasTextLineModifiers(note, true)) {
+             const mod_lines = Tuplet.modifierTextLines(note).top;
+             if (mod_lines > 0) {
+               y_pos = Math.min(y_pos, note.getYForTopText(mod_lines) - 20);
+             }
+           } else {
+             const ink_top = Tuplet.articulationInkEdge(note, true);
+             if (ink_top !== undefined) {
+               y_pos = Math.min(y_pos, ink_top - Tuplet.ARTICULATION_CLEARANCE * note.getStave().getSpacingBetweenLines());
+             }
+           }
          }
        }
      } else {
-       // VexFlowPatch: under the text lines of the modifiers under the notes, as VexFlow 5 (see modifierTextLines())
+       // VexFlowPatch: under the modifiers under the notes: under the text lines of the fingerings and ornaments with the
+       //   articulations over them, as VexFlow 5 (modifierTextLines()), else Tuplet.ARTICULATION_CLEARANCE under the
+       //   articulations' ink (see the top case)
        let line_check = 4;
+       let ink_bottom = -Infinity;
        for (const note of this.notes) {
-         line_check = Math.max(line_check, Tuplet.modifierTextLines(note).bottom + 1);
+         if (Tuplet.hasTextLineModifiers(note, false)) {
+           line_check = Math.max(line_check, Tuplet.modifierTextLines(note).bottom + 1);
+         } else {
+           const edge = Tuplet.articulationInkEdge(note, false);
+           if (edge !== undefined) {
+             ink_bottom = Math.max(ink_bottom, edge + Tuplet.ARTICULATION_CLEARANCE * note.getStave().getSpacingBetweenLines());
+           }
+         }
        }
-       y_pos = first_note.getStave().getYForLine(line_check) + 20;
+       y_pos = Math.max(first_note.getStave().getYForLine(line_check) + 20, ink_bottom);
  
        for (let i = 0; i < this.notes.length; ++i) {
          const bottom_y = this.notes[i].getStemDirection() === Stem.UP

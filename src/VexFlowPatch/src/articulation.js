@@ -329,6 +329,38 @@ export class Articulation extends Modifier {
     return top / state.staffSpace;
   }
 
+  // VexFlowPatch: the top and bottom (px) of the ink draw() puts the articulation at, without the move beyond a slur
+  //   (slurClearanceYShift): the tuplet number over (under) the notes goes beyond it (tuplet.js getYPosition()), not
+  //   beyond the text lines format() counted, which add the lines from the note to the staff's outer line to an
+  //   articulation that is drawn at the staff (Prokofiev, Violin Concerto No. 1 I, violin m58: the 3 over the up-bow of
+  //   G3 7.4 spaces over the staff, the up-bow on it). Undefined for tablature and for an articulation the ornament beyond
+  //   it draws. Same place as draw().
+  inkYExtent() {
+    const { note, index, position, glyph, articulation: { between_lines: canSitBetweenLines }, text_line: textLine } = this;
+    if (!note || index == null || !note.getStave() || note.getCategory() === 'tabnotes' || this.stackingOrnament()) {
+      return undefined;
+    }
+    const stave = note.getStave();
+    const staffSpace = stave.getSpacingBetweenLines();
+    const initialOffset = getInitialOffset(note, position);
+    let y = position === ABOVE
+      ? Math.min(canSitBetweenLines ? Infinity : stave.getYForTopText(Articulation.INITIAL_OFFSET),
+        getTopY(note, textLine) - ((textLine + initialOffset) * staffSpace))
+      : Math.max(canSitBetweenLines ? -Infinity : stave.getYForBottomText(Articulation.INITIAL_OFFSET),
+        getBottomY(note, textLine) + ((textLine + initialOffset) * staffSpace));
+    if (this.y_shift) {
+      y += this.y_shift;
+    }
+    const offsetDirection = position === ABOVE ? -1 : +1;
+    const noteLine = note.getKeyProps()[index].line;
+    const articLine = (note.getYs()[index] - y) / staffSpace + noteLine;
+    const snappedLine = snapLineToStaff(canSitBetweenLines, articLine, position, offsetDirection);
+    y += Math.abs(snappedLine - articLine) * staffSpace * offsetDirection;
+    const { height } = glyph.getMetrics();
+    const top = isWithinLines(snappedLine, position) ? y - height / 2 : position === ABOVE ? y - height : y;
+    return { top, bottom: top + height };
+  }
+
   // Render articulation in position next to note.
   draw() {
     const {
