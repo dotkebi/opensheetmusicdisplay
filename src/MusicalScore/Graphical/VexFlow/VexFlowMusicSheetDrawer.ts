@@ -48,6 +48,7 @@ import { VexFlowConverter } from "./VexFlowConverter";
 import { VexFlowVibratoBracket } from "./VexFlowVibratoBracket";
 import { TremoloBetweenNotes } from "../../VoiceData/Note";
 import { SkyBottomLineCalculator } from "../SkyBottomLineCalculator";
+import { EngravingRules } from "../EngravingRules";
 
 /**
  * This is a global constant which denotes the height in pixels of the space between two lines of the stave
@@ -55,6 +56,22 @@ import { SkyBottomLineCalculator } from "../SkyBottomLineCalculator";
  * @type number
  */
 export const unitInPixels: number = 10;
+
+/** Maps the VexFlow pixels of a note to units of a frame (see VexFlowMusicSheetDrawer.tremoloStrokesBetweenNotes()). */
+export interface ITremoloNoteFrame {
+    x: (px: number) => number;
+    y: (px: number) => number;
+}
+
+/** The strokes of a tremolo between two notes: the line on which they are centered and their total height, in units
+ *  (see VexFlowMusicSheetDrawer.tremoloStrokesBetweenNotes()). */
+export interface ITremoloStrokes {
+    startX: number;
+    stopX: number;
+    startY: number;
+    stopY: number;
+    totalStrokesHeight: number;
+}
 
 export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
     private backend: VexFlowBackend;
@@ -916,36 +933,95 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
     /** Draws the strokes between the two notes of a TremoloBetweenNotes (see drawTremolosBetweenNotes). */
     private drawTremoloBetweenTwoNotes(tremolo: TremoloBetweenNotes, stopGNote: VexFlowGraphicalNote,
                                        measure: VexFlowMeasure, strokeId: number): number {
+        // in units on the page: the notes are drawn at their final positions
+        const strokes: ITremoloStrokes = VexFlowMusicSheetDrawer.tremoloStrokesBetweenNotes(tremolo, stopGNote, measure.ParentStaffLine,
+            this.rules, (): ITremoloNoteFrame => ({x: (px: number): number => px / unitInPixels, y: (px: number): number => px / unitInPixels}));
+        if (!strokes) {
+            return strokeId;
+        }
+        const {startX, stopX, startY, stopY, totalStrokesHeight} = strokes;
+        const strokeThickness: number = this.rules.TremoloBetweenNotesStrokeThickness;
+        const strokePeriod: number = strokeThickness + this.rules.TremoloBetweenNotesStrokeGap;
+
+        // draw the strokes as parallelograms (like beams), stacked vertically around the center line:
+        const color: string = this.rules.DefaultColorMusic;
+        for (let strokeIndex: number = 0; strokeIndex < tremolo.strokes; strokeIndex++) {
+            const strokeStartTopY: number = startY - totalStrokesHeight / 2 + strokeIndex * strokePeriod;
+            const strokeStopTopY: number = stopY - totalStrokesHeight / 2 + strokeIndex * strokePeriod;
+            const strokePoints: PointF2D[] = [
+                new PointF2D(startX, strokeStartTopY),
+                new PointF2D(stopX, strokeStopTopY),
+                new PointF2D(stopX, strokeStopTopY + strokeThickness),
+                new PointF2D(startX, strokeStartTopY + strokeThickness),
+                new PointF2D(startX, strokeStartTopY)
+            ];
+            const id: string = `tremoloBetweenNotes-${measure.MeasureNumber}-${measure.ParentStaff.Id}-${strokeId}`;
+            this.DrawPath(strokePoints, stopGNote.ParentMusicPage, true, id, color);
+            strokeId++;
+        }
+
+        // update SkyLine/BottomLine with the outer edges of the strokes
+        //   (calculated geometrically, much cheaper than re-doing the pixel-based skyline calculation;
+        //   the layout reserved them already, see VexFlowMusicSheetCalculator.reserveTremolosBetweenNotes()):
+        const staffLineAbsolute: PointF2D = measure.ParentStaffLine.PositionAndShape.AbsolutePosition;
+        VexFlowMusicSheetDrawer.mergeTremoloStrokesIntoSkyBottomLine(measure.ParentStaffLine.SkyBottomLineCalculator, strokes,
+                                                                    staffLineAbsolute.x, staffLineAbsolute.y);
+        return strokeId;
+    }
+
+    /** Merges the outer edges of tremolo strokes (in units, offset by (offsetX, offsetY) from the staffline) into the sky line
+     *  (their top edge) and the bottom line (their bottom edge) of a staffline. */
+    public static mergeTremoloStrokesIntoSkyBottomLine(skyBottomLineCalculator: SkyBottomLineCalculator, strokes: ITremoloStrokes,
+                                                       offsetX: number, offsetY: number): void {
+        const {startX, stopX, startY, stopY, totalStrokesHeight} = strokes;
+        skyBottomLineCalculator.mergeSkyLineWithLine(
+            new PointF2D(startX - offsetX, startY - totalStrokesHeight / 2 - offsetY),
+            new PointF2D(stopX - offsetX, stopY - totalStrokesHeight / 2 - offsetY));
+        skyBottomLineCalculator.mergeBottomLineWithLine(
+            new PointF2D(startX - offsetX, startY + totalStrokesHeight / 2 - offsetY),
+            new PointF2D(stopX - offsetX, stopY + totalStrokesHeight / 2 - offsetY));
+    }
+
+    /**
+     * Where the strokes between the two notes of a TremoloBetweenNotes go: the line on which they are centered, from (startX, startY)
+     * to (stopX, stopY), and their total height, in units of the frame of each note (frameOf(), from the notes' VexFlow pixels),
+     * or undefined if they are not drawn. The drawing (drawTremoloBetweenTwoNotes(), on the page) and the layout
+     * (VexFlowMusicSheetCalculator.reserveTremolosBetweenNotes(), in the staffline, before the expressions are placed) use the same
+     * geometry. Same as osmd-dart.
+     */
+    public static tremoloStrokesBetweenNotes(tremolo: TremoloBetweenNotes, stopGNote: VexFlowGraphicalNote, staffLine: StaffLine,
+                                             rules: EngravingRules, frameOf: (gNote: VexFlowGraphicalNote) => ITremoloNoteFrame
+    ): ITremoloStrokes {
         if (tremolo.startNote.isRest() || tremolo.stopNote.isRest()) {
-            return strokeId; // a tremolo between a note and a rest is invalid
+            return undefined; // a tremolo between a note and a rest is invalid
         }
-        const startGNote: VexFlowGraphicalNote = this.rules.GNote(tremolo.startNote) as VexFlowGraphicalNote;
+        const startGNote: VexFlowGraphicalNote = rules.GNote(tremolo.startNote) as VexFlowGraphicalNote;
         if (!startGNote?.vfnote || !stopGNote.vfnote) {
-            return strokeId; // e.g. note not rendered (multiple rest measure)
+            return undefined; // e.g. note not rendered (multiple rest measure)
         }
-        const staffLine: StaffLine = measure.ParentStaffLine;
         if (startGNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine !== staffLine) {
             log.debug("VexFlowMusicSheetDrawer.drawTremoloBetweenTwoNotes: start and stop note are not in the same staffline " +
                 "(e.g. tremolo across a system break), not drawing tremolo strokes.");
-            return strokeId;
+            return undefined;
         }
         const vfStartNote: VF.StemmableNote = startGNote.vfnote[0];
         const vfStopNote: VF.StemmableNote = stopGNote.vfnote[0];
         if (vfStartNote.getAttribute("type") === "GhostNote" || vfStopNote.getAttribute("type") === "GhostNote") {
-            return strokeId; // invisible notes (print-object="no")
+            return undefined; // invisible notes (print-object="no")
         }
+        const startFrame: ITremoloNoteFrame = frameOf(startGNote);
+        const stopFrame: ITremoloNoteFrame = frameOf(stopGNote);
 
         // stroke dimensions (in units):
-        const strokeThickness: number = this.rules.TremoloBetweenNotesStrokeThickness;
-        const strokePeriod: number = strokeThickness + this.rules.TremoloBetweenNotesStrokeGap;
-        const totalStrokesHeight: number = tremolo.strokes * strokeThickness + (tremolo.strokes - 1) * this.rules.TremoloBetweenNotesStrokeGap;
-        const yPadding: number = this.rules.TremoloBetweenNotesYPadding;
+        const totalStrokesHeight: number = tremolo.strokes * rules.TremoloBetweenNotesStrokeThickness +
+            (tremolo.strokes - 1) * rules.TremoloBetweenNotesStrokeGap;
+        const yPadding: number = rules.TremoloBetweenNotesYPadding;
 
-        // calculate the anchor points of the line on which the strokes are centered (in pixels):
-        let startXPx: number;
-        let stopXPx: number;
-        let startYPx: number;
-        let stopYPx: number;
+        // calculate the anchor points of the line on which the strokes are centered (in units):
+        let leftX: number;
+        let rightX: number;
+        let startAnchorY: number;
+        let stopAnchorY: number;
         // allowed y range for the stroke group center at each note (in units), so that the strokes
         //   keep their distance from the noteheads and don't exceed the stem tips (used for stemmed notes):
         let startCenterMinY: number = -Infinity;
@@ -957,8 +1033,8 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         if (startNoteHasStem && stopNoteHasStem && vfStartNote.getStemDirection() === vfStopNote.getStemDirection()) {
             // anchor the strokes between the stems, in the middle of the "free" stem region between (inner) notehead and stem tip
             const direction: number = vfStartNote.getStemDirection(); // 1: up, -1: down
-            startXPx = vfStartNote.getStemX();
-            stopXPx = vfStopNote.getStemX();
+            leftX = startFrame.x(vfStartNote.getStemX());
+            rightX = stopFrame.x(vfStopNote.getStemX());
             const startYs: number[] = vfStartNote.getYs();
             const stopYs: number[] = vfStopNote.getYs();
             // y of the notehead the free stem region begins at (for chords, the notehead closest to the stem tip):
@@ -966,13 +1042,13 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             const stopInnerNoteheadY: number = direction === 1 ? Math.min(...stopYs) : Math.max(...stopYs);
             // measure the free stem region from the notehead's outer edge (~0.5 units from its center),
             //   so that the strokes get equal visual clearance from notehead and stem tip:
-            const noteheadEdgeOffsetPx: number = direction * 0.5 * unitInPixels;
-            const startTipY: number = vfStartNote.getStemExtents().topY / unitInPixels;
-            const stopTipY: number = vfStopNote.getStemExtents().topY / unitInPixels;
-            const startNoteheadEdgeY: number = (startInnerNoteheadY - noteheadEdgeOffsetPx) / unitInPixels;
-            const stopNoteheadEdgeY: number = (stopInnerNoteheadY - noteheadEdgeOffsetPx) / unitInPixels;
-            startYPx = (startTipY + startNoteheadEdgeY) / 2 * unitInPixels;
-            stopYPx = (stopTipY + stopNoteheadEdgeY) / 2 * unitInPixels;
+            const noteheadEdgeOffset: number = direction * 0.5;
+            const startTipY: number = startFrame.y(vfStartNote.getStemExtents().topY);
+            const stopTipY: number = stopFrame.y(vfStopNote.getStemExtents().topY);
+            const startNoteheadEdgeY: number = startFrame.y(startInnerNoteheadY) - noteheadEdgeOffset;
+            const stopNoteheadEdgeY: number = stopFrame.y(stopInnerNoteheadY) - noteheadEdgeOffset;
+            startAnchorY = (startTipY + startNoteheadEdgeY) / 2;
+            stopAnchorY = (stopTipY + stopNoteheadEdgeY) / 2;
             // Stems of different lengths (VexFlowMeasure.alignTremoloPairStems() lengthens the shorter one to the line of the
             //   tips): the strokes lie in the middle of the stem region both stems share, parallel to the line of the tips,
             //   instead of each end in the middle of its own stem's region, which slanted them from the lower notehead up to the
@@ -981,10 +1057,10 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             const sharedTo: number = direction === 1 ? Math.min(startNoteheadEdgeY, stopNoteheadEdgeY) : Math.min(startTipY, stopTipY);
             if (sharedTo - sharedFrom >= totalStrokesHeight + yPadding) {
                 const sharedCenter: number = (sharedFrom + sharedTo) / 2;
-                const maxSlantOfTips: number = this.rules.TremoloBetweenNotesMaxSlant;
+                const maxSlantOfTips: number = rules.TremoloBetweenNotesMaxSlant;
                 const tipSlant: number = Math.min(maxSlantOfTips, Math.max(-maxSlantOfTips, stopTipY - startTipY));
-                startYPx = (sharedCenter - tipSlant / 2) * unitInPixels;
-                stopYPx = (sharedCenter + tipSlant / 2) * unitInPixels;
+                startAnchorY = sharedCenter - tipSlant / 2;
+                stopAnchorY = sharedCenter + tipSlant / 2;
             }
             if (direction === 1) { // stems up: tips above the noteheads (lower y)
                 startCenterMinY = startTipY + totalStrokesHeight / 2; // group must not exceed the stem tip
@@ -1001,41 +1077,39 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             // stemless notes (e.g. whole notes) or opposite stem directions: anchor the strokes between the noteheads
             const startBoundingBox: VF.BoundingBox = vfStartNote.getBoundingBox();
             const stopBoundingBox: VF.BoundingBox = vfStopNote.getBoundingBox();
-            startXPx = startBoundingBox.getX() + startBoundingBox.getW();
-            stopXPx = stopBoundingBox.getX(); // starts at the leftmost modifier, so the strokes also avoid e.g. accidentals
+            leftX = startFrame.x(startBoundingBox.getX() + startBoundingBox.getW());
+            rightX = stopFrame.x(stopBoundingBox.getX()); // starts at the leftmost modifier, so the strokes also avoid e.g. accidentals
             const startNoteheadBounds: {y_top: number, y_bottom: number} = (vfStartNote as any).getNoteHeadBounds();
             const stopNoteheadBounds: {y_top: number, y_bottom: number} = (vfStopNote as any).getNoteHeadBounds();
-            startYPx = (startNoteheadBounds.y_top + startNoteheadBounds.y_bottom) / 2;
-            stopYPx = (stopNoteheadBounds.y_top + stopNoteheadBounds.y_bottom) / 2;
+            startAnchorY = startFrame.y((startNoteheadBounds.y_top + startNoteheadBounds.y_bottom) / 2);
+            stopAnchorY = stopFrame.y((stopNoteheadBounds.y_top + stopNoteheadBounds.y_bottom) / 2);
         }
 
         // horizontal start/end of the strokes (in units), centered between the stems (or noteheads):
-        const leftX: number = startXPx / unitInPixels;
-        const rightX: number = stopXPx / unitInPixels;
         const availableSpace: number = rightX - leftX;
         let strokeLength: number = Math.min(
-            availableSpace - 2 * this.rules.TremoloBetweenNotesXPadding,
-            availableSpace * this.rules.TremoloBetweenNotesMaxLengthFactor);
+            availableSpace - 2 * rules.TremoloBetweenNotesXPadding,
+            availableSpace * rules.TremoloBetweenNotesMaxLengthFactor);
         // between notes written as quarters or longer the strokes are short and centred, clear of the stems
         //   (TremoloBetweenNotesLongNoteStrokeFactor). Same as osmd-dart.
         const longNotes: boolean = tremolo.startNote.TypeLength.RealValue >= 0.25 && tremolo.stopNote.TypeLength.RealValue >= 0.25;
         if (longNotes) {
-            strokeLength = Math.min(strokeLength, availableSpace * this.rules.TremoloBetweenNotesLongNoteStrokeFactor);
+            strokeLength = Math.min(strokeLength, availableSpace * rules.TremoloBetweenNotesLongNoteStrokeFactor);
         }
         const minimumStrokeLength: number = 1.0;
         strokeLength = Math.max(strokeLength, Math.min(minimumStrokeLength, availableSpace - 0.2)); // tight layout: allow less padding
         if (strokeLength < 0.5) {
             log.debug("VexFlowMusicSheetDrawer.drawTremoloBetweenTwoNotes: not enough horizontal space to draw tremolo strokes.");
-            return strokeId;
+            return undefined;
         }
         const xCenter: number = (leftX + rightX) / 2;
         const startX: number = xCenter - strokeLength / 2;
         const stopX: number = xCenter + strokeLength / 2;
 
         // vertical center of the strokes at start and stop (in units), with the slant (vertical rise/fall) limited:
-        const yMiddle: number = (startYPx + stopYPx) / 2 / unitInPixels;
-        let slant: number = (stopYPx - startYPx) / unitInPixels;
-        const maxSlant: number = this.rules.TremoloBetweenNotesMaxSlant;
+        const yMiddle: number = (startAnchorY + stopAnchorY) / 2;
+        let slant: number = stopAnchorY - startAnchorY;
+        const maxSlant: number = rules.TremoloBetweenNotesMaxSlant;
         if (Math.abs(slant) > maxSlant) {
             slant = Math.sign(slant) * maxSlant;
         }
@@ -1062,35 +1136,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         }
         startY += yShift;
         stopY += yShift;
-
-        // draw the strokes as parallelograms (like beams), stacked vertically around the center line:
-        const color: string = this.rules.DefaultColorMusic;
-        for (let strokeIndex: number = 0; strokeIndex < tremolo.strokes; strokeIndex++) {
-            const strokeStartTopY: number = startY - totalStrokesHeight / 2 + strokeIndex * strokePeriod;
-            const strokeStopTopY: number = stopY - totalStrokesHeight / 2 + strokeIndex * strokePeriod;
-            const strokePoints: PointF2D[] = [
-                new PointF2D(startX, strokeStartTopY),
-                new PointF2D(stopX, strokeStopTopY),
-                new PointF2D(stopX, strokeStopTopY + strokeThickness),
-                new PointF2D(startX, strokeStartTopY + strokeThickness),
-                new PointF2D(startX, strokeStartTopY)
-            ];
-            const id: string = `tremoloBetweenNotes-${measure.MeasureNumber}-${measure.ParentStaff.Id}-${strokeId}`;
-            this.DrawPath(strokePoints, stopGNote.ParentMusicPage, true, id, color);
-            strokeId++;
-        }
-
-        // update SkyLine/BottomLine with the outer edges of the strokes
-        //   (calculated geometrically, much cheaper than re-doing the pixel-based skyline calculation):
-        const skyBottomLineCalculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
-        const staffLineAbsolute: PointF2D = staffLine.PositionAndShape.AbsolutePosition;
-        skyBottomLineCalculator.mergeSkyLineWithLine(
-            new PointF2D(startX - staffLineAbsolute.x, startY - totalStrokesHeight / 2 - staffLineAbsolute.y),
-            new PointF2D(stopX - staffLineAbsolute.x, stopY - totalStrokesHeight / 2 - staffLineAbsolute.y));
-        skyBottomLineCalculator.mergeBottomLineWithLine(
-            new PointF2D(startX - staffLineAbsolute.x, startY + totalStrokesHeight / 2 - staffLineAbsolute.y),
-            new PointF2D(stopX - staffLineAbsolute.x, stopY + totalStrokesHeight / 2 - staffLineAbsolute.y));
-        return strokeId;
+        return {startX, stopX, startY, stopY, totalStrokesHeight};
     }
 
     // private drawPixel(coord: PointF2D): void {

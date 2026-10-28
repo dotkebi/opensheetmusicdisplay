@@ -150,4 +150,36 @@ describe("Words on a dashed line", () => {
         osmd.clear();
         container.remove();
     });
+
+    // A word at the end of a dashed line does not move onto the line into a metronome mark placed over it: drawn by VexFlow, the
+    //   mark is not an expression label (Bruch, Scottish Fantasy Op. 46 m404-406, test_words_dashes_metronome.musicxml: "Tempo I."
+    //   at the end of "rit. - - -" moved up into "♩ = 66", 81sabo RENDER-WEB406-TEMPO). Same as osmd-dart
+    //   test/words_on_expression_dashes_test.dart.
+    it("words at the end of a dashed line keep off a metronome mark", async () => {
+        const container: HTMLElement = TestUtils.getDivElement(document);
+        container.style.width = "1600px";
+        const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(container);
+        await osmd.load(TestUtils.getScore("test_words_dashes_metronome.musicxml"));
+        osmd.render();
+        expect(osmd.GraphicSheet.MusicPages[0].MusicSystems.length).to.equal(1);
+        const staffLine: StaffLine = osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines[0];
+        const box: BoundingBox = staffLine.AbstractExpressions.find(e => e.Label?.Label?.text === "Tempo I.").Label.PositionAndShape;
+        const left: number = box.RelativePosition.x + box.BorderMarginLeft;
+        const right: number = box.RelativePosition.x + box.BorderMarginRight;
+        const top: number = box.RelativePosition.y + box.BorderMarginTop;
+        const bottom: number = box.RelativePosition.y + box.BorderMarginBottom;
+        // the line runs up to the word
+        const lines: string = staffLine.ExpressionDashes.map(d => `${d.Start.x}..${d.End.x}`).join(", ");
+        expect(staffLine.ExpressionDashes.some(d => d.End.x < left && d.End.x > left - 3), `a line ending before Tempo I. (${left}): ${lines}`)
+            .to.equal(true);
+        const marks: {left: number, right: number, top: number, bottom: number}[] =
+            (osmd.GraphicSheet.GetCalculator as any).metronomeMarkBoxes(staffLine);
+        expect(marks.length).to.equal(1);
+        const mark: {left: number, right: number, top: number, bottom: number} = marks[0];
+        expect(mark.left < right && left < mark.right, "the mark over the word").to.equal(true);
+        expect(bottom, "the word above the staff").to.be.at.most(0);
+        expect(mark.top < bottom && top < mark.bottom, `Tempo I. ${top}..${bottom}, mark ${mark.top}..${mark.bottom}`).to.equal(false);
+        osmd.clear();
+        container.remove();
+    });
 });

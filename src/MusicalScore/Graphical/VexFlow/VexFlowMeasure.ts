@@ -2440,7 +2440,38 @@ export class VexFlowMeasure extends GraphicalMeasure {
                 for (const tupletBuilder of this.tuplets[voiceID]) {
                     vftuplets.push(this.createVfTuplet(tupletBuilder, Number(voiceID), vftuplets.length));
                 }
+                VexFlowMeasure.levelConsecutiveTuplets(this.tuplets[voiceID], vftuplets);
             }
+        }
+    }
+
+    /**
+     * Gives the VexFlow tuplets of a voice that follow each other in the measure on the same side (the next one starts where
+     * the last one ends) one height: VexFlowPatch tuplet.js getYPosition() puts each of a levelGroup at the farthest of
+     * their own places. A tuplet crossing the staves (made later, completeCrossStaffTuplets()) or with no VexFlow tuplet
+     * ends a run. Same as osmd-dart (VexFlowMeasure._levelConsecutiveTuplets).
+     */
+    private static levelConsecutiveTuplets(builders: [Tuplet, VexFlowVoiceEntry[]][], vftuplets: VF.Tuplet[]): void {
+        const start: (entries: VexFlowVoiceEntry[]) => number = entries =>
+            Math.min(...entries.map(entry => entry.parentVoiceEntry.Timestamp.RealValue));
+        const end: (entries: VexFlowVoiceEntry[]) => number = entries =>
+            Math.max(...entries.map(entry => entry.parentVoiceEntry.Timestamp.RealValue +
+                (entry.notes[0]?.sourceNote.Length.RealValue ?? 0)));
+        let group: any[] = [];
+        for (let i: number = 0; i < vftuplets.length; i++) {
+            const vftuplet: any = vftuplets[i];
+            if (!vftuplet) {
+                group = [];
+                continue;
+            }
+            // (a tuplet in the group is the one before this one: a missing one starts a new group)
+            const previous: any = group[group.length - 1];
+            if (!previous || previous.location !== vftuplet.location ||
+                Math.abs(end(builders[i - 1][1]) - start(builders[i][1])) > 1e-6) {
+                group = [];
+            }
+            group.push(vftuplet);
+            vftuplet.levelGroup = group;
         }
     }
 
@@ -3283,6 +3314,12 @@ export class VexFlowMeasure extends GraphicalMeasure {
     public static readonly TupletNumberStaffClearance: number = 0.2;
     /** How far (units) such a number stays from the noteheads (and their accidentals) over (under) it. As in osmd-dart. */
     public static readonly TupletNumberHeadClearance: number = 0.4;
+    /** How far (units) the sky and bottom lines take a tuplet's number (and bracket) on its left and right for the expressions
+     *  placed after the notes (VexFlowMusicSheetCalculator.reserveTupletNumberSides()): a dynamic or a text beside the number
+     *  keeps clear of it as of anything under (over) it. The 0.2 by which a dynamic's box stayed short of the 3 it touched
+     *  (Stamitz, Flute Concerto Op. 29 m73, web); 0.4 also took a dynamic 0.8 away from a number under it (Mozart, Bassoon
+     *  Concerto K.191 m288, the p 3 spaces down). As in osmd-dart. */
+    public static readonly TupletNumberSideClearance: number = 0.2;
 
     /** Moves the tuplet's number by [[tupletNumberHeadSideYShift]], in its y_offset beside the moves of
      *  VexFlowMusicSheetCalculator.layoutFermatasOverSlurs() (each draw takes back the shift of the one before). */

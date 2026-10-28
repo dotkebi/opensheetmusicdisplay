@@ -310,6 +310,57 @@ export class Articulation extends Modifier {
     return this.drawnInk;
   }
 
+  // VexFlowPatch: the top of the articulation's ink, in staff spaces from its stave's top line, as draw() would put it
+  //   with the slur clearance shift `slurClearanceYShift` (px), snapped to the staff as there: an accent moved over a slur
+  //   goes up by more than the shift when that puts it between half lines (Weber Op.74 III m135, the trill over it:
+  //   VexFlowMusicSheetCalculator.raiseOverRaisedAccents()). Undefined before it is drawn. As in osmd-dart
+  //   (VexFlowOtherVoicesArticulation.raisedInkTop).
+  raisedInkTop(slurClearanceYShift) {
+    const state = this.snapState;
+    if (!state) return undefined;
+    const position = this.position;
+    const offsetDirection = position === ABOVE ? -1 : +1;
+    let y = state.y + slurClearanceYShift;
+    const articLine = (state.noteY - y) / state.staffSpace + state.noteLine;
+    const snappedLine = snapLineToStaff(state.canSitBetweenLines, articLine, position, offsetDirection);
+    const centred = isWithinLines(snappedLine, position);
+    y += Math.abs(snappedLine - articLine) * state.staffSpace * offsetDirection;
+    const top = centred ? y - state.height / 2 : position === ABOVE ? y - state.height : y;
+    return top / state.staffSpace;
+  }
+
+  // VexFlowPatch: the top and bottom (px) of the ink draw() puts the articulation at, without the move beyond a slur
+  //   (slurClearanceYShift): the tuplet number over (under) the notes goes beyond it (tuplet.js getYPosition()), not
+  //   beyond the text lines format() counted, which add the lines from the note to the staff's outer line to an
+  //   articulation that is drawn at the staff (Prokofiev, Violin Concerto No. 1 I, violin m58: the 3 over the up-bow of
+  //   G3 7.4 spaces over the staff, the up-bow on it). Undefined for tablature and for an articulation the ornament beyond
+  //   it draws. Same place as draw().
+  inkYExtent() {
+    const { note, index, position, glyph, articulation: { between_lines: canSitBetweenLines }, text_line: textLine } = this;
+    if (!note || index == null || !note.getStave() || note.getCategory() === 'tabnotes' || this.stackingOrnament()) {
+      return undefined;
+    }
+    const stave = note.getStave();
+    const staffSpace = stave.getSpacingBetweenLines();
+    const initialOffset = getInitialOffset(note, position);
+    let y = position === ABOVE
+      ? Math.min(canSitBetweenLines ? Infinity : stave.getYForTopText(Articulation.INITIAL_OFFSET),
+        getTopY(note, textLine) - ((textLine + initialOffset) * staffSpace))
+      : Math.max(canSitBetweenLines ? -Infinity : stave.getYForBottomText(Articulation.INITIAL_OFFSET),
+        getBottomY(note, textLine) + ((textLine + initialOffset) * staffSpace));
+    if (this.y_shift) {
+      y += this.y_shift;
+    }
+    const offsetDirection = position === ABOVE ? -1 : +1;
+    const noteLine = note.getKeyProps()[index].line;
+    const articLine = (note.getYs()[index] - y) / staffSpace + noteLine;
+    const snappedLine = snapLineToStaff(canSitBetweenLines, articLine, position, offsetDirection);
+    y += Math.abs(snappedLine - articLine) * staffSpace * offsetDirection;
+    const { height } = glyph.getMetrics();
+    const top = isWithinLines(snappedLine, position) ? y - height / 2 : position === ABOVE ? y - height : y;
+    return { top, bottom: top + height };
+  }
+
   // Render articulation in position next to note.
   draw() {
     const {
@@ -395,6 +446,12 @@ export class Articulation extends Modifier {
       const distanceFromNote = (note.getYs()[index] - y) / staffSpace;
       const articLine = distanceFromNote + noteLine;
       const snappedLine = snapLineToStaff(canSitBetweenLines, articLine, position, offsetDirection);
+      // VexFlowPatch: what the place depends on, without the slur clearance shift, for raisedInkTop()
+      this.snapState = {
+        y: y - this.slurClearanceYShift - stave.getYForLine(0),
+        noteY: note.getYs()[index] - stave.getYForLine(0),
+        noteLine, canSitBetweenLines, staffSpace, height: glyph.getMetrics().height,
+      };
 
       if (isWithinLines(snappedLine, position)) {
         glyph.setOrigin(0.5, 0.5);

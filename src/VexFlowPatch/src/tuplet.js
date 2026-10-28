@@ -48,9 +48,24 @@
  import { Element } from './element';
  import { Formatter } from './formatter';
  import { Glyph } from './glyph';
+ import { Flow } from './tables';
+ import { Modifier } from './modifier';
  import { Stem } from './stem';
+
+ // VexFlowPatch: the heights (px) VexFlow 5 (vexflow-dart 0355ee4) gives the articulations' glyphs
+ //   (Articulation.getHeight()), which its Articulation.format() turns into text lines (see Tuplet.modifierTextLines()).
+ //   VexFlow 1.2.93's glyphs are shorter (a staccato 3.7 against 5.1), which takes a line less after the rounding.
+ const VF5_ARTICULATION_HEIGHTS = {
+   'a.': 5.054, 'av': 7.441, 'a>': 9.21, 'a-': 1.236, 'a^': 11.12, 'a+': 12.748, 'ao': 12.721, 'ah': 6.626,
+   'a@a': 14.265, 'a@u': 14.265, 'a|': 11.176, 'am': 14.265, 'a,': 12.58, 'abr': 12.58,
+ };
  
  export class Tuplet extends Element {
+   // VexFlowPatch: the distance (staff spaces) of a tuplet's line from the ink of the articulations on its side (see
+   //   getYPosition()): its hooks end half a space from them. As osmd-dart (VexFlowTuplet.articulationClearance).
+   static get ARTICULATION_CLEARANCE() {
+     return 1.5;
+   }
    static get LOCATION_TOP() {
      return 1;
    }
@@ -231,17 +246,181 @@
      return maxTupletCount - minTupletCount;
    }
  
+   // VexFlowPatch: the modifiers of a category in the ModifierContext of a note's time that are on the note's stave
+   static contextModifiers(note, category) {
+     const context = note.modifierContext; // (1.2.93 has no getModifierContext())
+     if (!context || !context.getModifiers) {
+       return [];
+     }
+     const stave = note.getStave();
+     return (context.getModifiers(category) || []).filter(modifier => {
+       const attached = modifier.getNote ? modifier.getNote() : undefined;
+       return attached && attached.getStave() === stave;
+     });
+   }
+
+   // VexFlowPatch: whether a fingering or an ornament is over (top) or under (!top) the notes at a note's time on its
+   //   stave: they are drawn at the text lines (Ornament.format() counts from the staff's outer line over the articulations'
+   //   lines), and the number goes over those lines (modifierTextLines()). Otherwise only articulations can be there, and the
+   //   number goes over their ink (see getYPosition()).
+   static hasTextLineModifiers(note, top) {
+     const side = top ? Modifier.Position.ABOVE : Modifier.Position.BELOW;
+     return ['frethandfingers', 'ornaments'].some(category =>
+       Tuplet.contextModifiers(note, category).some(modifier => modifier.getPosition() === side));
+   }
+
+   // VexFlowPatch: the farthest edge (px) of the ink of the articulations over (top) or under (!top) the notes at a note's
+   //   time on its stave, where they are drawn (Articulation.inkYExtent()); undefined if there is none.
+   static articulationInkEdge(note, top) {
+     const side = top ? Modifier.Position.ABOVE : Modifier.Position.BELOW;
+     let edge;
+     for (const articulation of Tuplet.contextModifiers(note, 'articulations')) {
+       const extent = articulation.getPosition() === side && articulation.inkYExtent ? articulation.inkYExtent() : undefined;
+       if (extent) {
+         edge = top ? Math.min(edge === undefined ? Infinity : edge, extent.top)
+           : Math.max(edge === undefined ? -Infinity : edge, extent.bottom);
+       }
+     }
+     return edge;
+   }
+
+   // VexFlowPatch: the text lines (in staff spaces) that the modifiers over (top) and under (bottom) the notes at a note's
+   //   time on its stave take, counted as VexFlow 5 counts them in that time's ModifierContext (its state's topTextLine and
+   //   textLine), which its Tuplet.getYPosition() reads: the fingerings (FretHandFinger.format(): font size 9 px and half a
+   //   line each), then the articulations (Articulation.format(): their glyph height in lines and a margin of half a line,
+   //   rounded to a half line, and the lines from the note to the staff's outer line for one that can't sit between the lines),
+   //   then the ornaments (Ornament.format(): 2 lines each, from the staff's outer line). VexFlow 1.2.93 counts them its own way
+   //   (no staff lines, other glyph heights) and its tuplets didn't look at them, so a number over the notes sat on an accent or a
+   //   staccato (Lalo, Symphonie espagnole I, violin m67; Mozart, K.313 III, flute m245) that VexFlow 5 (osmd-dart) puts it 2
+   //   spaces over. Only the notes on the note's stave count (OSMD joins the voices of each stave apart, so the context has
+   //   only those, but a VexFlow 5 context is per stave in any case). As in vexflow-dart (tuplet.dart getYPosition()).
+   static modifierTextLines(note) {
+     const lines = { top: 0, bottom: 0 };
+     const members = category => Tuplet.contextModifiers(note, category);
+     const staffLines = attached => attached.getStave() ? attached.getStave().getNumLines() : 5;
+     const stemHeight = attached => {
+       const stem = attached.getStem ? attached.getStem() : undefined;
+       return stem ? Math.abs(stem.getHeight()) / 10 : 0;
+     };
+     const stemDirection = attached => attached.hasStem() ? attached.getStemDirection() : Stem.UP;
+     const lineNumber = (attached, top) => attached.getLineNumber ? attached.getLineNumber(top) : 0;
+
+     members('frethandfingers').forEach(fingering => {
+       if (fingering.getPosition() === Modifier.Position.ABOVE) {
+         lines.top += 9 / 10 + 0.5;
+       } else if (fingering.getPosition() === Modifier.Position.BELOW) {
+         lines.bottom += 9 / 10 + 0.5;
+       }
+     });
+
+     // to a half line: up (down under the notes) while the text line is at most 5 (at least 1), else to the nearest (VexFlow 5
+     //   getRoundingFunction())
+     const increment = (articulation, line, above) => {
+       const within = above ? line <= 5 : line >= 1;
+       const round = within ? (above ? Math.ceil : Math.floor) : Math.round;
+       const type = /^abr/.test(articulation.type) ? 'abr' : articulation.type;
+       const height = VF5_ARTICULATION_HEIGHTS[type] !== undefined ? VF5_ARTICULATION_HEIGHTS[type]
+         : articulation.glyph.getMetrics().height;
+       return round((height / 10 + 0.5) / 0.5) * 0.5;
+     };
+     members('articulations').forEach(articulation => {
+       const attached = articulation.getNote();
+       const numLines = staffLines(attached);
+       const codes = Flow.articulationCodes(articulation.type);
+       const betweenLines = !!(codes && codes.between_lines);
+       if (articulation.getPosition() === Modifier.Position.ABOVE) {
+         let noteLine = lineNumber(attached, true);
+         if (stemDirection(attached) === Stem.UP) {
+           noteLine += stemHeight(attached);
+         }
+         let add = increment(articulation, lines.top, true);
+         const curTop = noteLine + lines.top + 0.5;
+         if (!betweenLines && curTop < numLines) {
+           add += numLines - curTop;
+         }
+         lines.top += add;
+       } else if (articulation.getPosition() === Modifier.Position.BELOW) {
+         let noteLine = Math.max(numLines - lineNumber(attached), 0);
+         if (stemDirection(attached) === Stem.DOWN) {
+           noteLine += stemHeight(attached);
+         }
+         let add = increment(articulation, lines.bottom, false);
+         const curBottom = noteLine + lines.bottom + 0.5;
+         if (!betweenLines && curBottom < numLines) {
+           add += numLines - curBottom;
+         }
+         lines.bottom += add;
+       }
+     });
+
+     members('ornaments').forEach(ornament => {
+       const attached = ornament.getNote();
+       const position = ornament.getPosition();
+       if (position === Modifier.Position.LEFT || position === Modifier.Position.RIGHT) {
+         return;
+       }
+       if (position === Modifier.Position.ABOVE) {
+         let currentTop = lineNumber(attached, true) + lines.top;
+         if (attached.getStem && attached.getStem() && attached.getStemDirection() === Stem.UP) {
+           currentTop += stemHeight(attached);
+         }
+         const numLines = staffLines(attached);
+         if (currentTop < numLines) {
+           lines.top += numLines - currentTop;
+         }
+         lines.top += 2;
+       } else {
+         lines.bottom += 2;
+       }
+     });
+     return lines;
+   }
+
    // determine the y position of the tuplet:
+   // VexFlowPatch: the farthest of the own places (ownYPosition()) of the tuplets of its levelGroup, which
+   //   VexFlowMeasure.levelConsecutiveTuplets() sets to the tuplets of a voice that follow each other in a measure on the
+   //   same side: with the numbers over their articulations (see ownYPosition()) a run of triplets went up and down with
+   //   the notes, the brackets in steps and overlapping (Krommer, Oboe Concerto Op. 52 II m54; Lalo, Symphonie espagnole
+   //   III, violin m128), where VexFlow 5's text lines had put them in a row. The tuplet's own y offset is added after.
    getYPosition() {
+     const y_offset = this.options.y_offset || 0;
+     const group = this.levelMembers();
+     if (!group) {
+       return this.ownYPosition() + y_offset;
+     }
+     const ys = group.map(tuplet => tuplet.ownYPosition());
+     return (this.location === Tuplet.LOCATION_TOP ? Math.min(...ys) : Math.max(...ys)) + y_offset;
+   }
+
+   // VexFlowPatch: the tuplets of the levelGroup the tuplet takes the height of (see getYPosition()), it among them, or
+   //   undefined: not those whose unbracketed number is on the noteheads' side of all their notes, which
+   //   VexFlowMeasure.tupletNumberHeadSideYShift() moves to the noteheads on their own (Mozart, K.313 III, flute m245:
+   //   the 3s over the down-stems of B5 and A5 after a triplet starting with a rest).
+   levelMembers() {
+     const group = (this.levelGroup || []).filter(tuplet => !tuplet.numberOnNoteheadSide());
+     return group.length > 1 && group.indexOf(this) >= 0 ? group : undefined;
+   }
+
+   // VexFlowPatch: whether the tuplet's number is unbracketed and on the noteheads' side of all its notes (stave notes on
+   //   one stave, no rest, stems away from the number), as VexFlowMeasure.tupletNumberHeadSideYShift() takes them
+   numberOnNoteheadSide() {
+     if (this.bracketed || this.getNestedTupletCount() > 0) {
+       return false;
+     }
+     const stem = this.location === Tuplet.LOCATION_BOTTOM ? Stem.UP : Stem.DOWN;
+     const stave = this.notes[0].getStave();
+     return this.notes.every(note => note.getCategory() === 'stavenotes' && !note.isRest() && note.getStave() === stave &&
+       note.getStemDirection() === stem);
+   }
+
+   // VexFlowPatch: the place getYPosition() was, without the y offset (options.y_offset)
+   ownYPosition() {
      // offset the tuplet for any nested tuplets between
      // it and the notes:
      const nested_tuplet_y_offset =
        this.getNestedTupletCount() *
        Tuplet.NESTING_OFFSET *
        -this.location;
- 
-     // offset the tuplet for any manual y_offset:
-     const y_offset = this.options.y_offset || 0;
  
      // now iterate through the notes and find our highest
      // or lowest locations, to form a base y_pos
@@ -259,9 +438,44 @@
          if (top_y < y_pos) {
            y_pos = top_y;
          }
+         // VexFlowPatch: over the modifiers over the notes at this note's time: 2 spaces over the text lines of the
+         //   fingerings and ornaments with the articulations under them, as VexFlow 5 (modifierTextLines()), else
+         //   Tuplet.ARTICULATION_CLEARANCE over the articulations' ink. VexFlow 5's text lines add the lines from the note
+         //   to the staff to an articulation drawn at the staff: the 3 went 4.5 spaces over the staff over staccatos inside
+         //   it, 7.4 over an up-bow on G3, and a slur from G3 to a note with a down stem went under the notes for it
+         //   (Prokofiev, Violin Concerto No. 1 I, violin m58). As osmd-dart (VexFlowTuplet.getYPosition()).
+         const note = this.notes[i];
+         if (note.hasStem() || note.isRest()) {
+           if (Tuplet.hasTextLineModifiers(note, true)) {
+             const mod_lines = Tuplet.modifierTextLines(note).top;
+             if (mod_lines > 0) {
+               y_pos = Math.min(y_pos, note.getYForTopText(mod_lines) - 20);
+             }
+           } else {
+             const ink_top = Tuplet.articulationInkEdge(note, true);
+             if (ink_top !== undefined) {
+               y_pos = Math.min(y_pos, ink_top - Tuplet.ARTICULATION_CLEARANCE * note.getStave().getSpacingBetweenLines());
+             }
+           }
+         }
        }
      } else {
-       y_pos = first_note.getStave().getYForLine(4) + 20;
+       // VexFlowPatch: under the modifiers under the notes: under the text lines of the fingerings and ornaments with the
+       //   articulations over them, as VexFlow 5 (modifierTextLines()), else Tuplet.ARTICULATION_CLEARANCE under the
+       //   articulations' ink (see the top case)
+       let line_check = 4;
+       let ink_bottom = -Infinity;
+       for (const note of this.notes) {
+         if (Tuplet.hasTextLineModifiers(note, false)) {
+           line_check = Math.max(line_check, Tuplet.modifierTextLines(note).bottom + 1);
+         } else {
+           const edge = Tuplet.articulationInkEdge(note, false);
+           if (edge !== undefined) {
+             ink_bottom = Math.max(ink_bottom, edge + Tuplet.ARTICULATION_CLEARANCE * note.getStave().getSpacingBetweenLines());
+           }
+         }
+       }
+       y_pos = Math.max(first_note.getStave().getYForLine(line_check) + 20, ink_bottom);
  
        for (let i = 0; i < this.notes.length; ++i) {
          const bottom_y = this.notes[i].getStemDirection() === Stem.UP
@@ -273,7 +487,7 @@
        }
      }
  
-     return y_pos + nested_tuplet_y_offset + y_offset;
+     return y_pos + nested_tuplet_y_offset;
    }
  
    draw() {

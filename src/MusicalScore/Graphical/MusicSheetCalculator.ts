@@ -1,4 +1,5 @@
 import { CrossStaffBeam } from "./VexFlow/CrossStaffBeam";
+import { CrossStaffExpressionClearance } from "./VexFlow/CrossStaffExpressionClearance";
 import { GraphicalStaffEntry } from "./GraphicalStaffEntry";
 import { StaffLine } from "./StaffLine";
 import { GraphicalMusicSheet } from "./GraphicalMusicSheet";
@@ -1621,52 +1622,64 @@ export abstract class MusicSheetCalculator {
         const dynamicLeft: number = dynamicBox.RelativePosition.x + dynamicBox.BorderMarginLeft;
         const dynamicRight: number = dynamicBox.RelativePosition.x + dynamicBox.BorderMarginRight;
         const width: number = box.BorderMarginRight - box.BorderMarginLeft;
-        // the boxes touch: their margins leave about a word space between the texts
-        let wordsLeft: number = dynamicRight;
-        let dynamicShift: number = 0;
-        if (MusicSheetCalculator.wordsQualifyFollowingDynamic(text)) {
-            wordsLeft = dynamicLeft - width;
-            const firstNoteX: number = this.firstNoteX(measure);
-            if (wordsLeft < firstNoteX) {
-                dynamicShift = firstNoteX - wordsLeft;
-                wordsLeft = firstNoteX;
-            }
-        }
-        if (wordsLeft < 0 || wordsLeft + width > staffLine.PositionAndShape.Size.width) {
-            return undefined;
-        }
         // the words' baseline on the dynamic's
         const dynamicBaseline: number = dynamicBox.RelativePosition.y + dynamic.Label.PositionAndShape.RelativePosition.y +
             MusicSheetCalculator.labelBaselineOffset(dynamic.Label);
         const y: number = dynamicBaseline - MusicSheetCalculator.labelBaselineOffset(graphLabel);
-        const x: number = wordsLeft - box.BorderMarginLeft;
-        const wordsRect: number[] = [wordsLeft, wordsLeft + width, y + box.BorderMarginTop, y + box.BorderMarginBottom];
-        const dynamicRect: number[] = [dynamicLeft + dynamicShift, dynamicRight + dynamicShift,
-                                       dynamicBox.RelativePosition.y + dynamicBox.BorderMarginTop,
-                                       dynamicBox.RelativePosition.y + dynamicBox.BorderMarginBottom];
-        // On that baseline the words (and the dynamic moved after them) must clear the notes, slurs etc. under them: the
-        //   dynamic then moves out with the words, as the words are placed clear of them (the slur under the notes after the
-        //   rest that has the dynamic, Malinconia m13).
-        const rects: number[][] = dynamicShift !== 0 ? [wordsRect, dynamicRect] : [wordsRect];
-        let carry: number = 0;
-        for (const rect of rects) {
-            const outside: number = this.distanceIntoNotes(staffLine, placement, rect);
-            carry = placement === PlacementEnum.Below ? Math.max(carry, outside) : Math.min(carry, outside);
-        }
-        for (const rect of [wordsRect, dynamicRect]) {
-            rect[2] += carry;
-            rect[3] += carry;
-        }
-        // Only the first words beside a dynamic move it: a second one ("sempre" before and "stacc." after an ff) would take it
-        //   off the first one's line.
-        if (dynamic.HasWordsBeside && (dynamicShift !== 0 || carry !== 0) ||
-            ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic))) {
+        // The words after the dynamic at gap (units) right of its box, or undefined if they don't fit there.
+        const fit: (gap: number) => {x: number, carry: number, dynamicShift: number} = gap => {
+            // the boxes touch: their margins leave about a word space between the texts
+            let wordsLeft: number = dynamicRight + gap;
+            let dynamicShift: number = 0;
+            if (MusicSheetCalculator.wordsQualifyFollowingDynamic(text)) {
+                wordsLeft = dynamicLeft - width;
+                const firstNoteX: number = this.firstNoteX(measure);
+                if (wordsLeft < firstNoteX) {
+                    dynamicShift = firstNoteX - wordsLeft;
+                    wordsLeft = firstNoteX;
+                }
+            }
+            if (wordsLeft < 0 || wordsLeft + width > staffLine.PositionAndShape.Size.width) {
+                return undefined;
+            }
+            const wordsRect: number[] = [wordsLeft, wordsLeft + width, y + box.BorderMarginTop, y + box.BorderMarginBottom];
+            const dynamicRect: number[] = [dynamicLeft + dynamicShift, dynamicRight + dynamicShift,
+                                           dynamicBox.RelativePosition.y + dynamicBox.BorderMarginTop,
+                                           dynamicBox.RelativePosition.y + dynamicBox.BorderMarginBottom];
+            // On that baseline the words (and the dynamic moved after them) must clear the notes, slurs etc. under them: the
+            //   dynamic then moves out with the words, as the words are placed clear of them (the slur under the notes after the
+            //   rest that has the dynamic, Malinconia m13).
+            const rects: number[][] = dynamicShift !== 0 ? [wordsRect, dynamicRect] : [wordsRect];
+            let carry: number = 0;
+            for (const rect of rects) {
+                const outside: number = this.distanceIntoNotes(staffLine, placement, rect);
+                carry = placement === PlacementEnum.Below ? Math.max(carry, outside) : Math.min(carry, outside);
+            }
+            for (const rect of [wordsRect, dynamicRect]) {
+                rect[2] += carry;
+                rect[3] += carry;
+            }
+            // Only the first words beside a dynamic move it: a second one ("sempre" before and "stacc." after an ff) would take
+            //   it off the first one's line.
+            if (dynamic.HasWordsBeside && (dynamicShift !== 0 || carry !== 0) ||
+                ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic))) {
+                return undefined;
+            }
+            return {x: wordsLeft - box.BorderMarginLeft, carry, dynamicShift};
+        };
+        // A dynamic's f reaches out of its box with its hook (dynamicGlyphReach()): the words start that much later (Sibelius,
+        //   Violin Concerto Op. 47 III m188 "mf Poco a poco", the f's hook on the P; 81sabo SIB3C-APP1024-09), where they fit;
+        //   else at the box, as before, rather than off the dynamic's line ("mf espress." under it, Nielsen, Clarinet Concerto).
+        const reach: number = MusicSheetCalculator.dynamicGlyphReach(dynamic.Label.Label.text).right;
+        const placed: {x: number, carry: number, dynamicShift: number} = fit(reach) ?? (reach > 0 ? fit(0) : undefined);
+        if (!placed) {
             return undefined;
         }
         dynamic.HasWordsBeside = true;
-        box.RelativePosition = new PointF2D(x, y + carry);
-        if (dynamicShift !== 0 || carry !== 0) {
-            dynamicBox.RelativePosition = new PointF2D(dynamicBox.RelativePosition.x + dynamicShift, dynamicBox.RelativePosition.y + carry);
+        box.RelativePosition = new PointF2D(placed.x, y + placed.carry);
+        if (placed.dynamicShift !== 0 || placed.carry !== 0) {
+            dynamicBox.RelativePosition = new PointF2D(dynamicBox.RelativePosition.x + placed.dynamicShift,
+                                                        dynamicBox.RelativePosition.y + placed.carry);
             dynamic.updateSkyBottomLine();
         }
         return graphLabel;
@@ -1867,6 +1880,13 @@ export abstract class MusicSheetCalculator {
             }
         }
         this.reserveCrossStaffCurves();
+        this.reserveTupletNumberSides();
+    }
+
+    /** Widens the tuplet numbers in the sky and bottom lines on both sides, after the notes' lines are saved (see
+     *  VexFlowMusicSheetCalculator). */
+    protected reserveTupletNumberSides(): void {
+        // implemented by VexFlowMusicSheetCalculator
     }
 
     /** Reserves the outer sides of the curves between staves in the sky and bottom lines, after the notes' lines are
@@ -2044,6 +2064,13 @@ export abstract class MusicSheetCalculator {
             if (hitsOtherText) {
                 continue;
             }
+            // nor onto a metronome mark: drawn by VexFlow, it is not an expression label (Bruch, Scottish Fantasy m406:
+            //   "Tempo I." at the end of "rit. - - -" moved onto the line, into "♩ = 66" placed over it)
+            const hitsMetronomeMark: boolean = this.metronomeMarkBoxes(staffLine).some(mark =>
+                mark.left < right && left < mark.right && mark.top < bottom && top < mark.bottom);
+            if (hitsMetronomeMark) {
+                continue;
+            }
             textBox.RelativePosition.y += shift;
             if (below) {
                 skyBottomLine.updateBottomLineInRange(left, right, bottom);
@@ -2127,9 +2154,8 @@ export abstract class MusicSheetCalculator {
         }
         this.staffEntriesWithGraphicalTies.length = 0;
         // Reset the tuplet number visibility decisions of calculateTupletNumbers() to the default:
-        // it runs after calculateSkyBottomLines(), so without the reset, a re-render's skyline
-        // would include the previous render's decisions, where the first render's skyline saw the
-        // default (true) - making re-renders differ from the first render.
+        // it decides from the default each render (it runs before calculateSkyBottomLines(), so the
+        // skyline has only the numbers drawn), making re-renders the same as the first render.
         // (Also makes sure all numbers come back when TupletNumberLimitConsecutiveRepetitions is
         // disabled between renders, as calculateTupletNumbers() then doesn't re-activate them.)
         for (const instrument of this.graphicalMusicSheet.ParentMusicSheet.Instruments) {
@@ -2250,14 +2276,18 @@ export abstract class MusicSheetCalculator {
                 this.calculateTieCurves();
             }
         }
+        // calculate TupletsNumbers: before the sky and bottom lines, which then have only the numbers drawn (a number hidden as
+        //   a consecutive repetition was in them, and a slur over its tuplet went over it: Boccherini/Piatti, Cello Sonata 1
+        //   m142, the 3 of a triplet under staccatos raised over their text lines, 10-28). The reset in calculate() makes the
+        //   decisions the same for each render.
+        this.calculateTupletNumbers();
         // calculate Sky- and BottomLine
         // will have reasonable values only between ObjectsBorders (eg StaffEntries)
         this.calculateSkyBottomLines();
-        // calculate TupletsNumbers
-        this.calculateTupletNumbers();
         // Reserve space for multi-measure repeat counts before placing measure numbers.
         this.reserveSkylineForMeasureRepeats();
         this.calculateKeyboardHandBrackets();
+        this.reserveTremolosBetweenNotes();
 
         // calculate MeasureNumbers
         if (this.rules.RenderMeasureNumbers) {
@@ -2543,6 +2573,8 @@ export abstract class MusicSheetCalculator {
         }
         onProgress?.(preSkylineEnd);
 
+        // (before the sky and bottom lines, see calculateMusicSystems())
+        await step(() => this.calculateTupletNumbers(), preSkylineEnd);
         const skylineStartedAt: number = performance.now();
         await this.calculateSkyBottomLinesAsync(yielder,
             (done: number, total: number): void => {
@@ -2552,9 +2584,9 @@ export abstract class MusicSheetCalculator {
             });
         const skylineCompletedAt: number = performance.now();
 
-        await step(() => this.calculateTupletNumbers(), 0.87);
-        await step(() => this.reserveSkylineForMeasureRepeats());
+        await step(() => this.reserveSkylineForMeasureRepeats(), 0.87);
         await step(() => this.calculateKeyboardHandBrackets());
+        await step(() => this.reserveTremolosBetweenNotes());
 
         if (this.rules.RenderMeasureNumbers) {
             await step(() => {
@@ -4044,6 +4076,14 @@ export abstract class MusicSheetCalculator {
         return;
     }
 
+    /** How far the glyphs of a dynamic reach out of its label's box (its borders), left and right, in units: a first f's tail
+     *  and a last f's hook, as CrossStaffExpressionClearance.dynamicBox() (the f glyph's box). Same as osmd-dart. */
+    public static dynamicGlyphReach(text: string): {left: number, right: number} {
+        const t: string = (text ?? "").trim();
+        return {left: t.startsWith("f") ? CrossStaffExpressionClearance.ForteReachLeft : 0,
+                right: t.endsWith("f") ? CrossStaffExpressionClearance.ForteReachRight : 0};
+    }
+
     /** An expression's label with its borders, not yet positioned (see calculateLabel()). */
     protected createExpressionLabel(staffLine: StaffLine, combinedString: string, style: FontStyles, placement: PlacementEnum,
                                     fontHeight: number, textAlignment: TextAlignmentEnum = TextAlignmentEnum.CenterBottom): GraphicalLabel {
@@ -4356,6 +4396,13 @@ export abstract class MusicSheetCalculator {
 
     protected layoutMetronomeMarks(): void {
         return;
+    }
+
+    /** The boxes (in units, relative to staffLine) of the metronome marks drawn above staffLine, which are not expression
+     *  labels: the words moving onto a dashed line keep off them (moveWordsOntoExpressionDashes()). Implemented by
+     *  VexFlowMusicSheetCalculator. Same as osmd-dart (metronomeMarkBoxes). */
+    protected metronomeMarkBoxes(staffLine: StaffLine): {left: number, right: number, top: number, bottom: number}[] {
+        return [];
     }
 
     protected graphicalMeasureCreatedCalculations(measure: GraphicalMeasure): void {
@@ -5720,6 +5767,13 @@ export abstract class MusicSheetCalculator {
     /** Reserves skyline space for measure-repeat counts. */
     protected reserveSkylineForMeasureRepeats(): void {
         // override
+    }
+
+    /** Reserves the strokes of the tremolos between two notes in the sky and bottom lines, which the skyline calculation
+     *  doesn't draw (VexFlowMusicSheetDrawer.drawTremolosBetweenNotes() draws them), before anything is placed by them.
+     *  Implemented by VexFlowMusicSheetCalculator. */
+    protected reserveTremolosBetweenNotes(): void {
+        // implemented by VexFlowMusicSheetCalculator
     }
 
     /** Calculates the keyboard hand brackets of the stafflines (StaffLine.KeyboardHandBrackets) from the formatted notes and reserves
