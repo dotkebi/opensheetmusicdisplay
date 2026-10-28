@@ -12,8 +12,9 @@ import { PlacementEnum } from "../../../src/MusicalScore/VoiceData/Expressions/A
  * the numbers on their articulations (tuplet.js) a run of sextuplets went up and down with the notes (Krommer, Oboe
  * Concerto Op. 52 II m54), a slur from inside the first of two triplets lifted only its 3 (Hummel, Trumpet Concerto II
  * m20-22), and the accent of C5 lifted over the slur from it went on the 3's bracket (Lalo, Symphonie espagnole III, violin
- * m44). Same as the osmd-dart test/tuplet_level_test.dart (no accent case there: the C5 is beamed with the others, the
- * slur under them).
+ * m44). A 3 that another slur lifts over the slur over its tuplet takes the others of its group with it (Hummel II m24:
+ * VexFlowMusicSheetCalculator.tupletUnitMoveBeyondAllSlurs()). Same as the osmd-dart test/tuplet_level_test.dart (no
+ * accent case there: the C5 is beamed with the others, the slur under them).
  */
 describe("Tuplet level", () => {
     let container: HTMLElement;
@@ -75,4 +76,23 @@ describe("Tuplet level", () => {
         expect(top - number.bottom, "the bracket over the accent").to.be.greaterThan(0.29);
     });
 
+
+    it("takes two triplets over a slur over both that the first 3 went over (Hummel, Trumpet Concerto II m24)", async () => {
+        await render("test_tuplet_level_covering_slur.musicxml");
+        const measure: VexFlowMeasure = osmd.GraphicSheet.MeasureList[1][0] as VexFlowMeasure;
+        const inks: any[] = measure.TupletNumberInk;
+        expect(inks.length).to.equal(2);
+        // (before: the first 3 over the slurs into and from A5, the second under the slur over both)
+        expect(Math.abs(inks[0].top - inks[1].top)).to.be.closeTo(0, 0.01);
+        const fromA5: any[] = measure.ParentStaffLine.GraphicalSlurs.filter(slur =>
+            slur.coversTuplet(inks[0].tuplet) && slur.coversTuplet(inks[1].tuplet));
+        expect(fromA5.length).to.equal(1);
+        // the second 3 over that slur too
+        for (let i: number = 0; i <= 128; i++) {
+            const point: any = fromA5[0].calculateCurvePointAtIndex(i / 128);
+            if (point.x >= inks[1].left && point.x <= inks[1].right) {
+                expect(inks[1].bottom).to.be.below(point.y);
+            }
+        }
+    });
 });

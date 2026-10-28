@@ -5125,12 +5125,20 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       }
     }
     for (const unit of units) {
-      const moves: { amount: number, trace: number[] }[] =
+      const moves: { amount: number, trace: number[], unlifted: boolean }[] =
         unit.map(ink => this.tupletNumberMoveBeyondSlurs(ink, staffLine, raisedMarks));
       if (unit.length > 1 && VexFlowMusicSheetCalculator.tupletUnitTouchedInside(unit, staffLine)) {
         const largest: { amount: number, trace: number[] } =
           moves.reduce((a, b) => b.amount > a.amount ? b : a);
         unit.forEach(ink => this.moveTupletNumber(ink, largest, measure, staffLine));
+      } else if (unit.length > 1 && moves.some(move => move.unlifted)) {
+        // A number another slur lifts that the slur over its tuplet can't lift on over goes over that slur too; the
+        //   others of its group go with it, beyond all the slurs (Hummel, Trumpet Concerto II m24: a slur into the
+        //   first note of two triplets under a slur from that note over both; the first 3 went over both slurs, the
+        //   second stayed under the long one)
+        const together: { amount: number, trace: number[] } = this.tupletUnitMoveBeyondAllSlurs(unit, moves, staffLine,
+                                                                                                raisedMarks);
+        unit.forEach(ink => this.moveTupletNumber(ink, together, measure, staffLine));
       } else {
         unit.forEach((ink, i) => this.moveTupletNumber(ink, moves[i], measure, staffLine));
       }
@@ -5162,7 +5170,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
    *  beyond the marks lifted over the slurs before (raisedMarks) that it would touch, with the passes taken (the trace). */
   private tupletNumberMoveBeyondSlurs(ink: any, staffLine: StaffLine,
                                       raisedMarks: { left: number, right: number, top: number, bottom: number }[]):
-    { amount: number, trace: number[] } {
+    { amount: number, trace: number[], unlifted: boolean } {
     if (ink.above) {
       // A number over a shorter slur in its tuplet stays under a slur over the whole tuplet, which lifts on over it
       //   when that takes a modest lift (GraphicalSlur.liftOverRaisedNumber(); Lotti, Pur dicesti, o bocca bella m69
@@ -5172,6 +5180,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         slur => slur.placement === PlacementEnum.Above && slur.bezierStartPt && slur.coversTuplet(ink.tuplet)));
       let raise: number = 0;
       let trace: number[] = [];
+      let unlifted: boolean = false;
       const raiseOver: (skip: Set<GraphicalSlur>) => void = skip => {
         for (let pass: number = 0; pass < 3; pass++) {
           const more: number = VexFlowMusicSheetCalculator.raiseOverSlursAbove(
@@ -5189,6 +5198,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           staffLine, ink.tuplet, ink.left, ink.top - raise, ink.right))) {
           raise = 0;
           trace = [];
+          unlifted = true;
         }
       }
       if (raise <= 0) {
@@ -5209,7 +5219,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         raise += more;
         trace.push(more);
       }
-      return { amount: raise, trace };
+      return { amount: raise, trace, unlifted };
     }
     let drop: number = 0;
     const drops: number[] = [];
@@ -5222,7 +5232,39 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       drop += more;
       drops.push(more);
     }
-    return { amount: drop, trace: drops };
+    return { amount: drop, trace: drops, unlifted: false };
+  }
+
+  /** The move of the numbers of a levelGroup together beyond all the slurs on their side and the marks lifted over them
+   *  (raisedMarks): from the largest of their own moves, on until none of them touches any (see
+   *  layoutFermatasOverSlurs()). Over the notes only (unlifted moves). */
+  private tupletUnitMoveBeyondAllSlurs(inks: any[], moves: { amount: number, trace: number[] }[], staffLine: StaffLine,
+                                       raisedMarks: { left: number, right: number, top: number, bottom: number }[]):
+    { amount: number, trace: number[] } {
+    const largest: { amount: number, trace: number[] } = moves.reduce((a, b) => b.amount > a.amount ? b : a);
+    let raise: number = largest.amount;
+    const trace: number[] = largest.trace.slice();
+    const clearance: number = GraphicalSlur.ornamentClearance;
+    for (let pass: number = 0; pass < 3; pass++) {
+      let more: number = 0;
+      for (const ink of inks) {
+        const box: { left: number, right: number, top: number, bottom: number } =
+          { left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise };
+        more = Math.max(more, VexFlowMusicSheetCalculator.raiseOverSlursAbove(box, staffLine, 0));
+        for (const mark of raisedMarks) {
+          if (mark.right > box.left && mark.left < box.right &&
+              mark.top < box.bottom + clearance && mark.bottom > box.top - clearance) {
+            more = Math.max(more, box.bottom + clearance - mark.top);
+          }
+        }
+      }
+      if (more <= 0) {
+        break;
+      }
+      raise += more;
+      trace.push(more);
+    }
+    return { amount: raise, trace };
   }
 
   /** Moves a tuplet number by a move of tupletNumberMoveBeyondSlurs(), away from its notes, and reserves its new place. */
