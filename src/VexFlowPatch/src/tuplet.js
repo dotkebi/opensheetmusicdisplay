@@ -377,16 +377,50 @@
    }
 
    // determine the y position of the tuplet:
+   // VexFlowPatch: the farthest of the own places (ownYPosition()) of the tuplets of its levelGroup, which
+   //   VexFlowMeasure.levelConsecutiveTuplets() sets to the tuplets of a voice that follow each other in a measure on the
+   //   same side: with the numbers over their articulations (see ownYPosition()) a run of triplets went up and down with
+   //   the notes, the brackets in steps and overlapping (Krommer, Oboe Concerto Op. 52 II m54; Lalo, Symphonie espagnole
+   //   III, violin m128), where VexFlow 5's text lines had put them in a row. The tuplet's own y offset is added after.
    getYPosition() {
+     const y_offset = this.options.y_offset || 0;
+     const group = this.levelMembers();
+     if (!group) {
+       return this.ownYPosition() + y_offset;
+     }
+     const ys = group.map(tuplet => tuplet.ownYPosition());
+     return (this.location === Tuplet.LOCATION_TOP ? Math.min(...ys) : Math.max(...ys)) + y_offset;
+   }
+
+   // VexFlowPatch: the tuplets of the levelGroup the tuplet takes the height of (see getYPosition()), it among them, or
+   //   undefined: not those whose unbracketed number is on the noteheads' side of all their notes, which
+   //   VexFlowMeasure.tupletNumberHeadSideYShift() moves to the noteheads on their own (Mozart, K.313 III, flute m245:
+   //   the 3s over the down-stems of B5 and A5 after a triplet starting with a rest).
+   levelMembers() {
+     const group = (this.levelGroup || []).filter(tuplet => !tuplet.numberOnNoteheadSide());
+     return group.length > 1 && group.indexOf(this) >= 0 ? group : undefined;
+   }
+
+   // VexFlowPatch: whether the tuplet's number is unbracketed and on the noteheads' side of all its notes (stave notes on
+   //   one stave, no rest, stems away from the number), as VexFlowMeasure.tupletNumberHeadSideYShift() takes them
+   numberOnNoteheadSide() {
+     if (this.bracketed || this.getNestedTupletCount() > 0) {
+       return false;
+     }
+     const stem = this.location === Tuplet.LOCATION_BOTTOM ? Stem.UP : Stem.DOWN;
+     const stave = this.notes[0].getStave();
+     return this.notes.every(note => note.getCategory() === 'stavenotes' && !note.isRest() && note.getStave() === stave &&
+       note.getStemDirection() === stem);
+   }
+
+   // VexFlowPatch: the place getYPosition() was, without the y offset (options.y_offset)
+   ownYPosition() {
      // offset the tuplet for any nested tuplets between
      // it and the notes:
      const nested_tuplet_y_offset =
        this.getNestedTupletCount() *
        Tuplet.NESTING_OFFSET *
        -this.location;
- 
-     // offset the tuplet for any manual y_offset:
-     const y_offset = this.options.y_offset || 0;
  
      // now iterate through the notes and find our highest
      // or lowest locations, to form a base y_pos
@@ -453,7 +487,7 @@
        }
      }
  
-     return y_pos + nested_tuplet_y_offset + y_offset;
+     return y_pos + nested_tuplet_y_offset;
    }
  
    draw() {

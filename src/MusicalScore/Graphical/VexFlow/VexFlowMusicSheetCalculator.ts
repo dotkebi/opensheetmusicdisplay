@@ -4981,12 +4981,13 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
 
   /** How far ink below the notes goes down to clear the slurs below that would touch it (0: none), like raiseOverSlursAbove(). */
   private static dropUnderSlursBelow(ink: { left: number, right: number, top: number, bottom: number }, staffLine: StaffLine,
-                                     inside: number = GraphicalSlur.ornamentClearance - 0.1): number {
+                                     inside: number = GraphicalSlur.ornamentClearance - 0.1,
+                                     skip: Set<GraphicalSlur> = new Set()): number {
     const clearance: number = GraphicalSlur.ornamentClearance;
     const over: number = clearance + GraphicalSlur.thickness;
     let drop: number = 0;
     for (const slur of staffLine.GraphicalSlurs) {
-      if (slur.placement !== PlacementEnum.Below || !slur.bezierStartPt) {
+      if (slur.placement !== PlacementEnum.Below || !slur.bezierStartPt || skip.has(slur)) {
         continue;
       }
       let curveBottom: number = Number.NEGATIVE_INFINITY;
@@ -5085,8 +5086,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         const raise: number = VexFlowMusicSheetCalculator.raiseOverSlursAbove(ink, staffLine);
         if (raise > 0) {
           ink.accent.slurClearanceYShift = -raise * unitInPixels;
-          staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
-          this.marksRaisedOverSlurs.push({ staffLine, left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise });
+          // (where draw() puts it: snapped to the staff it can go up by more than the raise, articulation.js raisedInkTop())
+          const top: number = ink.accent.raisedInkTop?.(ink.accent.slurClearanceYShift) ?? ink.top - raise;
+          staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, top);
+          this.marksRaisedOverSlurs.push({ staffLine, left: ink.left, right: ink.right, top, bottom: top + ink.bottom - ink.top });
         }
       } else {
         const drop: number = VexFlowMusicSheetCalculator.dropUnderSlursBelow(ink, staffLine);
@@ -5100,64 +5103,144 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     //   (Bellini, Torna, vezzosa Fillide m104, L'allegro marinaro m37), an unbracketed number the slur can't clear
     //   (GraphicalSlur lifts a slur over a number in its middle half when that takes a modest raise; Per pietà, bell'idol
     //   mio m58). A number under a slur that clears it at all stays inside. As in osmd-dart.
+    //   The tuplets of a levelGroup (VexFlowMeasure.levelConsecutiveTuplets(), one height) move together, by the largest
+    //   move of their numbers, when a slur that starts or ends inside one of them touches its number
+    //   (tupletUnitTouchedInside()): a slur from inside the first of two triplets lifted only its 3 over it, the second
+    //   staying under the slur over it (Hummel, Trumpet Concerto II m20-22). Otherwise each number moves on its own, as
+    //   before: under a slur over all of them (Lotti, Pur dicesti m69, a number over a short slur under the long one;
+    //   Prokofiev, Violin Concerto No. 1 I, violin m58, the last 3 over the slur over four triplets at its end), and with
+    //   slurs over their own tuplets (Paisiello, Il mio ben quando verrà m22, the numbers inside).
+    //   A number also goes over the marks lifted over a slur before that it would touch (an accent: Lalo, Symphonie
+    //   espagnole III, violin m44, the accent of C5 over the slur from it went on the 3's bracket).
+    const raisedMarks: { staffLine: StaffLine, left: number, right: number, top: number, bottom: number }[] =
+      this.marksRaisedOverSlurs.filter(mark => mark.staffLine === staffLine);
+    const units: any[][] = [];
     for (const ink of measure.TupletNumberInk) {
-      const options: any = ink.tuplet.options;
-      if (ink.above) {
-        // A number over a shorter slur in its tuplet stays under a slur over the whole tuplet, which lifts on over it
-        //   when that takes a modest lift (GraphicalSlur.liftOverRaisedNumber(); Lotti, Pur dicesti, o bocca bella m69
-        //   and m163, a slur over two triplets and one over the first two notes: the Ricordi print has the first 3
-        //   between them). Otherwise (over one slur it can meet another one over both) it goes over all of them.
-        const covering: Set<GraphicalSlur> = new Set(staffLine.GraphicalSlurs.filter(
-          slur => slur.placement === PlacementEnum.Above && slur.bezierStartPt && slur.coversTuplet(ink.tuplet)));
-        let raise: number = 0;
-        let trace: number[] = [];
-        measure.TupletNumberSlurRaiseTrace.set(ink.tuplet, trace);
-        const raiseOver: (skip: Set<GraphicalSlur>) => void = skip => {
-          for (let pass: number = 0; pass < 3; pass++) {
-            const more: number = VexFlowMusicSheetCalculator.raiseOverSlursAbove(
-              { left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise }, staffLine, 0, skip);
-            if (more <= 0) {
-              break;
-            }
-            raise += more;
-            trace.push(more);
-          }
-        };
-        if (covering.size > 0) {
-          raiseOver(covering);
-          if (raise > 0 && ![...covering].every(slur => slur.liftOverRaisedNumber(
-            staffLine, ink.tuplet, ink.left, ink.top - raise, ink.right))) {
-            raise = 0;
-            trace = [];
-            measure.TupletNumberSlurRaiseTrace.set(ink.tuplet, trace);
-          }
-        }
-        if (raise <= 0) {
-          raiseOver(new Set());
-        }
-        if (raise > 0) {
-          options.y_offset = (options.y_offset || 0) - raise * unitInPixels;
-          staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
-          this.marksRaisedOverSlurs.push({ staffLine, left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise });
-        }
+      const group: any[] = ink.tuplet.levelMembers?.();
+      const unit: any[] = group ? units.find(u => u[0].tuplet.levelMembers?.()?.[0] === group[0]) : undefined;
+      if (unit) {
+        unit.push(ink);
       } else {
-        let drop: number = 0;
-        const trace: number[] = [];
-        measure.TupletNumberSlurRaiseTrace.set(ink.tuplet, trace);
+        units.push([ink]);
+      }
+    }
+    for (const unit of units) {
+      const moves: { amount: number, trace: number[] }[] =
+        unit.map(ink => this.tupletNumberMoveBeyondSlurs(ink, staffLine, raisedMarks));
+      if (unit.length > 1 && VexFlowMusicSheetCalculator.tupletUnitTouchedInside(unit, staffLine)) {
+        const largest: { amount: number, trace: number[] } =
+          moves.reduce((a, b) => b.amount > a.amount ? b : a);
+        unit.forEach(ink => this.moveTupletNumber(ink, largest, measure, staffLine));
+      } else {
+        unit.forEach((ink, i) => this.moveTupletNumber(ink, moves[i], measure, staffLine));
+      }
+    }
+  }
+
+  /** Whether a slur on the side of the numbers of a levelGroup that starts or ends inside one of their tuplets without
+   *  covering it touches that tuplet's number, with no slur over all of them (see layoutTupletNumbersOverSlurs()). */
+  private static tupletUnitTouchedInside(inks: any[], staffLine: StaffLine): boolean {
+    const placement: PlacementEnum = inks[0].above ? PlacementEnum.Above : PlacementEnum.Below;
+    const onSide: GraphicalSlur[] = staffLine.GraphicalSlurs.filter(slur => slur.placement === placement && slur.bezierStartPt);
+    if (onSide.some(slur => inks.every(ink => slur.coversTuplet(ink.tuplet)))) {
+      return false;
+    }
+    const within: (x: number, ink: any) => boolean = (x, ink) => x >= ink.left && x <= ink.right;
+    return inks.some(ink => {
+      const inside: Set<GraphicalSlur> = new Set(onSide.filter(slur => !slur.coversTuplet(ink.tuplet) &&
+        (within(slur.bezierStartPt.x, ink) || within(slur.bezierEndPt.x, ink))));
+      if (inside.size === 0) {
+        return false;
+      }
+      const others: Set<GraphicalSlur> = new Set(onSide.filter(slur => !inside.has(slur)));
+      return (ink.above ? VexFlowMusicSheetCalculator.raiseOverSlursAbove(ink, staffLine, 0, others)
+        : VexFlowMusicSheetCalculator.dropUnderSlursBelow(ink, staffLine, 0, others)) > 0;
+    });
+  }
+
+  /** How far (units, away from the notes) a tuplet number goes beyond the slurs on its side that would touch it, and
+   *  beyond the marks lifted over the slurs before (raisedMarks) that it would touch, with the passes taken (the trace). */
+  private tupletNumberMoveBeyondSlurs(ink: any, staffLine: StaffLine,
+                                      raisedMarks: { left: number, right: number, top: number, bottom: number }[]):
+    { amount: number, trace: number[] } {
+    if (ink.above) {
+      // A number over a shorter slur in its tuplet stays under a slur over the whole tuplet, which lifts on over it
+      //   when that takes a modest lift (GraphicalSlur.liftOverRaisedNumber(); Lotti, Pur dicesti, o bocca bella m69
+      //   and m163, a slur over two triplets and one over the first two notes: the Ricordi print has the first 3
+      //   between them). Otherwise (over one slur it can meet another one over both) it goes over all of them.
+      const covering: Set<GraphicalSlur> = new Set(staffLine.GraphicalSlurs.filter(
+        slur => slur.placement === PlacementEnum.Above && slur.bezierStartPt && slur.coversTuplet(ink.tuplet)));
+      let raise: number = 0;
+      let trace: number[] = [];
+      const raiseOver: (skip: Set<GraphicalSlur>) => void = skip => {
         for (let pass: number = 0; pass < 3; pass++) {
-          const more: number = VexFlowMusicSheetCalculator.dropUnderSlursBelow(
-            { left: ink.left, right: ink.right, top: ink.top + drop, bottom: ink.bottom + drop }, staffLine, 0);
+          const more: number = VexFlowMusicSheetCalculator.raiseOverSlursAbove(
+            { left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise }, staffLine, 0, skip);
           if (more <= 0) {
             break;
           }
-          drop += more;
+          raise += more;
           trace.push(more);
         }
-        if (drop > 0) {
-          options.y_offset = (options.y_offset || 0) + drop * unitInPixels;
-          staffLine.SkyBottomLineCalculator.updateBottomLineInRange(ink.left, ink.right, ink.bottom + drop);
+      };
+      if (covering.size > 0) {
+        raiseOver(covering);
+        if (raise > 0 && ![...covering].every(slur => slur.liftOverRaisedNumber(
+          staffLine, ink.tuplet, ink.left, ink.top - raise, ink.right))) {
+          raise = 0;
+          trace = [];
         }
       }
+      if (raise <= 0) {
+        raiseOver(new Set());
+      }
+      const clearance: number = GraphicalSlur.ornamentClearance;
+      for (let pass: number = 0; pass < 3; pass++) {
+        let more: number = 0;
+        for (const mark of raisedMarks) {
+          if (mark.right > ink.left && mark.left < ink.right &&
+              mark.top < ink.bottom - raise + clearance && mark.bottom > ink.top - raise - clearance) {
+            more = Math.max(more, ink.bottom - raise + clearance - mark.top);
+          }
+        }
+        if (more <= 0) {
+          break;
+        }
+        raise += more;
+        trace.push(more);
+      }
+      return { amount: raise, trace };
+    }
+    let drop: number = 0;
+    const drops: number[] = [];
+    for (let pass: number = 0; pass < 3; pass++) {
+      const more: number = VexFlowMusicSheetCalculator.dropUnderSlursBelow(
+        { left: ink.left, right: ink.right, top: ink.top + drop, bottom: ink.bottom + drop }, staffLine, 0);
+      if (more <= 0) {
+        break;
+      }
+      drop += more;
+      drops.push(more);
+    }
+    return { amount: drop, trace: drops };
+  }
+
+  /** Moves a tuplet number by a move of tupletNumberMoveBeyondSlurs(), away from its notes, and reserves its new place. */
+  private moveTupletNumber(ink: any, move: { amount: number, trace: number[] }, measure: VexFlowMeasure,
+                           staffLine: StaffLine): void {
+    measure.TupletNumberSlurRaiseTrace.set(ink.tuplet, move.trace.slice());
+    if (move.amount <= 0) {
+      return;
+    }
+    const options: any = ink.tuplet.options;
+    if (ink.above) {
+      options.y_offset = (options.y_offset || 0) - move.amount * unitInPixels;
+      staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - move.amount);
+      this.marksRaisedOverSlurs.push({ staffLine, left: ink.left, right: ink.right, top: ink.top - move.amount,
+        bottom: ink.bottom - move.amount });
+    } else {
+      options.y_offset = (options.y_offset || 0) + move.amount * unitInPixels;
+      staffLine.SkyBottomLineCalculator.updateBottomLineInRange(ink.left, ink.right, ink.bottom + move.amount);
     }
   }
 

@@ -2440,7 +2440,38 @@ export class VexFlowMeasure extends GraphicalMeasure {
                 for (const tupletBuilder of this.tuplets[voiceID]) {
                     vftuplets.push(this.createVfTuplet(tupletBuilder, Number(voiceID), vftuplets.length));
                 }
+                VexFlowMeasure.levelConsecutiveTuplets(this.tuplets[voiceID], vftuplets);
             }
+        }
+    }
+
+    /**
+     * Gives the VexFlow tuplets of a voice that follow each other in the measure on the same side (the next one starts where
+     * the last one ends) one height: VexFlowPatch tuplet.js getYPosition() puts each of a levelGroup at the farthest of
+     * their own places. A tuplet crossing the staves (made later, completeCrossStaffTuplets()) or with no VexFlow tuplet
+     * ends a run. Same as osmd-dart (VexFlowMeasure._levelConsecutiveTuplets).
+     */
+    private static levelConsecutiveTuplets(builders: [Tuplet, VexFlowVoiceEntry[]][], vftuplets: VF.Tuplet[]): void {
+        const start: (entries: VexFlowVoiceEntry[]) => number = entries =>
+            Math.min(...entries.map(entry => entry.parentVoiceEntry.Timestamp.RealValue));
+        const end: (entries: VexFlowVoiceEntry[]) => number = entries =>
+            Math.max(...entries.map(entry => entry.parentVoiceEntry.Timestamp.RealValue +
+                (entry.notes[0]?.sourceNote.Length.RealValue ?? 0)));
+        let group: any[] = [];
+        for (let i: number = 0; i < vftuplets.length; i++) {
+            const vftuplet: any = vftuplets[i];
+            if (!vftuplet) {
+                group = [];
+                continue;
+            }
+            // (a tuplet in the group is the one before this one: a missing one starts a new group)
+            const previous: any = group[group.length - 1];
+            if (!previous || previous.location !== vftuplet.location ||
+                Math.abs(end(builders[i - 1][1]) - start(builders[i][1])) > 1e-6) {
+                group = [];
+            }
+            group.push(vftuplet);
+            vftuplet.levelGroup = group;
         }
     }
 
