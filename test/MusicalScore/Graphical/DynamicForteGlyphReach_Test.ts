@@ -3,13 +3,13 @@ import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { BoundingBox } from "../../../src/MusicalScore/Graphical/BoundingBox";
 import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
-import { VexFlowVoiceEntry } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowVoiceEntry";
 import { CrossStaffExpressionClearance } from "../../../src/MusicalScore/Graphical/VexFlow/CrossStaffExpressionClearance";
 
 /**
  * A dynamic's f reaches out of its label's box with its hook (and a first f with its tail), as
- * CrossStaffExpressionClearance.dynamicBox(): the words beside a dynamic that ends with an f start that much later, and the sky
- * (bottom) line under a dynamic is read under its glyphs. Same as osmd-dart's test/dynamic_forte_glyph_reach_test.dart.
+ * CrossStaffExpressionClearance.dynamicBox(): the words beside a dynamic that ends with an f start that much later, where they fit
+ * on its line. Same as osmd-dart's test/dynamic_forte_glyph_reach_test.dart (whose second test, an f over the stem beside it, is
+ * app only: reading the sky line under the f's ink moved fs down onto other glyphs beside them, 10-28).
  */
 describe("Dynamics: the reach of the f glyph", () => {
     const render: (fixture: string, width: number) => Promise<{osmd: OpenSheetMusicDisplay, container: HTMLElement}> =
@@ -45,42 +45,4 @@ describe("Dynamics: the reach of the f glyph", () => {
             container.remove();
         });
     }
-
-    // Mozart, Flute Concerto K.313 I m206-212 (test_forte_over_stem.musicxml, m209): the f above the staff at the D5 of the second beat,
-    //   its stem up and beamed; placed by its box alone, the f missed the stem right of it and came down onto the stem and the beam
-    //   (81sabo K313I-RENDER-WEB-F209; here at 1125 px: whether the stem's sample was read depended on where the measures' sky
-    //   line samples fell, and the stem was just past the f's box). It stays over them.
-    it("keeps an f above over the stem and beam beside it", async () => {
-        const {osmd, container} = await render("test_forte_over_stem.musicxml", 1125);
-        const staffLine: StaffLine = osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines[0];
-        const f: BoundingBox = label(staffLine, "f");
-        const fLeft: number = f.AbsolutePosition.x + f.BorderLeft;
-        const fRight: number = f.AbsolutePosition.x + f.BorderRight;
-        const fBottom: number = f.AbsolutePosition.y + f.BorderBottom;
-        // the up stem nearest right of the f's centre: the D5's
-        const centre: number = (fLeft + fRight) / 2;
-        let stemX: number = undefined;
-        let stemTop: number = undefined;
-        for (const measure of staffLine.Measures) {
-            for (const entry of measure.staffEntries) {
-                for (const gve of entry.graphicalVoiceEntries) {
-                    const note: any = (gve as VexFlowVoiceEntry).vfStaveNote;
-                    if (!note || note.getStemDirection() !== 1) {
-                        continue;
-                    }
-                    const x: number = note.getStemX() / 10;
-                    if (x > centre && (stemX === undefined || x < stemX)) {
-                        stemX = x;
-                        stemTop = note.getStemExtents().topY / 10;
-                    }
-                }
-            }
-        }
-        expect(stemX).to.not.equal(undefined);
-        expect(stemX - fRight, `the stem at ${stemX} right beside the f (${fRight})`)
-            .to.be.lessThan(CrossStaffExpressionClearance.ForteReachRight + 0.3);
-        expect(fBottom, `f bottom ${fBottom}, stem top ${stemTop}`).to.be.at.most(stemTop + 1e-6);
-        osmd.clear();
-        container.remove();
-    });
 });

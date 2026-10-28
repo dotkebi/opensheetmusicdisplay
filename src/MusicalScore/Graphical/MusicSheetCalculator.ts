@@ -1622,54 +1622,64 @@ export abstract class MusicSheetCalculator {
         const dynamicLeft: number = dynamicBox.RelativePosition.x + dynamicBox.BorderMarginLeft;
         const dynamicRight: number = dynamicBox.RelativePosition.x + dynamicBox.BorderMarginRight;
         const width: number = box.BorderMarginRight - box.BorderMarginLeft;
-        // the boxes touch: their margins leave about a word space between the texts. A dynamic's f reaches out of its box with
-        //   its hook (dynamicGlyphReach()): the words start that much later (Sibelius, Violin Concerto Op. 47 III m188 "mf Poco
-        //   a poco", the f's hook on the P; 81sabo SIB3C-APP1024-09).
-        let wordsLeft: number = dynamicRight + MusicSheetCalculator.dynamicGlyphReach(dynamic.Label.Label.text).right;
-        let dynamicShift: number = 0;
-        if (MusicSheetCalculator.wordsQualifyFollowingDynamic(text)) {
-            wordsLeft = dynamicLeft - width;
-            const firstNoteX: number = this.firstNoteX(measure);
-            if (wordsLeft < firstNoteX) {
-                dynamicShift = firstNoteX - wordsLeft;
-                wordsLeft = firstNoteX;
-            }
-        }
-        if (wordsLeft < 0 || wordsLeft + width > staffLine.PositionAndShape.Size.width) {
-            return undefined;
-        }
         // the words' baseline on the dynamic's
         const dynamicBaseline: number = dynamicBox.RelativePosition.y + dynamic.Label.PositionAndShape.RelativePosition.y +
             MusicSheetCalculator.labelBaselineOffset(dynamic.Label);
         const y: number = dynamicBaseline - MusicSheetCalculator.labelBaselineOffset(graphLabel);
-        const x: number = wordsLeft - box.BorderMarginLeft;
-        const wordsRect: number[] = [wordsLeft, wordsLeft + width, y + box.BorderMarginTop, y + box.BorderMarginBottom];
-        const dynamicRect: number[] = [dynamicLeft + dynamicShift, dynamicRight + dynamicShift,
-                                       dynamicBox.RelativePosition.y + dynamicBox.BorderMarginTop,
-                                       dynamicBox.RelativePosition.y + dynamicBox.BorderMarginBottom];
-        // On that baseline the words (and the dynamic moved after them) must clear the notes, slurs etc. under them: the
-        //   dynamic then moves out with the words, as the words are placed clear of them (the slur under the notes after the
-        //   rest that has the dynamic, Malinconia m13).
-        const rects: number[][] = dynamicShift !== 0 ? [wordsRect, dynamicRect] : [wordsRect];
-        let carry: number = 0;
-        for (const rect of rects) {
-            const outside: number = this.distanceIntoNotes(staffLine, placement, rect);
-            carry = placement === PlacementEnum.Below ? Math.max(carry, outside) : Math.min(carry, outside);
-        }
-        for (const rect of [wordsRect, dynamicRect]) {
-            rect[2] += carry;
-            rect[3] += carry;
-        }
-        // Only the first words beside a dynamic move it: a second one ("sempre" before and "stacc." after an ff) would take it
-        //   off the first one's line.
-        if (dynamic.HasWordsBeside && (dynamicShift !== 0 || carry !== 0) ||
-            ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic))) {
+        // The words after the dynamic at gap (units) right of its box, or undefined if they don't fit there.
+        const fit: (gap: number) => {x: number, carry: number, dynamicShift: number} = gap => {
+            // the boxes touch: their margins leave about a word space between the texts
+            let wordsLeft: number = dynamicRight + gap;
+            let dynamicShift: number = 0;
+            if (MusicSheetCalculator.wordsQualifyFollowingDynamic(text)) {
+                wordsLeft = dynamicLeft - width;
+                const firstNoteX: number = this.firstNoteX(measure);
+                if (wordsLeft < firstNoteX) {
+                    dynamicShift = firstNoteX - wordsLeft;
+                    wordsLeft = firstNoteX;
+                }
+            }
+            if (wordsLeft < 0 || wordsLeft + width > staffLine.PositionAndShape.Size.width) {
+                return undefined;
+            }
+            const wordsRect: number[] = [wordsLeft, wordsLeft + width, y + box.BorderMarginTop, y + box.BorderMarginBottom];
+            const dynamicRect: number[] = [dynamicLeft + dynamicShift, dynamicRight + dynamicShift,
+                                           dynamicBox.RelativePosition.y + dynamicBox.BorderMarginTop,
+                                           dynamicBox.RelativePosition.y + dynamicBox.BorderMarginBottom];
+            // On that baseline the words (and the dynamic moved after them) must clear the notes, slurs etc. under them: the
+            //   dynamic then moves out with the words, as the words are placed clear of them (the slur under the notes after the
+            //   rest that has the dynamic, Malinconia m13).
+            const rects: number[][] = dynamicShift !== 0 ? [wordsRect, dynamicRect] : [wordsRect];
+            let carry: number = 0;
+            for (const rect of rects) {
+                const outside: number = this.distanceIntoNotes(staffLine, placement, rect);
+                carry = placement === PlacementEnum.Below ? Math.max(carry, outside) : Math.min(carry, outside);
+            }
+            for (const rect of [wordsRect, dynamicRect]) {
+                rect[2] += carry;
+                rect[3] += carry;
+            }
+            // Only the first words beside a dynamic move it: a second one ("sempre" before and "stacc." after an ff) would take
+            //   it off the first one's line.
+            if (dynamic.HasWordsBeside && (dynamicShift !== 0 || carry !== 0) ||
+                ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic))) {
+                return undefined;
+            }
+            return {x: wordsLeft - box.BorderMarginLeft, carry, dynamicShift};
+        };
+        // A dynamic's f reaches out of its box with its hook (dynamicGlyphReach()): the words start that much later (Sibelius,
+        //   Violin Concerto Op. 47 III m188 "mf Poco a poco", the f's hook on the P; 81sabo SIB3C-APP1024-09), where they fit;
+        //   else at the box, as before, rather than off the dynamic's line ("mf espress." under it, Nielsen, Clarinet Concerto).
+        const reach: number = MusicSheetCalculator.dynamicGlyphReach(dynamic.Label.Label.text).right;
+        const placed: {x: number, carry: number, dynamicShift: number} = fit(reach) ?? (reach > 0 ? fit(0) : undefined);
+        if (!placed) {
             return undefined;
         }
         dynamic.HasWordsBeside = true;
-        box.RelativePosition = new PointF2D(x, y + carry);
-        if (dynamicShift !== 0 || carry !== 0) {
-            dynamicBox.RelativePosition = new PointF2D(dynamicBox.RelativePosition.x + dynamicShift, dynamicBox.RelativePosition.y + carry);
+        box.RelativePosition = new PointF2D(placed.x, y + placed.carry);
+        if (placed.dynamicShift !== 0 || placed.carry !== 0) {
+            dynamicBox.RelativePosition = new PointF2D(dynamicBox.RelativePosition.x + placed.dynamicShift,
+                                                        dynamicBox.RelativePosition.y + placed.carry);
             dynamic.updateSkyBottomLine();
         }
         return graphLabel;
@@ -3987,13 +3997,8 @@ export abstract class MusicSheetCalculator {
             return; // TODO can happen when drawing range modified (osmd.setOptions({drawFromMeasureNumber...}))
         }
 
-        // The sky (bottom) line is read under the dynamic's glyphs: an f reaches out of the label's box with its tail and its
-        //   hook (dynamicGlyphReach()), over the stem and the beam right of an f placed by its box alone (Mozart, Flute Concerto
-        //   K.313 I m209, the f over the D5 after it; 81sabo K313I-RENDER-WEB-F209). Its position and width stay as they are.
-        const box: BoundingBox = graphicalInstantaneousDynamic.PositionAndShape;
-        const reach: {left: number, right: number} = MusicSheetCalculator.dynamicGlyphReach(graphicalInstantaneousDynamic.Label?.Label?.text);
-        const left: number = startPosInStaffline.x + Math.min(box.BorderMarginLeft, box.BorderLeft - reach.left);
-        const right: number = startPosInStaffline.x + Math.max(box.BorderMarginRight, box.BorderRight + reach.right);
+        const left: number = startPosInStaffline.x + graphicalInstantaneousDynamic.PositionAndShape.BorderMarginLeft;
+        const right: number = startPosInStaffline.x + graphicalInstantaneousDynamic.PositionAndShape.BorderMarginRight;
         const skyBottomLineCalculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
         let yPosition: number = 0;
 
