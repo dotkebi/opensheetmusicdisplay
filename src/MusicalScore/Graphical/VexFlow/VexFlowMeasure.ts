@@ -2492,6 +2492,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
     private createVfTuplet(tupletBuilder: [Tuplet, VexFlowVoiceEntry[]], voiceID: number, index: number): VF.Tuplet {
                     const tupletStaveNotes: VF.StaveNote[] = [];
                     let tupletVoiceEntries: VexFlowVoiceEntry[] = tupletBuilder[1];
+                    let crossesStaves: boolean = false;
                     const owner: VexFlowMeasure = this.crossStaffTupletOwner(tupletBuilder[0]);
                     if (owner !== this) {
                         // a tuplet crossing the staves is one group of the measure on its number's side (see crossStaffTupletOwner())
@@ -2513,6 +2514,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
                         tupletVoiceEntries = tupletVoiceEntries.slice().sort((a: VexFlowVoiceEntry, b: VexFlowVoiceEntry) =>
                             a.parentVoiceEntry.Timestamp.RealValue - b.parentVoiceEntry.Timestamp.RealValue ||
                             Number(b.parentVoiceEntry.IsGrace) - Number(a.parentVoiceEntry.IsGrace));
+                        crossesStaves = true;
                     }
                     for (const tupletVoiceEntry of tupletVoiceEntries) {
                       tupletStaveNotes.push(((tupletVoiceEntry).vfStaveNote as StaveNote));
@@ -2542,7 +2544,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
                             }
                         }
                       }
-                      return new VF.Tuplet(tupletStaveNotes,
+                      const vftuplet: VF.Tuplet = new VF.Tuplet(tupletStaveNotes,
                         {
                           bracketed: bracketed,
                           location: location,
@@ -2551,12 +2553,43 @@ export class VexFlowMeasure extends GraphicalMeasure {
                           ratioed: tuplet.Ratioed,
                           y_offset: yOffset,
                         });
+                      if (crossesStaves) {
+                        // A tuplet crossing the staves is made once the other staff's notes exist, after the voice of one of
+                        //   the staves was built: VexFlow multiplied its notes' ticks again, unreduced (4096/6 for the voice's
+                        //   2048/3), and the formatter, which keys its tick contexts by numerators over the voices' common
+                        //   denominator, put the rest of that staff's notes in contexts of their own, right of the other staff's
+                        //   later notes (Lili Boulanger, D'un matin de printemps, harp m81). The notes get back the ticks of
+                        //   their graphical length, as the voice gives them (a voice built later sets the same ones).
+                        for (const entry of tupletVoiceEntries) {
+                          const graphicalLength: Fraction = entry.notes[0]?.graphicalNoteLength;
+                          if (graphicalLength && !entry.isStandAloneGrace) {
+                            VexFlowMeasure.setTicksToGraphicalLength(entry.vfStaveNote.getTicks(), graphicalLength);
+                          }
+                        }
+                      }
+                      return vftuplet;
                     }
                     // Fewer than two notes to draw in this measure, e.g. a cross-staff tuplet with one note in this staff, or a tuplet
                     //   with invisible rests (MusicSheetCalculator adds a hidden note to its tuplet only if it shares its notehead with
                     //   a visible unison note). No VexFlow tuplet for it, but keep its place in the list, so that
                     //   this.vftuplets[voiceID][i] stays the VexFlow tuplet of this.tuplets[voiceID][i], as draw() pairs them.
                     return undefined;
+    }
+
+    /**
+     * Sets a VexFlow note's ticks to its graphical length, reduced (2048/3 for a sextuplet 16th): the formatter keys its tick
+     * contexts by numerators over the voices' common denominator, so the same length has to have the same fraction in every voice.
+     */
+    private static setTicksToGraphicalLength(vfTicks: VF.Fraction, graphicalLength: Fraction): void {
+        // Calculate ticks using VexFlow Fraction to preserve precision.
+        // graphicalLength.RealValue is the note length as a fraction of a whole note.
+        // VF.RESOLUTION (e.g., 16384) is the number of ticks for a whole note.
+        // We use Fraction arithmetic to avoid floating-point precision issues.
+        // Fraction keeps the whole part apart (WholeValue), so a length of a whole note or more needs the expanded numerator.
+        vfTicks.numerator = graphicalLength.GetExpandedNumerator() * VF.RESOLUTION;
+        vfTicks.denominator = graphicalLength.Denominator;
+        // Simplify the fraction to reduce large numbers
+        vfTicks.simplify();
     }
 
     public layoutStaffEntry(graphicalStaffEntry: GraphicalStaffEntry): void {
@@ -2733,15 +2766,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
                     // (not for stand-alone grace notes, whose vexflow ticks the rest filling above has used and fitted)
                     if (!vexFlowVoiceEntry.isStandAloneGrace && (sourceNote.NoteTuplet ||
                         (ticksMismatch && !isWholeMeasureRest && !voiceEntry.parentVoiceEntry?.IsGrace))) {
-                        // Calculate ticks using VexFlow Fraction to preserve precision.
-                        // graphicalLength.RealValue is the note length as a fraction of a whole note.
-                        // VF.RESOLUTION (e.g., 16384) is the number of ticks for a whole note.
-                        // We use Fraction arithmetic to avoid floating-point precision issues.
-                        // Fraction keeps the whole part apart (WholeValue), so a length of a whole note or more needs the expanded numerator.
-                        vfTicks.numerator = graphicalLength.GetExpandedNumerator() * VF.RESOLUTION;
-                        vfTicks.denominator = graphicalLength.Denominator;
-                        // Simplify the fraction to reduce large numbers
-                        vfTicks.simplify();
+                        VexFlowMeasure.setTicksToGraphicalLength(vfTicks, graphicalLength);
                     }
                 }
 
