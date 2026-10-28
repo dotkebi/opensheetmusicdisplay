@@ -1808,56 +1808,14 @@ export class GraphicalSlur extends GraphicalCurve {
                 eX += endStaffEntry.staffEntryParent.PositionAndShape.RelativePosition.x;
             }
 
-            // get SkyBottomLine borders, without the tuplet numbers (see withoutTupletNumbers())
-            const lines: { sky: number[], bottom: number[] } =
-                GraphicalSlur.withoutTupletNumbers(skyBottomLineCalculator, staffLine);
-            const minAbove: number = (lines ? skyBottomLineCalculator.getMinInRangeOf(lines.sky, sX, eX)
-                : skyBottomLineCalculator.getSkyLineMinInRange(sX, eX)) * -1;
-            const maxBelow: number = (lines ? skyBottomLineCalculator.getMaxInRangeOf(lines.bottom, sX, eX)
-                : skyBottomLineCalculator.getBottomLineMaxInRange(sX, eX)) - staffLine.StaffHeight;
+            // get SkyBottomLine borders
+            const minAbove: number = skyBottomLineCalculator.getSkyLineMinInRange(sX, eX) * -1;
+            const maxBelow: number = skyBottomLineCalculator.getBottomLineMaxInRange(sX, eX) - staffLine.StaffHeight;
 
             if (maxBelow > minAbove - GraphicalSlur.mixedStemsAboveMargin) {
                 this.placement = PlacementEnum.Above;
             } else { this.placement = PlacementEnum.Below; }
         }
-    }
-
-    /**
-     * Copies of the staff line's sky and bottom lines with the tuplet numbers (and brackets) taken off: where a number is
-     * over (under) the notes, the line goes no higher (lower) than the number's inner edge, which the notes and their
-     * articulations stay beyond (Tuplet.getYPosition()). The side of a slur over notes with stems both ways is read from
-     * them (calculatePlacement()): a number is moved beyond a slur on its side afterwards, so it is no reason to put the
-     * slur on the other side, and with the numbers on their articulations (VexFlowPatch tuplet.js) the slur went over the
-     * notes from C5 (stem down) to A3 in Lalo, Symphonie espagnole III, violin m44, its accent over the slur on the 3, where
-     * it went under them before. Undefined when the staff line has no tuplet numbers. Same as osmd-dart
-     * (GraphicalSlur.withoutTupletNumbers).
-     */
-    private static withoutTupletNumbers(calculator: SkyBottomLineCalculator, staffLine: StaffLine):
-        { sky: number[], bottom: number[] } {
-        const inks: any[] = [];
-        for (const measure of staffLine.Measures ?? []) {
-            if (measure instanceof VexFlowMeasure) {
-                inks.push(...measure.TupletNumberInk);
-            }
-        }
-        if (inks.length === 0) {
-            return undefined;
-        }
-        const sky: number[] = calculator.SkyLine.slice();
-        const bottom: number[] = calculator.BottomLine.slice();
-        const samplingUnit: number = calculator.SamplingUnit;
-        for (const ink of inks) {
-            const start: number = Math.max(0, Math.floor(ink.left * samplingUnit));
-            const end: number = Math.min(sky.length - 1, Math.ceil(ink.right * samplingUnit));
-            for (let i: number = start; i <= end; i++) {
-                if (ink.above) {
-                    sky[i] = Math.max(sky[i], ink.bottom);
-                } else {
-                    bottom[i] = Math.min(bottom[i], ink.top);
-                }
-            }
-        }
-        return { sky, bottom };
     }
 
     /** The angle (from the horizontal) a tangent past the vertical at an end of the curve is turned back to. */

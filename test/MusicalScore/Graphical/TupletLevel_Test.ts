@@ -3,21 +3,19 @@ import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
 import { PlacementEnum } from "../../../src/MusicalScore/VoiceData/Expressions/AbstractExpression";
-import { GraphicalSlur } from "../../../src/MusicalScore/Graphical/GraphicalSlur";
 
 /**
  * Tuplets of a voice that follow each other in a measure on the same side take one height
- * (VexFlowMeasure.levelConsecutiveTuplets(), VexFlowPatch tuplet.js getYPosition()), also when a slur starting among them
- * lifts them over it (VexFlowMusicSheetCalculator.moveTupletUnitBeyondSlurs()), and the side of a slur over notes with
- * stems both ways is read without the tuplet numbers (GraphicalSlur.withoutTupletNumbers()). With the numbers on their
- * articulations (tuplet.js) a run of sextuplets went up and down with the notes (Krommer, Oboe Concerto Op. 52 II m54), a
- * slur from inside the first of two triplets lifted only its 3 (Hummel, Trumpet Concerto II m20-22), and the slur from C5
- * (stem down) to A3 in Lalo, Symphonie espagnole III, violin m44 went over the notes, its accent lifted over it on the
- * 3's bracket: the slur goes over them by the room without the 3 (it was under them for the 3 alone), and a number goes
- * over the marks lifted over a slur that it would touch, the accent where draw() puts it. Same as the osmd-dart
- * test/tuplet_level_and_slur_side_test.dart.
+ * (VexFlowMeasure.levelConsecutiveTuplets(), VexFlowPatch tuplet.js getYPosition()), also when a slur starting inside one of
+ * them lifts them over it (VexFlowMusicSheetCalculator.tupletUnitTouchedInside()), and a number goes over an accent lifted
+ * over a slur before that it would touch, the accent recorded where draw() puts it (articulation.js raisedInkTop()). With
+ * the numbers on their articulations (tuplet.js) a run of sextuplets went up and down with the notes (Krommer, Oboe
+ * Concerto Op. 52 II m54), a slur from inside the first of two triplets lifted only its 3 (Hummel, Trumpet Concerto II
+ * m20-22), and the accent of C5 lifted over the slur from it went on the 3's bracket (Lalo, Symphonie espagnole III, violin
+ * m44). Same as the osmd-dart test/tuplet_level_test.dart (no accent case there: the C5 is beamed with the others, the
+ * slur under them).
  */
-describe("Tuplet level and slur side", () => {
+describe("Tuplet level", () => {
     let container: HTMLElement;
     let osmd: OpenSheetMusicDisplay;
 
@@ -59,16 +57,14 @@ describe("Tuplet level and slur side", () => {
         }
     });
 
-    it("reads the side of a slur over stems both ways without the 3, the 3 over the accent lifted over it (Lalo Op. 21 III violin m44)",
-       async () => {
+    it("puts the 3 over the accent lifted over the slur (Lalo Op. 21 III violin m44)", async () => {
         await render("test_slur_side_without_tuplet_numbers.musicxml");
         const measure: VexFlowMeasure = osmd.GraphicSheet.MeasureList[0][0] as VexFlowMeasure;
         const slurs: any[] = measure.ParentStaffLine.GraphicalSlurs;
         // (C5 is octave 2, A3 octave 0)
         const fromC5: any = slurs.find(slur => slur.slur.StartNote.Pitch.Octave === 2 && slur.slur.EndNote.Pitch.Octave === 0);
         expect(fromC5, "the slur from C5 to A3").to.not.equal(undefined);
-        // over the notes by the room above and under them without the 3 (with the 3 under it before the numbers went on
-        //   their articulations: 1.95 above against 2.81 under it, without it 1.00)
+        // over the notes (by the room above and under them: 1.95 above against 2.81 under)
         expect(fromC5.placement).to.equal(PlacementEnum.Above);
         const accent: any = measure.AccentInk.find(ink => ink.above);
         const top: number = accent.accent.raisedInkTop(accent.accent.slurClearanceYShift);
@@ -79,20 +75,4 @@ describe("Tuplet level and slur side", () => {
         expect(top - number.bottom, "the bracket over the accent").to.be.greaterThan(0.29);
     });
 
-    it("reads the side of a slur over stems both ways without the 3s (Prokofiev Op. 19 I m58)", async () => {
-        await render("test_tuplet_number_over_upbow.musicxml");
-        const measure: VexFlowMeasure = osmd.GraphicSheet.MeasureList[1][0] as VexFlowMeasure;
-        const staffLine: any = measure.ParentStaffLine;
-        const calculator: any = staffLine.SkyBottomLineCalculator;
-        const lines: { sky: number[], bottom: number[] } = (GraphicalSlur as any).withoutTupletNumbers(calculator, staffLine);
-        // under each 3 the copy of the sky line goes no higher than the number's bottom (the slur from G3, stem up, to E5,
-        //   stem down, is placed by it); the staff line's own sky line keeps the numbers
-        const inks: any[] = measure.TupletNumberInk;
-        expect(inks.length).to.equal(4);
-        for (const ink of inks) {
-            const middle: number = (ink.left + ink.right) / 2;
-            expect(calculator.getMinInRangeOf(lines.sky, middle, middle)).to.be.at.least(ink.bottom - 1e-9);
-            expect(calculator.getMinInRangeOf(calculator.SkyLine, middle, middle)).to.be.below(ink.bottom);
-        }
-    });
 });
