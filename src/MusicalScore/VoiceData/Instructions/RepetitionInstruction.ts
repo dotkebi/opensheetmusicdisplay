@@ -131,7 +131,7 @@ export class RepetitionInstruction /*implements IComparable*/ {
         }
     }
 
-    public CompareTo(obj: Object): number {
+    public CompareTo(obj: object): number {
         const other: RepetitionInstruction = <RepetitionInstruction>obj;
         if (this.measureIndex > other.measureIndex) {
             return 1;

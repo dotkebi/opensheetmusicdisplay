@@ -181,9 +181,12 @@ export class InstrumentReader {
    * @param currentMeasure
    * @param measureStartAbsoluteTimestamp - Using this instead of currentMeasure.AbsoluteTimestamp as it isn't set yet
    * @param octavePlusOne Software like Guitar Pro gives one octave too low, so we need to add one
+   * @param readNotationDynamics Whether to read the `<dynamics>` in a note's `<notations>` (not those of Guitar Pro 5, which
+   *   gives every note its dynamic there, its velocity)
    * @returns {boolean}
    */
-  public readNextXmlMeasure(currentMeasure: SourceMeasure, measureStartAbsoluteTimestamp: Fraction, octavePlusOne: boolean): boolean {
+  public readNextXmlMeasure(currentMeasure: SourceMeasure, measureStartAbsoluteTimestamp: Fraction, octavePlusOne: boolean,
+                            readNotationDynamics: boolean = true): boolean {
     if (this.currentXmlMeasureIndex >= this.xmlMeasureList.length) {
       return false;
     }
@@ -549,14 +552,18 @@ export class InstrumentReader {
           }
 
           // notationsNode created further up for multiple checks
-          if (notationsNode !== undefined && notationsNode.element("dynamics")) {
+          if (readNotationDynamics && notationsNode !== undefined && notationsNode.element("dynamics")) {
             const expressionReader: ExpressionReader = this.expressionReaders[this.readExpressionStaffNumber(xmlNode) - 1];
             if (expressionReader) {
+             // a note's <dynamics> have their own placement attribute (a direction's dynamics have the direction's)
              expressionReader.readExpressionParameters(
-               xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, false
+               notationsNode.element("dynamics"), this.instrument, this.divisions, currentFraction, previousFraction,
+               this.currentMeasure.MeasureNumber, false
              );
+             // the <notations> contain the <dynamics> as a direction's <direction-type> does. They belong to the note's
+             //   timestamp (previousFraction is the one of the note before a grace note).
              expressionReader.read(
-               xmlNode, this.currentMeasure, previousFraction
+               xmlNode, this.currentMeasure, musicTimestamp, undefined, [notationsNode]
              );
             }
           }
@@ -608,7 +615,7 @@ export class InstrumentReader {
               }
             }
           }
-          if (!handeled) {
+          if (!handeled || directionTypeNodes.length > 1) {
            let expressionReader: ExpressionReader = this.expressionReaders[0];
            const staffIndex: number = this.readExpressionStaffNumber(xmlNode) - 1;
            if (staffIndex < this.expressionReaders.length) {
@@ -647,7 +654,8 @@ export class InstrumentReader {
              expressionReader.readExpressionParameters(
                xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, false
              );
-             expressionReader.read(xmlNode, this.currentMeasure, currentFraction, previousFraction.clone());
+             expressionReader.read(xmlNode, this.currentMeasure, currentFraction, previousFraction.clone(),
+                                   handeled ? directionTypeNodes.slice(1) : directionTypeNodes);
            }
           }
         } else if (xmlNode.name === "barline") {

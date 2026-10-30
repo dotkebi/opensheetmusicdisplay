@@ -84,7 +84,8 @@ export class AlignmentManager {
                 //   the highest one above the staff, the lowest one below it.
                 //   Each one was placed at the sky/bottom line, so moving away from the staff keeps it clear of the notes,
                 //   while moving towards the staff (e.g. to the lowest one above it) put expressions onto the notes.
-                const centerYs: number[] = aes.map(expr => expr.PositionAndShape.Center.y);
+                //   The y position of a text is the middle of its letters, see getOpticalCenterY().
+                const centerYs: number[] = aes.map(expr => this.getOpticalCenterY(expr));
                 // TODO this may not give the right position for wedges (GraphicalContinuousDynamic, !isVerbal())
                 const isAbove: boolean = aes[0].SourceExpression?.Placement === PlacementEnum.Above;
                 const yIdeal: number = isAbove ? Math.min(...centerYs) : Math.max(...centerYs);
@@ -100,12 +101,11 @@ export class AlignmentManager {
                     const expr: AbstractGraphicalExpression = aes[exprIdx];
                     const centerOffset: number = centerYs[exprIdx] - yIdeal;
                     // FIXME: Expressions should not behave differently.
-                    // TODO: The 0.8 are because the letters are a bit too far done
                     // The halves of a wedge split at a system break after the first one are plain GraphicalContinuousDynamicExpressions
                     //   (MusicSheetCalculator.calculateGraphicalContinuousDynamic()). Their box position is the first line's start point,
                     //   so moving it like a label moved only that point and crossed the lines into an X (Schumann, Myrthen 21 m35).
                     const isContinuous: boolean = expr instanceof GraphicalContinuousDynamicExpression;
-                    const shift: number = this.limitShift(expr, isContinuous ? -centerOffset : -centerOffset * 0.8, aes);
+                    const shift: number = this.limitShift(expr, -centerOffset, aes);
                     if (isContinuous) {
                         (expr as GraphicalContinuousDynamicExpression).shiftYPosition(shift);
                         (expr as GraphicalContinuousDynamicExpression).calcPsi();
@@ -301,6 +301,23 @@ export class AlignmentManager {
             stop = Fraction.plus(stop, wedge.EndOffsetFraction);
         }
         return end.SourceMeasureParent.AbsoluteTimestamp.RealValue + stop.RealValue;
+    }
+
+    /**
+     * The y position by which a group member is aligned with the others: the center of a wedge, and for a text (a dynamic
+     * like p, or cresc.) the middle of its lowercase letters, its optical center (as in MuseScore). So texts share their
+     * baseline, and a wedge points at the middle of the letters next to it, e.g. at the bowl of the p in "p <",
+     * not at their top: the center of a text's box is about one x-height above its baseline.
+     * @param expression The group member
+     */
+    private getOpticalCenterY(expression: AbstractGraphicalExpression): number {
+        const centerY: number = expression.PositionAndShape.Center.y;
+        if (this.isWedge(expression) || !expression.Label) {
+            return centerY;
+        }
+        // A one-line label's baseline is 0.4 font heights below its center (see MusicSheetDrawer.drawLabel()),
+        //   and the x-height of Times New Roman is about 0.45 font heights.
+        return centerY + expression.Label.Label.fontHeight * (0.4 - 0.45 / 2);
     }
 
     /** Whether the expression is a crescendo or decrescendo wedge (a continuous dynamic without text). */

@@ -36,7 +36,6 @@ import { VexFlowGraphicalNote } from "./VexFlowGraphicalNote";
 import { CrossStaffCurve, CrossStaffCurveLayoutGeometry } from "./CrossStaffCurve";
 import { TechnicalInstruction } from "../../VoiceData/Instructions/TechnicalInstruction";
 import { GraphicalLyricEntry } from "../GraphicalLyricEntry";
-import { GraphicalLabel } from "../GraphicalLabel";
 import { LyricsEntry } from "../../VoiceData/Lyrics/LyricsEntry";
 import { GraphicalLyricWord } from "../GraphicalLyricWord";
 import { VexFlowStaffEntry } from "./VexFlowStaffEntry";
@@ -823,9 +822,12 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       //   on a line at the same time, on each of the two formats of a render. Restore the value it had before the
       //   first render, snapshotted on the first render - otherwise the dot of e.g. a dotted rest below a dotted note
       //   moved up by a staff space with every re-render.
-      // - delayXShift of delayed ornaments (e.g. a turn between two notes): Ornament.draw() calculates it from the
-      //   distance to the next note on its first draw and keeps it. Unset it, so that the next draw calculates it
+      // - delayXShift of delayed ornaments (e.g. a turn between two notes): Ornament.getRenderXY() calculates it from the
+      //   distance to the next note when it is first called (by draw(), or before, by getExtent()) and keeps it. Unset it, so that the next draw calculates it
       //   for the current layout - otherwise the turn kept its distance of the previous layout, e.g. after a resize.
+      // - the y_shift of articulations and ornaments: GraphicalSlur.placeArticulationsOutside() moves an accent, a fermata or a
+      //   trill at the start or end of a slur beyond it. Restore the value it had before the first render, snapshotted on the
+      //   first render - otherwise a re-render would start from the moved position, in the skyline too.
       for (const voice of voices) {
         for (const tickable of voice.getTickables()) {
           const note: any = tickable as any;
@@ -833,8 +835,11 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           if (note.osmdInitialXShift === undefined) {
             note.osmdInitialXShift = note.x_shift ?? 0; // first render: snapshot
             for (const modifier of note.modifiers ?? []) {
-              if (modifier.getCategory?.() === "dots") {
+              const category: string = modifier.getCategory?.();
+              if (category === "dots") {
                 modifier.osmdInitialDotShiftY = modifier.dot_shiftY; // first render: snapshot
+              } else if (category === "articulations" || category === "ornaments") {
+                modifier.osmdInitialYShift = modifier.y_shift; // first render: snapshot
               }
             }
           } else {
@@ -847,6 +852,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
                 }
               } else if (modifier.getCategory?.() === "ornaments") {
                 modifier.delayXShift = undefined; // a delayed ornament (e.g. turn) caches its x shift on its first draw
+              }
+              if (modifier.osmdInitialYShift !== undefined) { // an articulation's or an ornament's
+                modifier.setYShift(modifier.osmdInitialYShift);
               }
             }
           }
@@ -4862,10 +4870,6 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
 
       graphicalStaffEntry.LyricsEntries.push(graphicalLyricEntry);
 
-      // create corresponding GraphicalLabel
-      const graphicalLabel: GraphicalLabel = graphicalLyricEntry.GraphicalLabel;
-      graphicalLabel.setLabelPositionAndShapeBorders();
-
       if (lyricsEntry.Word) {
         graphicalLyricEntry.ParentLyricWord = this.registerGraphicalLyricWord(lyricsEntry.Word, graphicalLyricEntry, lyricWords);
       }
@@ -4934,6 +4938,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         ink.ornament.slurClearanceYShift = -raise * unitInPixels;
         staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
         this.marksRaisedOverSlurs.push({ staffLine, left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise });
+        this.moveFingeringsWithMark(measure, staffLine, ink.ornament.getNote?.(), ink, raise, true);
       }
     }
     // The same below the notes (a lower voice, Couperin, Concerts royaux I Menuet en trio): an ornament a slur
@@ -4946,6 +4951,46 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       if (drop > 0) {
         ink.ornament.slurClearanceYShift = drop * unitInPixels;
         staffLine.SkyBottomLineCalculator.updateBottomLineInRange(ink.left, ink.right, ink.bottom + drop);
+        this.moveFingeringsWithMark(measure, staffLine, ink.ornament.getNote?.(), ink, drop, false);
+      }
+    }
+  }
+
+  /**
+   * Moves the fingerings of a mark's note stacked on the mark (over its width, beyond it) along with the mark that
+   * layoutFermatasOverSlurs() or layoutOrnament() moved beyond a slur, by the same lift (units, outward), and reserves their new
+   * place in the sky (bottom) line and for the measure numbers (marksRaisedOverSlurs). Like upstream 2.2.1 moving them with the
+   * marks it places outside a slur (GraphicalSlur.placeArticulationsOutside(), off in the fork, see
+   * EngravingRules.SlurPlacesArticulationsOutside): the fingering of a note with an accent at a slur's start stayed where the
+   * accent was, on the raised accent (upstream's test_slur_articulations_outside m.7).
+   */
+  private moveFingeringsWithMark(measure: VexFlowMeasure, staffLine: StaffLine, vfNote: any,
+                                 ink: { left: number, right: number, top: number, bottom: number }, lift: number, above: boolean): void {
+    if (!(lift > 0) || !vfNote) {
+      return;
+    }
+    const entry: GraphicalStaffEntry = measure.staffEntries.find(staffEntry => staffEntry.graphicalVoiceEntries.some(
+      gve => (gve as VexFlowVoiceEntry).vfStaveNote === vfNote));
+    for (const fingering of entry?.FingeringEntries ?? []) {
+      const box: BoundingBox = fingering.PositionAndShape;
+      const left: number = box.RelativePosition.x + box.BorderLeft;
+      const right: number = box.RelativePosition.x + box.BorderRight;
+      if (right <= ink.left || left >= ink.right) {
+        continue;
+      }
+      // beyond the mark (a fingering's box overlaps the ink of the mark under it by its margin)
+      const beyond: boolean = above ? box.RelativePosition.y + box.BorderBottom <= ink.bottom
+        : box.RelativePosition.y + box.BorderTop >= ink.top;
+      if (!beyond) {
+        continue;
+      }
+      box.RelativePosition.y += above ? -lift : lift;
+      if (above) {
+        const top: number = box.RelativePosition.y + box.BorderTop;
+        staffLine.SkyBottomLineCalculator.updateSkyLineInRange(left, right, top);
+        this.marksRaisedOverSlurs.push({ staffLine, left, right, top, bottom: box.RelativePosition.y + box.BorderBottom });
+      } else {
+        staffLine.SkyBottomLineCalculator.updateBottomLineInRange(left, right, box.RelativePosition.y + box.BorderBottom);
       }
     }
   }
@@ -4993,7 +5038,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       let curveBottom: number = Number.NEGATIVE_INFINITY;
       let touches: boolean = false;
       for (let i: number = 0; i <= 128; i++) {
-        const point: PointF2D = slur.calculateCurvePointAtIndex(i / 128);
+        // (calculateCurvePointAtIndex(1) is (0, 0), not the end point: a slur ending just inside the mark's width touched it unseen)
+        const point: PointF2D = i < 128 ? slur.calculateCurvePointAtIndex(i / 128) : slur.bezierEndPt;
         if (point.x < ink.left || point.x > ink.right) {
           continue;
         }
@@ -5025,7 +5071,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       let curveTop: number = Number.POSITIVE_INFINITY;
       let touches: boolean = false;
       for (let i: number = 0; i <= 128; i++) {
-        const point: PointF2D = slur.calculateCurvePointAtIndex(i / 128);
+        // (calculateCurvePointAtIndex(1) is (0, 0), not the end point: a slur ending just inside the mark's width touched it unseen)
+        const point: PointF2D = i < 128 ? slur.calculateCurvePointAtIndex(i / 128) : slur.bezierEndPt;
         if (point.x < ink.left || point.x > ink.right) {
           continue;
         }
@@ -5077,6 +5124,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         ink.fermata.slurClearanceYShift = -raise * unitInPixels;
         staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, ink.top - raise);
         this.marksRaisedOverSlurs.push({ staffLine, left: ink.left, right: ink.right, top: ink.top - raise, bottom: ink.bottom - raise });
+        this.moveFingeringsWithMark(measure, staffLine, ink.fermata.getNote?.(), ink, raise, true);
       }
     }
     // Accents and marcatos go outside a slur on their side that would touch them (GraphicalSlur.goesOutsideSlurs()): the
@@ -5090,12 +5138,14 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           const top: number = ink.accent.raisedInkTop?.(ink.accent.slurClearanceYShift) ?? ink.top - raise;
           staffLine.SkyBottomLineCalculator.updateSkyLineInRange(ink.left, ink.right, top);
           this.marksRaisedOverSlurs.push({ staffLine, left: ink.left, right: ink.right, top, bottom: top + ink.bottom - ink.top });
+          this.moveFingeringsWithMark(measure, staffLine, ink.accent.getNote?.(), ink, ink.top - top, true);
         }
       } else {
         const drop: number = VexFlowMusicSheetCalculator.dropUnderSlursBelow(ink, staffLine);
         if (drop > 0) {
           ink.accent.slurClearanceYShift = drop * unitInPixels;
           staffLine.SkyBottomLineCalculator.updateBottomLineInRange(ink.left, ink.right, ink.bottom + drop);
+          this.moveFingeringsWithMark(measure, staffLine, ink.accent.getNote?.(), ink, drop, false);
         }
       }
     }

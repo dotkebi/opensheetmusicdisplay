@@ -316,6 +316,11 @@ export class EngravingRules {
      * after reading, so that dashes are drawn between their syllables.
      * Set before loading a score: the words are linked when loading. */
     public RelinkLyricWordsAcrossVoices: boolean;
+    /** Whether the first lyric of a verse in a staff, if its text starts with the verse number, e.g. "1. Si" (MusicXML has no
+     * element for the number), is aligned like a lyric without one, with the number left of where the lyric starts. Default true.
+     * If false, the text is aligned as a whole, with the lyric right of the number. For left-aligned lyrics (LyricsAlignmentStandard).
+     * Set before loading a score: the lyrics are measured when its graphical objects are created. */
+    public LyricsVerseNumberLeftOfLyric: boolean;
     public LyricsYOffsetToStaffHeight: number;
     public LyricsYMarginToBottomLine: number;
     /** Draw the verse number ("1.", "2.", …) at the left of the first syllable of every numbered verse
@@ -383,8 +388,21 @@ export class EngravingRules {
     public TieHeightInterpolationK: number;
     public TieHeightInterpolationD: number;
     public SlurNoteHeadYOffset: number;
+    /** Not used anymore: a slur starts and ends SlurNoteHeadYOffset beyond the articulations of its start and end notes on its
+     *  side, as drawn (see GraphicalSlur), not this fixed distance beyond the end note.
+     * @deprecated
+     */
     public SlurEndArticulationYOffset: number;
+    /** Not used anymore: an accent at the start or end of a slur goes outside it, beyond its curve, unless that is too far from the
+     *  note (see GraphicalSlur), not this fixed distance further out at the start of a slur placed in the XML.
+     * @deprecated
+     */
     public SlurStartArticulationYOffsetOfArticulation: number;
+    /** Whether a slur moves the accents, fermatas and ornaments left outside it at its start or end note beyond its curve itself
+     *  (GraphicalSlur.placeArticulationsOutside(), upstream 2.2.1). Off in the fork: VexFlowMusicSheetCalculator.layoutFermatasOverSlurs()
+     *  moves them after the slurs, also those the slur passes over in its middle, with an ornament stacked over a moved accent and
+     *  the measure numbers raised over them; the slur still starts and ends past the staccatos and tenutos and beside fingerings. */
+    public SlurPlacesArticulationsOutside: boolean;
     public SlurStemXOffset: number;
     public SlurSlopeMaxAngle: number;
     public SlurTangentMinAngle: number;
@@ -1017,6 +1035,7 @@ export class EngravingRules {
         this.SlurNoteHeadYOffset = 0.5;
         this.SlurEndArticulationYOffset = 0.8;
         this.SlurStartArticulationYOffsetOfArticulation = 0.5;
+        this.SlurPlacesArticulationsOutside = false;
         this.SlurStemXOffset = 0.3;
         this.SlurSlopeMaxAngle = 15.0;
         this.SlurTangentMinAngle = 30.0;
@@ -1083,6 +1102,7 @@ export class EngravingRules {
         this.LyricsAlignmentStandard = TextAlignmentEnum.LeftBottom; // CenterBottom and LeftBottom tested, spacing-optimized
         this.LyricsHeight = 2.0; // actually size of lyrics
         this.RelinkLyricWordsAcrossVoices = true;
+        this.LyricsVerseNumberLeftOfLyric = true;
         this.LyricsYOffsetToStaffHeight = 0.0; // distance between lyrics and staff. could partly be even lower/dynamic
         this.LyricsYMarginToBottomLine = 0.2;
         this.RenderLyricVerseNumbers = true;

@@ -32,7 +32,7 @@ export class CrossStaffBeam extends VF.Beam {
 
     public readonly sourceBeam: Beam;
     /** The measures of the beam's notes (VexFlowMeasure, set by the measure that builds the beam). */
-    public participants: Object[] = [];
+    public participants: object[] = [];
 
     /** VexFlow's formatter turns the stem of a note of one voice that would cross a note of another voice at the
      *  same time. A note's stem in this beam goes to the beam: it keeps its wanted direction (set again before every
@@ -315,7 +315,7 @@ export class CrossStaffBeam extends VF.Beam {
             return false;
         }
         const staves: Set<Staff> = new Set<Staff>();
-        let instrument: Object = undefined;
+        let instrument: object = undefined;
         for (const note of segment) {
             const staff: Staff = note.ParentStaff;
             if (!staff || !note.ParentVoiceEntry || note.ParentVoiceEntry.IsGrace) {

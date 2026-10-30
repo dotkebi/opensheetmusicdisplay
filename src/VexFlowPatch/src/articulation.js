@@ -361,12 +361,41 @@ export class Articulation extends Modifier {
     return { top, bottom: top + height };
   }
 
+  // VexFlowPatch: the other articulations at this time on the side of this one: those of the other voices' notes in the
+  //   staff, which share this articulation's ModifierContext, and so the text lines that format() gave its articulations
+  getOtherArticulationsOnSameSide() {
+    if (!isStaveNote(this.note)) {
+      return [];
+    }
+    const articulations = this.getModifierContext()?.getModifiers(Articulation.CATEGORY) ?? [];
+    return articulations.filter(articulation => articulation.getPosition() === this.position &&
+      articulation.note !== this.note && isStaveNote(articulation.note));
+  }
+
+  // VexFlowPatch: the y from which the text line of this articulation is counted (see draw()): its note's stem tip or head
+  //   with a distance, or, for an articulation that is moved out of the staff, the line it's moved to less its text line
+  getTextLineBaseY() {
+    const { note, position, text_line: textLine } = this;
+    const stave = note.getStave();
+    const staffSpace = stave.getSpacingBetweenLines();
+    const sitsOutsideStaff = !this.articulation.between_lines || note.getCategory() === 'tabnotes';
+    const initialOffset = getInitialOffset(note, position);
+    if (position === ABOVE) {
+      const baseY = getTopY(note, textLine) - initialOffset * staffSpace;
+      return sitsOutsideStaff
+        ? Math.min(stave.getYForTopText(Articulation.INITIAL_OFFSET) + textLine * staffSpace, baseY)
+        : baseY;
+    }
+    const baseY = getBottomY(note, textLine) + initialOffset * staffSpace;
+    return sitsOutsideStaff
+      ? Math.max(stave.getYForBottomText(Articulation.INITIAL_OFFSET) - textLine * staffSpace, baseY)
+      : baseY;
+  }
+
   // Render articulation in position next to note.
   draw() {
     const {
       note, index, position, glyph,
-      articulation: { between_lines: canSitBetweenLines },
-      text_line: textLine,
       context: ctx,
     } = this;
 
@@ -381,13 +410,16 @@ export class Articulation extends Modifier {
     this.setRendered();
 
     const stave = note.getStave();
-    const staffSpace = stave.getSpacingBetweenLines();
-    const isTab = note.getCategory() === 'tabnotes';
 
     // Articulations are centered over/under the note head.
     let { x } = note.getModifierStartXY(position, index);
     // VexFlowPatch: breath mark support
     if (this.isBreathMark()) { // breath mark
+      // placed by the distance to the next note's time (tick context), so not moved with a note moved aside from another
+      //   voice's note (its x_shift, which getModifierStartXY() adds): that brought it closer to the next note, e.g. onto its stem
+      if (isStaveNote(note)) {
+        x -= note.getXShift();
+      }
       let delayXShift = 0;
       // delay code similar to ornament.js delayed variable handling
       const noteTickContext = note.getTickContext();
@@ -413,6 +445,55 @@ export class Articulation extends Modifier {
     if (x_shift) {
       x += x_shift; // VexFlowPatch: support x_shift for breath_mark
     }
+    const y = this.getRenderY();
+
+    L(`Rendering articulation at (x: ${x}, y: ${y})`);
+
+    glyph.render(ctx, x, y);
+    // VexFlowPatch: where it was drawn (as drawAt() returns it)
+    const { width, height } = glyph.getMetrics();
+    const top = this.renderCentred ? y - height / 2 : position === ABOVE ? y - height : y;
+    this.drawnInk = { left: x - width / 2, top, right: x + width / 2, bottom: top + height };
+    // VexFlowPatch: a fermata's ink without its raise over a slur, relative to the stave's left and top line (see
+    //   VexFlowMeasure.FermataInk)
+    //   An accent or a marcato (goesOutsideSlurs, VexFlowConverter) records it above or below its note, to go beyond a
+    //   slur on its side (VexFlowMeasure.AccentInk).
+    if ((this.type === 'a@a' && position === ABOVE) || this.goesOutsideSlurs) {
+      this.layoutInk = {
+        left: this.drawnInk.left - stave.getX(),
+        right: this.drawnInk.right - stave.getX(),
+        top: this.drawnInk.top - this.slurClearanceYShift - stave.getYForLine(0),
+        bottom: this.drawnInk.bottom - this.slurClearanceYShift - stave.getYForLine(0),
+      };
+      // VexFlowPatch: the y_shift the ink was drawn with: a slur that starts or ends at the note may add to it afterwards
+      //   (GraphicalSlur.placeArticulationsOutside()), see VexFlowMeasure.movedSinceLayout()
+      this.layoutYShift = this.y_shift || 0;
+    }
+  }
+
+  // VexFlowPatch: the box of the glyph as draw() renders it, e.g. for a slur that starts or ends at the note to keep its distance
+  //   from it before drawing (see OSMD's GraphicalSlur): left and right from the centre of the note head, which draw() centres
+  //   the glyph on (getModifierStartXY(), not for a breath mark, which it places after the note), top and bottom in the stave's
+  //   coordinates
+  getExtent() {
+    const { note, glyph } = this;
+    // a note's ys follow the stave only when its voice draws it (see Ornament.getRenderXY())
+    note.setStave(note.getStave());
+    const top = this.getRenderY() + glyph.originShift.y + glyph.bbox.getY(); // (getRenderY() sets the glyph's origin)
+    const left = this.getXShift() + glyph.originShift.x + glyph.bbox.getX();
+    return { left, right: left + glyph.bbox.getW(), top, bottom: top + glyph.bbox.getH() };
+  }
+
+  // VexFlowPatch: the y at which draw() renders the glyph, with the glyph's origin set for it (from draw(), to get it before drawing)
+  getRenderY() {
+    const {
+      note, index, position, glyph,
+      articulation: { between_lines: canSitBetweenLines },
+      text_line: textLine,
+    } = this;
+    const stave = note.getStave();
+    const staffSpace = stave.getSpacingBetweenLines();
+    const isTab = note.getCategory() === 'tabnotes';
     const shouldSitOutsideStaff = !canSitBetweenLines || isTab;
 
     const initialOffset = getInitialOffset(note, position);
@@ -433,6 +514,18 @@ export class Articulation extends Modifier {
           : y;
       },
     }[position]();
+    // VexFlowPatch: the text line of an articulation (see format()) is also counted from the bases of the articulations at
+    //   this time on its side of the other voices' notes in the staff (see getTextLineBaseY()), not only from its own note:
+    //   e.g. the fermata of a stem-down note, on text line 2, was drawn below the fermata on text line 0 above the stem of the
+    //   stem-up note of another voice a second above, over it and that stem, and the fermatas of two whole notes low in the
+    //   staff were both moved out of it to the same line.
+    for (const other of this.getOtherArticulationsOnSameSide()) {
+      // a note's ys follow the stave only when its voice draws it (see Ornament.getRenderXY())
+      other.note.setStave(other.note.getStave());
+      y = position === ABOVE
+        ? Math.min(y, other.getTextLineBaseY() - textLine * staffSpace)
+        : Math.max(y, other.getTextLineBaseY() + textLine * staffSpace);
+    }
     // VexFlowPatch: respect modifier.y_shift
     if (this.y_shift) {
         y += this.y_shift;
@@ -460,25 +553,7 @@ export class Articulation extends Modifier {
 
       y += Math.abs(snappedLine - articLine) * staffSpace * offsetDirection;
     }
-
-    L(`Rendering articulation at (x: ${x}, y: ${y})`);
-
-    glyph.render(ctx, x, y);
-    // VexFlowPatch: where it was drawn (as drawAt() returns it)
-    const { width, height } = glyph.getMetrics();
-    const top = centred ? y - height / 2 : position === ABOVE ? y - height : y;
-    this.drawnInk = { left: x - width / 2, top, right: x + width / 2, bottom: top + height };
-    // VexFlowPatch: a fermata's ink without its raise over a slur, relative to the stave's left and top line (see
-    //   VexFlowMeasure.FermataInk)
-    //   An accent or a marcato (goesOutsideSlurs, VexFlowConverter) records it above or below its note, to go beyond a
-    //   slur on its side (VexFlowMeasure.AccentInk).
-    if ((this.type === 'a@a' && position === ABOVE) || this.goesOutsideSlurs) {
-      this.layoutInk = {
-        left: this.drawnInk.left - stave.getX(),
-        right: this.drawnInk.right - stave.getX(),
-        top: this.drawnInk.top - this.slurClearanceYShift - stave.getYForLine(0),
-        bottom: this.drawnInk.bottom - this.slurClearanceYShift - stave.getYForLine(0),
-      };
-    }
+    this.renderCentred = centred; // VexFlowPatch: (for drawnInk, see draw())
+    return y;
   }
 }

@@ -182,6 +182,9 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
         }
         // MuseScore 4 writes 8-digit colors as #RRGGBBAA instead of MusicXML's #AARRGGBB, see musicXmlColorsAreAlphaLast
         this.musicSheet.XmlColorAlphaLast = musicXmlColorsAreAlphaLast(MusicSheetReader.readEncodingSoftware(root));
+        // Guitar Pro 5 writes the dynamic of every note (its velocity) as <dynamics> in the note's <notations>:
+        //   drawn, they would repeat at almost every note (Guitar Pro 7 writes them only where a dynamic is set)
+        const readNotationDynamics: boolean = encoding?.value !== "Guitar Pro 5";
 
         while (couldReadMeasure) {
             // TODO changing this.rules.PartAndSystemAfterFinalBarline requires a reload of the piece for measure numbers to be updated
@@ -192,7 +195,7 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
             for (const instrumentReader of instrumentReaders) {
                 try {
                     couldReadMeasure = couldReadMeasure && instrumentReader.readNextXmlMeasure(
-                        this.currentMeasure, this.currentFraction, octavePlusOneEncoding);
+                        this.currentMeasure, this.currentFraction, octavePlusOneEncoding, readNotationDynamics);
                 } catch (e) {
                     const errorMsg: string = ITextTranslation.translateText("ReaderErrorMessages/InstrumentError", "Error while reading instruments.");
                     throw new MusicSheetReadingException(errorMsg, e);

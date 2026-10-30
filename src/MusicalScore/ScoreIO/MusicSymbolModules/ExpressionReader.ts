@@ -86,6 +86,16 @@ export class ExpressionReader {
     /** Word expressions of dashesMeasure, the last measure a direction was read in. */
     private wordExpressionsOfMeasure: WordExpressionPosition[] = [];
     private dashesMeasure: SourceMeasure;
+    /** Unicode text for SMuFL note symbols between words, e.g. metNote8thUp in "Fast (Straight ♪)".
+     *  Notes use the text's font or a fallback font. Stem-down variants use the same note value's stem-up character.
+     *  Unsupported names are omitted without removing the surrounding words. */
+    private static readonly noteSymbolTexts: ReadonlyMap<string, string> = new Map([
+        ["metNoteWhole", "\u{1D15D}"], ["metNoteHalfUp", "\u{1D15E}"],
+        ["metNoteQuarterUp", "\u2669"], ["metNote8thUp", "\u266A"],
+        ["metNote16thUp", "\u{1D161}"], ["metNote32ndUp", "\u{1D162}"],
+        ["metNote64thUp", "\u{1D163}"], ["metNote128thUp", "\u{1D164}"],
+        ["metAugmentationDot", "\u00B7"],
+    ]);
     constructor(musicSheet: MusicSheet, instrument: Instrument, staffNumber: number) {
         this.musicSheet = musicSheet;
         this.instrument = instrument;
@@ -192,7 +202,8 @@ export class ExpressionReader {
         }
     }
     public read(directionNode: IXmlElement, currentMeasure: SourceMeasure,
-                inSourceMeasureCurrentFraction: Fraction, inSourceMeasurePreviousFraction: Fraction = undefined): void {
+                inSourceMeasureCurrentFraction: Fraction, inSourceMeasurePreviousFraction: Fraction = undefined,
+                dirNodes: IXmlElement[] = directionNode.elements("direction-type")): void {
         let isTempoInstruction: boolean = false;
         this.startMeasureForDashes(currentMeasure);
 
@@ -234,7 +245,6 @@ export class ExpressionReader {
                 this.soundDynamicTimestamp = this.readDirectionTimestamp(soundOffset, inSourceMeasureCurrentFraction);
             }
         }
-        const dirNodes: IXmlElement[] = directionNode.elements("direction-type");
         const originalDirectionTimestamp: Fraction = this.directionTimestamp;
         for (const dirNode of dirNodes) {
             this.directionTimestamp = originalDirectionTimestamp;
@@ -326,8 +336,9 @@ export class ExpressionReader {
 
             dirContentNode = dirNode.element("words");
             if (dirContentNode) {
-                // an exporter may split the words where their formatting changes
-                const text: string = dirNode.elements("words").map((wordsNode: IXmlElement): string => wordsNode.value).join("");
+                // an exporter may split the words where their formatting changes, and put a note symbol between them
+                const text: string = dirNode.elements().map((node: IXmlElement): string => node.name === "words" ? node.value :
+                    node.name === "symbol" ? ExpressionReader.noteSymbolTexts.get(node.value.trim().replace(/Down$/, "Up")) ?? "" : "").join("");
                 if (isTempoInstruction) {
                     this.directionTimestamp = this.readDirectionTimestamp(
                         dirContentNode.attribute("default-x") ? undefined : offsetNode, inSourceMeasureCurrentFraction);
@@ -358,7 +369,8 @@ export class ExpressionReader {
 
             dirContentNode = dirNode.element("rehearsal");
             if (dirContentNode) {
-                this.interpretRehearsalMark(dirContentNode, currentMeasure, inSourceMeasureCurrentFraction, currentMeasure.MeasureNumber);
+                const text: string = dirNode.elements("rehearsal").map((rehearsalNode: IXmlElement): string => rehearsalNode.value).join("");
+                this.interpretRehearsalMark(text, currentMeasure, inSourceMeasureCurrentFraction, currentMeasure.MeasureNumber);
                 continue;
             }
 
@@ -1034,9 +1046,8 @@ export class ExpressionReader {
             }
         }
         if (text.length > 0) {
-            if (wordsNode.hasAttributes && wordsNode.attribute("default-x")) {
-                this.directionTimestamp = Fraction.createFromFraction(inSourceMeasureCurrentFraction);
-            }
+            // The caller has already added the divisions offset, also for words without default-x.
+            this.directionTimestamp = Fraction.createFromFraction(inSourceMeasureCurrentFraction);
             if (this.checkIfWordsNodeIsRepetitionInstruction(text)) {
                 return;
             }
@@ -1201,7 +1212,7 @@ export class ExpressionReader {
         return latest ? latest.clone() : previousFraction;
     }
     private interpretRehearsalMark(
-        rehearsalNode: IXmlElement, currentMeasure: SourceMeasure,
+        text: string, currentMeasure: SourceMeasure,
         inSourceMeasureCurrentFraction: Fraction, currentMeasureIndex: number): void {
         // TODO create multi expression? for now we just need to have a static rehearsal mark though.
         // One mark per part (user decision 10-24, as printed): the mark is drawn above its own part, so a part's mark that
@@ -1214,7 +1225,7 @@ export class ExpressionReader {
         if (ofThisPart) {
             return;
         }
-        currentMeasure.rehearsalExpressions.push(new RehearsalExpression(rehearsalNode.value, this.placement, this.globalStaffIndex));
+        currentMeasure.rehearsalExpressions.push(new RehearsalExpression(text, this.placement, this.globalStaffIndex));
     }
     private createNewMultiExpressionIfNeeded(currentMeasure: SourceMeasure, numberXml: number,
         timestamp: Fraction = undefined, playbackTimestamp: Fraction = undefined): MultiExpression {

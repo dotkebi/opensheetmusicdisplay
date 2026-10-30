@@ -3249,9 +3249,17 @@ export class VexFlowMeasure extends GraphicalMeasure {
             ornament,
             left: x + ornament.layoutInk.left / unitInPixels,
             right: x + ornament.layoutInk.right / unitInPixels,
-            top: ornament.layoutInk.top / unitInPixels,
-            bottom: ornament.layoutInk.bottom / unitInPixels,
+            top: ornament.layoutInk.top / unitInPixels + VexFlowMeasure.movedSinceLayout(ornament),
+            bottom: ornament.layoutInk.bottom / unitInPixels + VexFlowMeasure.movedSinceLayout(ornament),
         }));
+    }
+
+    /** How far (units, downward) a slur that starts or ends at the mark's note moved it beyond the slur after the layout draw
+     *  recorded its ink (GraphicalSlur.placeArticulationsOutside(), upstream 2.2.1, by its y_shift): the ink getters follow
+     *  the move, so that the raise over a slur decided afterwards (VexFlowMusicSheetCalculator.layoutFermatasOverSlurs())
+     *  doesn't move the mark a second time. */
+    private static movedSinceLayout(modifier: any): number {
+        return ((modifier.y_shift ?? 0) - (modifier.layoutYShift ?? 0)) / unitInPixels;
     }
 
     /** Where the ornaments above the notes were drawn, without a raise over a slur (see
@@ -3575,8 +3583,8 @@ export class VexFlowMeasure extends GraphicalMeasure {
             fermata,
             left: x + fermata.layoutInk.left / unitInPixels,
             right: x + fermata.layoutInk.right / unitInPixels,
-            top: fermata.layoutInk.top / unitInPixels,
-            bottom: fermata.layoutInk.bottom / unitInPixels,
+            top: fermata.layoutInk.top / unitInPixels + VexFlowMeasure.movedSinceLayout(fermata),
+            bottom: fermata.layoutInk.bottom / unitInPixels + VexFlowMeasure.movedSinceLayout(fermata),
         }));
     }
 
@@ -3604,8 +3612,8 @@ export class VexFlowMeasure extends GraphicalMeasure {
             above: accent.getPosition() === VF.Modifier.Position.ABOVE,
             left: x + accent.layoutInk.left / unitInPixels,
             right: x + accent.layoutInk.right / unitInPixels,
-            top: accent.layoutInk.top / unitInPixels,
-            bottom: accent.layoutInk.bottom / unitInPixels,
+            top: accent.layoutInk.top / unitInPixels + VexFlowMeasure.movedSinceLayout(accent),
+            bottom: accent.layoutInk.bottom / unitInPixels + VexFlowMeasure.movedSinceLayout(accent),
         }));
     }
 

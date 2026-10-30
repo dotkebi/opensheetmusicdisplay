@@ -152,7 +152,7 @@ export class VoiceGenerator {
       this.currentNote.DotsXml = dotsXml;
       // read lyrics
       const lyricElements: IXmlElement[] = noteNode.elements("lyric");
-      if (this.lyricsReader !== undefined && lyricElements) {
+      if (this.lyricsReader !== undefined && lyricElements.length > 0) {
         this.lyricsReader.addLyricEntry(lyricElements, this.currentVoiceEntry);
         this.voice.Parent.HasLyrics = true;
       }

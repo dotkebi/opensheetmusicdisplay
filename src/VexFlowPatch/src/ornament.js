@@ -52,6 +52,28 @@ function createAccidentalGlyph(accids, scale, spacing) {
   };
 }
 
+// VexFlowPatch: the y from which the text lines of the ornaments above a note are counted (see Ornament.getRenderXY()): a staff
+//   space above its stem tip, or above its head if the stem is down (one and a half above a beamed stem tip)
+function getTopBaseY(note) {
+  const spacing = note.getStave().getSpacingBetweenLines();
+  const stemExtents = note.getStem().getExtents();
+  if (note.getStemDirection() === StaveNote.STEM_DOWN) {
+    return stemExtents.baseY - spacing;
+  }
+  // Beamed stems are longer than quarter note stems
+  return stemExtents.topY - spacing * (note.beam ? 1.5 : 1);
+}
+
+// VexFlowPatch: the y from which the text lines of the ornaments below a note are counted: a staff space below its lowest
+//   head or its stem tip (one and a half below a beamed stem tip)
+function getBottomBaseY(note) {
+  const spacing = note.getStave().getSpacingBetweenLines();
+  const stemExtents = note.getStem().getExtents();
+  const noteBottom = Math.max(...note.getYs(),
+    note.hasStem() ? Math.max(stemExtents.topY, stemExtents.baseY) : -Infinity);
+  return noteBottom + spacing * (note.getStemDirection() === StaveNote.STEM_DOWN && note.beam ? 1.5 : 1);
+}
+
 export class Ornament extends Modifier {
   static get CATEGORY() { return 'ornaments'; }
 
@@ -67,7 +89,9 @@ export class Ornament extends Modifier {
     let width = 0;
     for (let i = 0; i < ornaments.length; ++i) {
       const ornament = ornaments[i];
-      const increment = 2;
+      // VexFlowPatch: the accidental marks take text lines too (10: a staff space, as in Articulation.format()), so that the
+      //   next ornament isn't drawn over them
+      const increment = 2 + Math.ceil(ornament.getAccidentalsHeight() / 10);
 
       width = Math.max(ornament.getWidth(), width);
 
@@ -123,6 +147,18 @@ export class Ornament extends Modifier {
 
   getCategory() { return Ornament.CATEGORY; }
 
+  // VexFlowPatch: the height of the ornament's accidental marks below and above its glyph, with their paddings
+  getAccidentalsHeight() {
+    let height = 0;
+    if (this.accidentalLower) {
+      height += this.accidentalLower.getMetrics().height + this.render_options.accidentalLowerPadding;
+    }
+    if (this.accidentalUpper) {
+      height += this.accidentalUpper.getMetrics().height + this.render_options.accidentalUpperPadding;
+    }
+    return height;
+  }
+
   // Set whether the ornament is to be delayed
   setDelayed(delayed) { this.delayed = delayed; return this; }
 
@@ -142,6 +178,36 @@ export class Ornament extends Modifier {
     return this;
   }
 
+  // VexFlowPatch: the other notes at this time with ornaments or articulations on the side of this one: those of the other
+  //   voices in the staff, which share this ornament's ModifierContext, and so the text lines that format() gave them (the
+  //   articulations first, see ModifierContext.PREFORMAT, so an ornament is stacked outside the articulations of other notes)
+  getOtherNotesOnSameSide() {
+    const isTabNote = note => note.getCategory() === 'tabnotes';
+    if (isTabNote(this.note)) {
+      return [];
+    }
+    const context = this.getModifierContext();
+    const modifiers = [...(context?.getModifiers('articulations') ?? []), ...(context?.getModifiers(Ornament.CATEGORY) ?? [])];
+    return modifiers
+      .filter(modifier => modifier.getPosition() === this.position && modifier.note !== this.note && !isTabNote(modifier.note))
+      .map(modifier => modifier.note);
+  }
+
+  // VexFlowPatch: the box of the ornament with its accidentals as draw() renders it, e.g. for a slur that starts or ends at
+  //   the note to keep its distance from it before drawing (see OSMD's GraphicalSlur): left and right from the centre of the
+  //   note head, which draw() centres it on (getModifierStartXY()), unless it is delayed, top and bottom in the stave's
+  //   coordinates
+  getExtent() {
+    // a note's ys follow the stave only when its voice draws it (see getRenderXY())
+    this.note.setStave(this.note.getStave());
+    const { y } = this.getRenderXY();
+    const shift = this.delayed ? this.delayXShift : 0; // (set by getRenderXY())
+    const width = Math.max(...[this.glyph, this.accidentalLower, this.accidentalUpper].filter(glyph => glyph)
+      .map(glyph => glyph.getMetrics().width));
+    const height = this.glyph.getMetrics().height + this.getAccidentalsHeight();
+    return { left: shift - width / 2, right: shift + width / 2, top: y - height, bottom: y };
+  }
+
   // Render ornament in position next to note.
   draw() {
     this.checkContext();
@@ -153,6 +219,68 @@ export class Ornament extends Modifier {
     this.setRendered();
 
     const ctx = this.context;
+    let { x: glyphX, y: glyphY } = this.getRenderXY();
+    const bottomY = glyphY; // VexFlowPatch: the ink's bottom (for layoutInk)
+
+    L('Rendering ornament: ', this.ornament, glyphX, glyphY);
+
+    if (this.accidentalLower) {
+      this.accidentalLower.render(ctx, glyphX, glyphY);
+      glyphY -= this.accidentalLower.getMetrics().height;
+      glyphY -= this.render_options.accidentalLowerPadding;
+    }
+
+    this.glyph.render(ctx, glyphX, glyphY);
+    glyphY -= this.glyph.getMetrics().height;
+
+    if (this.accidentalUpper) {
+      glyphY -= this.render_options.accidentalUpperPadding;
+      this.accidentalUpper.render(ctx, glyphX, glyphY);
+    }
+
+    // VexFlowPatch: record the ink of an ornament above or below the note (see slurClearanceYShift)
+    if (this.position === Modifier.Position.ABOVE || this.position === Modifier.Position.BELOW) {
+      const stave = this.note.getStave();
+      const spacing = stave.getSpacingBetweenLines();
+      const width = this.glyph.getMetrics().width;
+      let top = glyphY;
+      if (this.accidentalUpper) {
+        top -= this.accidentalUpper.getMetrics().height;
+      }
+      // VexFlowPatch: a fermata or an aspiration of the note on this side goes beyond the ornament
+      //   (Articulation.stackedOutsideOrnament), and the ornament's ink covers both
+      let ink = { left: glyphX - width / 2, right: glyphX + width / 2, top, bottom: bottomY };
+      if (!this.delayed) {
+        for (const articulation of this.note.getModifiers()) {
+          if (articulation.getCategory() !== 'stackedarticulations' || articulation.getPosition() !== this.position) {
+            continue;
+          }
+          const above = this.position === Modifier.Position.ABOVE;
+          const edge = above ? ink.top - Ornament.STACKED_ARTICULATION_GAP * spacing
+            : ink.bottom + Ornament.STACKED_ARTICULATION_GAP * spacing;
+          const box = articulation.drawAt(ctx, glyphX, edge);
+          ink = {
+            left: Math.min(ink.left, box.left),
+            right: Math.max(ink.right, box.right),
+            top: Math.min(ink.top, box.top),
+            bottom: Math.max(ink.bottom, box.bottom),
+          };
+        }
+      }
+      this.layoutInk = {
+        left: ink.left - stave.getX(),
+        right: ink.right - stave.getX(),
+        top: ink.top - this.slurClearanceYShift - stave.getYForLine(0),
+        bottom: ink.bottom - this.slurClearanceYShift - stave.getYForLine(0),
+      };
+      // VexFlowPatch: the y_shift the ink was drawn with (see Articulation.draw())
+      this.layoutYShift = this.y_shift || 0;
+    }
+  }
+
+  // VexFlowPatch: where draw() renders the ornament: the x of its centre and the y of its bottom, with its lower accidental
+  //   (from draw(), to get it before drawing, see getExtent())
+  getRenderXY() {
     const stemDir = this.note.getStemDirection();
     const stave = this.note.getStave();
 
@@ -181,8 +309,21 @@ export class Ornament extends Modifier {
       lineSpacing += 0.5;
     }
 
-    const totalSpacing = spacing * (this.text_line + lineSpacing);
-    const glyphYBetweenLines = y - totalSpacing;
+    // VexFlowPatch: the text line of an ornament (see format()) is counted from the outermost of the notes at this time
+    //   with ornaments on its side, i.e. of all voices in the staff (see getOtherNotesOnSameSide()), not only from its own
+    //   note: e.g. the turn of a stem-down note, on text line 2, was drawn at the height of the mordent on text line 0
+    //   above the stem of the stem-up note of another voice a second above, over it.
+    const otherNotes = this.getOtherNotesOnSameSide();
+    for (const note of otherNotes) {
+      // a note's ys follow the stave only when its voice draws it (Voice.draw() sets the stave): a voice drawn after this
+      //   one still has those of the previous draw, e.g. of the skyline's, where the stave was elsewhere
+      note.setStave(note.getStave());
+    }
+    let topBaseY = y - spacing * lineSpacing;
+    for (const note of otherNotes) {
+      topBaseY = Math.min(topBaseY, getTopBaseY(note));
+    }
+    const glyphYBetweenLines = topBaseY - spacing * this.text_line;
 
     // Get initial coordinates for the modifier position
     const start = this.note.getModifierStartXY(this.position, this.index);
@@ -191,18 +332,12 @@ export class Ornament extends Modifier {
     if (this.position === Modifier.Position.BELOW) {
       // VexFlowPatch: Place the entire ornament, including accidentals, below the stave and note.
       // Glyphs are drawn upwards from their bottom origin.
-      const noteBottom = Math.max(...this.note.getYs(),
-        this.note.hasStem() ? Math.max(stemExtents.topY, stemExtents.baseY) : -Infinity);
-      const bottomSpacing = spacing * (this.text_line + 1 +
-        (stemDir === StaveNote.STEM_DOWN && this.note.beam ? 0.5 : 0));
-      let height = this.glyph.getMetrics().height;
-      if (this.accidentalLower) {
-        height += this.accidentalLower.getMetrics().height + this.render_options.accidentalLowerPadding;
+      let bottomBaseY = getBottomBaseY(this.note);
+      for (const note of otherNotes) {
+        bottomBaseY = Math.max(bottomBaseY, getBottomBaseY(note));
       }
-      if (this.accidentalUpper) {
-        height += this.accidentalUpper.getMetrics().height + this.render_options.accidentalUpperPadding;
-      }
-      glyphY = Math.max(stave.getYForBottomText(this.text_line), noteBottom + bottomSpacing) + height;
+      const height = this.glyph.getMetrics().height + this.getAccidentalsHeight();
+      glyphY = Math.max(stave.getYForBottomText(this.text_line), bottomBaseY + spacing * this.text_line) + height;
     }
     if (this.position === Modifier.Position.ABOVE && !this.delayed) {
       // VexFlowPatch: keep the ornament over another voice's up stem that runs through it on this staff at this time.
@@ -224,8 +359,6 @@ export class Ornament extends Modifier {
       }
     }
     glyphY += this.y_shift;
-    // VexFlowPatch: the ink without the slur clearance shift, relative to the stave's left edge and top line
-    const inkGlyphY = glyphY;
     glyphY += this.slurClearanceYShift;
 
     // Ajdust x position if ornament is delayed
@@ -252,56 +385,6 @@ export class Ornament extends Modifier {
       }
       glyphX += delayXShift;
     }
-
-    L('Rendering ornament: ', this.ornament, glyphX, glyphY);
-
-    if (this.accidentalLower) {
-      this.accidentalLower.render(ctx, glyphX, glyphY);
-      glyphY -= this.accidentalLower.getMetrics().height;
-      glyphY -= this.render_options.accidentalLowerPadding;
-    }
-
-    this.glyph.render(ctx, glyphX, glyphY);
-    glyphY -= this.glyph.getMetrics().height;
-
-    if (this.accidentalUpper) {
-      glyphY -= this.render_options.accidentalUpperPadding;
-      this.accidentalUpper.render(ctx, glyphX, glyphY);
-    }
-
-    // VexFlowPatch: record the ink of an ornament above or below the note (see slurClearanceYShift)
-    if (this.position === Modifier.Position.ABOVE || this.position === Modifier.Position.BELOW) {
-      const width = this.glyph.getMetrics().width;
-      let top = glyphY;
-      if (this.accidentalUpper) {
-        top -= this.accidentalUpper.getMetrics().height;
-      }
-      // VexFlowPatch: a fermata or an aspiration of the note on this side goes beyond the ornament
-      //   (Articulation.stackedOutsideOrnament), and the ornament's ink covers both
-      let ink = { left: glyphX - width / 2, right: glyphX + width / 2, top, bottom: inkGlyphY + this.slurClearanceYShift };
-      if (!this.delayed) {
-        for (const articulation of this.note.getModifiers()) {
-          if (articulation.getCategory() !== 'stackedarticulations' || articulation.getPosition() !== this.position) {
-            continue;
-          }
-          const above = this.position === Modifier.Position.ABOVE;
-          const edge = above ? ink.top - Ornament.STACKED_ARTICULATION_GAP * spacing
-            : ink.bottom + Ornament.STACKED_ARTICULATION_GAP * spacing;
-          const box = articulation.drawAt(ctx, glyphX, edge);
-          ink = {
-            left: Math.min(ink.left, box.left),
-            right: Math.max(ink.right, box.right),
-            top: Math.min(ink.top, box.top),
-            bottom: Math.max(ink.bottom, box.bottom),
-          };
-        }
-      }
-      this.layoutInk = {
-        left: ink.left - stave.getX(),
-        right: ink.right - stave.getX(),
-        top: ink.top - this.slurClearanceYShift - stave.getYForLine(0),
-        bottom: ink.bottom - this.slurClearanceYShift - stave.getYForLine(0),
-      };
-    }
+    return { x: glyphX, y: glyphY };
   }
 }

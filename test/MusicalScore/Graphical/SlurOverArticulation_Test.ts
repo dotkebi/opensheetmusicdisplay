@@ -139,8 +139,13 @@ describe("Slur over an articulation", () => {
 
     it("takes a slur over a staccato at its start", () => {
         const slur: GraphicalSlur = slurs()[4];
-        const top: number = measure(3).staffEntries[0].getSkylineMinBeforeSlurs();
+        // the staccato's ink (over the B4, in the staff) relative to the staff line, like the slur: the slur keeps
+        //   SlurNoteHeadYOffset from the marks it goes past (upstream 2.2.1, GraphicalSlur.getYPastArticulations(); before, the
+        //   fork kept 0.3 from the sky line, which is 0 at the staff's top line)
+        const vfnote: any = (measure(3).staffEntries[0].graphicalVoiceEntries[0] as any).vfStaveNote;
+        const staccato: any = vfnote.getModifiers().find((modifier: any) => modifier.type === "a.");
+        const top: number = (staccato.getExtent().top - vfnote.getStave().getYForLine(0)) / unitInPixels;
         const reason: string = `slur start ${slur.bezierStartPt.y}, staccato top ${top}`;
-        expect(slur.bezierStartPt.y, reason).to.be.at.most(top - 0.2);
+        expect(slur.bezierStartPt.y, reason).to.be.at.most(top - 0.4);
     });
 });

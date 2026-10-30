@@ -148,7 +148,8 @@ export class RepetitionInstructionReader {
   /**
    * Reads a repetition instruction (e.g. D.S., Fine, a segno sign) from a direction.
    * @param directionTypeNode the direction-type element (words, segno or coda)
-   * @param relativeMeasurePosition the position of the direction in the measure (not used)
+   * @param relativeMeasurePosition the position of the direction in the measure: a jump at 0 may be taken at the barline
+   *   before, see soundTypeOfJump()
    * @param soundNode the direction's sound element, if any. Its dacapo, dalsegno, fine, tocoda, segno and coda attributes
    *   say which instruction the direction is, before its words (MusicXML: the sound is the playback, the words what is
    *   printed): words that name another instruction or none, e.g. "D.C." with <sound dalsegno> (Arban, Fantaisie
@@ -203,11 +204,15 @@ export class RepetitionInstructionReader {
         //   without a coda sign that the score doesn't have. It still is the coda of a D.C. or D.S. al Coda.
         drawnWords = words.replace(/\s+/g, " ");
       }
-      const newInstruction: RepetitionInstruction = new RepetitionInstruction(measureIndex, type);
+      const jumpSoundType: RepetitionInstructionEnum = RepetitionInstructionReader.soundTypeOfJump(type);
+      const atBarlineBefore: boolean = relativeMeasurePosition === 0 && measureIndex > 0 && jumpSoundType !== undefined &&
+        this.isStatedAtMeasureStart(jumpSoundType);
+      const newInstruction: RepetitionInstruction = new RepetitionInstruction(atBarlineBefore ? measureIndex - 1 : measureIndex, type);
       newInstruction.Words = drawnWords;
-      if (symbolPlacement && type !== RepetitionInstructionEnum.Segno) {
+      if (symbolPlacement && type !== RepetitionInstructionEnum.Segno && !atBarlineBefore) {
         // the words are drawn at the staff of their direction, below it if placed below (Schirmer, Twenty-Four Italian Songs and
         //   Arias, Pur dicesti m111: "D.S. al Fine" below the left hand). (A segno from words stays drawn at the start of the measure.)
+        //   Not a jump taken at the barline before: it belongs to the measure before, where the placement's time doesn't apply.
         newInstruction.SymbolPlacements.push(symbolPlacement);
       }
       newInstruction.MarkedAsTarget = type === RepetitionInstructionEnum.Segno && !!soundNode?.attribute("segno");
@@ -215,7 +220,7 @@ export class RepetitionInstructionReader {
       if (!this.keepOneJumpOfWords(newInstruction, words, soundType !== undefined)) {
         return true;
       }
-      this.addInstruction(this.repetitionInstructions, newInstruction);
+      this.addInstruction(this.repetitionInstructions, newInstruction, atBarlineBefore);
       return true;
     } else if (directionTypeNode.element("segno")) {
       // if (relativeMeasurePosition > 0.5) {
@@ -397,6 +402,52 @@ export class RepetitionInstructionReader {
     return undefined;
   }
 
+  /**
+   * Returns the instruction a sound element states for the jump (see repetitionInstructionFromSound), e.g. a D.S. for a
+   * D.S. al Coda, or undefined if the instruction isn't a jump: a segno or coda sign marks where the music lands.
+   */
+  private static soundTypeOfJump(type: RepetitionInstructionEnum): RepetitionInstructionEnum {
+    switch (type) {
+      case RepetitionInstructionEnum.DaCapo:
+      case RepetitionInstructionEnum.DaCapoAlFine:
+      case RepetitionInstructionEnum.DaCapoAlCoda:
+        return RepetitionInstructionEnum.DaCapo;
+      case RepetitionInstructionEnum.DalSegno:
+      case RepetitionInstructionEnum.DalSegnoAlFine:
+      case RepetitionInstructionEnum.DalSegnoAlCoda:
+        return RepetitionInstructionEnum.DalSegno;
+      case RepetitionInstructionEnum.ToCoda:
+      case RepetitionInstructionEnum.Fine:
+        return type;
+      default:
+        return undefined;
+    }
+  }
+
+  /** Whether a sound element at the start of the current measure (before its first note or forward), in any part,
+   *  states the instruction (see repetitionInstructionFromSound). */
+  private isStatedAtMeasureStart(type: RepetitionInstructionEnum): boolean {
+    for (const partMeasures of this.xmlMeasureList) {
+      for (const node of partMeasures?.[this.currentMeasureIndex]?.elements() ?? []) {
+        if (node.name === "note" || node.name === "forward") {
+          break;
+        }
+        const sounds: IXmlElement[] = node.name === "direction" ? node.elements("sound") : node.name === "sound" ? [node] : [];
+        const directionOffset: IXmlElement = node.name === "direction" ? node.element("offset") : undefined;
+        if (sounds.some((sound: IXmlElement): boolean => {
+          // A sound's offset overrides a playback direction offset; a visual-only offset does not move the sound.
+          const offset: IXmlElement = sound.element("offset") ??
+            (directionOffset?.attribute("sound")?.value === "yes" ? directionOffset : undefined);
+          return (offset === undefined || Number(offset.value) === 0) &&
+            RepetitionInstructionReader.repetitionInstructionFromSound(sound) === type;
+        })) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   /** Whether the instruction type is a D.C. or D.S. (with or without al Fine / al Coda). */
   private static isJumpFromWords(type: RepetitionInstructionEnum): boolean {
     switch (type) {
@@ -566,7 +617,15 @@ export class RepetitionInstructionReader {
     return false;
   }
 
-  private addInstruction(currentRepetitionInstructions: RepetitionInstruction[], newInstruction: RepetitionInstruction): void {
+  /**
+   * Adds the instruction unless the list has it already.
+   * @param atBarlineBefore whether it's a jump read at the start of its measure but taken at the barline before (#1766).
+   *   It goes where words at the end of the measure before would be read, so that the repetition calculator, which handles
+   *   the list in order, treats both the same: before the instructions read since, those of the barline before (a backward
+   *   repeat, an ending's end) and those of its own measure (e.g. an ending's start).
+   */
+  private addInstruction(currentRepetitionInstructions: RepetitionInstruction[], newInstruction: RepetitionInstruction,
+                         atBarlineBefore: boolean = false): void {
     let addInstruction: boolean = true;
     for (let idx: number = 0, len: number = currentRepetitionInstructions.length; idx < len; ++idx) {
       const repetitionInstruction: RepetitionInstruction = currentRepetitionInstructions[idx];
@@ -594,7 +653,15 @@ export class RepetitionInstructionReader {
       }
     }
     if (addInstruction) {
-      currentRepetitionInstructions.push(newInstruction);
+      let index: number = currentRepetitionInstructions.length;
+      // Parts are read in turn, so ordinary instructions can follow another part's right barline.
+      for (let idx: number = 0, len: number = currentRepetitionInstructions.length; atBarlineBefore && idx < len; ++idx) {
+        if (RepetitionInstructionReader.isAfterWordsAtMeasureEnd(currentRepetitionInstructions[idx], newInstruction.measureIndex)) {
+          index = idx;
+          break;
+        }
+      }
+      currentRepetitionInstructions.splice(index, 0, newInstruction);
     }
   }
 
@@ -615,5 +682,12 @@ export class RepetitionInstructionReader {
         instruction.SymbolPlacements.push(placement);
       }
     }
+  }
+
+  /** Whether the instruction is read after words at the end of the measure: at the measure's right barline or later. */
+  private static isAfterWordsAtMeasureEnd(instruction: RepetitionInstruction, measureIndex: number): boolean {
+    return instruction.measureIndex > measureIndex ||
+      instruction.measureIndex === measureIndex && (instruction.type === RepetitionInstructionEnum.BackJumpLine ||
+        instruction.type === RepetitionInstructionEnum.Ending && instruction.alignment !== AlignmentType.Begin);
   }
 }
