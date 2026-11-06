@@ -439,6 +439,11 @@ export class MusicPartManagerIterator {
                 }
             }
             if (repetitionInstruction === currentRepetition.forwardJumpInstruction) {
+                if (this.replayedRepetitionFromWords && currentRepetition.FromWords && currentRepetition !== this.replayedRepetitionFromWords) {
+                    // the Fine of another D.C. / D.S. that ends there too, e.g. the minuet's end for each of its two trios' D.S.
+                    //   (Sperger, Sonata for Violone): only the one being played again ends there (as osmd-dart)
+                    continue;
+                }
                 if (
                   this.JumpResponsibleRepetition !== undefined
                   && currentRepetition !== this.JumpResponsibleRepetition
