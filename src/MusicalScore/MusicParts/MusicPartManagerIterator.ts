@@ -439,8 +439,10 @@ export class MusicPartManagerIterator {
                 }
             }
             if (repetitionInstruction === currentRepetition.forwardJumpInstruction) {
-                if (this.replayedRepetitionFromWords && currentRepetition.FromWords && currentRepetition !== this.replayedRepetitionFromWords) {
-                    // the Fine of another D.C. / D.S. that ends there too, e.g. the minuet's end for each of its two trios' D.S.
+                if (this.replayedRepetitionFromWords && currentRepetition.FromWords && currentRepetition !== this.replayedRepetitionFromWords &&
+                    repetitionInstruction.Implicit) {
+                    // the end of the previous movement that another D.C. / D.S. went back to (not drawn, see
+                    //   RepetitionCalculator.endAtPreviousMovementEnd()), e.g. the minuet's end for each of its two trios' D.S.
                     //   (Sperger, Sonata for Violone): only the one being played again ends there (as osmd-dart)
                     continue;
                 }
