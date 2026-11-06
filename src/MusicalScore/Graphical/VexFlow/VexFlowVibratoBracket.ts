@@ -22,10 +22,20 @@ export class VexFlowVibratoBracket extends GraphicalWavyLine {
      *  piano m57): the bracket ends in front of that note's trill mark and modifiers, not at the end of the note, which drew
      *  it through the next trill mark and raised it over everything on that note (81sabo review rows, bundle C 10-24). */
     public stopBeforeEndNote: boolean = false;
+    /** The middle of a wavy bracket line under the staff (WavyLine.IsBracket, placement below), in staff spaces under the top
+     *  line; undefined for a line over the staff (at line over the top text position). */
+    public belowLine: number = undefined;
+    /** No room for a wave between the trill mark and where the line ends (the layout found it narrower than one wave): not
+     *  drawn. */
+    public noRoom: boolean = false;
     private isVibrato: boolean = false;
     private toEndOfStopStave: boolean = false;
     public get ToEndOfStopStave(): boolean {
         return this.toEndOfStopStave;
+    }
+    /** Lets the bracket go to the end of the stop note's stave or not (a wavy bracket line: to its stop time). */
+    public setToEndOfStopStave(toEnd: boolean): void {
+        this.toEndOfStopStave = toEnd;
     }
 
     constructor(wavyLine: WavyLine, parentBBox: BoundingBox, tabVibrato: boolean = false) {
@@ -178,7 +188,11 @@ export class VexFlowVibratoBracket extends GraphicalWavyLine {
 			stop: this.endNote,
             toEndOfStopStave: this.toEndOfStopStave,
             stopBeforeNote: this.nextVfVoiceEntry?.vfStaveNote,
-            stopBeforeEndNote: this.stopBeforeEndNote
+            stopBeforeEndNote: this.stopBeforeEndNote,
+            // a wavy bracket line: no trill mark in front, and under the staff at belowLine
+            noTrillOffset: this.getWavyLine.IsBracket,
+            belowLine: this.belowLine,
+            noRoom: this.noRoom,
 		});
         bracket.setLine(this.line);
         if (this.isVibrato) {

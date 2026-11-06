@@ -232,6 +232,7 @@ export class Ornament extends Modifier {
 
     this.glyph.render(ctx, glyphX, glyphY);
     glyphY -= this.glyph.getMetrics().height;
+    const glyphTopY = glyphY; // VexFlowPatch: the glyph's own top (for layoutInk.glyphTop)
 
     if (this.accidentalUpper) {
       glyphY -= this.render_options.accidentalUpperPadding;
@@ -267,11 +268,16 @@ export class Ornament extends Modifier {
           };
         }
       }
+      // (without the raise over a slur as drawn, see getRenderXY())
+      const slurShift = this.appliedSlurClearanceYShift ?? this.slurClearanceYShift;
       this.layoutInk = {
         left: ink.left - stave.getX(),
         right: ink.right - stave.getX(),
-        top: ink.top - this.slurClearanceYShift - stave.getYForLine(0),
-        bottom: ink.bottom - this.slurClearanceYShift - stave.getYForLine(0),
+        top: ink.top - slurShift - stave.getYForLine(0),
+        bottom: ink.bottom - slurShift - stave.getYForLine(0),
+        // VexFlowPatch: the top of the glyph itself, without an accidental mark over it and the articulations stacked over it:
+        //   a trill's wavy line goes through the glyph (Mozart K.313 I m137: the line was drawn at the ♮ over the tr)
+        glyphTop: glyphTopY - slurShift - stave.getYForLine(0),
       };
       // VexFlowPatch: the y_shift the ink was drawn with (see Articulation.draw())
       this.layoutYShift = this.y_shift || 0;
@@ -328,7 +334,10 @@ export class Ornament extends Modifier {
     // Get initial coordinates for the modifier position
     const start = this.note.getModifierStartXY(this.position, this.index);
     let glyphX = start.x;
-    let glyphY = Math.min(stave.getYForTopText(this.text_line), glyphYBetweenLines);
+    const topTextY = stave.getYForTopText(this.text_line);
+    let glyphY = Math.min(topTextY, glyphYBetweenLines);
+    // VexFlowPatch: the note-relative place (without the top text position), for the raise over a slur below
+    let noteRelativeY = glyphYBetweenLines;
     if (this.position === Modifier.Position.BELOW) {
       // VexFlowPatch: Place the entire ornament, including accidentals, below the stave and note.
       // Glyphs are drawn upwards from their bottom origin.
@@ -356,10 +365,21 @@ export class Ornament extends Modifier {
         // was placed: take its stem relative to its first notehead and put that head on this stave.
         const tip = other.getStem().getExtents().topY - other.getYs()[0] + stave.getYForNote(other.getKeyProps()[0].line);
         glyphY = Math.min(glyphY, tip - spacing * 0.4);
+        noteRelativeY = Math.min(noteRelativeY, tip - spacing * 0.4);
       }
     }
     glyphY += this.y_shift;
-    glyphY += this.slurClearanceYShift;
+    // VexFlowPatch: the raise over a slur moves the ornament's note-relative place. An ornament above at a raised top text
+    //   position (over the default 1: the stave's, raised for a trill's wavy line over the slur: VexFlowMusicSheetCalculator
+    //   .calculateWavyLineSkyBottomLine) goes only as far over it as that place goes: it was raised twice, over its wavy
+    //   line (Berwald Op.2 m24·74, 81sabo bundle B5 11-07)
+    let slurShift = this.slurClearanceYShift;
+    if (this.position === Modifier.Position.ABOVE && slurShift < 0 && stave.options.top_text_position > 1 &&
+        noteRelativeY > topTextY) {
+      slurShift = Math.min(0, noteRelativeY + slurShift - topTextY);
+    }
+    this.appliedSlurClearanceYShift = slurShift;
+    glyphY += slurShift;
 
     // Ajdust x position if ornament is delayed
     if (this.delayed) {

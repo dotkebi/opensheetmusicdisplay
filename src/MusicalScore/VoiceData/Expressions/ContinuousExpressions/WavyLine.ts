@@ -16,4 +16,8 @@ export class WavyLine extends AbstractExpression {
      *  on the main note. Undefined if the wavy line stops at a main note (or doesn't stop).
      */
     public EndGraceVoiceEntry: VoiceEntry;
+    /** A wavy line of a `<bracket line-type="wavy">` direction, not a trill's `<wavy-line>`: it has no trill mark and spans from
+     *  its start to its stop time, at its placement (Sperger, Sonata for violone and basso, Adagio m11–14 and Trio I m1–24: a
+     *  wavy line under the notes, which was not read). */
+    public IsBracket: boolean = false;
 }

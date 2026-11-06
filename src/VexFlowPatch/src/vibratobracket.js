@@ -35,6 +35,12 @@ export class VibratoBracket extends Element {
     //VexFlowPatch: option to end in front of the stop note itself, before its modifiers and its own trill mark's ink: the
     //  stop note starts a trill of its own (Weber Op.74 III m236·237, Schubert Ganymed piano m57)
     this.stopBeforeEndNote = bracket_data.stopBeforeEndNote;
+    //VexFlowPatch: a wavy line of a bracket direction (OSMD WavyLine.IsBracket): no trill mark to leave room for, and drawn
+    //  under the stave with its middle at this line (in staff spaces under the top line) when given
+    this.noTrillOffset = bracket_data.noTrillOffset;
+    this.belowLine = bracket_data.belowLine;
+    //VexFlowPatch: no room for a wave, as the layout found (OSMD VexFlowVibratoBracket.noRoom): not drawn
+    this.noRoom = bracket_data.noRoom;
 
     this.line = 1;
 
@@ -76,6 +82,9 @@ export class VibratoBracket extends Element {
     return undefined;
   }
 
+  // VexFlowPatch: the narrowest line drawn, in pixels (one wave: twice the wave width)
+  static get MINIMUM_WIDTH() { return 8; }
+
   // Set line position of the vibrato bracket
   setLine(line) { this.line = line; return this; }
   setHarsh(harsh) { this.render_options.harsh = harsh; return this; }
@@ -84,9 +93,8 @@ export class VibratoBracket extends Element {
   draw() {
     const ctx = this.context;
     this.setRendered();
-    const y = (this.start)
-      ? this.start.getStave().getYForTopText(this.line)
-      : this.stop.getStave().getYForTopText(this.line);
+    const stave = (this.start) ? this.start.getStave() : this.stop.getStave();
+    const y = this.belowLine !== undefined ? stave.getYForLine(this.belowLine) : stave.getYForTopText(this.line);
 
     // If start note is not set then vibrato will be drawn
     // from the beginning of the stave
@@ -94,7 +102,7 @@ export class VibratoBracket extends Element {
     if(this.start) {
         let trillOffset = 0;
         // VexFlowPatch: If we have a trill mark accompanying, need to allow space for it
-        for(const modifier of this.start.modifiers) {
+        for(const modifier of (this.noTrillOffset ? [] : this.start.modifiers)) {
           if(modifier && modifier.type === "tr") {
             trillOffset = modifier.glyph.bbox.w;
             break;
@@ -130,6 +138,11 @@ export class VibratoBracket extends Element {
     }
 
     this.render_options.vibrato_width = stop_x - start_x;
+    // VexFlowPatch: no line narrower than one wave: a piece between a trill mark and the next trill's showed as a speck over
+    //   the marks (Saint-Saëns Op.61 m59, 81sabo bundle B5 11-07)
+    if (this.noRoom || this.render_options.vibrato_width < VibratoBracket.MINIMUM_WIDTH) {
+      return;
+    }
 
     L('Rendering VibratoBracket: start_x:', start_x, 'stop_x:', stop_x, 'y:', y);
 
