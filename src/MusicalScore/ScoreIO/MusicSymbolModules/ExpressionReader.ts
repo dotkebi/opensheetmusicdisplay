@@ -75,6 +75,8 @@ export class ExpressionReader {
     private openContinuousTempoExpression: ContinuousTempoExpression;
     private activeInstantaneousDynamic: InstantaneousDynamicExpression;
     private openOctaveShifts: Map<number, OctaveShift> = new Map();
+    /** The enclosure of the <words> being read (interpretWords()), for its UnknownExpression. */
+    private wordsEnclosure: string;
     private pendingOctaveShiftStops: Map<number, {measure: SourceMeasure, endTimestamp: Fraction}> = new Map();
     private lastWedge: ContinuousDynamicExpression;
     /** Wedge stops with an <offset> read in the current measure, closed at its end (resolvePendingWedgeStops()). */
@@ -1031,6 +1033,7 @@ export class ExpressionReader {
         }
     }
     private interpretWords(wordsNode: IXmlElement, text: string, currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction): void {
+        this.wordsEnclosure = wordsNode.attribute("enclosure")?.value;
         if (currentMeasure.Rules.IgnoreBracketsWords && (
             /^\(\s*\)$/.test(text) || /^\[\s*\]$/.test(text) // (*) and [*]
         )) { // regex: brackets with arbitrary white space in-between
@@ -1549,6 +1552,8 @@ export class ExpressionReader {
         unknownExpression.ColorXML = fontColor;
         unknownExpression.language = language;
         unknownExpression.defaultYXml = defaultYXml;
+        unknownExpression.enclosure = this.wordsEnclosure;
+        this.wordsEnclosure = undefined;
         unknownExpression.parentMeasure = currentMeasure;
         unknownMultiExpression.addExpression(unknownExpression, prefix);
         this.addWordExpressionForDashes(unknownExpression, inSourceMeasureCurrentFraction);

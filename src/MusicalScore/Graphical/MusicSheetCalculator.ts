@@ -1560,6 +1560,7 @@ export abstract class MusicSheetCalculator {
                                                                 undefined,
                                                                 undefined,
                                                                 this.expressionDashesEndX(lastEntry?.expression, staffLine, staffIndex));
+        graphLabel.Enclosure = (entries[0]?.expression as UnknownExpression)?.enclosure;
         const colorXML: string = entries[0]?.expression.ColorXML;
         if (this.rules.ExpressionsUseXMLColor && colorXML) {
             graphLabel.ColorXML = colorXML;
@@ -1727,8 +1728,7 @@ export abstract class MusicSheetCalculator {
     public static wordsQualifyFollowingDynamic(text: string): boolean {
         const words: string = text.trim().toLowerCase().replace(/[,;:]+$/, "").replace(/\s+/g, " ");
         if (["sempre", "più", "piu", "piú", "poco", "molto", "subito", "sub.", "meno", "ben", "quasi", "sempre più", "sempre piu",
-             "poco più", "poco piu", "molto più", "molto piu", "un poco", "più che", "piu che",
-             "mezzo"].includes(words)) { // "mezzo f" (Reger's Gretchen am Spinnrade m8, m37)
+             "poco più", "poco piu", "molto più", "molto piu", "un poco", "più che", "piu che"].includes(words)) {
             return true;
         }
         const tokens: string[] = words.split(" ");
