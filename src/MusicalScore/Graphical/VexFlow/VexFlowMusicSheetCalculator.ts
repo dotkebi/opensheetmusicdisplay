@@ -4578,17 +4578,21 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       hasCodaGlyphAfterText = false;
     }
     const fontHeightUnits: number = 1.6; // staverepetition.js draws the text with a 12pt (16px) font
+    // (words of the score in their own weight and style, see RepetitionInstruction.WordsFont, else bold italic)
+    const fontWeight: string = (repetition as any).font?.weight ?? "bold italic";
+    const fontStyle: FontStyles = fontWeight.includes("bold") ? (fontWeight.includes("italic") ? FontStyles.BoldItalic : FontStyles.Bold) :
+      fontWeight.includes("italic") ? FontStyles.Italic : FontStyles.Regular;
     let textWidthUnits: number = 0;
     if (text.length > 0 && this.rules.VexFlowTextFontFamily && MusicSheetCalculator.TextMeasurer.computeTextWidthInCssFont) {
       // measure in the CSS font that staverepetition.js draws with, whose family can also be a generic family or a list
       const measureFontSize: number = 20;
       textWidthUnits = MusicSheetCalculator.TextMeasurer.computeTextWidthInCssFont(
-        text, `italic bold ${measureFontSize}px ${this.rules.VexFlowTextFontFamily}`) / measureFontSize * fontHeightUnits;
+        text, `${fontWeight === "normal" ? "" : fontWeight + " "}${measureFontSize}px ${this.rules.VexFlowTextFontFamily}`) / measureFontSize * fontHeightUnits;
     } else if (text.length > 0) {
       // measure with the same font family string ("times") that staverepetition.js draws with,
       //   so that the measured width matches the drawn width even if the font falls back to another one
       textWidthUnits = MusicSheetCalculator.TextMeasurer.computeTextWidthToHeightRatio(
-        text, Fonts.TimesNewRoman, FontStyles.BoldItalic, "times") * fontHeightUnits;
+        text, Fonts.TimesNewRoman, fontStyle, "times") * fontHeightUnits;
     }
     const glyphWidthUnits: number = 2.4; // coda/segno glyph width (plus the 12px gap after the text for symbol_x)
     const measureStartX: number = measure.PositionAndShape.RelativePosition.x;

@@ -432,6 +432,7 @@ export class RepetitionCalculator {
                                                 currentRepetition.RepetitonUnderConstruction);
                     // (a coda written as words is drawn as written, where it is written)
                     currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.Words = currentRepetitionInstruction.Words;
+                    currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.WordsFont = currentRepetitionInstruction.WordsFont;
                     currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.SymbolPlacements =
                       currentRepetitionInstruction.SymbolPlacements.slice();
                     this.currentMeasure.LastRepetitionInstructions.push(currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction);
@@ -713,6 +714,7 @@ export class RepetitionCalculator {
    */
   private drawAsRead(instruction: RepetitionInstruction, readInstruction: RepetitionInstruction): void {
       instruction.Words = readInstruction?.Words;
+      instruction.WordsFont = readInstruction?.WordsFont;
       instruction.SymbolPlacements = readInstruction?.SymbolPlacements.slice() ?? [];
   }
 
@@ -771,7 +773,10 @@ export class RepetitionCalculator {
         !this.isDrawnOnlySegno(instruction) &&
         (segnoLabel === undefined || instruction.SegnoLabel === undefined || instruction.SegnoLabel === segnoLabel));
       if (!segno) {
+          // No segno is printed there (only a <sound segno> of the measure, or none at all: the start of the movement): the jump
+          //   lands there, but nothing is drawn for it.
           segno = new RepetitionInstruction(segnoMeasureIndex, RepetitionInstructionEnum.Segno, AlignmentType.Begin);
+          segno.Implicit = true;
           firstInstructions.splice(0, 0, segno);
       }
       segno.parentRepetition = repContainer.RepetitonUnderConstruction;
@@ -833,23 +838,46 @@ export class RepetitionCalculator {
       if (this.movementStartIndex === 0 || startMeasureIndex < this.movementStartIndex) {
           return -1;
       }
-      const previousStart: number = this.previousMovementStartIndex();
       const named: (instruction: RepetitionInstruction) => boolean = (instruction: RepetitionInstruction): boolean =>
           segnoLabel === undefined || instruction.SegnoLabel === undefined || instruction.SegnoLabel === segnoLabel;
-      let segno: number = -1;
-      for (const instruction of this.repetitionInstructions) {
-          if (instruction.type === RepetitionInstructionEnum.Segno && named(instruction) && !this.isDrawnOnlySegno(instruction) &&
-              instruction.measureIndex >= previousStart && instruction.measureIndex < this.movementStartIndex) {
-              segno = Math.max(segno, instruction.measureIndex);
+      // A segno the D.S. names may be in an earlier movement than the previous one: each trio of a minuet with two trios goes
+      //   back to the minuet's segno (Sperger, Sonata for Violone, both trios' <sound dalsegno="menuetto">). Without a name,
+      //   only the previous movement.
+      let end: number = this.movementStartIndex;
+      while (end > 0) {
+          const start: number = this.movementStartBefore(end);
+          let segno: number = -1;
+          for (const instruction of this.repetitionInstructions) {
+              if (instruction.type === RepetitionInstructionEnum.Segno && named(instruction) &&
+                  (end === this.movementStartIndex || instruction.SegnoLabel !== undefined && instruction.SegnoLabel === segnoLabel) &&
+                  !this.isDrawnOnlySegno(instruction) && instruction.measureIndex >= start && instruction.measureIndex < end) {
+                  segno = Math.max(segno, instruction.measureIndex);
+              }
+          }
+          if (segno >= 0) {
+              const segnoEnd: number = end;
+              const takenThere: boolean = this.repetitionInstructions.some(instruction =>
+                  RepetitionCalculator.isDalSegno(instruction.type) && named(instruction) &&
+                  instruction.measureIndex >= segno && instruction.measureIndex < segnoEnd);
+              return takenThere ? -1 : segno;
+          }
+          if (segnoLabel === undefined) {
+              return -1;
+          }
+          end = start;
+      }
+      return -1;
+  }
+
+  /** The first measure of the movement before the one that starts at movementStart. */
+  private movementStartBefore(movementStart: number): number {
+      let start: number = 0;
+      for (const candidate of this.movementStartIndices) {
+          if (candidate < movementStart) {
+              start = Math.max(start, candidate);
           }
       }
-      if (segno < 0) {
-          return -1;
-      }
-      const takenThere: boolean = this.repetitionInstructions.some(instruction =>
-          RepetitionCalculator.isDalSegno(instruction.type) && named(instruction) &&
-          instruction.measureIndex >= segno && instruction.measureIndex < this.movementStartIndex);
-      return takenThere ? -1 : segno;
+      return start;
   }
 
   /** The first measure of the movement before the current one. */
@@ -869,7 +897,11 @@ export class RepetitionCalculator {
    * minuet again, not the trio too.
    */
   private endAtPreviousMovementEnd(container: RepetitionBuildingContainer): void {
-      const endIndex: number = this.movementStartIndex - 1;
+      // (the end of the segno's movement, which may be before the previous one)
+      const segnoIndex: number = container.RepetitonUnderConstruction.StartIndex;
+      const segnoMovementEnd: number = this.movementStartIndices.find(movementStart => movementStart > segnoIndex);
+      const endIndex: number = (segnoIndex >= 0 && segnoIndex < this.movementStartIndex && segnoMovementEnd !== undefined ?
+          segnoMovementEnd : this.movementStartIndex) - 1;
       const fine: RepetitionInstruction = new RepetitionInstruction(endIndex, RepetitionInstructionEnum.Fine, AlignmentType.Begin,
                                                                     container.RepetitonUnderConstruction);
       fine.Implicit = true;
