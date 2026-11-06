@@ -539,6 +539,95 @@ export class Beam extends Element {
     this.y_shift = yShift;
   }
 
+  // VexFlowPatch: a beam with stems in both directions has noteheads on both sides. calculateSlope() only looks at the
+  //   stem tips in the beam's direction, so the beam could run through the heads of the notes whose stems point the
+  //   other way (Sperger, Sonata for violone and basso, Basso I m30/50-52/75). Only for such a beam in one stave
+  //   (OSMD places beams across staves itself) that runs into a head (less than half a staff space from a head's centre
+  //   to the beam): for a clearance of 1, 0.75 and then 0.5 staff spaces from the head centres on each side, the slope
+  //   nearest the computed one (up to twice the usual maximum) that leaves a free band between the two groups of heads,
+  //   the beam moved the least into it; else, the slope and place that keeps the beam furthest from all heads. A new place
+  //   is taken only when it keeps the beam further from the heads than before. Same as vexflow-dart Beam.fitMixedStems().
+  fitMixedStems() {
+    const { notes, stem_direction: dir, render_options: { max_slope, min_slope, slope_iterations, beam_width } } = this;
+    // (a note without its ys yet, e.g. before its stave is set, can't be placed: leave the beam)
+    if (notes.some(note => !note.isRest() && !(note.ys && note.ys.length > 0))) return;
+    const heads = notes.filter(note => !note.isRest());
+    if (!heads.some(note => note.getStemDirection() !== dir)) return;
+    const stave = notes[0].getStave && notes[0].getStave();
+    if (!stave || notes.some(note => note.getStave() !== stave)) return;
+    const firstX = notes[0].getStemX();
+    const firstTipY = this.getBeamYToDraw();
+    const space = stave.getSpacingBetweenLines();
+    const thickness = beam_width + (this.getBeamCount() - 1) * beam_width * 1.5;
+    // the smallest distance from a head's centre to the beam block (negative: inside it) for a slope and the beam line's y
+    //   at the first stem
+    const clearance = (slope, lineY) => {
+      let gap = Infinity;
+      for (const note of heads) {
+        const line = lineY + slope * (note.getStemX() - firstX);
+        const top = dir === Stem.UP ? line : line - thickness;
+        const bottom = dir === Stem.UP ? line + thickness : line;
+        for (const y of note.getYs()) {
+          gap = Math.min(gap, y < top ? top - y : y > bottom ? y - bottom : -Math.min(y - top, bottom - y));
+        }
+      }
+      return gap;
+    };
+    // bounds of dir * (beam line y at the first stem) keeping each group on its side, a distance away
+    const band = (slope, distance) => {
+      let low = -Infinity;
+      let high = Infinity;
+      for (const note of heads) {
+        const along = dir * slope * (note.getStemX() - firstX);
+        const ys = note.getYs();
+        if (note.getStemDirection() === dir) {
+          const near = dir === Stem.UP ? Math.min(...ys) : Math.max(...ys);
+          high = Math.min(high, dir * near - thickness - distance - along);
+        } else {
+          const near = dir === Stem.UP ? Math.max(...ys) : Math.min(...ys);
+          low = Math.max(low, dir * near + distance - along);
+        }
+      }
+      return { low, high };
+    };
+    const currentLineY = firstTipY + this.y_shift;
+    const before = clearance(this.slope, currentLineY);
+    if (before >= space / 2) return;
+    const current = dir * currentLineY;
+    const increment = (max_slope - min_slope) / slope_iterations;
+    const slopes = [];
+    for (let candidate = 2 * min_slope; candidate <= 2 * max_slope + 1e-9; candidate += increment) {
+      slopes.push(candidate);
+    }
+    slopes.sort((a, b) => Math.abs(a - this.slope) - Math.abs(b - this.slope));
+    slopes.unshift(this.slope);
+    let best;
+    for (const distance of [space, 0.75 * space, 0.5 * space]) {
+      for (const slope of slopes) {
+        const { low, high } = band(slope, distance);
+        if (low <= high) {
+          best = { slope, lineY: dir * Math.min(high, Math.max(low, current)) };
+          break;
+        }
+      }
+      if (best) break;
+    }
+    if (!best) {
+      // no free band: the place (between the two groups' bounds) furthest from all heads
+      for (const slope of slopes) {
+        const { low, high } = band(slope, 0);
+        for (const lineY of [low, high, (low + high) / 2, current].map(v => dir * v)) {
+          const gap = clearance(slope, lineY);
+          if (!best || gap > best.gap) best = { slope, lineY, gap };
+        }
+      }
+    }
+    if (clearance(best.slope, best.lineY) > before + 0.01) {
+      this.slope = best.slope;
+      this.y_shift = best.lineY - firstTipY;
+    }
+  }
+
   // Calculate a slope and y-shift for flat beams
   calculateFlatSlope() {
     const {
@@ -897,6 +986,7 @@ export class Beam extends Element {
       this.calculateFlatSlope();
     } else {
       this.calculateSlope();
+      this.fitMixedStems();
     }
     this.applyStemExtensions();
 
