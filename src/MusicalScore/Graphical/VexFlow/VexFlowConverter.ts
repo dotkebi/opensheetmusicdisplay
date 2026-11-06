@@ -1061,6 +1061,9 @@ export class VexFlowConverter {
         const otherVoiceSounding: boolean = gNote.sourceNote.ParentVoiceEntry.Articulations.length > 0 &&
             beamNotes.some((note: Note) => VexFlowConverter.otherVoiceSoundsDuring(note.ParentVoiceEntry));
         for (const articulation of gNote.sourceNote.ParentVoiceEntry.Articulations) {
+            if (articulation.printObject === false) {
+                continue; // of a <notations print-object="no">: played only
+            }
             let vfArtPosition: number = VF.Modifier.Position.ABOVE;
 
             if (otherVoiceSounding) {

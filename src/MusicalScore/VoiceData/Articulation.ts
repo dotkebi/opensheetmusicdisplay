@@ -7,6 +7,8 @@ export class Articulation {
     public articulationEnum: ArticulationEnum;
     /** The `<breath-mark>` value of a breath mark (comma otherwise). */
     public breathMark: BreathMarkValue = BreathMarkValue.comma;
+    /** False for an articulation of a `<notations print-object="no">`: played, not drawn. */
+    public printObject: boolean = true;
 
     constructor(articulationEnum: ArticulationEnum, placement: PlacementEnum) {
         this.articulationEnum = articulationEnum;
@@ -15,7 +17,7 @@ export class Articulation {
 
     public Equals(otherArticulation: Articulation): boolean {
         return otherArticulation.articulationEnum === this.articulationEnum && otherArticulation.placement === this.placement &&
-            otherArticulation.breathMark === this.breathMark;
+            otherArticulation.breathMark === this.breathMark && otherArticulation.printObject === this.printObject;
     }
 }
 

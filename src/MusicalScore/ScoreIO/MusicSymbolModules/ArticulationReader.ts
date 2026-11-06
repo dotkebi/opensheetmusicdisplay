@@ -1,4 +1,5 @@
-﻿import {ArticulationEnum, VoiceEntry} from "../../VoiceData/VoiceEntry";
+﻿import { Staff } from "../../VoiceData/Staff";
+import {ArticulationEnum, VoiceEntry} from "../../VoiceData/VoiceEntry";
 import {IXmlAttribute, IXmlElement} from "../../../Common/FileIO/Xml";
 import log from "loglevel";
 import {TechnicalInstruction, TechnicalInstructionType} from "../../VoiceData/Instructions/TechnicalInstruction";
@@ -69,7 +70,8 @@ export class ArticulationReader {
    * @param node
    * @param currentVoiceEntry
    */
-  public addArticulationExpression(node: IXmlElement, currentVoiceEntry: VoiceEntry): void {
+  /** printObject false: the articulations of a `<notations print-object="no">`, kept for playback, not drawn. */
+  public addArticulationExpression(node: IXmlElement, currentVoiceEntry: VoiceEntry, printObject: boolean = true): void {
     if (node !== undefined && node.elements().length > 0) {
       const childNodes: IXmlElement[] = node.elements();
       for (let idx: number = 0, len: number = childNodes.length; idx < len; ++idx) {
@@ -88,6 +90,7 @@ export class ArticulationReader {
               placement = PlacementEnum.Below;
             }
             const newArticulation: Articulation = new Articulation(articulationEnum, placement);
+            newArticulation.printObject = printObject;
             // staccato should be first // necessary?
             if (name === "staccato") {
               if (currentVoiceEntry.Articulations.length > 0 &&
@@ -109,11 +112,16 @@ export class ArticulationReader {
                 newArticulation.articulationEnum = ArticulationEnum.marcatodown;
               }
             }
-            else if (articulationEnum === ArticulationEnum.softaccent) {
-              const staffId: number = currentVoiceEntry.ParentSourceStaffEntry.ParentStaff.Id - 1;
+            else if (articulationEnum === ArticulationEnum.softaccent && printObject) {
+              // The staff's index in the sheet (StaffLinkedExpressions): Staff.Id counts within the instrument, so the soft
+              //   accent of a piano's upper staff was drawn on the first staff of the score (Schumann, Adagio und Allegro
+              //   Op. 70 full score: the piano's <> above the horn). idInMusicSheet is only set after reading.
+              const staff: Staff = currentVoiceEntry.ParentSourceStaffEntry.ParentStaff;
+              const staffId: number = staff.ParentInstrument.GetMusicSheet.getGlobalStaffIndexOfFirstStaff(staff.ParentInstrument) +
+                staff.Id - 1;
               if (placement === PlacementEnum.NotYetDefined) {
                 placement = PlacementEnum.Above;
-                if (staffId > 0) {
+                if (staff.Id > 1) {
                   placement = PlacementEnum.Below;
                 }
                 // TODO place according to whether the corresponding note is higher (-> above) or lower (-> below)

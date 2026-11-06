@@ -157,8 +157,23 @@ export class VoiceGenerator {
         this.voice.Parent.HasLyrics = true;
       }
       let hasTupletCommand: boolean = false;
-      const notationNode: IXmlElement = noteNode.element("notations");
-      if (notationNode) {
+      // A note can have several <notations>, all are read: only the first was, so a hidden staccato written before the
+      //   visible tremolo was drawn and the rest of the note's notations lost (Weber, Bassoon Concerto Op. 75 I horn m222).
+      //   A <notations print-object="no"> is not drawn: its articulations are kept for playback only
+      //   (Articulation.printObject), its ties as they are, the rest is ignored (81sabo keeps uncertain readings there,
+      //   Stamitz, Viola Concerto No. 2). As osmd_dart.
+      for (const notationNode of noteNode.elements("notations")) {
+        if (notationNode.attribute("print-object")?.value === "no") {
+          const hiddenArticulations: IXmlElement = notationNode.element("articulations");
+          if (this.articulationReader && hiddenArticulations) {
+            this.articulationReader.addArticulationExpression(hiddenArticulations, this.currentVoiceEntry, false);
+          }
+          const hiddenTies: IXmlElement[] = notationNode.elements("tied");
+          if (hiddenTies.length > 0) {
+            this.addTie(hiddenTies, measureStartAbsoluteTimestamp, maxTieNoteFraction, TieTypes.SIMPLE);
+          }
+          continue;
+        }
         // read articulations
         if (this.articulationReader) {
           this.readArticulations(notationNode, this.currentVoiceEntry, this.currentNote);

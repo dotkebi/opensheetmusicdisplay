@@ -1727,7 +1727,8 @@ export abstract class MusicSheetCalculator {
     public static wordsQualifyFollowingDynamic(text: string): boolean {
         const words: string = text.trim().toLowerCase().replace(/[,;:]+$/, "").replace(/\s+/g, " ");
         if (["sempre", "più", "piu", "piú", "poco", "molto", "subito", "sub.", "meno", "ben", "quasi", "sempre più", "sempre piu",
-             "poco più", "poco piu", "molto più", "molto piu", "un poco", "più che", "piu che"].includes(words)) {
+             "poco più", "poco piu", "molto più", "molto piu", "un poco", "più che", "piu che",
+             "mezzo"].includes(words)) { // "mezzo f" (Reger's Gretchen am Spinnrade m8, m37)
             return true;
         }
         const tokens: string[] = words.split(" ");
@@ -5841,8 +5842,9 @@ export abstract class MusicSheetCalculator {
                         const graphicalStaffEntry: GraphicalStaffEntry = measure.staffEntries[idx5];
                         for (let idx6: number = 0, len6: number = graphicalStaffEntry.sourceStaffEntry.VoiceEntries.length; idx6 < len6; ++idx6) {
                             const voiceEntry: VoiceEntry = graphicalStaffEntry.sourceStaffEntry.VoiceEntries[idx6];
-                            if (voiceEntry.Articulations.length > 0) {
-                                this.layoutArticulationMarks(voiceEntry.Articulations, voiceEntry, graphicalStaffEntry);
+                            const drawnArticulations: Articulation[] = voiceEntry.Articulations.filter(a => a.printObject !== false);
+                            if (drawnArticulations.length > 0) {
+                                this.layoutArticulationMarks(drawnArticulations, voiceEntry, graphicalStaffEntry);
                             }
                         }
                     }
