@@ -370,11 +370,12 @@ export class Ornament extends Modifier {
     }
     glyphY += this.y_shift;
     // VexFlowPatch: the raise over a slur moves the ornament's note-relative place. An ornament above at a raised top text
-    //   position (the stave's, raised for a trill's wavy line over the slur: VexFlowMusicSheetCalculator
+    //   position (over the default 1: the stave's, raised for a trill's wavy line over the slur: VexFlowMusicSheetCalculator
     //   .calculateWavyLineSkyBottomLine) goes only as far over it as that place goes: it was raised twice, over its wavy
     //   line (Berwald Op.2 m24·74, 81sabo bundle B5 11-07)
     let slurShift = this.slurClearanceYShift;
-    if (this.position === Modifier.Position.ABOVE && slurShift < 0 && noteRelativeY > topTextY) {
+    if (this.position === Modifier.Position.ABOVE && slurShift < 0 && stave.options.top_text_position > 1 &&
+        noteRelativeY > topTextY) {
       slurShift = Math.min(0, noteRelativeY + slurShift - topTextY);
     }
     this.appliedSlurClearanceYShift = slurShift;

@@ -59,7 +59,7 @@ describe("Trill wavy line extent", () => {
         expect(spans).to.deep.equal([
             "m1@1/4-m1@5/8", // chord note F#5 (D5 at 1/4) to the grace notes' entry (G5)
             "m2@1/4-m2@5/8",
-            "m3@3/4-m4@0/1", // into the next measure
+            "m3@3/4-m3@3/4", // stops on the next measure's first note: at the barline (bundle B5)
         ]);
     });
 });

@@ -3579,8 +3579,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   /** Between a wavy bracket line under the staff and the ink over it, in units. */
   private static readonly wavyBracketBelowClearance: number = 0.5;
 
-  /** The measure before the stop measure if a trill's wavy line ends at its barline: the line stops on the first note of a
-   *  later measure, which neither continues a tie nor starts a trill of its own (the note the trill resolves to; Mozart K.313
+  /** The measure before the stop measure if a trill's wavy line ends at its barline: the trilled note goes on to that
+   *  barline and the line stops on the first note of the next measure, which neither continues a tie nor starts a trill of its
+   *  own (the note the trill resolves to; Mozart K.313
    *  I m208→209, m43→44, m87→88, Berwald Op.2 m15→16, m74→75). The line would otherwise cross the barline only to run over
    *  that note: after a system break a fragment of it at the start of the next system, and on one system raised over
    *  everything on that note (K.313 I m209: «Tutti» and f, 6 units), 81sabo bundle B5 11-07. Undefined otherwise (the line
@@ -3593,7 +3594,21 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
     const stopIndex: number = sourceMeasures.indexOf(endExpression.SourceMeasureParent);
     const startIndex: number = sourceMeasures.indexOf(wavyLine.ParentStartMultiExpression.SourceMeasureParent);
-    if (stopIndex <= 0 || startIndex < 0 || stopIndex <= startIndex) {
+    if (stopIndex <= 0 || startIndex < 0 || stopIndex !== startIndex + 1) {
+      return undefined;
+    }
+    // the trilled note goes on to the barline (a line over several notes or measures keeps its stop)
+    const previous: GraphicalMeasure = this.graphicalMusicSheet.MeasureList[stopIndex - 1]?.[staffIndex];
+    if (!previous || previous.staffEntries.length === 0 || !previous.ParentStaffLine) {
+      return undefined;
+    }
+    const startTimestamp: Fraction = wavyLine.ParentStartMultiExpression.Timestamp;
+    const startEntry: GraphicalStaffEntry = previous.findGraphicalStaffEntryFromTimestamp(startTimestamp);
+    const measureLength: number = previous.parentSourceMeasure.Duration.RealValue;
+    const reachesBarline: boolean = !!startEntry && startEntry.graphicalVoiceEntries.some((gve: GraphicalVoiceEntry): boolean =>
+      !gve.parentVoiceEntry.IsGrace &&
+      gve.parentVoiceEntry.Notes.some(note => startTimestamp.RealValue + note.Length.RealValue >= measureLength - 1e-9));
+    if (!reachesBarline) {
       return undefined;
     }
     const firstEntry: GraphicalStaffEntry = stopMeasure.staffEntries[0];
@@ -3614,10 +3629,6 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           return undefined; // the trilled note goes on into the stop note
         }
       }
-    }
-    const previous: GraphicalMeasure = this.graphicalMusicSheet.MeasureList[stopIndex - 1]?.[staffIndex];
-    if (!previous || previous.staffEntries.length === 0 || !previous.ParentStaffLine) {
-      return undefined;
     }
     return previous;
   }

@@ -73,7 +73,10 @@ describe("Trill wavy lines (bundle C)", () => {
         expect(first.startNote.getStave().options.top_text_position).to.equal(1);
         const second: VexFlowVibratoBracket = brackets[1];
         expect(measure(second, true)).to.equal(1);
-        expect(measure(second, false)).to.equal(2);
+        // it stops on the next measure's first note, the trilled half note goes on to the barline: it ends there
+        //   (wavyLineBarlineEnd, bundle B5 11-07)
+        expect(measure(second, false)).to.equal(1);
+        expect(second.ToEndOfStopStave).to.equal(true);
         expect(second.stopBeforeEndNote).to.equal(false);
     });
 
