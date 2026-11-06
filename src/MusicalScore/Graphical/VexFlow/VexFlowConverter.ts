@@ -1820,6 +1820,12 @@ export class VexFlowConverter {
                 return VF.StaveConnector.type.BOLD_DOUBLE_RIGHT;
             case SystemLinesEnum.None:
                 return VF.StaveConnector.type.NONE;
+            case SystemLinesEnum.DoubleBold:
+                // VexFlowPatch added StaveConnector.type.DOUBLE_HEAVY_RIGHT: two heavy lines joining the staves, as the staves'
+                //   Barline.type.DOUBLE_HEAVY (8) set by VexFlowMeasure.addMeasureLine(). Without a case the connector kept
+                //   VexFlow's default type DOUBLE and drew a heavy line 5px left of the measure's start instead (the start of a
+                //   piano's last measure got a heavy double line in the web, with the staves' heavy-heavy end barlines unjoined).
+                return 9;
             default:
         }
     }

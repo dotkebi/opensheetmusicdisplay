@@ -78,6 +78,10 @@ add xOffset, fontSize arguments (see stavesection.js) (merged vexflow 4.x)
 
 stavebarline.js (custom addition):
 support double_heavy barline (heavy-heavy in MusicXML)
+
+staveconnector.js (custom addition):
+support a double heavy connector, StaveConnector.type.DOUBLE_HEAVY_RIGHT (9): the two heavy lines of a heavy-heavy barline joining
+  the staves of a part, drawn at the same x as the staves' double_heavy end barlines (see VexFlowConverter.line())
 change padding for end barlines for multimeasurerest element (#1329)
 
 stavenote.js (custom addition):
