@@ -1193,8 +1193,12 @@ export class VexFlowConverter {
                     // Only to an entry with a printed note: pushed to a hidden rest (print-object="no", the lower voice's
                     //   filler at that time) the fermata was never drawn (Parisotti, Traetta Ombra cara Piano m11, m35;
                     //   renderer leftovers 2, 2-2 P25-S1). osmd_dart draws it under its own note.
+                    // Not when the note itself is as low as the last entry's or lower (Brahms Op.63 No.2 Erinnerung Piano m102,
+                    //   Schumann Op.39 No.1 Piano m28: the bass voice's inverted fermata, then a tenor voice above it, last): the
+                    //   moved fermata was never drawn, as the bass voice, which kept it, is further down
+                    //   (fermataDrawnByOtherVoice()), and below the bass note is where it goes anyway.
                     const lastPrinted: VoiceEntry = VexFlowConverter.lastVoiceEntryWithPrintedNote(pve.ParentSourceStaffEntry);
-                    if (lastPrinted && pve !== lastPrinted) {
+                    if (lastPrinted && pve !== lastPrinted && !VexFlowConverter.reachesAsLow(pve, lastPrinted)) {
                         pve.Articulations = pve.Articulations.slice(pve.Articulations.indexOf(articulation));
                         lastPrinted.Articulations.push(articulation);
                         continue;
@@ -1284,6 +1288,15 @@ export class VexFlowConverter {
         if (vfArt.getPosition() === ornamentPosition) {
             (vfArt as any).stackedOutsideOrnament = true;
         }
+    }
+
+    /** Whether the printed, non-rest notes of `entry` reach as low as the ones of `other` (by pitch, same staff) or lower. */
+    private static reachesAsLow(entry: VoiceEntry, other: VoiceEntry): boolean {
+        const lowest: (voiceEntry: VoiceEntry) => number = (voiceEntry: VoiceEntry): number => Math.min(...voiceEntry.Notes
+            .filter(note => note.PrintObject && !note.isRest() && note.Pitch)
+            .map(note => note.Pitch.getHalfTone()));
+        const own: number = lowest(entry);
+        return Number.isFinite(own) && own <= lowest(other);
     }
 
     /** The staff entry's last voice entry (in the order they are converted) with a printed, non-rest note, or undefined. */
