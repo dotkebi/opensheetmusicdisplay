@@ -220,6 +220,7 @@ export class RepetitionInstructionReader {
         !readFromSoundHere && this.isStatedAtMeasureStart(jumpSoundType);
       const newInstruction: RepetitionInstruction = new RepetitionInstruction(atBarlineBefore ? measureIndex - 1 : measureIndex, type);
       newInstruction.Words = drawnWords;
+      newInstruction.WordsFont = drawnWords !== undefined ? RepetitionInstructionReader.wordsFont(wordsNode) : undefined;
       if (symbolPlacement && type !== RepetitionInstructionEnum.Segno && !atBarlineBefore) {
         // the words are drawn at the staff of their direction, below it if placed below (Schirmer, Twenty-Four Italian Songs and
         //   Arias, Pur dicesti m111: "D.S. al Fine" below the left hand). (A segno from words stays drawn at the start of the measure.)
@@ -393,6 +394,13 @@ export class RepetitionInstructionReader {
     const value: string = kind === "D.S." ? soundNode?.attribute("dalsegno")?.value :
       type === RepetitionInstructionEnum.Segno ? soundNode?.attribute("segno")?.value : undefined;
     return value?.trim() ? value.trim() : undefined;
+  }
+
+  /** The weight and style the words element writes, for RepetitionInstruction.WordsFont, e.g. "normal" or "bold italic". */
+  private static wordsFont(wordsNode: IXmlElement): string {
+    const weight: string = wordsNode.attribute("font-weight")?.value === "bold" ? "bold" : "";
+    const style: string = wordsNode.attribute("font-style")?.value === "italic" ? "italic" : "";
+    return [weight, style].filter(part => part).join(" ") || "normal";
   }
 
   /** Whether the type is a D.C. or D.S. (with or without al Fine / al Coda). */
@@ -726,9 +734,11 @@ export class RepetitionInstructionReader {
           // printed after all (e.g. a <sound> of the measure before the direction with the words): drawn as the direction says
           repetitionInstruction.Implicit = false;
           repetitionInstruction.Words = newInstruction.Words;
+          repetitionInstruction.WordsFont = newInstruction.WordsFont;
         } else if (newInstruction.Implicit) {
           // (a <sound> of the measure prints nothing: keeps the words)
         } else if (repetitionInstruction.type === RepetitionInstructionEnum.Coda && newInstruction.Words === undefined) {
+          repetitionInstruction.WordsFont = undefined;
           repetitionInstruction.Words = undefined; // a coda sign in the measure, e.g. next to the words "Coda": drawn as the sign
         }
         if (!(repetitionInstruction.Times > 0) && newInstruction.Times > 0) {

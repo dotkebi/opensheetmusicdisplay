@@ -77,6 +77,9 @@ describe("Jumps of a <sound> of the measure", () => {
         expect(texts.get(1)).to.deep.equal(["(Fine.)"]);
         expect(texts.get(3)).to.deep.equal(["Da Capo."]);
         expect(Array.from(texts.keys()).sort()).to.deep.equal([1, 3]);
+        const fonts: string[] = osmd.GraphicSheet.MeasureList.flat().flatMap(measure =>
+            ((measure as any)?.vfRepetitionWords ?? []).map(repetition => repetition.font.weight));
+        expect(fonts, "in the weight and style the score writes them").to.deep.equal(["normal", "normal"]);
         expect(playedMeasures()).to.deep.equal([0, 1, 2, 3, 0, 1]);
     });
 });

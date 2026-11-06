@@ -432,6 +432,7 @@ export class RepetitionCalculator {
                                                 currentRepetition.RepetitonUnderConstruction);
                     // (a coda written as words is drawn as written, where it is written)
                     currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.Words = currentRepetitionInstruction.Words;
+                    currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.WordsFont = currentRepetitionInstruction.WordsFont;
                     currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction.SymbolPlacements =
                       currentRepetitionInstruction.SymbolPlacements.slice();
                     this.currentMeasure.LastRepetitionInstructions.push(currentRepetition.RepetitonUnderConstruction.forwardJumpInstruction);
@@ -713,6 +714,7 @@ export class RepetitionCalculator {
    */
   private drawAsRead(instruction: RepetitionInstruction, readInstruction: RepetitionInstruction): void {
       instruction.Words = readInstruction?.Words;
+      instruction.WordsFont = readInstruction?.WordsFont;
       instruction.SymbolPlacements = readInstruction?.SymbolPlacements.slice() ?? [];
   }
 
