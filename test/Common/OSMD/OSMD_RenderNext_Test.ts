@@ -34,6 +34,7 @@ describe("OpenSheetMusicDisplay incremental rendering (renderNext)", () => {
         osmd = TestUtils.createOpenSheetMusicDisplay(container); // autoResize: false
         osmd.setOptions({ drawCredits: true, newSystemFromXML: true }); // the sample's system breaks: 4 systems regardless of width
         osmd.EngravingRules.RenderCopyright = true; // default false
+        osmd.EngravingRules.ReadIdentificationRights = true; // the sample's copyright is its <rights> (Opusis default false)
         osmd.load(TestUtils.getScore(sampleFilename)).then((): void => done(), done);
     });
 

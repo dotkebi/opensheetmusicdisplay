@@ -23,6 +23,7 @@ describe("First-page credit words", (): void => {
 
     it("reads additional first-page words only without page layout, without repeating the headings", async (): Promise<void> => {
         const sample: Document = TestUtils.getScore("test_first_page_credit_words.musicxml");
+        osmd.EngravingRules.ReadFirstPageCreditWords = false; // Opusis default true
         await osmd.load(sample);
         expect(osmd.Sheet.TitleString).to.equal("Metadata title");
         expect(osmd.Sheet.FirstPageCreditWords).to.have.length(0);
@@ -33,7 +34,8 @@ describe("First-page credit words", (): void => {
         expect(osmd.Sheet.Subtitle.text).to.equal("Printed subtitle\nSecond subtitle line\nThird subtitle");
         expect(osmd.Sheet.ComposerString).to.equal("Printed composer\nSecond composer");
         expect(osmd.Sheet.Lyricist.text).to.equal("Printed lyricist\nSecond lyricist");
-        expect(osmd.Sheet.Copyright.text).to.equal("Metadata rights");
+        // Opusis: <identification><rights> is not read by default (ReadIdentificationRights); the rights credit is the copyright
+        expect(osmd.Sheet.Copyright.text).to.equal("Printed rights");
         expect(osmd.Sheet.FirstPageCreditWords.map((label: Label): string => label.text)).to.deep.equal([
             "Play twice; second time softly", "Ambiguous rights and composer", "Ambiguous title and page number", "Arranged by A. Example"
         ]);

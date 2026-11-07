@@ -35,6 +35,7 @@ describe("Page bottom margin", () => {
         container.style.width = "960px";
         osmd.setOptions({ pageFormat: "A5_L", newSystemFromXML: true });
         osmd.EngravingRules.RenderCopyright = true;
+        osmd.EngravingRules.ReadIdentificationRights = true; // the sample's copyright is its <rights>
         await osmd.load(TestUtils.getScore("test_renderNext_copyright_below_last_system_1710.musicxml"));
         osmd.render();
         const first: GraphicalMusicPage = osmd.GraphicSheet.MusicPages[0];
