@@ -676,7 +676,7 @@ export class SourceMeasure {
         }
         let allRestsOrInvisible: boolean = true;
         let visibleLyrics: boolean = false;
-        const staves: Set<Staff> = new Set<Staff>();
+        const hiddenStaves: Set<Staff> = new Set<Staff>();
         const stavesWithPrintedRest: Set<Staff> = new Set<Staff>();
         for (const container of this.verticalSourceStaffEntryContainers) {
             if (!container) {
@@ -695,7 +695,9 @@ export class SourceMeasure {
                 if (staffEntry.ParentStaff.hasLyrics) {
                     visibleLyrics = true;
                 }
-                staves.add(staffEntry.ParentStaff);
+                if (this.isStaffHidden(staffEntry.ParentStaff.idInMusicSheet)) {
+                    hiddenStaves.add(staffEntry.ParentStaff);
+                }
                 for (const voiceEntry of staffEntry.VoiceEntries) {
                     for (const note of voiceEntry.Notes) {
                         if (!note.isRest()) {
@@ -712,11 +714,14 @@ export class SourceMeasure {
                 }
             }
         }
-        // A staff whose rests the XML all hides (print-object="no") stays an empty measure, not part of a multirest that would
-        //   show it (Verdi, L'esule Canto m1-14; Schumann, In der Fremde Canto m26-28: the voice's staff left out of the
-        //   print). A hidden rest filling another voice beside a printed one doesn't count.
-        if (stavesWithPrintedRest.size < staves.size) {
-            return false;
+        // A staff the XML hides (<staff-details print-object="no">, HiddenStaffIndices) with only hidden rests
+        //   (print-object="no") stays an empty measure, not part of a multirest that would show it (Verdi, L'esule Canto
+        //   m1-14; Schumann, In der Fremde Canto m26-28: the voice's staff left out of the print). Hidden rests of a staff
+        //   that isn't hidden still go into a multirest, as does a hidden rest filling another voice beside a printed one.
+        for (const staff of hiddenStaves) {
+            if (!stavesWithPrintedRest.has(staff)) {
+                return false;
+            }
         }
         if (!allRestsOrInvisible || visibleLyrics || this.hasMoodExpressions || this.tempoExpressions.length > 0) {
             return false;
