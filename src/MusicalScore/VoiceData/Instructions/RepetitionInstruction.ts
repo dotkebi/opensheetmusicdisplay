@@ -70,9 +70,16 @@ export class RepetitionInstruction /*implements IComparable*/ {
     /**
      * The words of the score, drawn instead of the instruction's label (e.g. "D.C."), where the label goes,
      * as they say more than the label or say it in another language, e.g. "D.C. senza replica", "Menuetto D.C. al Fine" or "Fin".
-     * Undefined for words that only name the instruction (e.g. "Da Capo", drawn as "D.C."), and for a segno or coda sign.
+     * Undefined for words that are the label (e.g. "D.C."), and for a segno or coda sign. Words that name the instruction in
+     * another spelling than its label, e.g. "Da Capo", are drawn as written.
      */
     public Words: string;
+    /**
+     * The weight and style of the Words as the score writes them (its font-weight and font-style, normal if not given), e.g.
+     * "normal" or "bold italic": they are drawn in it, as words of the score, not in the bold italic of the labels.
+     * Undefined where the label or other words than the score's are drawn.
+     */
+    public WordsFont: string;
     /** Whether the MusicXML marks this segno as the target of a D.S. (<sound segno="...">): it is never taken for a D.S. itself. */
     public MarkedAsTarget: boolean = false;
     /**

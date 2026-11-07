@@ -3416,6 +3416,16 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     if (endIsClipped) { // ends in measure not rendered
       endMeasure = this.graphicalMusicSheet.getLastGraphicalMeasureFromIndex(staffIndex, true);
     }
+    // a line stopping on the note its trill resolves to, the first note of a later measure: it ends at the barline before it
+    //   (wavyLineBarlineEnd)
+    let endsAtBarline: boolean = false;
+    if (!wavyLine.IsBracket && !endIsClipped) {
+      const barlineEnd: GraphicalMeasure = this.wavyLineBarlineEnd(wavyLine, endMeasure, staffIndex);
+      if (barlineEnd) {
+        endMeasure = barlineEnd;
+        endsAtBarline = true;
+      }
+    }
     let startMeasure: GraphicalMeasure = undefined;
     if (wavyLine.ParentEndMultiExpression) {
       startMeasure = this.graphicalMusicSheet.getGraphicalMeasureFromSourceMeasureAndIndex(wavyLine.ParentStartMultiExpression.SourceMeasureParent,
@@ -3441,6 +3451,12 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     if (!endStaffLine) {
       endStaffLine = startStaffLine;
     }
+    if (wavyLine.IsBracket) {
+      if (startStaffLine && !startIsClipped && !endIsClipped) {
+        this.calculateWavyBracketPieces(wavyLine, startMeasure, endMeasure, startStaffLine, endStaffLine, staffIndex);
+      }
+      return;
+    }
     if (endMeasure && startStaffLine && endStaffLine) {
       const graphicalWavyLine: VexFlowVibratoBracket = new VexFlowVibratoBracket(wavyLine, startStaffLine.PositionAndShape, startMeasure.ParentStaff.isTab);
       const startNoteMeasures: GraphicalMeasure[] = startIsClipped ? startStaffLine.Measures : [startMeasure];
@@ -3461,7 +3477,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         startStaffEntry = this.findBoundaryNoteEntry(startNoteMeasures);
         depressAnchor = undefined;
       }
-      let endStaffEntry: GraphicalStaffEntry = endMeasure.findGraphicalStaffEntryFromTimestamp(endTimeStamp);
+      let endStaffEntry: GraphicalStaffEntry = endsAtBarline ? this.findBoundaryNoteEntry([endMeasure], true) :
+        endMeasure.findGraphicalStaffEntryFromTimestamp(endTimeStamp);
       if (wavyLine.EndGraceVoiceEntry && !endIsClipped) {
         // it stops at a grace note: the staff entry that holds it, which a grace note after its main note (a Nachschlag)
         //   was moved to (its stop's timestamp is the main note's end)
@@ -3523,7 +3540,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
                 nextWavyLine.endNote = nextWavyLine.startNote;
                 nextWavyLine.endVfVoiceEntry = nextWavyLine.startVfVoiceEntry;
               }
-              if (endMeasure.ParentStaffLine === nextWavyLineStaffline && this.stopWavyLineBeforeOwnTrill(nextWavyLine, wavyLine) &&
+              if (endMeasure.ParentStaffLine === nextWavyLineStaffline && !endsAtBarline &&
+                  this.stopWavyLineBeforeOwnTrill(nextWavyLine, wavyLine) &&
                   nextWavyLine.endVfVoiceEntry === nextWavyLine.startVfVoiceEntry) {
                 continue; // the piece after the system break would begin at the note it ends in front of: nothing to draw
               }
@@ -3539,7 +3557,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           graphicalWavyLine.endNote = graphicalWavyLine.startNote;
           graphicalWavyLine.endVfVoiceEntry = graphicalWavyLine.startVfVoiceEntry;
         }
-        this.stopWavyLineBeforeOwnTrill(graphicalWavyLine, wavyLine);
+        if (!endsAtBarline) {
+          this.stopWavyLineBeforeOwnTrill(graphicalWavyLine, wavyLine);
+        }
         if (wavyLine.ParentEndMultiExpression === wavyLine.ParentStartMultiExpression && !graphicalWavyLine.EndsAtGraceNote) {
           // it starts and stops at the same note, e.g. a trill line over one note from Dolet for Sibelius or MuseScore:
           //   trill-mark, wavy-line start and wavy-line stop
@@ -3555,6 +3575,146 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   }
   /** Between a raised trill mark's baseline and the ink under it (a slur, a note), in units. */
   private static readonly wavyLineInkClearance: number = 0.25;
+
+  /** The narrowest wavy line drawn, in units: one wave (VexFlowPatch vibratobracket.js MINIMUM_WIDTH, 8 px). */
+  private static readonly wavyLineMinimumWidth: number = 0.8;
+  /** Between a wavy bracket line under the staff and the ink over it, in units. */
+  private static readonly wavyBracketBelowClearance: number = 0.5;
+
+  /** The measure before the stop measure if a trill's wavy line ends at its barline: the trilled note goes on to that
+   *  barline and the line stops on the first note of the next measure, which neither continues a tie nor starts a trill of its
+   *  own (the note the trill resolves to; Mozart K.313
+   *  I m208→209, m43→44, m87→88, Berwald Op.2 m15→16, m74→75). The line would otherwise cross the barline only to run over
+   *  that note: after a system break a fragment of it at the start of the next system, and on one system raised over
+   *  everything on that note (K.313 I m209: «Tutti» and f, 6 units), 81sabo bundle B5 11-07. Undefined otherwise (the line
+   *  ends as before). */
+  private wavyLineBarlineEnd(wavyLine: WavyLine, stopMeasure: GraphicalMeasure, staffIndex: number): GraphicalMeasure {
+    const endExpression: MultiExpression = wavyLine.ParentEndMultiExpression;
+    if (!endExpression || wavyLine.EndGraceVoiceEntry || endExpression.Timestamp.RealValue !== 0) {
+      return undefined;
+    }
+    const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+    const stopIndex: number = sourceMeasures.indexOf(endExpression.SourceMeasureParent);
+    const startIndex: number = sourceMeasures.indexOf(wavyLine.ParentStartMultiExpression.SourceMeasureParent);
+    if (stopIndex <= 0 || startIndex < 0 || stopIndex !== startIndex + 1) {
+      return undefined;
+    }
+    // the trilled note goes on to the barline (a line over several notes or measures keeps its stop)
+    const previous: GraphicalMeasure = this.graphicalMusicSheet.MeasureList[stopIndex - 1]?.[staffIndex];
+    if (!previous || previous.staffEntries.length === 0 || !previous.ParentStaffLine) {
+      return undefined;
+    }
+    const startTimestamp: Fraction = wavyLine.ParentStartMultiExpression.Timestamp;
+    const startEntry: GraphicalStaffEntry = previous.findGraphicalStaffEntryFromTimestamp(startTimestamp);
+    const measureLength: number = previous.parentSourceMeasure.Duration.RealValue;
+    const reachesBarline: boolean = !!startEntry && startEntry.graphicalVoiceEntries.some((gve: GraphicalVoiceEntry): boolean =>
+      !gve.parentVoiceEntry.IsGrace &&
+      gve.parentVoiceEntry.Notes.some(note => startTimestamp.RealValue + note.Length.RealValue >= measureLength - 1e-9));
+    if (!reachesBarline) {
+      return undefined;
+    }
+    const firstEntry: GraphicalStaffEntry = stopMeasure.staffEntries[0];
+    if (!firstEntry || firstEntry.relInMeasureTimestamp.RealValue !== 0) {
+      return undefined;
+    }
+    const voiceEntries: VexFlowVoiceEntry[] = (firstEntry.graphicalVoiceEntries as VexFlowVoiceEntry[])
+      .filter((gve: VexFlowVoiceEntry): boolean => !!gve.vfStaveNote && !gve.parentVoiceEntry.IsGrace);
+    if (voiceEntries.length === 0) {
+      return undefined;
+    }
+    for (const gve of voiceEntries) {
+      if (VexFlowMusicSheetCalculator.startsOwnTrill(gve)) {
+        return undefined;
+      }
+      for (const note of gve.parentVoiceEntry.Notes) {
+        if (note.NoteTie && note.NoteTie.StartNote !== note) {
+          return undefined; // the trilled note goes on into the stop note
+        }
+      }
+    }
+    return previous;
+  }
+
+  /** The pieces of a `<bracket line-type="wavy">` line (WavyLine.IsBracket), one per staff line from its start to its stop:
+   *  from its start note (on the start line; the start of the staff line after a system break) to its stop time (on the end
+   *  line; the end of the staff line before a break). A stop at a note's time ends in front of that note, a stop at the end of
+   *  the measure (Sperger, Sonata for violone and basso, Adagio m12·14: offset 1920 of 1920) at the barline, a stop between
+   *  notes at the end of the note before it. Under the staff, it goes under everything along it; over the staff, at the
+   *  stave's top text position (a line without a trill mark, as before). 81sabo bundle B5 11-07. */
+  private calculateWavyBracketPieces(wavyLine: WavyLine, startMeasure: GraphicalMeasure, endMeasure: GraphicalMeasure,
+    startStaffLine: StaffLine, endStaffLine: StaffLine, staffIndex: number): void {
+    const firstEntryFrom: (measure: GraphicalMeasure, timestamp: Fraction) => GraphicalStaffEntry =
+      (measure: GraphicalMeasure, timestamp: Fraction): GraphicalStaffEntry =>
+        measure.staffEntries.find((entry: GraphicalStaffEntry): boolean =>
+          entry.relInMeasureTimestamp.RealValue >= timestamp.RealValue - 1e-9 && this.hasVexFlowNote(entry));
+    for (let systemId: number = startStaffLine.ParentMusicSystem.Id; systemId <= endStaffLine.ParentMusicSystem.Id; systemId++) {
+      const staffLine: StaffLine = systemId === startStaffLine.ParentMusicSystem.Id ? startStaffLine :
+        systemId === endStaffLine.ParentMusicSystem.Id ? endStaffLine :
+        this.musicSystems[systemId]?.StaffLines.find((line: StaffLine): boolean => line.ParentStaff.idInMusicSheet === staffIndex);
+      if (!staffLine || staffLine.Measures.length === 0) {
+        continue;
+      }
+      const isStartLine: boolean = staffLine === startStaffLine;
+      const isEndLine: boolean = staffLine === endStaffLine;
+      const firstMeasure: GraphicalMeasure = isStartLine ? startMeasure : staffLine.Measures[0];
+      const lastMeasure: GraphicalMeasure = isEndLine ? endMeasure : staffLine.Measures[staffLine.Measures.length - 1];
+      const startEntry: GraphicalStaffEntry = isStartLine ?
+        firstEntryFrom(firstMeasure, wavyLine.ParentStartMultiExpression.Timestamp) :
+        this.findBoundaryNoteEntry(staffLine.Measures);
+      if (!startEntry) {
+        continue;
+      }
+      const bracket: VexFlowVibratoBracket = new VexFlowVibratoBracket(wavyLine, staffLine.PositionAndShape, staffLine.ParentStaff.isTab);
+      if (!bracket.setStartNote(startEntry)) {
+        continue;
+      }
+      const lastEntryOf: GraphicalStaffEntry = this.findBoundaryNoteEntry([lastMeasure], true);
+      let endEntry: GraphicalStaffEntry = undefined;
+      let stopInFront: boolean = false;
+      const endExpression: MultiExpression = wavyLine.ParentEndMultiExpression;
+      if (isEndLine && endExpression) {
+        const stop: Fraction = endExpression.Timestamp;
+        if (stop.RealValue < lastMeasure.parentSourceMeasure.Duration.RealValue - 1e-9) {
+          const at: GraphicalStaffEntry = lastMeasure.findGraphicalStaffEntryFromTimestamp(stop);
+          if (at && at !== startEntry && this.hasVexFlowNote(at)) {
+            endEntry = at;
+            stopInFront = true;
+          } else {
+            const before: GraphicalStaffEntry[] = lastMeasure.staffEntries.filter((entry: GraphicalStaffEntry): boolean =>
+              entry.relInMeasureTimestamp.RealValue < stop.RealValue && this.hasVexFlowNote(entry));
+            endEntry = before[before.length - 1];
+          }
+        }
+      }
+      endEntry ??= lastEntryOf;
+      if (!endEntry || !bracket.setEndNote(endEntry)) {
+        continue;
+      }
+      if (stopInFront) {
+        bracket.endInFrontOfEndNote();
+      } else {
+        bracket.setToEndOfStopStave(endEntry === lastEntryOf);
+      }
+      staffLine.WavyLines.push(bracket);
+      bracket.CalculateBoundingBox();
+      const startBox: BoundingBox = bracket.startVfVoiceEntry.PositionAndShape;
+      const startX: number = startBox.AbsolutePosition.x + startBox.BorderLeft;
+      const stopX: number = Math.max(this.wavyLineStopX(bracket, bracket.endVfVoiceEntry), startX + 0.5);
+      const height: number = bracket.PositionAndShape.Size.height;
+      const skyBottomLine: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
+      if (wavyLine.Placement === PlacementEnum.Below) {
+        const staffHeight: number = staffLine.StaffHeight;
+        const lowest: number = skyBottomLine.getBottomLineMaxInRange(startX, stopX);
+        const centre: number = Math.max(isFinite(lowest) ? lowest : staffHeight, staffHeight) +
+          VexFlowMusicSheetCalculator.wavyBracketBelowClearance + height / 2;
+        bracket.belowLine = centre;
+        skyBottomLine.updateBottomLineInRange(startX, stopX, centre + height / 2);
+      } else {
+        const topTextPosition: number = bracket.startNote.getStave().options.top_text_position;
+        skyBottomLine.updateSkyLineInRange(startX, stopX, -topTextPosition - 1 - height / 2);
+      }
+    }
+  }
 
   /** Whether a voice entry starts a trill of its own: it has a trill mark. A wavy line that stops on such a note ends in
    *  front of it. */
@@ -3576,6 +3736,35 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     bracket.stopBeforeEndNote = true;
     bracket.endInFrontOfEndNote();
     return true;
+  }
+
+  /** Where a wavy line ends, in units (the VexFlowPatch vibratobracket.js stop). */
+  private wavyLineStopX(vfVibratoBracket: VexFlowVibratoBracket, endVfVoiceEntry: VexFlowVoiceEntry): number {
+    let stopX: number = undefined;
+    if (vfVibratoBracket.stopBeforeEndNote) {
+      // in front of the stop note's trill mark and modifiers (VexFlowPatch vibratobracket.js stopBeforeNoteX)
+      const stopNote: Vex.Flow.StemmableNote = vfVibratoBracket.endNote;
+      const measureX: number = endVfVoiceEntry.parentStaffEntry.parentMeasure.PositionAndShape.AbsolutePosition.x;
+      stopX = measureX + ((Vex.Flow.VibratoBracket as any).stopBeforeNoteX(stopNote) - stopNote.getStave().getX()) / unitInPixels;
+    } else if (vfVibratoBracket.ToEndOfStopStave) {
+    //If the end of the line is the last note in the measure, go all the way to the end of the stave
+      //vexflow backs off by 1 unit (10 pixels) from stave edge
+      stopX = endVfVoiceEntry.parentStaffEntry.parentMeasure.PositionAndShape.AbsolutePosition.x +
+        endVfVoiceEntry.parentStaffEntry.parentMeasure.PositionAndShape.BorderRight - 1;
+    } else if (vfVibratoBracket.nextVfVoiceEntry) {
+      //Up to the next note, in front of its modifiers (in its bounding box). Vexflow backs off by 0.5 units (5 pixels)
+      const nextNoteBox: BoundingBox = vfVibratoBracket.nextVfVoiceEntry.PositionAndShape;
+      stopX = nextNoteBox.AbsolutePosition.x + nextNoteBox.BorderLeft - 0.5;
+    } else {
+      stopX = endVfVoiceEntry.PositionAndShape.AbsolutePosition.x + endVfVoiceEntry.PositionAndShape.BorderRight;
+      //Take into account in-staff clefs associated with the staff entry (they modify the bounding box position)
+      const vfClefBefore: Vex.Flow.ClefNote = (endVfVoiceEntry.parentStaffEntry as VexFlowStaffEntry).vfClefBefore;
+      if (vfClefBefore) {
+        const clefWidth: number = vfClefBefore.getWidth() / 10;
+        stopX += clefWidth;
+      }
+    }
+    return stopX;
   }
 
   /** The wavy line's height and the skyline under it: a trill's line goes at its trill mark (through the middle of the mark),
@@ -3615,6 +3804,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     //   raised top text position a mark stacked over an articulation (text line 1.5, Weber Op.74 III m137·235) sits
     //   that much higher than one at line 0
     let trillTextLine: number = 0;
+    // how far the mark's ink reaches over its glyph (an accidental mark or a fermata over the tr), in units
+    let inkOverGlyph: number = 0;
     const TRILL_HEIGHT: number = 1.85;
 
     let startX: number = startVfVoiceEntry.PositionAndShape.AbsolutePosition.x + startVfVoiceEntry.PositionAndShape.BorderLeft;
@@ -3633,7 +3824,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         startX = Math.max(startX, trillEndX);
         // the ink is from the layout draw, without the raise over a slur decided after the slurs (slurClearanceYShift, px;
         //   Weber Op.74 III m237: the line was read 1.5 units under the mark drawn over its slur)
-        trillTop = ink.top + (ink.slurClearanceYShift ?? 0) / unitInPixels;
+        // the glyph's own top: an accidental mark over the tr (Mozart K.313 I m137, ♮) or a fermata stacked over it is above
+        //   the line's place (81sabo bundle B5 11-07)
+        trillTop = (ink.glyphTop ?? ink.top) + (ink.slurClearanceYShift ?? 0) / unitInPixels;
+        inkOverGlyph = Math.max(0, (ink.glyphTop ?? ink.top) - ink.top);
         // the nominal mark height: the line keeps its place under the mark's top, whatever the glyph's own descent
         trillBottom = trillTop + TRILL_HEIGHT;
       } else {
@@ -3644,29 +3838,12 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       }
     }
 
-    let stopX: number = undefined;
-    if (vfVibratoBracket.stopBeforeEndNote) {
-      // in front of the stop note's trill mark and modifiers (VexFlowPatch vibratobracket.js stopBeforeNoteX)
-      const stopNote: Vex.Flow.StemmableNote = vfVibratoBracket.endNote;
-      const measureX: number = endVfVoiceEntry.parentStaffEntry.parentMeasure.PositionAndShape.AbsolutePosition.x;
-      stopX = measureX + ((Vex.Flow.VibratoBracket as any).stopBeforeNoteX(stopNote) - stopNote.getStave().getX()) / unitInPixels;
-    } else if (vfVibratoBracket.ToEndOfStopStave) {
-    //If the end of the line is the last note in the measure, go all the way to the end of the stave
-      //vexflow backs off by 1 unit (10 pixels) from stave edge
-      stopX = endVfVoiceEntry.parentStaffEntry.parentMeasure.PositionAndShape.AbsolutePosition.x +
-        endVfVoiceEntry.parentStaffEntry.parentMeasure.PositionAndShape.BorderRight - 1;
-    } else if (vfVibratoBracket.nextVfVoiceEntry) {
-      //Up to the next note, in front of its modifiers (in its bounding box). Vexflow backs off by 0.5 units (5 pixels)
-      const nextNoteBox: BoundingBox = vfVibratoBracket.nextVfVoiceEntry.PositionAndShape;
-      stopX = nextNoteBox.AbsolutePosition.x + nextNoteBox.BorderLeft - 0.5;
-    } else {
-      stopX = endVfVoiceEntry.PositionAndShape.AbsolutePosition.x + endVfVoiceEntry.PositionAndShape.BorderRight;
-      //Take into account in-staff clefs associated with the staff entry (they modify the bounding box position)
-      const vfClefBefore: Vex.Flow.ClefNote = (endVfVoiceEntry.parentStaffEntry as VexFlowStaffEntry).vfClefBefore;
-      if (vfClefBefore) {
-        const clefWidth: number = vfClefBefore.getWidth() / 10;
-        stopX += clefWidth;
-      }
+    let stopX: number = this.wavyLineStopX(vfVibratoBracket, endVfVoiceEntry);
+    if (stopX - startX < VexFlowMusicSheetCalculator.wavyLineMinimumWidth) {
+      // no room for a wave between the mark and the next trill's (Saint-Saëns Op.61 m59: a 2 px piece drawn over the marks):
+      //   nothing to draw (VexFlowVibratoBracket.noRoom), nothing to make room for
+      vfVibratoBracket.noRoom = true;
+      return;
     }
 
     stopX = Math.max(stopX, startX + 0.5);
@@ -3709,7 +3886,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       wavyCentre = -raised - trillTextLine - 1;
       if (trillTop !== Infinity) {
         //A decent enough approximation. Better than recalculating via Canvas or SVG sampling
-        parentStaffline.SkyBottomLineCalculator.updateSkyLineInRange(trillStartX, trillEndX, -raised - trillTextLine - (trillBottom - trillTop));
+        parentStaffline.SkyBottomLineCalculator.updateSkyLineInRange(trillStartX, trillEndX,
+          -raised - trillTextLine - (trillBottom - trillTop) - inkOverGlyph);
       }
     } else {
       wavyCentre = centreAtMark;
@@ -3723,11 +3901,12 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   /** The ink of a note's trill mark as the layout drew it (ornament.js layoutInk), in units relative to its stave's left
    *  edge and top line, or undefined. */
   private trillMarkInk(note: Vex.Flow.StemmableNote):
-    { left: number, top: number, right: number, bottom: number, slurClearanceYShift: number, textLine: number } {
+    { left: number, top: number, right: number, bottom: number, glyphTop: number, slurClearanceYShift: number, textLine: number } {
     for (const modifier of (note as any).modifiers ?? []) {
       if (modifier?.type === "tr" && modifier.layoutInk && modifier.position === Vex.Flow.Modifier.Position.ABOVE) {
         const ink: any = modifier.layoutInk;
         return { left: ink.left / unitInPixels, top: ink.top / unitInPixels, right: ink.right / unitInPixels, bottom: ink.bottom / unitInPixels,
+          glyphTop: ink.glyphTop !== undefined ? ink.glyphTop / unitInPixels : undefined,
           slurClearanceYShift: modifier.slurClearanceYShift ?? 0, textLine: modifier.text_line ?? 0 };
       }
     }
@@ -4401,17 +4580,21 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       hasCodaGlyphAfterText = false;
     }
     const fontHeightUnits: number = 1.6; // staverepetition.js draws the text with a 12pt (16px) font
+    // (words of the score in their own weight and style, see RepetitionInstruction.WordsFont, else bold italic)
+    const fontWeight: string = (repetition as any).font?.weight ?? "bold italic";
+    const fontStyle: FontStyles = fontWeight.includes("bold") ? (fontWeight.includes("italic") ? FontStyles.BoldItalic : FontStyles.Bold) :
+      fontWeight.includes("italic") ? FontStyles.Italic : FontStyles.Regular;
     let textWidthUnits: number = 0;
     if (text.length > 0 && this.rules.VexFlowTextFontFamily && MusicSheetCalculator.TextMeasurer.computeTextWidthInCssFont) {
       // measure in the CSS font that staverepetition.js draws with, whose family can also be a generic family or a list
       const measureFontSize: number = 20;
       textWidthUnits = MusicSheetCalculator.TextMeasurer.computeTextWidthInCssFont(
-        text, `italic bold ${measureFontSize}px ${this.rules.VexFlowTextFontFamily}`) / measureFontSize * fontHeightUnits;
+        text, `${fontWeight === "normal" ? "" : fontWeight + " "}${measureFontSize}px ${this.rules.VexFlowTextFontFamily}`) / measureFontSize * fontHeightUnits;
     } else if (text.length > 0) {
       // measure with the same font family string ("times") that staverepetition.js draws with,
       //   so that the measured width matches the drawn width even if the font falls back to another one
       textWidthUnits = MusicSheetCalculator.TextMeasurer.computeTextWidthToHeightRatio(
-        text, Fonts.TimesNewRoman, FontStyles.BoldItalic, "times") * fontHeightUnits;
+        text, Fonts.TimesNewRoman, fontStyle, "times") * fontHeightUnits;
     }
     const glyphWidthUnits: number = 2.4; // coda/segno glyph width (plus the 12px gap after the text for symbol_x)
     const measureStartX: number = measure.PositionAndShape.RelativePosition.x;

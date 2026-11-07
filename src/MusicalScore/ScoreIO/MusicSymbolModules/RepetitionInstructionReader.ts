@@ -199,16 +199,28 @@ export class RepetitionInstructionReader {
         // a general text -> render as text (e.g. UnknownExpression)
         return false;
       }
+      if (drawnWords === undefined && words.length > 0 && type === wordsType &&
+          RepetitionInstructionReader.drawnLabel(type) !== undefined &&
+          words.replace(/\s+/g, " ") !== RepetitionInstructionReader.drawnLabel(type)) {
+        // the words spell the instruction otherwise than its label, e.g. "Da Capo." (not "D.C."): drawn as written
+        drawnWords = words.replace(/\s+/g, " ");
+      }
       if (type === RepetitionInstructionEnum.Coda && !hasCodaSign && words.length > 0) {
         // a coda written only as words, e.g. the section heading "CODA." (Schumann, Romance Op. 94 III m69): drawn as written,
         //   without a coda sign that the score doesn't have. It still is the coda of a D.C. or D.S. al Coda.
         drawnWords = words.replace(/\s+/g, " ");
       }
       const jumpSoundType: RepetitionInstructionEnum = RepetitionInstructionReader.soundTypeOfJump(type);
+      // (not if a <sound> of this measure in another part read before already made it an instruction of this measure, played
+      //   but not drawn: the words are drawn for that one, once — Handel, Care selve, full score: <sound fine> in the voice,
+      //   "(Fine.)" in the continuo were drawn as "(Fine.)" and "Fine")
+      const readFromSoundHere: boolean = this.repetitionInstructions.some(other => other.Implicit && other.measureIndex === measureIndex &&
+        (other.type === type || RepetitionInstructionReader.isJump(type) && RepetitionInstructionReader.isJump(other.type)));
       const atBarlineBefore: boolean = relativeMeasurePosition === 0 && measureIndex > 0 && jumpSoundType !== undefined &&
-        this.isStatedAtMeasureStart(jumpSoundType);
+        !readFromSoundHere && this.isStatedAtMeasureStart(jumpSoundType);
       const newInstruction: RepetitionInstruction = new RepetitionInstruction(atBarlineBefore ? measureIndex - 1 : measureIndex, type);
       newInstruction.Words = drawnWords;
+      newInstruction.WordsFont = drawnWords !== undefined ? RepetitionInstructionReader.wordsFont(wordsNode) : undefined;
       if (symbolPlacement && type !== RepetitionInstructionEnum.Segno && !atBarlineBefore) {
         // the words are drawn at the staff of their direction, below it if placed below (Schirmer, Twenty-Four Italian Songs and
         //   Arias, Pur dicesti m111: "D.S. al Fine" below the left hand). (A segno from words stays drawn at the start of the measure.)
@@ -219,6 +231,21 @@ export class RepetitionInstructionReader {
       newInstruction.SegnoLabel = RepetitionInstructionReader.segnoLabel(type, soundNode);
       if (!this.keepOneJumpOfWords(newInstruction, words, soundType !== undefined)) {
         return true;
+      }
+      if (RepetitionInstructionReader.isJump(type)) {
+        // The jump read from a <sound> of the measure (played, not drawn) is this one, drawn as written (as osmd-dart): in
+        //   another part, e.g. <sound dacapo> in the voice and "Da Capo." in the continuo (Handel, Care selve: two D.C. drew the
+        //   Fine twice), or after the words, e.g. "Menuet Da Capo." and <sound dalsegno="menuetto"/> (Sperger, Sonata for
+        //   Violone): the sound says which jump it is.
+        for (let i: number = this.repetitionInstructions.length - 1; i >= 0; i--) {
+          const other: RepetitionInstruction = this.repetitionInstructions[i];
+          if (other.Implicit && other.measureIndex === newInstruction.measureIndex && RepetitionInstructionReader.isJump(other.type)) {
+            if (soundType === undefined) {
+              this.takeJumpOfSound(newInstruction, other.type, other.SegnoLabel);
+            }
+            this.repetitionInstructions.splice(i, 1);
+          }
+        }
       }
       this.addInstruction(this.repetitionInstructions, newInstruction, atBarlineBefore);
       return true;
@@ -268,11 +295,31 @@ export class RepetitionInstructionReader {
     if (soundNode.attribute("coda")?.value) {
       add(RepetitionInstructionEnum.Coda);
     }
+    // a jump the words of a direction of the measure already wrote is that one: the sound says which jump it is
+    const written: RepetitionInstruction = this.repetitionInstructions.find(instruction => !instruction.Implicit &&
+      instruction.measureIndex === this.currentMeasureIndex && RepetitionInstructionReader.isJump(instruction.type));
+    const addJump: (type: RepetitionInstructionEnum) => void = (type: RepetitionInstructionEnum): void => {
+      if (written) {
+        this.takeJumpOfSound(written, type, RepetitionInstructionReader.segnoLabel(type, soundNode));
+      } else {
+        add(type);
+      }
+    };
     if (soundNode.attribute("dalsegno")?.value) {
-      add(RepetitionInstructionEnum.DalSegno);
+      addJump(RepetitionInstructionEnum.DalSegno);
     }
     if (soundNode.attribute("dacapo")?.value === "yes") {
-      add(RepetitionInstructionEnum.DaCapo);
+      addJump(RepetitionInstructionEnum.DaCapo);
+    }
+    if (soundNode.attribute("segno")?.value?.trim()) {
+      // where a D.S. that names it goes back to, without a sign printed (Sperger, Sonata for Violone: <sound segno="menuetto"/>
+      //   at the start of the minuet that both trios' <sound dalsegno="menuetto"/> return to)
+      add(RepetitionInstructionEnum.Segno);
+      const segno: RepetitionInstruction = this.repetitionInstructions.find(instruction =>
+        instruction.measureIndex === this.currentMeasureIndex && instruction.type === RepetitionInstructionEnum.Segno);
+      if (segno) {
+        segno.MarkedAsTarget = true;
+      }
     }
   }
 
@@ -347,6 +394,52 @@ export class RepetitionInstructionReader {
     const value: string = kind === "D.S." ? soundNode?.attribute("dalsegno")?.value :
       type === RepetitionInstructionEnum.Segno ? soundNode?.attribute("segno")?.value : undefined;
     return value?.trim() ? value.trim() : undefined;
+  }
+
+  /** The weight and style the words element writes, for RepetitionInstruction.WordsFont, e.g. "normal" or "bold italic". */
+  private static wordsFont(wordsNode: IXmlElement): string {
+    const weight: string = wordsNode.attribute("font-weight")?.value === "bold" ? "bold" : "";
+    const style: string = wordsNode.attribute("font-style")?.value === "italic" ? "italic" : "";
+    return [weight, style].filter(part => part).join(" ") || "normal";
+  }
+
+  /** Whether the type is a D.C. or D.S. (with or without al Fine / al Coda). */
+  private static isJump(type: RepetitionInstructionEnum): boolean {
+    const kind: string = RepetitionInstructionReader.kind(type);
+    return kind === "D.C." || kind === "D.S.";
+  }
+
+  /**
+   * Makes the jump read from words the jump of a <sound> of its measure (soundType, a D.C. or D.S.): of another kind, it keeps
+   * its al Fine / al Coda and is drawn as written.
+   */
+  private takeJumpOfSound(instruction: RepetitionInstruction, soundType: RepetitionInstructionEnum, segnoLabel: string): void {
+    if (RepetitionInstructionReader.kind(instruction.type) !== RepetitionInstructionReader.kind(soundType)) {
+      instruction.Words = instruction.Words ?? RepetitionInstructionReader.drawnLabel(instruction.type);
+      instruction.type = RepetitionInstructionReader.withEndingOf(RepetitionInstructionReader.kind(soundType) === "D.C." ?
+        RepetitionInstructionEnum.DaCapo : RepetitionInstructionEnum.DalSegno, instruction.type);
+    }
+    instruction.SegnoLabel = segnoLabel ?? instruction.SegnoLabel;
+    // (the same words of another part are this jump: see keepOneJumpOfWords())
+    const read: { text: string, fromSound: boolean } = this.jumpWords.get(instruction);
+    if (read) {
+      read.fromSound = true;
+    }
+  }
+
+  /**
+   * Returns the text drawn for an instruction of the type without words (see VexFlowPatch staverepetition.js), or undefined
+   * if its label has a coda sign or it is drawn as a sign (segno, coda).
+   */
+  private static drawnLabel(type: RepetitionInstructionEnum): string {
+    switch (type) {
+      case RepetitionInstructionEnum.DaCapo: return "D.C.";
+      case RepetitionInstructionEnum.DaCapoAlFine: return "D.C. al Fine";
+      case RepetitionInstructionEnum.DalSegno: return "D.S.";
+      case RepetitionInstructionEnum.DalSegnoAlFine: return "D.S. al Fine";
+      case RepetitionInstructionEnum.Fine: return "Fine";
+      default: return undefined;
+    }
   }
 
   /**
@@ -641,9 +734,11 @@ export class RepetitionInstructionReader {
           // printed after all (e.g. a <sound> of the measure before the direction with the words): drawn as the direction says
           repetitionInstruction.Implicit = false;
           repetitionInstruction.Words = newInstruction.Words;
+          repetitionInstruction.WordsFont = newInstruction.WordsFont;
         } else if (newInstruction.Implicit) {
           // (a <sound> of the measure prints nothing: keeps the words)
         } else if (repetitionInstruction.type === RepetitionInstructionEnum.Coda && newInstruction.Words === undefined) {
+          repetitionInstruction.WordsFont = undefined;
           repetitionInstruction.Words = undefined; // a coda sign in the measure, e.g. next to the words "Coda": drawn as the sign
         }
         if (!(repetitionInstruction.Times > 0) && newInstruction.Times > 0) {

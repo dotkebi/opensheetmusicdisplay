@@ -420,6 +420,7 @@ export class Articulation extends Modifier {
       if (isStaveNote(note)) {
         x -= note.getXShift();
       }
+      const ownX = x; // (centred over its note, see below)
       let delayXShift = 0;
       // delay code similar to ornament.js delayed variable handling
       const noteTickContext = note.getTickContext();
@@ -439,6 +440,26 @@ export class Articulation extends Modifier {
         //   TODO not sure why the metrics don't result in the correct x position, as we do consider end_x etc
         const noteXAbsolute = stave.start_x + noteX;
         x = noteXAbsolute + (stave.end_x - noteXAbsolute) * this.breathMarkDistance;
+      }
+      // VexFlowPatch: keep the mark off the stems of the next notes (Berwald, Konzertstück Op.2 m92: the comma, 80 % of the
+      //   way to a high note with its stem down, was drawn on that stem, where it read as a dot): left of such a stem, a
+      //   small gap away, at most back to the centre of its own note (where the app draws it).
+      if (nextContext && nextContext.x > noteTickContext.x) {
+        const half = glyph.getMetrics().width / 2;
+        const gap = stave.getSpacingBetweenLines() * 0.2;
+        const y = this.getRenderY();
+        const top = y - glyph.getMetrics().height;
+        for (const next of nextContext.getTickables()) {
+          if (!next.hasStem || !next.hasStem() || !next.getStemExtents || next.getStave() !== stave) continue;
+          // a note's ys follow the stave only when its voice draws it (see Ornament.getRenderXY())
+          next.setStave(next.getStave());
+          const stemX = next.getStemX();
+          const { topY, baseY } = next.getStemExtents();
+          const crossesStem = Math.abs(x - stemX) < half + gap;
+          if (crossesStem && Math.min(topY, baseY) <= y && Math.max(topY, baseY) >= top) {
+            x = Math.max(stemX - half - gap, ownX);
+          }
+        }
       }
     }
     const x_shift = this.getXShift();
