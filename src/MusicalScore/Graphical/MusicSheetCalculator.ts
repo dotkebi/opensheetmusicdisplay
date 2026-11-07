@@ -1560,6 +1560,7 @@ export abstract class MusicSheetCalculator {
                                                                 undefined,
                                                                 undefined,
                                                                 this.expressionDashesEndX(lastEntry?.expression, staffLine, staffIndex));
+        graphLabel.Enclosure = (entries[0]?.expression as UnknownExpression)?.enclosure;
         const colorXML: string = entries[0]?.expression.ColorXML;
         if (this.rules.ExpressionsUseXMLColor && colorXML) {
             graphLabel.ColorXML = colorXML;
@@ -5841,8 +5842,9 @@ export abstract class MusicSheetCalculator {
                         const graphicalStaffEntry: GraphicalStaffEntry = measure.staffEntries[idx5];
                         for (let idx6: number = 0, len6: number = graphicalStaffEntry.sourceStaffEntry.VoiceEntries.length; idx6 < len6; ++idx6) {
                             const voiceEntry: VoiceEntry = graphicalStaffEntry.sourceStaffEntry.VoiceEntries[idx6];
-                            if (voiceEntry.Articulations.length > 0) {
-                                this.layoutArticulationMarks(voiceEntry.Articulations, voiceEntry, graphicalStaffEntry);
+                            const drawnArticulations: Articulation[] = voiceEntry.Articulations.filter(a => a.printObject !== false);
+                            if (drawnArticulations.length > 0) {
+                                this.layoutArticulationMarks(drawnArticulations, voiceEntry, graphicalStaffEntry);
                             }
                         }
                     }

@@ -17,6 +17,8 @@ export class UnknownExpression extends AbstractExpression {
     private staffNumber: number;
     public fontStyle: FontStyles;
     public defaultYXml: number;
+    /** The `enclosure` of the `<words>` ("rectangle": drawn in a box, Dittersdorf, Double Bass Concerto "CADENZA"). */
+    public enclosure: string;
 
     public get Label(): string {
         return this.label;
