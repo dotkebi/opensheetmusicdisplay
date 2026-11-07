@@ -304,5 +304,39 @@ describe("Tempo words: font and staff", () => {
             expect(dashes.End.x).to.be.greaterThan(dashes.Start.x);
             expect(dashes.Start.y, "above the right hand").to.be.lessThan(0);
         });
+
+        it("places a main tempo mark the piano writes below the same way in every render, at any width " +
+            "(Donizetti, La lontananza, full score m1 \"Andante\")", async () => {
+            // the voice's "Andante" at the start, the piano's an eighth later (<offset>) below its right hand
+            const pianoAndanteBelow: string = "<direction placement=\"below\"><direction-type><words>Andante</words></direction-type>" +
+                "<offset>1</offset><staff>1</staff></direction>";
+            for (const canto of [words("Andante", " placement=\"above\"", ""), ""]) {
+                const div: HTMLElement = TestUtils.getDivElement(document);
+                div.style.width = "1000px";
+                const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
+                await osmd.load(songScore(canto, pianoAndanteBelow));
+                const placed: () => { texts: string[][], ys: number[][] } = () => {
+                    const lines: StaffLine[] = staffLines(osmd);
+                    return {
+                        texts: lines.map((line) => tempoTexts(line)),
+                        ys: lines.map((line) => tempoLabels(line).map((label) => label.Label.PositionAndShape.RelativePosition.y)),
+                    };
+                };
+                osmd.render();
+                const first: { texts: string[][], ys: number[][] } = placed();
+                expect(first.texts[1], canto + ": not above the right hand").to.deep.equal([]);
+                expect(first.texts[2], canto).to.deep.equal([]);
+                osmd.render();
+                expect(placed(), canto + ": second render").to.deep.equal(first);
+                div.style.width = "800px";
+                osmd.render();
+                expect(placed().texts, canto + ": other width").to.deep.equal(first.texts);
+                div.style.width = "1000px";
+                osmd.render();
+                expect(placed(), canto + ": back to the first width").to.deep.equal(first);
+                osmd.clear();
+                div.remove();
+            }
+        });
     });
 });

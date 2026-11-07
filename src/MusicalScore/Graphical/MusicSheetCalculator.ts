@@ -4234,11 +4234,11 @@ export abstract class MusicSheetCalculator {
                                                                         firstVisibleMeasureX);
             const xFromStaff: number = relative.x;
 
-            // also placement Above
+            // also placement Above (for this layout only, see InstantaneousTempoExpression.placeAboveSystemForLayout())
             if (!onOwnStaff && multiTempoExpression.EntriesList.length > 0 &&
                 multiTempoExpression.EntriesList[0].Expression instanceof InstantaneousTempoExpression) {
                 const instantaniousTempo: InstantaneousTempoExpression = (multiTempoExpression.EntriesList[0].Expression as InstantaneousTempoExpression);
-                instantaniousTempo.Placement = PlacementEnum.Above;
+                instantaniousTempo.placeAboveSystemForLayout();
 
                 // if an InstantaniousTempoExpression exists at the very beginning then
                 // check if expression is positioned at first ever StaffEntry and
@@ -7042,6 +7042,17 @@ export abstract class MusicSheetCalculator {
     private calculateTempoExpressions(): void {
         const maxIndex: number = Math.min(this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures.length - 1, this.rules.MaxMeasureToDrawIndex);
         const minIndex: number = this.rules.MinMeasureToDrawIndex;
+        // Each layout places the tempo marks from the placements read from the score, not from those of the last layout
+        //   (InstantaneousTempoExpression.placeAboveSystemForLayout()), so that any number of renders draw the same.
+        for (const sourceMeasure of this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures) {
+            for (const expression of sourceMeasure.TempoExpressions) {
+                for (const entry of expression.EntriesList) {
+                    if (entry.Expression instanceof InstantaneousTempoExpression) {
+                        entry.Expression.restorePlacementBeforeLayout();
+                    }
+                }
+            }
+        }
         // Measure marks against notation, lay out text, then resolve their actual mutual collisions.
         if (this.rules.MetronomeMarksDrawn) {
             // A direction may be stored outside the drawing range while its display anchor is inside it.
