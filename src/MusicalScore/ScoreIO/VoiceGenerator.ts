@@ -32,6 +32,7 @@ import { NoteType, NoteTypeHandler } from "../VoiceData/NoteType";
 import { TabNote } from "../VoiceData/TabNote";
 import { PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
 import { ReaderPluginManager } from "./ReaderPluginManager";
+import { CurveLineType } from "../VoiceData/CurveLineType";
 import { Instrument } from "../Instrument";
 
 /** An open tie found by VoiceGenerator.findOpenTie(): the dictionary it is in (this or another staff's), its key there, and the tie. */
@@ -1282,6 +1283,7 @@ export class VoiceGenerator {
               this.openTieDict[newTieNumber] = tie;
               tie.TieNumber = newTieNumber;
               tie.TieDirection = tieDirection;
+              tie.LineType = CurveLineType.read(tieNode);
             } else if (type === "stop") {
               const openTie: OpenTie = VoiceGenerator.findOpenTie(this.instrument, this.openTieDict, this.currentNote, measureStartAbsoluteTimestamp, true);
               if (openTie) {

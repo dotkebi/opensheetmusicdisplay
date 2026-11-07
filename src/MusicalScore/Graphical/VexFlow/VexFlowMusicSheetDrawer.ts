@@ -1,4 +1,5 @@
 import Vex, { IRenderContext } from "vexflow";
+import { DashedCurve } from "./DashedCurve";
 import VF = Vex.Flow;
 import { MusicSheetDrawer } from "../MusicSheetDrawer";
 import { RectangleF2D } from "../../../Common/DataObjects/RectangleF2D";
@@ -423,7 +424,13 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         curvePointsInPixels.push(this.applyScreenTransformation(p3));
         curvePointsInPixels.push(this.applyScreenTransformation(p4));
         const startNote: VexFlowGraphicalNote = this.rules.GNote(graphicalSlur.slur.StartNote) as VexFlowGraphicalNote;
-        graphicalSlur.SVGElement = this.backend.renderCurve(curvePointsInPixels, true, startNote);
+        graphicalSlur.SVGElement = this.backend.renderCurve(curvePointsInPixels, true, startNote, graphicalSlur.slur.LineType,
+                                                            this.pixelsPerUnit());
+    }
+
+    /** The drawing's pixels per staff space (unit), for the dashes of a dashed or dotted curve (DashedCurve). */
+    private pixelsPerUnit(): number {
+        return this.applyScreenTransformation(new PointF2D(1, 0)).x - this.applyScreenTransformation(new PointF2D(0, 0)).x;
     }
 
     /** The curves between staves drawn in this drawing (drawSheet / drawSheetAsync). */
@@ -723,11 +730,24 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                 const out: number = i === 0 || i === 3 ? 0.05 : thickness;
                 pixels.push(this.applyScreenTransformation(new PointF2D(point.x + normal.x * out, point.y + normal.y * out)));
             });
-            node = this.backend.renderCurve(pixels, !curve.isTie, startNote);
+            node = this.backend.renderCurve(pixels, !curve.isTie, startNote, curve.lineType, this.pixelsPerUnit());
         } else {
             const ctx: any = this.backend.getContext();
             const outline: PointF2D[] = curve.outline(thickness).map(point => this.applyScreenTransformation(point));
             node = ctx.openGroup("curve", !curve.isTie && startNote?.getSVGId ? `${startNote.getSVGId()}-slur` : undefined);
+            if (curve.lineType) {
+                // a dashed or dotted curve: each segment stroked along its middle (DashedCurve)
+                for (const segment of curve.segments) {
+                    DashedCurve.stroke(ctx, segment.map(point => this.applyScreenTransformation(point)), curve.lineType,
+                                       this.pixelsPerUnit());
+                }
+                ctx.closeGroup();
+                if (curve.graphicalSlur) {
+                    curve.graphicalSlur.SVGElement = node;
+                }
+                curve.rendered = true;
+                return;
+            }
             ctx.beginPath();
             ctx.moveTo(outline[0].x, outline[0].y);
             for (const point of outline.slice(1)) {

@@ -229,6 +229,11 @@ export class CrossStaffCurve {
         return this.graphicalSlur === undefined;
     }
 
+    /** The curve's line, dashed or dotted (CurveLineType), from its slur or its start note's tie; undefined: solid. */
+    public get lineType(): string {
+        return this.isTie ? this.startNote.sourceNote?.NoteTie?.LineType : this.graphicalSlur.slur?.LineType;
+    }
+
     public get startPoint(): PointF2D {
         return this.segments[0][0];
     }

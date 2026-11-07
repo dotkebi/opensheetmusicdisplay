@@ -1,4 +1,5 @@
 import Vex from "vexflow";
+import { DashedCurve } from "./DashedCurve";
 import VF = Vex.Flow;
 
 import {VexFlowBackend} from "./VexFlowBackend";
@@ -205,12 +206,18 @@ export class SvgVexFlowBackend extends VexFlowBackend {
         return node;
     }
 
-    public renderCurve(points: PointF2D[], isSlur?: boolean, startNote?: VexFlowGraphicalNote): Node {
+    public renderCurve(points: PointF2D[], isSlur?: boolean, startNote?: VexFlowGraphicalNote,
+                       lineType?: string, pxPerUnit?: number): Node {
         let slurId: string = undefined;
         if (isSlur && startNote) {
             slurId = `${startNote.getSVGId()}-slur`;
         }
         const node: Node = this.ctx.openGroup("curve", slurId);
+        if (lineType) {
+            DashedCurve.stroke(this.ctx, DashedCurve.middle(points), lineType, pxPerUnit ?? 10);
+            this.ctx.closeGroup();
+            return node;
+        }
         this.ctx.beginPath();
         this.ctx.moveTo(points[0].x, points[0].y);
         this.ctx.bezierCurveTo(

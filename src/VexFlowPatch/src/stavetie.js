@@ -152,6 +152,30 @@ export class StaveTie extends Element {
       const start_note_id = this.start_note_id ?? this.first_note?.getAttribute('id');
       const id = start_note_id ? start_note_id + '-tie' : undefined;
       this.setAttribute('el', ctx.openGroup('stavetie', id));
+      if (this.render_options.line_type) {
+        // VexFlowPatch: a dashed or dotted tie (OSMD's CurveLineType, MusicXML line-type) is one stroked curve between the
+        //   filled one's edges, as OSMD's DashedCurve: dots of 1.7 px 4.2 apart, or dashes of 5.5 with gaps of 3.5 (1.2 thick).
+        const dotted = this.render_options.line_type === 'dotted';
+        const mid_cp_y = ((first_y_px + last_y_px) / 2) + ((cp1 + cp2) / 2 * params.direction);
+        ctx.beginPath();
+        ctx.moveTo(params.first_x_px + first_x_shift, first_y_px);
+        ctx.quadraticCurveTo(cp_x, mid_cp_y, params.last_x_px + last_x_shift, last_y_px);
+        const lineWidth = ctx.lineWidth;
+        ctx.setLineWidth(dotted ? 1.7 : 1.2);
+        const dash = dotted ? [0.01, 4.2] : [5.5, 3.5];
+        if (typeof ctx.create === 'function') {
+          ctx.stroke({ 'stroke-dasharray': dash.join(' '), 'stroke-linecap': dotted ? 'round' : 'butt' });
+        } else {
+          ctx.setLineDash(dash);
+          ctx.setLineCap(dotted ? 'round' : 'butt');
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.setLineCap('butt');
+        }
+        ctx.setLineWidth(lineWidth ?? 1);
+        ctx.closeGroup();
+        continue;
+      }
       ctx.beginPath();
       ctx.moveTo(params.first_x_px + first_x_shift, first_y_px);
       ctx.quadraticCurveTo(cp_x, top_cp_y, params.last_x_px + last_x_shift, last_y_px);

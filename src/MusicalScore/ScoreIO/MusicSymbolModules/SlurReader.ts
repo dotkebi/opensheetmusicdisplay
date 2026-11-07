@@ -8,6 +8,7 @@ import { PlacementEnum } from "../../VoiceData/Expressions";
 import { Glissando } from "../../VoiceData/Glissando";
 import { SourceStaffEntry } from "../../VoiceData/SourceStaffEntry";
 import { Staff } from "../../VoiceData/Staff";
+import { CurveLineType } from "../../VoiceData/CurveLineType";
 
 export class SlurReader {
     private musicSheet: MusicSheet;
@@ -86,6 +87,7 @@ export class SlurReader {
                             if (pendingCrossStaffStop && this.isCrossStaffSlurMatch(currentNote, pendingCrossStaffStop.EndNote)) {
                                 pendingCrossStaffStop.StartNote = currentNote;
                                 pendingCrossStaffStop.PlacementXml = slurPlacementXml;
+                                pendingCrossStaffStop.LineType = CurveLineType.read(slurNode);
                                 this.linkSlurToNotes(pendingCrossStaffStop);
                             } else {
                                 const openDict: { [_: number]: Slur } = isSlur ? this.openSlurDict : this.openGlissDictOfStaff(currentNote);
@@ -97,6 +99,7 @@ export class SlurReader {
                                 }
                                 slur.StartNote = currentNote;
                                 slur.PlacementXml = slurPlacementXml;
+                                slur.LineType = CurveLineType.read(slurNode);
                                 if (isSlur && pendingCrossStaffStop?.EndNote === currentNote) {
                                     // This note also has a stop of this number that ended no earlier slur (stops are read
                                     // first): Dolet for Sibelius writes a slur whose end isn't attached to a note like this,

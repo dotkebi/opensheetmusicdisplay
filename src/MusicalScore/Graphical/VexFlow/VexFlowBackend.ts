@@ -111,7 +111,10 @@ public abstract getContext(): Vex.IRenderContext;
 
   public abstract renderLine(start: PointF2D, stop: PointF2D, color: string, lineWidth: number, id?: string): Node;
 
-  public abstract renderCurve(points: PointF2D[], isSlur?: boolean, startNote?: VexFlowGraphicalNote): Node;
+  /** A filled curve, its outer edge (points 0-3) and inner edge (4-7); with a dashed or dotted `lineType` (CurveLineType) one
+   *  stroked curve between them instead (DashedCurve, lengths by `pxPerUnit`, the pixels per staff space). */
+  public abstract renderCurve(points: PointF2D[], isSlur?: boolean, startNote?: VexFlowGraphicalNote,
+                              lineType?: string, pxPerUnit?: number): Node;
 
   /**
    * Renders a dotted or dashed line, given as its single strokes in screen coordinates:
