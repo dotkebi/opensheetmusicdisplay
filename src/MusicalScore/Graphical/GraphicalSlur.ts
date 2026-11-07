@@ -1444,7 +1444,8 @@ export class GraphicalSlur extends GraphicalCurve {
         const ownPlace: (a: Articulation) => boolean = (a: Articulation): boolean =>
             a.articulationEnum === ArticulationEnum.fermata || a.articulationEnum === ArticulationEnum.invertedfermata ||
             a.articulationEnum === ArticulationEnum.breathmark || GraphicalSlur.goesOutsideSlurs(a.articulationEnum);
-        const articulations: Articulation[] = note.parentVoiceEntry?.parentVoiceEntry?.Articulations?.filter(a => !ownPlace(a)) ?? [];
+        const articulations: Articulation[] =
+            note.parentVoiceEntry?.parentVoiceEntry?.Articulations?.filter(a => !ownPlace(a) && a.printObject !== false) ?? [];
         if (articulations.length === 0) {
             return false;
         }

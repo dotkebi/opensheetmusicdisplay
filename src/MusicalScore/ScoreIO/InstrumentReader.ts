@@ -631,16 +631,41 @@ export class InstrumentReader {
                // renderer distinguish which VoiceEntries fall under the octave shift.
                let endVoiceEntryCount: number = 0;
                let endFraction: Fraction;
-               if (this.currentStaffEntry?.Timestamp?.Equals(currentFraction)) {
+               let endMeasure: SourceMeasure = this.currentMeasure;
+               const octaveStaffNumber: number = this.readExpressionStaffNumber(xmlNode);
+               // The direction's <offset> (divisions) moves the start and the stop: a stop written before the measure's notes
+               //   with an offset ends the shift there (Dragonetti, Double Bass Concerto Op. 1 I m92, the 8va over the first
+               //   14 sixteenths), a start with one begins it at that later note (Schumann, Piano Quartet Op. 47 I m116).
+               const offsetDivisions: number = InstrumentReader.readOffsetDivisions(xmlNode);
+               const startFraction: Fraction = Fraction.plus(currentFraction, new Fraction(offsetDivisions, 4 * this.divisions));
+               const oneDivision: Fraction = new Fraction(1, 4 * this.divisions);
+               if (offsetDivisions !== 0) {
+                 // the notes before the offset position (inclusive end, see the pending stop in addOctaveShift())
+                 endFraction = Fraction.minus(startFraction, oneDivision);
+               } else if (this.currentStaffEntry?.Timestamp?.Equals(currentFraction)) {
                  // Grace notes at this timestamp — use currentFraction and track which entries are covered
                  endVoiceEntryCount = this.currentStaffEntry.VoiceEntries.length;
                  endFraction = currentFraction.clone();
+               } else if (!this.hasStaffEntryInMeasure(octaveStaffNumber)) {
+                 // A stop before the measure's first note of its staff ends the shift with the previous measure, not at that
+                 //   note (Saint-Saëns, Bassoon Sonata Op. 168 I m50: the B4 after the 8va was drawn an octave low).
+                 endFraction = Fraction.minus(currentFraction, oneDivision);
                } else {
                  // Normal case: last note was a real note, use previousFraction
                  endFraction = previousFraction.clone();
                }
+               if (endFraction.RealValue < 0) {
+                 const previousMeasure: SourceMeasure = this.musicSheet.SourceMeasures[this.musicSheet.SourceMeasures.length - 1];
+                 if (previousMeasure) {
+                   endMeasure = previousMeasure;
+                   endFraction = Fraction.plus(previousMeasure.Duration, endFraction);
+                 } else {
+                   endFraction = new Fraction(0, 1);
+                 }
+               }
                expressionReader.addOctaveShift(xmlNode, this.currentMeasure, endFraction, endVoiceEntryCount,
-                                               this.voiceEntryCountAt(this.readExpressionStaffNumber(xmlNode), currentFraction));
+                                               offsetDivisions !== 0 ? 0 : this.voiceEntryCountAt(octaveStaffNumber, currentFraction),
+                                               startFraction, endMeasure);
              }
              if (directionTypeNodes.some(dt => dt.element("pedal"))) {
               // the Ped. is at its position plus its <offset>, as the stop (pedalStopTimestamp) and osmd-dart read it (Gluck,
@@ -1478,6 +1503,18 @@ export class InstrumentReader {
    * How many VoiceEntries the staff (1-based, of this instrument) already has at the timestamp of the current measure:
    * the grace notes read before a direction at their timestamp (an octave shift starting after them).
    */
+  /** Whether the current measure already has a staff entry in the given staff (1-based) of the instrument. */
+  private hasStaffEntryInMeasure(staffNumber: number): boolean {
+    const staffIndex: number = this.inSourceMeasureInstrumentIndex + staffNumber - 1;
+    return this.currentMeasure?.VerticalSourceStaffEntryContainers.some(container => container.StaffEntries[staffIndex]) ?? false;
+  }
+
+  /** The direction's `<offset>` in divisions, 0 without one. */
+  private static readOffsetDivisions(directionNode: IXmlElement): number {
+    const value: number = Number(directionNode.element("offset")?.value?.trim());
+    return Number.isFinite(value) ? Math.round(value) : 0;
+  }
+
   private voiceEntryCountAt(staffNumber: number, timestamp: Fraction): number {
     if (!this.currentMeasure) {
       return 0;

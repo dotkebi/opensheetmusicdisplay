@@ -1539,6 +1539,20 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                 screenPosition.y += this.rules.SpacingBetweenTextLines;
             }
         }
+        // <words enclosure="rectangle"> (or "square"): a box around the label (Dittersdorf, Double Bass Concerto "CADENZA",
+        //   "Optional cut"), at its margins, which keep it clear of what is around. As osmd_dart.
+        if (graphicalLabel.Enclosure === "rectangle" || graphicalLabel.Enclosure === "square") {
+            const box: BoundingBox = graphicalLabel.PositionAndShape;
+            const at: PointF2D = box.AbsolutePosition;
+            const corners: PointF2D[] = this.applyScreenTransformations([
+                new PointF2D(at.x + box.BorderMarginLeft, at.y + box.BorderMarginTop),
+                new PointF2D(at.x + box.BorderMarginRight, at.y + box.BorderMarginTop),
+                new PointF2D(at.x + box.BorderMarginRight, at.y + box.BorderMarginBottom),
+                new PointF2D(at.x + box.BorderMarginLeft, at.y + box.BorderMarginBottom)]);
+            for (let i: number = 0; i < 4; i++) {
+                this.backend.renderLine(corners[i], corners[(i + 1) % 4], color ?? "#000000", 1);
+            }
+        }
         // font currently unused, replaced by fontFamily
         return node; // alternatively, return Node[] and refactor annotationElementMap to handle node array instead of single node
     }

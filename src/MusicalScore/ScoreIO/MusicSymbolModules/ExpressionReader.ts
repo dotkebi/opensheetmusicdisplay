@@ -75,6 +75,8 @@ export class ExpressionReader {
     private openContinuousTempoExpression: ContinuousTempoExpression;
     private activeInstantaneousDynamic: InstantaneousDynamicExpression;
     private openOctaveShifts: Map<number, OctaveShift> = new Map();
+    /** The enclosure of the <words> being read (interpretWords()), for its UnknownExpression. */
+    private wordsEnclosure: string;
     private pendingOctaveShiftStops: Map<number, {measure: SourceMeasure, endTimestamp: Fraction}> = new Map();
     private lastWedge: ContinuousDynamicExpression;
     /** Wedge stops with an <offset> read in the current measure, closed at its end (resolvePendingWedgeStops()). */
@@ -248,8 +250,12 @@ export class ExpressionReader {
             }
         }
         const originalDirectionTimestamp: Fraction = this.directionTimestamp;
+        const bracketed: {open: IXmlElement, close: IXmlElement} = ExpressionReader.bracketedDynamic(dirNodes);
         for (const dirNode of dirNodes) {
             this.directionTimestamp = originalDirectionTimestamp;
+            if (bracketed && (dirNode === bracketed.open || dirNode === bracketed.close)) {
+                continue; // part of the dynamic's marking, see bracketedDynamic()
+            }
             let dirContentNode: IXmlElement = dirNode.element("metronome");
             if (dirContentNode) {
                 this.directionTimestamp = this.readDirectionTimestamp(
@@ -332,7 +338,9 @@ export class ExpressionReader {
                 //   the start of the measure with the offset to their beat.
                 this.directionTimestamp = this.readDirectionTimestamp(offsetNode, inSourceMeasureCurrentFraction);
                 const fromNotation: boolean = directionNode.element("notations") !== undefined;
-                this.interpretInstantaneousDynamics(dirContentNode, currentMeasure, timestampFraction, fromNotation);
+                this.interpretInstantaneousDynamics(dirContentNode, currentMeasure, timestampFraction, fromNotation,
+                                                    bracketed ? [bracketed.open.element("words").value] : [],
+                                                    bracketed ? [bracketed.close.element("words").value] : []);
                 continue;
             }
 
@@ -372,7 +380,8 @@ export class ExpressionReader {
             dirContentNode = dirNode.element("rehearsal");
             if (dirContentNode) {
                 const text: string = dirNode.elements("rehearsal").map((rehearsalNode: IXmlElement): string => rehearsalNode.value).join("");
-                this.interpretRehearsalMark(text, currentMeasure, inSourceMeasureCurrentFraction, currentMeasure.MeasureNumber);
+                this.interpretRehearsalMark(text, currentMeasure, inSourceMeasureCurrentFraction, currentMeasure.MeasureNumber,
+                                            dirContentNode.attribute("enclosure")?.value);
                 continue;
             }
 
@@ -442,8 +451,11 @@ export class ExpressionReader {
             this.addReleaseOnlyPedal(pending);
         }
     }
+    /** startTimestamp: where a start begins (the direction's position plus its offset, default the direction's position);
+     *  endMeasure: the measure of a stop's endTimestamp (a stop before a measure's first note ends in the previous one). */
     public addOctaveShift(directionNode: IXmlElement, currentMeasure: SourceMeasure, endTimestamp: Fraction,
-                          endVoiceEntryCount: number = 0, startVoiceEntryCount: number = 0): void {
+                          endVoiceEntryCount: number = 0, startVoiceEntryCount: number = 0,
+                          startTimestamp: Fraction = undefined, endMeasure: SourceMeasure = currentMeasure): void {
         let octaveStaffNumber: number = 1;
         const staffNode: IXmlElement = directionNode.element("staff");
         if (staffNode) {
@@ -489,7 +501,7 @@ export class ExpressionReader {
                             octaveShift.numberXml = numberXml;
                             octaveShift.startVoiceEntryIndex = startVoiceEntryCount;
                             this.getMultiExpression = this.createNewMultiExpressionIfNeeded(
-                                currentMeasure, numberXml);
+                                currentMeasure, numberXml, startTimestamp);
                             this.getMultiExpression.OctaveShiftStart = octaveShift;
                             octaveShift.ParentStartMultiExpression = this.getMultiExpression;
                             this.openOctaveShifts.set(numberXml, octaveShift);
@@ -509,7 +521,7 @@ export class ExpressionReader {
                             if (matchingShift) {
                                 matchingShift.endVoiceEntryIndex = endVoiceEntryCount;
                                 this.getMultiExpression = this.createNewMultiExpressionIfNeeded(
-                                    currentMeasure, matchingShift.numberXml, endTimestamp);
+                                    endMeasure, matchingShift.numberXml, endTimestamp);
                                 const octaveShiftStartExpression: MultiExpression = this.getMultiExpression;
                                 octaveShiftStartExpression.OctaveShiftEnd = matchingShift;
                                 matchingShift.ParentEndMultiExpression = this.getMultiExpression;
@@ -976,16 +988,31 @@ export class ExpressionReader {
         this.currentMultiTempoExpression.CombinedExpressionsText = "test";
     }
 
+    /** The words of a direction that are only an opening and a closing bracket around its dynamics, "(", <f/>, ")":
+     *  one marking "(f)" (Vivaldi, Bassoon Concerto FVIII/6 m1; they were drawn as "f (" with ")" on a line below). The
+     *  pieces are joined as within one <dynamics> (InstantaneousDynamicExpression.joinMarkingPieces()). As osmd_dart. */
+    public static bracketedDynamic(dirNodes: IXmlElement[]): {open: IXmlElement, close: IXmlElement} {
+        if (dirNodes?.length !== 3 || !dirNodes[1].element("dynamics") || dirNodes.some(node => node.elements().length !== 1)) {
+            return undefined;
+        }
+        const open: string = dirNodes[0].element("words")?.value?.trim();
+        const close: string = dirNodes[2].element("words")?.value?.trim();
+        return open === "(" && close === ")" || open === "[" && close === "]" ? {open: dirNodes[0], close: dirNodes[2]} : undefined;
+    }
+
     private interpretInstantaneousDynamics(dynamicsNode: IXmlElement,
                                            currentMeasure: SourceMeasure,
                                            inSourceMeasureCurrentFraction: Fraction,
-                                           fromNotation: boolean): void {
+                                           fromNotation: boolean,
+                                           prefixPieces: string[] = [],
+                                           suffixPieces: string[] = []): void {
         if (dynamicsNode.hasElements) {
             const numberXml: number = this.readNumber(dynamicsNode); // probably never given, just to comply with createExpressionIfNeeded()
             const dynamicsElements: IXmlElement[] = dynamicsNode.elements();
             // A single <dynamics> element may contain multiple symbols, e.g. <sf/><mp/>, and texts: joined as osmd-dart does.
-            const expressionText: string = InstantaneousDynamicExpression.joinMarkingPieces(dynamicsElements
-                .map((element: IXmlElement): string => element.name === "other-dynamics" ? element.value : element.name));
+            const expressionText: string = InstantaneousDynamicExpression.joinMarkingPieces([...prefixPieces, ...dynamicsElements
+                .map((element: IXmlElement): string => element.name === "other-dynamics" ? element.value : element.name),
+                ...suffixPieces]);
             if (expressionText) {
                 // The playback dynamic of the marking: sf for <sf/><mp/> (sfmp) as well as for the same marking spelled
                 //   letter by letter, ff for <other-dynamics>ffz</other-dynamics>, f for "f con fuoco", none for "cresc.".
@@ -1047,6 +1074,7 @@ export class ExpressionReader {
         }
     }
     private interpretWords(wordsNode: IXmlElement, text: string, currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction): void {
+        this.wordsEnclosure = wordsNode.attribute("enclosure")?.value;
         if (currentMeasure.Rules.IgnoreBracketsWords && (
             /^\(\s*\)$/.test(text) || /^\[\s*\]$/.test(text) // (*) and [*]
         )) { // regex: brackets with arbitrary white space in-between
@@ -1254,7 +1282,7 @@ export class ExpressionReader {
     }
     private interpretRehearsalMark(
         text: string, currentMeasure: SourceMeasure,
-        inSourceMeasureCurrentFraction: Fraction, currentMeasureIndex: number): void {
+        inSourceMeasureCurrentFraction: Fraction, currentMeasureIndex: number, enclosure?: string): void {
         // TODO create multi expression? for now we just need to have a static rehearsal mark though.
         // One mark per part (user decision 10-24, as printed): the mark is drawn above its own part, so a part's mark that
         //   the XML repeats on its second staff (Sibelius Op. 47 III piano, Mozart K. 313 II/III piano) is read once, while
@@ -1266,7 +1294,7 @@ export class ExpressionReader {
         if (ofThisPart) {
             return;
         }
-        currentMeasure.rehearsalExpressions.push(new RehearsalExpression(text, this.placement, this.globalStaffIndex));
+        currentMeasure.rehearsalExpressions.push(new RehearsalExpression(text, this.placement, this.globalStaffIndex, enclosure));
     }
     private createNewMultiExpressionIfNeeded(currentMeasure: SourceMeasure, numberXml: number,
         timestamp: Fraction = undefined, playbackTimestamp: Fraction = undefined): MultiExpression {
@@ -1565,6 +1593,8 @@ export class ExpressionReader {
         unknownExpression.ColorXML = fontColor;
         unknownExpression.language = language;
         unknownExpression.defaultYXml = defaultYXml;
+        unknownExpression.enclosure = this.wordsEnclosure;
+        this.wordsEnclosure = undefined;
         unknownExpression.parentMeasure = currentMeasure;
         unknownMultiExpression.addExpression(unknownExpression, prefix);
         this.addWordExpressionForDashes(unknownExpression, inSourceMeasureCurrentFraction);
