@@ -47,9 +47,16 @@ describe("Music Sheet Reader", () => {
     });
 
     describe("credits", () => {
-        function readScore(xml: string): MusicSheet {
+        /** upstreamRules: the upstream defaults (no first-page credit words, identification rights read), not the Opusis ones. */
+        function readScore(xml: string, upstreamRules: boolean = false): MusicSheet {
             const doc: Document = new DOMParser().parseFromString(xml, "text/xml");
-            return new MusicSheetReader().createMusicSheet(new IXmlElement(doc.getElementsByTagName("score-partwise")[0]), "credits.musicxml");
+            const rules: EngravingRules = new EngravingRules();
+            if (upstreamRules) {
+                rules.ReadFirstPageCreditWords = false;
+                rules.ReadIdentificationRights = true;
+            }
+            return new MusicSheetReader(undefined, rules).createMusicSheet(
+                new IXmlElement(doc.getElementsByTagName("score-partwise")[0]), "credits.musicxml");
         }
         function scoreXml(head: string): string {
             return `<?xml version="1.0" encoding="UTF-8"?>
@@ -104,7 +111,7 @@ describe("Music Sheet Reader", () => {
                 <credit page="1"><credit-type>title</credit-type><credit-words>TWINKLE, TWINKLE</credit-words></credit>
                 <credit page="1"><credit-type>lyricist</credit-type><credit-words>Words: J. Taylor</credit-words></credit>
                 <credit page="1"><credit-type>rights</credit-type><credit-words>Public domain</credit-words></credit>
-                <credit page="1"><credit-type>composer</credit-type><credit-words>Traditional</credit-words></credit>`));
+                <credit page="1"><credit-type>composer</credit-type><credit-words>Traditional</credit-words></credit>`), true);
             expect(creditsSheet.ComposerString, "composer from the credit").to.equal("Traditional");
             expect(creditsSheet.TitleString, "title kept from the metadata").to.equal("Twinkle, Twinkle, Little Star");
             expect(creditsSheet.LyricistString, "lyricist kept from the metadata").to.equal("Jane Taylor");

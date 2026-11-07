@@ -760,7 +760,12 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
     private pushSheetLabels(root: IXmlElement, filePath: string): void {
         this.readComposer(root);
         this.readTitle(root);
-        this.readCopyright(root);
+        // Opusis: <identification><rights> is read only with EngravingRules.ReadIdentificationRights (default false). It holds the
+        //   encoding's rights note (often an internal review line, not the printed copyright), so by default only a first-page
+        //   credit typed "rights" becomes the copyright (readFirstPageCreditWords).
+        if (this.rules.ReadIdentificationRights) {
+            this.readCopyright(root);
+        }
         try {
             // With page layout, an untyped credit's position identifies its role: retain the default reader.
             if (this.rules.ReadFirstPageCreditWords && this.computeSystemYCoordinates(root) === 0) {
@@ -770,6 +775,11 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
             }
         } catch (ex) {
             log.info("MusicSheetReader.pushSheetLabels", "read credits", ex);
+        }
+        try {
+            this.readArrangers(root);
+        } catch (ex) {
+            log.info("MusicSheetReader.pushSheetLabels", "read arrangers", ex);
         }
         try {
             if (!this.musicSheet.Title) {
@@ -860,7 +870,15 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
             this.musicSheet.Title.language = languages.get("title");
         }
         if (subtitles.length > 0) {
-            this.musicSheet.Subtitle = new Label(subtitles.join("\n"));
+            // A subtitle credit names the work (e.g. "for Bassoon and Piano"); the movement title read from <movement-title>
+            //   stays under it instead of being replaced.
+            const movement: string = this.musicSheet.Subtitle?.text;
+            const lines: string[] = subtitles.slice();
+            if (movement && !lines.some((line: string): boolean => line.replace(/\s+/g, " ").trim().toLowerCase() ===
+                movement.replace(/\s+/g, " ").trim().toLowerCase())) {
+                lines.push(movement);
+            }
+            this.musicSheet.Subtitle = new Label(lines.join("\n"));
             this.musicSheet.Subtitle.language = languages.get("subtitle");
         }
         if (composers.length > 0) {
@@ -909,6 +927,33 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                     }
                 }
             }
+        }
+    }
+
+    /** Draws each <creator type="arranger"> as a line under the composer, unless a first-page credit already shows it. */
+    private readArrangers(root: IXmlElement): void {
+        const normalize: (text: string) => string = (text: string): string => text.replace(/\s+/g, " ").trim().toLowerCase();
+        const shown: string[] = [];
+        for (const credit of root.elements("credit")) {
+            for (const words of credit.elements("credit-words")) {
+                shown.push(normalize(words.value ?? ""));
+            }
+        }
+        for (const label of [this.musicSheet.Title, this.musicSheet.Subtitle, this.musicSheet.Composer, this.musicSheet.Lyricist]) {
+            if (label) {
+                shown.push(...label.text.split("\n").map(normalize));
+            }
+        }
+        for (const creator of root.element("identification")?.elements("creator") ?? []) {
+            const text: string = this.trimString(creator.value ?? "");
+            if (creator.attribute("type")?.value !== "arranger" || !text ||
+                shown.some((line: string): boolean => line.includes(normalize(text)))) {
+                continue;
+            }
+            const composer: Label = this.musicSheet.Composer;
+            this.musicSheet.Composer = new Label(composer ? composer.text + "\n" + text : text);
+            this.musicSheet.Composer.language = composer?.language;
+            shown.push(normalize(text));
         }
     }
 

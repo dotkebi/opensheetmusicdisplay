@@ -655,11 +655,17 @@ export class EngravingRules {
     public RenderComposer: boolean;
     /** Whether to read typed first-page credit words and lay out the remaining words above the first system,
      * when page layout cannot supply their roles. With page layout, the default position-based reader is retained.
-     * Default false. Set before loading a score; changing it requires reloading the score. Typed title, subtitle,
-     * composer and lyricist credits override metadata; identification rights retain priority over rights credits.
+     * Default false upstream, true in the Opusis fork. Set before loading a score; changing it requires reloading the score.
+     * Typed title, subtitle and composer and lyricist credits override metadata; a subtitle credit keeps the movement title
+     * under it. In the Opusis fork, identification rights are read only with ReadIdentificationRights.
      * This reflows plain first-page words and does not reproduce source coordinates, per-run styling, images or later pages.
      */
     public ReadFirstPageCreditWords: boolean;
+    /** Opusis: whether <identification><rights> becomes the copyright, as upstream reads it. Default false: it often holds the
+     * encoding's rights note rather than the printed copyright; a first-page rights credit is read either way.
+     * Set before loading a score.
+     */
+    public ReadIdentificationRights: boolean;
     /** Visibility of independent first-page credit labels, set by DrawingParameters.DrawCredits. */
     public RenderFirstPageCreditWords: boolean;
     public RenderTitle: boolean;
@@ -1242,7 +1248,10 @@ export class EngravingRules {
         this.MaxSystemToDrawNumber = Number.MAX_VALUE;
         this.MaxPageToDrawNumber = Number.MAX_VALUE;
         this.RenderComposer = true;
-        this.ReadFirstPageCreditWords = false;
+        // Opusis: true (upstream false) — scores without page layout show their first-page credits (subtitle, dedication,
+        //   publisher lines). Scores with page layout keep the y-coordinate credit reading.
+        this.ReadFirstPageCreditWords = true;
+        this.ReadIdentificationRights = false;
         this.RenderFirstPageCreditWords = true;
         this.RenderTitle = true;
         this.RenderSubtitle = true;
