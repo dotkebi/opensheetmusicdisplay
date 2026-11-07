@@ -93,6 +93,16 @@ export class AccidentalCalculator {
             }
         }
 
+        // A note with an editorial accidental mark outside <ornaments> and no <accidental>: its sign is printed above (or
+        //   below) the note instead of before it (Saint-Saëns, Bassoon Sonata Op. 168: a natural over the note),
+        //   VexFlowAccidentalMark draws it. The measure keeps the sounding alteration, nothing is drawn before the note.
+        //   Same as osmd-dart.
+        if (this.Transpose === 0 && !pitch.AccidentalXml &&
+            graphicalNote.sourceNote.ParentVoiceEntry?.AccidentalMarks?.length > 0) {
+            this.currentInMeasureNoteAlterationsDict.setValue(pitchKey, pitch.AccidentalHalfTones);
+            return;
+        }
+
         // A printed sign that disagrees with <alter> is drawn as printed (the historical sharp of Eccles' G minor sonata
         //   m4, which cancels the key flat and sounds E natural); the measure keeps the sounding alteration, so the next
         //   E natural gets no natural sign. VexFlowGraphicalNote.setAccidental() draws the printed glyph. Same as osmd-dart.

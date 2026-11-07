@@ -27,6 +27,7 @@ import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
 import { OrnamentEnum, OrnamentContainer } from "../../VoiceData/OrnamentContainer";
 import { Notehead, NoteHeadShape } from "../../VoiceData/Notehead";
 import { VexFlowNoteheadParenthesis } from "./VexFlowNoteheadParenthesis";
+import { VexFlowAccidentalMark } from "./VexFlowAccidentalMark";
 import { VexFlowTremoloStaccato } from "./VexFlowTremoloStaccato";
 import { unitInPixels } from "./VexFlowMusicSheetDrawer";
 import { EngravingRules } from "../EngravingRules";
@@ -1281,6 +1282,12 @@ export class VexFlowConverter {
                 }
             }
         }
+        // an <accidental-mark> outside <ornaments>: an editorial accidental above (or below) the note, placed like an
+        //   articulation, under an ornament of the note (Saint-Saëns, Bassoon Sonata Op. 168). As osmd_dart.
+        for (const mark of gNote.sourceNote.ParentVoiceEntry.AccidentalMarks) {
+            const position: number = mark.placement === PlacementEnum.Below ? VF.Modifier.Position.BELOW : VF.Modifier.Position.ABOVE;
+            (vfnote as StaveNote).addModifier(0, new VexFlowAccidentalMark(Pitch.accidentalVexflow(mark.accidental), position));
+        }
     }
 
     /**
@@ -1533,6 +1540,8 @@ export class VexFlowConverter {
                     VexFlowConverter.ornamentAccidentals(oContainer.AccidentalAbove, oContainer.AccidentalAboveXml) as any);
             }
             vfOrna.setPosition(vfPosition);
+            // VexFlowPatch (ornament.js): "(tr)" or "[tr]" from the <level> of the ornament's <notations>
+            (vfOrna as any).levelEnclosure = oContainer.LevelEnclosure;
             (vfnote as StaveNote).addModifier(0, vfOrna);
         }
     }

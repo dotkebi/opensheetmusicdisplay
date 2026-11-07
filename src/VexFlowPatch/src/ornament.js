@@ -52,6 +52,36 @@ function createAccidentalGlyph(accids, scale, spacing) {
   };
 }
 
+// VexFlowPatch: parentheses or brackets ('parentheses' | 'bracket') around the box of an ornament's glyph, for an
+//   editorial ornament, <notations><level parentheses|bracket="yes"/>: "(tr)", "[tr]" (Vivaldi, Op. 44 No. 11 I m72;
+//   Dittersdorf, Double Bass Concerto in D, flutes m55). In staff spaces: 0.25 from the glyph, 0.15 beyond its top and
+//   bottom, a bracket's hooks and a parenthesis' bow 0.3 deep, lines 0.12 wide. Same geometry as osmd_dart
+//   (VexFlowAboveOrnament.drawLevelEnclosure).
+function drawLevelEnclosure(ctx, kind, left, top, right, bottom, space) {
+  const gap = 0.25 * space;
+  const depth = 0.3 * space;
+  const t = top - 0.15 * space;
+  const b = bottom + 0.15 * space;
+  const h = b - t;
+  ctx.save();
+  ctx.setLineWidth(0.12 * space);
+  for (const sign of [-1, 1]) { // left, right
+    const edge = sign < 0 ? left - gap : right + gap;
+    ctx.beginPath();
+    if (kind === 'bracket') {
+      ctx.moveTo(edge - sign * depth, t);
+      ctx.lineTo(edge, t);
+      ctx.lineTo(edge, b);
+      ctx.lineTo(edge - sign * depth, b);
+    } else {
+      ctx.moveTo(edge, t);
+      ctx.bezierCurveTo(edge + sign * depth, t + h * 0.25, edge + sign * depth, t + h * 0.75, edge, b);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // VexFlowPatch: the y from which the text lines of the ornaments above a note are counted (see Ornament.getRenderXY()): a staff
 //   space above its stem tip, or above its head if the stem is down (one and a half above a beamed stem tip)
 function getTopBaseY(note) {
@@ -231,8 +261,18 @@ export class Ornament extends Modifier {
     }
 
     this.glyph.render(ctx, glyphX, glyphY);
+    const glyphBottomY = glyphY;
     glyphY -= this.glyph.getMetrics().height;
     const glyphTopY = glyphY; // VexFlowPatch: the glyph's own top (for layoutInk.glyphTop)
+    // VexFlowPatch: "(tr)", "[tr]": the editorial enclosure of the ornament (OSMD's OrnamentContainer.LevelEnclosure)
+    //   (its ink reaches about half a staff space beyond the glyph: the gap, a parenthesis' bow, the line)
+    const enclosureHalfWidth = this.levelEnclosure
+      ? this.glyph.getMetrics().width / 2 + 0.5 * this.note.getStave().getSpacingBetweenLines() : 0;
+    if (this.levelEnclosure) {
+      const halfWidth = this.glyph.getMetrics().width / 2;
+      drawLevelEnclosure(ctx, this.levelEnclosure, glyphX - halfWidth, glyphTopY, glyphX + halfWidth, glyphBottomY,
+        this.note.getStave().getSpacingBetweenLines());
+    }
 
     if (this.accidentalUpper) {
       glyphY -= this.render_options.accidentalUpperPadding;
@@ -250,7 +290,9 @@ export class Ornament extends Modifier {
       }
       // VexFlowPatch: a fermata or an aspiration of the note on this side goes beyond the ornament
       //   (Articulation.stackedOutsideOrnament), and the ornament's ink covers both
-      let ink = { left: glyphX - width / 2, right: glyphX + width / 2, top, bottom: bottomY };
+      // (with the enclosure: to the outside of its parentheses or brackets)
+      const inkHalfWidth = Math.max(width / 2, enclosureHalfWidth);
+      let ink = { left: glyphX - inkHalfWidth, right: glyphX + inkHalfWidth, top, bottom: bottomY };
       if (!this.delayed) {
         for (const articulation of this.note.getModifiers()) {
           if (articulation.getCategory() !== 'stackedarticulations' || articulation.getPosition() !== this.position) {

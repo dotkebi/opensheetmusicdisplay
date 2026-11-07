@@ -399,9 +399,14 @@ export class VoiceGenerator {
     }
     const ornaNode: IXmlElement = notationNode.element("ornaments");
     if (ornaNode) {
-      this.articulationReader.addOrnament(ornaNode, currentVoiceEntry);
+      // the editorial level of the <notations>, e.g. <level bracket="yes"/> for "[tr]": the ornament is drawn enclosed
+      this.articulationReader.addOrnament(ornaNode, currentVoiceEntry, notationNode.element("level"));
       // const tremoloNode: IXmlElement = ornaNode.element("tremolo");
       // tremolo should be and is added per note, not per VoiceEntry. see addSingleNote()
+    }
+    // an <accidental-mark> outside <ornaments>: an editorial accidental above or below the note. As osmd_dart.
+    for (const accidentalMarkNode of notationNode.elements("accidental-mark")) {
+      this.articulationReader.addAccidentalMark(accidentalMarkNode, currentVoiceEntry);
     }
 
   }
