@@ -676,6 +676,8 @@ export class SourceMeasure {
         }
         let allRestsOrInvisible: boolean = true;
         let visibleLyrics: boolean = false;
+        const staves: Set<Staff> = new Set<Staff>();
+        const stavesWithPrintedRest: Set<Staff> = new Set<Staff>();
         for (const container of this.verticalSourceStaffEntryContainers) {
             if (!container) {
                 continue;
@@ -693,11 +695,15 @@ export class SourceMeasure {
                 if (staffEntry.ParentStaff.hasLyrics) {
                     visibleLyrics = true;
                 }
+                staves.add(staffEntry.ParentStaff);
                 for (const voiceEntry of staffEntry.VoiceEntries) {
                     for (const note of voiceEntry.Notes) {
                         if (!note.isRest()) {
                             allRestsOrInvisible = false;
                             break;
+                        }
+                        if (note.PrintObject) {
+                            stavesWithPrintedRest.add(staffEntry.ParentStaff);
                         }
                     }
                     if (!allRestsOrInvisible) {
@@ -705,6 +711,12 @@ export class SourceMeasure {
                     }
                 }
             }
+        }
+        // A staff whose rests the XML all hides (print-object="no") stays an empty measure, not part of a multirest that would
+        //   show it (Verdi, L'esule Canto m1-14; Schumann, In der Fremde Canto m26-28: the voice's staff left out of the
+        //   print). A hidden rest filling another voice beside a printed one doesn't count.
+        if (stavesWithPrintedRest.size < staves.size) {
+            return false;
         }
         if (!allRestsOrInvisible || visibleLyrics || this.hasMoodExpressions || this.tempoExpressions.length > 0) {
             return false;
