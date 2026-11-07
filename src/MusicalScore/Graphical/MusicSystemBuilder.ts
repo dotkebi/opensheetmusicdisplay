@@ -624,7 +624,8 @@ export class MusicSystemBuilder {
             return 0;
         }
         let totalEndInstructionLengthX: number = 0.5;
-        const sourceMeasure: SourceMeasure = measures[0].parentSourceMeasure;
+        // a multirest ends with the clef at the end of the last measure it takes in (Saint-Saëns, Bassoon Sonata Op. 168 II m72)
+        const sourceMeasure: SourceMeasure = this.lastMeasureOfMultiRest(measures[0].parentSourceMeasure);
         for (let idx: number = 0; idx < measureCount; idx++) {
             const measure: GraphicalMeasure = measures[idx];
             const staffIndex: number = this.visibleStaffIndices[idx];
@@ -747,6 +748,28 @@ export class MusicSystemBuilder {
      * @param graphicalMeasures
      */
     protected updateActiveClefs(measure: SourceMeasure, graphicalMeasures: GraphicalMeasure[]): void {
+        this.updateActiveClefsOfMeasure(measure, graphicalMeasures);
+        // and the measures a multirest given in the XML takes in (see MusicSheetCalculator.updateActiveClefsOfMultiRestMeasure())
+        const last: SourceMeasure = this.lastMeasureOfMultiRest(measure);
+        if (last !== measure) {
+            const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+            for (let idx: number = sourceMeasures.indexOf(measure) + 1; idx <= sourceMeasures.indexOf(last); idx++) {
+                this.updateActiveClefsOfMeasure(sourceMeasures[idx], graphicalMeasures);
+            }
+        }
+    }
+
+    /** The last measure of the multirest given in the XML that starts with the measure, or the measure itself. */
+    protected lastMeasureOfMultiRest(measure: SourceMeasure): SourceMeasure {
+        if (!measure || !(measure.multipleRestMeasures > 1) || !this.rules.RenderMultipleRestMeasures) {
+            return measure;
+        }
+        const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+        const index: number = sourceMeasures.indexOf(measure);
+        return sourceMeasures[Math.min(index + measure.multipleRestMeasures - 1, sourceMeasures.length - 1)] ?? measure;
+    }
+
+    private updateActiveClefsOfMeasure(measure: SourceMeasure, graphicalMeasures: GraphicalMeasure[]): void {
         for (let visStaffIdx: number = 0, len: number = graphicalMeasures.length; visStaffIdx < len; visStaffIdx++) {
             const staffIndex: number = this.visibleStaffIndices[visStaffIdx];
             const firstEntry: SourceStaffEntry = measure.FirstInstructionsStaffEntries[staffIndex];

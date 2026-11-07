@@ -18,6 +18,8 @@ export class Tie {
     private notes: Note[] = [];
     private type: TieTypes;
     public TieNumber: number = 1;
+    /** The tie's line in the XML (line-type of its start), "dashed" or "dotted"; undefined: solid. See CurveLineType. */
+    public LineType: string;
     public TieDirection: PlacementEnum = PlacementEnum.NotYetDefined;
     /** Can contain tie directions at certain note indices.
      *  For example, if it contains {2: PlacementEnum.Below}, then

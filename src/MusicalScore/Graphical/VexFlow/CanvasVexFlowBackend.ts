@@ -1,4 +1,6 @@
 import Vex from "vexflow";
+import { DashedCurve } from "./DashedCurve";
+import { VexFlowGraphicalNote } from "./VexFlowGraphicalNote";
 import VF = Vex.Flow;
 
 import {VexFlowBackend} from "./VexFlowBackend";
@@ -185,7 +187,12 @@ export class CanvasVexFlowBackend extends VexFlowBackend {
         return undefined; // can't return svg dom node
     }
 
-    public renderCurve(points: PointF2D[]): Node {
+    public renderCurve(points: PointF2D[], isSlur?: boolean, startNote?: VexFlowGraphicalNote,
+                       lineType?: string, pxPerUnit?: number): Node {
+        if (lineType) {
+            DashedCurve.stroke(this.ctx, DashedCurve.middle(points), lineType, pxPerUnit ?? 10);
+            return undefined;
+        }
         this.ctx.beginPath();
         this.ctx.moveTo(points[0].x, points[0].y);
         this.ctx.bezierCurveTo(

@@ -12,6 +12,9 @@ export class Slur {
     private startNote: Note;
     private endNote: Note;
     public PlacementXml: PlacementEnum; // how the slur is placed in the XML
+    /** The slur's line in the XML (line-type), "dashed" or "dotted"; undefined: solid (Vivaldi, Concerto Op. 44 No. 11
+     *  (Eulenburg): the editor's dotted slurs). See CurveLineType. */
+    public LineType: string;
     /** Whether the slur's end isn't attached to a note: its start note also has a stop of its number that ended no earlier
      *  slur, which Dolet for Sibelius writes e.g. for a slur running into a repeat barline (#1516). While it has no end note,
      *  it's drawn to the barline if its start note is the last note of its measure, and not at all otherwise.

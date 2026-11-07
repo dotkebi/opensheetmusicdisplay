@@ -238,6 +238,7 @@ export abstract class MusicSheetCalculator {
                     // TODO handle the case that a measure after the first multiple rest measure can't be reduced
                     nextSourceMeasure.multipleRestMeasureNumber = idx2 + 1;
                     nextSourceMeasure.isReducedToMultiRest = true;
+                    MusicSheetCalculator.updateActiveClefsOfMultiRestMeasure(nextSourceMeasure, activeClefs);
                     measureList.push([undefined]);
                     // TODO we could push an object here or push nothing entirely,
                     //   but then the index doesn't correspond to measure numbers anymore.
@@ -256,7 +257,11 @@ export abstract class MusicSheetCalculator {
                 const canBeReduced: boolean = !sourceMeasure.isReducedToMultiRest && sourceMeasure.canBeReducedToMultiRest();
                 // A multirest only shows the key and time signature its first measure starts with,
                 //   so a measure that starts with a key or time change ends the sequence before it (and can begin the next one).
-                if (multiRestCount > 0 && (!canBeReduced || sourceMeasure.hasBeginInstructions())) {
+                //   So does a rehearsal mark: the multirest draws only the one of its first measure, and the others went with
+                //   the measures it took in (Dragonetti, Concerto in G I, wind parts: "I" at m163; Dittersdorf, Concerto in D,
+                //   orchestral parts).
+                if (multiRestCount > 0 &&
+                    (!canBeReduced || sourceMeasure.hasBeginInstructions() || sourceMeasure.rehearsalExpressions.length > 0)) {
                     if (multiRestCount > 1) { //Actual multirest sequence just happened. Process
                         beginMultiRestMeasure.multipleRestMeasures = multiRestCount;
                         //regen graphical measures for this source measure
@@ -2914,6 +2919,25 @@ export abstract class MusicSheetCalculator {
     protected layoutOrnament(ornaments: OrnamentContainer, voiceEntry: VoiceEntry,
                              graphicalStaffEntry: GraphicalStaffEntry): void {
         return;
+    }
+
+    /**
+     * The clefs a measure that a multirest given in the XML takes in changes to (inside it or at its end) are active after the
+     * multirest: the measure isn't laid out (createGraphicalMeasuresForSourceMeasure()), which keeps them up to date otherwise
+     * (Saint-Saëns, Bassoon Sonata Op. 168 II m72: the tenor clef at the end of the multirest m70-72; the notes after it were
+     * placed for the bass clef).
+     */
+    public static updateActiveClefsOfMultiRestMeasure(sourceMeasure: SourceMeasure, activeClefs: ClefInstruction[]): void {
+        for (let staffIndex: number = 0; staffIndex < activeClefs.length; staffIndex++) {
+            const entries: SourceStaffEntry[] = [...sourceMeasure.getEntriesPerStaff(staffIndex), sourceMeasure.LastInstructionsStaffEntries[staffIndex]];
+            for (const entry of entries) {
+                for (const instruction of entry?.Instructions ?? []) {
+                    if (instruction instanceof ClefInstruction && activeClefs[staffIndex]?.ClefType !== ClefEnum.TAB) {
+                        activeClefs[staffIndex] = instruction;
+                    }
+                }
+            }
+        }
     }
 
     /** Raise the fermatas of a measure over the slurs above them (after the slurs are laid out). */

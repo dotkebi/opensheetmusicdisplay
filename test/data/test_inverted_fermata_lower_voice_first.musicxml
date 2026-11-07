@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Brahms, Erinnerung Op. 63 No. 2, Piano m102 (also Schumann, In der Fremde Op. 39 No. 1, Piano m28): in the lower staff
+     the bass voice C1/C2 (stem down) has an inverted fermata; a tenor voice E3/G3 (stem up) at the same time follows it. -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>2</beats><beat-type>4</beat-type></time><staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><stem>up</stem><staff>1</staff><notations><fermata type="upright"/></notations></note>
+      <backup><duration>2</duration></backup>
+      <note><pitch><step>C</step><octave>1</octave></pitch><duration>2</duration><voice>3</voice><type>half</type><stem>down</stem><staff>2</staff><notations><fermata type="inverted"/></notations></note>
+      <note><chord/><pitch><step>C</step><octave>2</octave></pitch><duration>2</duration><voice>3</voice><type>half</type><stem>down</stem><staff>2</staff></note>
+      <backup><duration>2</duration></backup>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>2</duration><voice>4</voice><type>half</type><stem>up</stem><staff>2</staff></note>
+      <note><chord/><pitch><step>G</step><octave>3</octave></pitch><duration>2</duration><voice>4</voice><type>half</type><stem>up</stem><staff>2</staff></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>

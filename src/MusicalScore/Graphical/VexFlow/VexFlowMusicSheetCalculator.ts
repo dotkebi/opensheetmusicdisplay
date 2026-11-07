@@ -2014,7 +2014,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           first_indices: [startNoteIndexInTie],
           first_note: vfStartNote
         };
-        const vfTie1: VF.StaveTie = isTab ? new VF.TabTie(notes, tie.Tie.Type) : this.createStaveTie(notes, splitTieDirection);
+        const vfTie1: VF.StaveTie = isTab ? new VF.TabTie(notes, tie.Tie.Type) : this.createStaveTie(notes, splitTieDirection, tie.Tie.LineType);
         VexFlowConverter.setVexFlowTextFontFamily((vfTie1 as any).font, this.rules); // e.g. "H" for a hammer-on
         const measure1: VexFlowMeasure = (startNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure);
         measure1.addStaveTie(vfTie1, tie);
@@ -2025,7 +2025,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           last_indices: [endNoteIndexInTie],
           last_note: vfEndNote
         };
-        const vfTie2: VF.StaveTie = isTab ? new VF.TabTie(notes) : this.createStaveTie(notes, splitTieDirection);
+        const vfTie2: VF.StaveTie = isTab ? new VF.TabTie(notes) : this.createStaveTie(notes, splitTieDirection, tie.Tie.LineType);
         const measure2: VexFlowMeasure = (endNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure);
         measure2.addStaveTie(vfTie2, tie);
       }
@@ -2070,7 +2070,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
             first_note: vfStartNote,
             last_indices: [endNoteIndexInTie],
             last_note: vfEndNote
-          }, tieDirection);
+          }, tieDirection, tie.Tie.LineType);
           if (!vfEndNote) {
             // a tie to the start of a repeat (no end note) ends before the backward repeat's dots, not on its thick line
             vfTie.render_options.last_x_shift = -14;
@@ -2090,8 +2090,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
    * @param direction The direction, e.g. from the XML. Without one, Vexflow takes it from the stem direction of the notes.
    * @returns The Vexflow tie.
    */
-  private createStaveTie(notes: any, direction: PlacementEnum): VF.StaveTie {
+  private createStaveTie(notes: any, direction: PlacementEnum, lineType?: string): VF.StaveTie {
     const vfTie: VF.StaveTie = new VF.StaveTie(notes);
+    // a dashed or dotted tie (CurveLineType): one stroked curve, see StaveTie.renderTie() (VexFlowPatch)
+    (vfTie as any).render_options.line_type = lineType;
     if (direction === PlacementEnum.Below) {
       (vfTie as any).setDirection(1); // + is down in vexflow
     } else if (direction === PlacementEnum.Above) {
