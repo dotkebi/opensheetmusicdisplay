@@ -85,4 +85,14 @@ describe("Editorial level enclosure and accidental marks", () => {
         expect(sharp.getPosition()).to.equal(VF.Modifier.Position.BELOW);
         expect((sharp as any).drawnInk.top, "below the staff").to.be.greaterThan(stave.getYForLine(4) - 0.01);
     });
+
+    it("draws no accidental before a note whose sign is an accidental mark without <accidental>", () => {
+        const accidentals: (measure: number, index?: number) => any[] = (measure: number, index: number = 0): any[] =>
+            (gve(measure, index).vfStaveNote as any).getModifiers().filter((m: any) => m.getCategory() === "accidentals");
+        expect(accidentalMarks(5, 0).map((mark: VexFlowAccidentalMark) => mark.accidental)).to.deep.equal(["b"]);
+        expect(accidentals(5, 0), "B-flat4 with the flat mark").to.have.length(0);
+        expect(accidentals(5, 1), "the next B-flat4").to.have.length(0);
+        // with <accidental>, the printed sign stays before the note (Schumann, Piano Quartet Op. 47 I cello m11)
+        expect(accidentals(3, 1)).to.have.length(1);
+    });
 });

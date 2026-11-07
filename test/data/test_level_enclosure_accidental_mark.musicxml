@@ -3,7 +3,8 @@
 <!-- Editorial ornaments and accidental marks. m1: a trill in brackets, <notations><level bracket="yes"/> ("[tr]", Vivaldi,
      Op. 44 No. 11 I m72); m2: in parentheses ("(tr)", Dittersdorf, Double Bass Concerto in D, flutes m55); m3: a trill
      without <level>; m4: a natural mark over B4 outside <ornaments> (Saint-Saens, Bassoon Sonata Op. 168), then a trill
-     with a flat mark outside <ornaments> (Schumann, Piano Quartet Op. 47 I, cello m11); m5: a sharp mark below A4.
+     with a flat mark outside <ornaments> (Schumann, Piano Quartet Op. 47 I, cello m11); m5: a sharp mark below A4; m6: B-flat4 with a flat mark and no
+     <accidental>: the flat is printed over the note only, not before it, and the next B-flat4 needs none.
      Same file in the OSMD fork (test/data) and osmd_dart (test/fixtures). -->
 <score-partwise version="4.0">
   <part-list>
@@ -90,6 +91,23 @@
         <notations>
           <accidental-mark placement="below">sharp</accidental-mark>
         </notations>
+      </note>
+    </measure>
+    <measure number="6">
+      <note>
+        <pitch><step>B</step><alter>-1</alter><octave>4</octave></pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>half</type>
+        <notations>
+          <accidental-mark placement="above">flat</accidental-mark>
+        </notations>
+      </note>
+      <note>
+        <pitch><step>B</step><alter>-1</alter><octave>4</octave></pitch>
+        <duration>2</duration>
+        <voice>1</voice>
+        <type>half</type>
       </note>
     </measure>
   </part>
