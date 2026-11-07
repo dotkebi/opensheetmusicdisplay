@@ -4275,11 +4275,13 @@ export abstract class MusicSheetCalculator {
                 if (entry.Expression instanceof InstantaneousTempoExpression && entry.Expression.isMetronomeMark) {
                     continue;
                 }
-                // Render each distinct tempo marking only once per position. MusicXML from part-based exporters (e.g.
-                //   Finale) often repeats a tempo marking in every part, and all of them are placed on this (first
-                //   visible) staff line, which stacked "Andante Simplice." five times above the first system of
-                //   CharlesGounod_Meditation. A marking given twice in one part is skipped just the same.
-                if (this.isTempoMarkingAlreadyRendered(staffLine, entry.Expression, absoluteTimestamp)) {
+                // Render each distinct tempo marking only once per measure and staff line. MusicXML from part-based
+                //   exporters (e.g. Finale) often repeats a tempo marking in every part, and all of them are placed on
+                //   this (first visible) staff line, which stacked "Andante Simplice." five times above the first system
+                //   of CharlesGounod_Meditation. A marking given twice in one part is skipped just the same, and so is one
+                //   given a little later in a lower part (Donizetti, La lontananza, full score m1: the piano's "Andante"
+                //   an eighth after the voice's). The same marking in another measure of the system is drawn.
+                if (this.isTempoMarkingAlreadyRendered(staffLine, entry.Expression, sourceMeasure)) {
                     continue;
                 }
                 let textAlignment: TextAlignmentEnum = this.rules.TempoExpressionTextAlignment;
@@ -4323,14 +4325,14 @@ export abstract class MusicSheetCalculator {
         }
     }
 
-    /** Whether tempo text has already been placed at this position, typically from another part. */
-    protected isTempoMarkingAlreadyRendered(staffLine: StaffLine, tempoExpression: AbstractTempoExpression, absoluteTimestamp: Fraction): boolean {
+    /** Whether the tempo text has already been placed on the staff line in this measure, typically from another part. */
+    protected isTempoMarkingAlreadyRendered(staffLine: StaffLine, tempoExpression: AbstractTempoExpression, sourceMeasure: SourceMeasure): boolean {
         for (const graphicalExpression of staffLine.AbstractExpressions) {
             if (!(graphicalExpression instanceof GraphicalInstantaneousTempoExpression)) {
                 continue;
             }
             const renderedExpression: AbstractTempoExpression = graphicalExpression.SourceExpression as AbstractTempoExpression;
-            if (!renderedExpression.ParentMultiTempoExpression?.AbsoluteTimestamp.Equals(absoluteTimestamp)) {
+            if (renderedExpression.ParentMultiTempoExpression?.SourceMeasureParent !== sourceMeasure) {
                 continue;
             }
             if ((renderedExpression.Label ?? "").trim() !== (tempoExpression.Label ?? "").trim()) {
@@ -4341,11 +4343,18 @@ export abstract class MusicSheetCalculator {
         return false;
     }
 
-    /** Whether another tempo expression at the moment of multiTempoExpression is written for a staff above staffIndex
-     *  or without a placement (which could be any staff), see ownStaffIndexOfTempoExpression(). */
+    /** Whether another tempo expression at the moment of multiTempoExpression, or with its words anywhere in its measure,
+     *  is written for a staff above staffIndex or without a placement (which could be any staff), see
+     *  ownStaffIndexOfTempoExpression(). The same words a little later in a lower part (a piano's "Andante" an eighth after
+     *  the voice's) are the same instruction: drawn once, above the system (see isTempoMarkingAlreadyRendered()). */
     private static hasTempoExpressionAboveAt(multiTempoExpression: MultiTempoExpression, staffIndex: number): boolean {
+        const label: string = multiTempoExpression.EntriesList[0]?.Expression?.Label;
         for (const other of multiTempoExpression.SourceMeasureParent.TempoExpressions) {
-            if (other === multiTempoExpression || !other.Timestamp.Equals(multiTempoExpression.Timestamp)) {
+            if (other === multiTempoExpression) {
+                continue;
+            }
+            if (!other.Timestamp.Equals(multiTempoExpression.Timestamp) &&
+                (label === undefined || !other.EntriesList.some((entry) => entry.Expression?.Label === label))) {
                 continue;
             }
             for (const entry of other.EntriesList) {
