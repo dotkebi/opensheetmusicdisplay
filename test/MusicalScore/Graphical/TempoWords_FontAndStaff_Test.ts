@@ -154,6 +154,36 @@ describe("Tempo words: font and staff", () => {
         expect(box.RelativePosition.y + box.BorderBottom, "above the left hand").to.be.lessThan(gap);
     });
 
+    it("raises a metronome mark over the tempo words of its direction drawn above the system, also without a placement " +
+        "and in the first render (Bellini, L'allegro marinaro m1)", async () => {
+        // A direction without placement is below by default; its main tempo mark is drawn above the system all the same.
+        //   The metronome mark was raised over it only from the second render on, which moved the system down under the
+        //   title. It is raised as for placement="above".
+        const score: (placement: string) => string = (placement: string) => `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <movement-title>L'allegro marinaro</movement-title>
+  <part-list><score-part id="P1"><part-name>Canto</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1"><attributes><divisions>2</divisions><key><fifths>1</fifths></key><time><beats>3</beats><beat-type>4</beat-type></time>
+      <clef><sign>G</sign><line>2</line></clef></attributes>
+      <direction${placement}><direction-type><words>Allegro</words></direction-type><direction-type><metronome>
+        <beat-unit>quarter</beat-unit><per-minute>168</per-minute></metronome></direction-type><sound tempo="168"/></direction>
+      <note><rest measure="yes"/><duration>6</duration></note></measure>
+    <measure number="2"><note><rest measure="yes"/><duration>6</duration></note></measure>
+  </part>
+</score-partwise>`;
+        const placed: (rendered: OpenSheetMusicDisplay) => number[] = (rendered: OpenSheetMusicDisplay) => {
+            const line: StaffLine = staffLines(rendered)[0];
+            return [line.ParentMusicSystem.PositionAndShape.AbsolutePosition.y, ...line.SkyLine.slice(0, 40),
+                    ...tempoLabels(line).map((label) => label.Label.PositionAndShape.RelativePosition.y)];
+        };
+        const above: number[] = placed(await render(score(" placement=\"above\"")));
+        const osmd: OpenSheetMusicDisplay = await render(score(""));
+        expect(placed(osmd), "first render").to.deep.equal(above);
+        osmd.render();
+        expect(placed(osmd), "second render").to.deep.equal(above);
+    });
+
     describe("tempo changes of an instrument below the top one", () => {
         const pianoAttributes: string = `<attributes><divisions>2</divisions><time><beats>3</beats><beat-type>4</beat-type></time><staves>2</staves>
         <clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>`;

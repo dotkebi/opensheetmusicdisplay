@@ -4325,6 +4325,34 @@ export abstract class MusicSheetCalculator {
         }
     }
 
+    /** The placement the first entry of multiTempoExpression is drawn with in this layout, also before
+     *  calculateTempoExpressionsForMultiTempoExpression() places it: Above when it goes above the system (not on its own
+     *  staff), where that method puts an InstantaneousTempoExpression above (placeAboveSystemForLayout()). The metronome
+     *  marks are placed before the tempo text and are raised over tempo text above them (createMetronomeMark()): with
+     *  the read placement, a main tempo mark of a direction without placement (below by default) did not raise them in
+     *  the first render and did from the second render on (Bellini, L'allegro marinaro m1: "Allegro" and ♩ = 168 in one
+     *  direction). osmd-dart lays out the tempo text first and reads the placement it is drawn with. */
+    protected drawnPlacementOfTempoExpression(multiTempoExpression: MultiTempoExpression): PlacementEnum {
+        const placement: PlacementEnum = multiTempoExpression.getPlacementOfFirstEntry();
+        if (!(multiTempoExpression.EntriesList[0]?.Expression instanceof InstantaneousTempoExpression)) {
+            return placement;
+        }
+        const measures: GraphicalMeasure[] =
+            this.graphicalMusicSheet.MeasureList[multiTempoExpression.SourceMeasureParent.measureListIndex] ?? [];
+        // the first visible staff, as calculateTempoExpressionsForMultiTempoExpression() finds it
+        let topStaffIndex: number = 0;
+        for (let j: number = 0; j < measures.length; j++) {
+            if (measures[j]?.ParentStaffLine?.Measures.length > 0 && measures[j].isVisible()) {
+                topStaffIndex = j;
+                break;
+            }
+        }
+        const ownStaffIndex: number = MusicSheetCalculator.ownStaffIndexOfTempoExpression(multiTempoExpression, topStaffIndex);
+        const ownStaffMeasure: GraphicalMeasure = ownStaffIndex !== undefined ? measures[ownStaffIndex] : undefined;
+        const onOwnStaff: boolean = ownStaffMeasure?.ParentStaffLine?.Measures.length > 0 && ownStaffMeasure.isVisible();
+        return onOwnStaff ? placement : PlacementEnum.Above;
+    }
+
     /** Whether the tempo text has already been placed on the staff line in this measure, typically from another part. */
     protected isTempoMarkingAlreadyRendered(staffLine: StaffLine, tempoExpression: AbstractTempoExpression, sourceMeasure: SourceMeasure): boolean {
         for (const graphicalExpression of staffLine.AbstractExpressions) {
