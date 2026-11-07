@@ -84,6 +84,8 @@ export class ExpressionReader {
     private WedgeYPosXml: number;
     private openPedal: Pedal;
     private openWavyLine: WavyLine;
+    /** Open `<bracket line-type="wavy">` lines by their number. */
+    private openWavyBrackets: Map<number, WavyLine> = new Map<number, WavyLine>();
     private openDashes: OpenDashes[] = [];
     /** Word expressions of dashesMeasure, the last measure a direction was read in. */
     private wordExpressionsOfMeasure: WordExpressionPosition[] = [];
@@ -388,6 +390,45 @@ export class ExpressionReader {
                 this.interpretDashes(dirContentNode, currentMeasure, timestampFraction);
                 continue;
             }
+
+            dirContentNode = dirNode.element("bracket");
+            if (dirContentNode) {
+                this.interpretWavyBracket(dirContentNode, currentMeasure, timestampFraction);
+                continue;
+            }
+        }
+    }
+
+    /** Reads a `<bracket line-type="wavy">` start or stop as a wavy line (WavyLine.IsBracket) from its start to its stop time
+     *  (with the direction's offset), at the direction's placement. Brackets of other line types are still not drawn. */
+    private interpretWavyBracket(bracketNode: IXmlElement, currentMeasure: SourceMeasure, timestamp: Fraction): void {
+        if (bracketNode.attribute("line-type")?.value !== "wavy") {
+            return;
+        }
+        const numberXml: number = this.readNumber(bracketNode);
+        const type: string = bracketNode.attribute("type")?.value;
+        if (type === "start") {
+            const multiExpression: MultiExpression = this.createNewMultiExpressionIfNeeded(currentMeasure, -1, timestamp);
+            if (multiExpression.WavyLineStart) {
+                return; // a trill's wavy line starts here already (one per staff and time)
+            }
+            const wavyLine: WavyLine = new WavyLine(this.placement === PlacementEnum.Above ? PlacementEnum.Above : PlacementEnum.Below);
+            wavyLine.IsBracket = true;
+            wavyLine.parentMeasure = currentMeasure;
+            multiExpression.WavyLineStart = wavyLine;
+            wavyLine.ParentStartMultiExpression = multiExpression;
+            this.openWavyBrackets.set(numberXml, wavyLine);
+        } else if (type === "stop") {
+            const wavyLine: WavyLine = this.openWavyBrackets.get(numberXml);
+            if (!wavyLine) {
+                return;
+            }
+            this.openWavyBrackets.delete(numberXml);
+            const multiExpression: MultiExpression = this.createNewMultiExpressionIfNeeded(currentMeasure, -1, timestamp);
+            if (!multiExpression.WavyLineEnd) {
+                multiExpression.WavyLineEnd = wavyLine;
+            }
+            wavyLine.ParentEndMultiExpression = multiExpression;
         }
     }
     /** Usually called at end of last measure. */

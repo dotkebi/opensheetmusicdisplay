@@ -59,9 +59,18 @@ describe("RepetitionInstructionReader", () => {
                 expect(handleWords(testCase.text), "words are handled as repetition instruction").to.equal(true);
                 expect(reader.repetitionInstructions.length).to.equal(1);
                 expect(reader.repetitionInstructions[0].type).to.equal(testCase.expectedType);
-                // (a coda written only as words is drawn as written, without a coda sign)
-                expect(reader.repetitionInstructions[0].Words, "drawn as its label")
-                    .to.equal(testCase.expectedType === RepetitionInstructionEnum.Coda ? testCase.text : undefined);
+                // (a coda written only as words is drawn as written, without a coda sign; words that spell a D.C., D.S. or Fine
+                //   otherwise than its label, e.g. "Da Capo", are drawn as written)
+                const labels: Map<RepetitionInstructionEnum, string> = new Map([
+                    [RepetitionInstructionEnum.DaCapo, "D.C."], [RepetitionInstructionEnum.DaCapoAlFine, "D.C. al Fine"],
+                    [RepetitionInstructionEnum.DalSegno, "D.S."], [RepetitionInstructionEnum.DalSegnoAlFine, "D.S. al Fine"],
+                    [RepetitionInstructionEnum.Fine, "Fine"],
+                ]);
+                const label: string = labels.get(testCase.expectedType);
+                const drawnAsWritten: boolean = testCase.expectedType === RepetitionInstructionEnum.Coda ||
+                    label !== undefined && label !== testCase.text;
+                expect(reader.repetitionInstructions[0].Words, drawnAsWritten ? "drawn as written" : "drawn as its label")
+                    .to.equal(drawnAsWritten ? testCase.text : undefined);
             });
         }
 

@@ -645,6 +645,9 @@ export class VexFlowMeasure extends GraphicalMeasure {
             VexFlowConverter.setVexFlowTextFontFamily((repetition as any).font, this.rules);
             if (repetitionInstruction.Words) {
                 (repetition as any).setText(repetitionInstruction.Words); // drawn instead of the label, e.g. "D.C. senza replica"
+                if (repetitionInstruction.WordsFont) {
+                    (repetition as any).font.weight = repetitionInstruction.WordsFont; // as the score writes them, e.g. "normal"
+                }
             }
             const stafflineMeasures: GraphicalMeasure[] = this.ParentStaffLine?.Measures;
             if (!stafflineMeasures || stafflineMeasures[stafflineMeasures.length - 1] === this) {
