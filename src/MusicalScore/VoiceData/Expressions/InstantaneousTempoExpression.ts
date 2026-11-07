@@ -67,6 +67,8 @@ export class InstantaneousTempoExpression extends AbstractTempoExpression {
     public metronomeBelow: boolean = false;
     /** Whether a metronome mark is drawn (false for MusicXML print-object="no"). A hidden mark still sets the tempo. */
     public printObject: boolean = true;
+    /** The read placement while a layout draws the mark above the system, see placeAboveSystemForLayout(). */
+    private placementBeforeLayout: PlacementEnum;
     /** For complex metronome marks (note equations like swing): left-side note group */
     public metronomeNoteGroupLeft: MetronomeNoteGroup;
     /** For complex metronome marks (note equations like swing): right-side note group */
@@ -382,6 +384,24 @@ export class InstantaneousTempoExpression extends AbstractTempoExpression {
     }
     public set Placement(value: PlacementEnum) {
         this.placement = value;
+    }
+    /** Draws the mark above the system in this layout: Placement is Above until restorePlacementBeforeLayout(), so the
+     *  passes after the tempo text (alignment, words, metronome marks) see where it is drawn. The read placement is kept,
+     *  and the next layout decides from it again: a second render of the same sheet (a resize) placed a main tempo mark
+     *  written below a lower part above that part's staff instead of above the system, because the first render had
+     *  changed its placement to above (Donizetti, La lontananza, full score m1: the piano's "Andante"). */
+    public placeAboveSystemForLayout(): void {
+        if (this.placementBeforeLayout === undefined) {
+            this.placementBeforeLayout = this.placement;
+        }
+        this.placement = PlacementEnum.Above;
+    }
+    /** Gives back the placement read from the score, see placeAboveSystemForLayout(). */
+    public restorePlacementBeforeLayout(): void {
+        if (this.placementBeforeLayout !== undefined) {
+            this.placement = this.placementBeforeLayout;
+            this.placementBeforeLayout = undefined;
+        }
     }
     public get StaffNumber(): number {
         return this.staffNumber;

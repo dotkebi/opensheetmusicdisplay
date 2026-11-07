@@ -154,6 +154,36 @@ describe("Tempo words: font and staff", () => {
         expect(box.RelativePosition.y + box.BorderBottom, "above the left hand").to.be.lessThan(gap);
     });
 
+    it("raises a metronome mark over the tempo words of its direction drawn above the system, also without a placement " +
+        "and in the first render (Bellini, L'allegro marinaro m1)", async () => {
+        // A direction without placement is below by default; its main tempo mark is drawn above the system all the same.
+        //   The metronome mark was raised over it only from the second render on, which moved the system down under the
+        //   title. It is raised as for placement="above".
+        const score: (placement: string) => string = (placement: string) => `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <movement-title>L'allegro marinaro</movement-title>
+  <part-list><score-part id="P1"><part-name>Canto</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1"><attributes><divisions>2</divisions><key><fifths>1</fifths></key><time><beats>3</beats><beat-type>4</beat-type></time>
+      <clef><sign>G</sign><line>2</line></clef></attributes>
+      <direction${placement}><direction-type><words>Allegro</words></direction-type><direction-type><metronome>
+        <beat-unit>quarter</beat-unit><per-minute>168</per-minute></metronome></direction-type><sound tempo="168"/></direction>
+      <note><rest measure="yes"/><duration>6</duration></note></measure>
+    <measure number="2"><note><rest measure="yes"/><duration>6</duration></note></measure>
+  </part>
+</score-partwise>`;
+        const placed: (rendered: OpenSheetMusicDisplay) => number[] = (rendered: OpenSheetMusicDisplay) => {
+            const line: StaffLine = staffLines(rendered)[0];
+            return [line.ParentMusicSystem.PositionAndShape.AbsolutePosition.y, ...line.SkyLine.slice(0, 40),
+                    ...tempoLabels(line).map((label) => label.Label.PositionAndShape.RelativePosition.y)];
+        };
+        const above: number[] = placed(await render(score(" placement=\"above\"")));
+        const osmd: OpenSheetMusicDisplay = await render(score(""));
+        expect(placed(osmd), "first render").to.deep.equal(above);
+        osmd.render();
+        expect(placed(osmd), "second render").to.deep.equal(above);
+    });
+
     describe("tempo changes of an instrument below the top one", () => {
         const pianoAttributes: string = `<attributes><divisions>2</divisions><time><beats>3</beats><beat-type>4</beat-type></time><staves>2</staves>
         <clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>`;
@@ -303,6 +333,47 @@ describe("Tempo words: font and staff", () => {
             expect(dashes.Start.x, "after the words").to.be.greaterThan(label.RelativePosition.x + label.BorderMarginLeft);
             expect(dashes.End.x).to.be.greaterThan(dashes.Start.x);
             expect(dashes.Start.y, "above the right hand").to.be.lessThan(0);
+        });
+
+        it("places a main tempo mark the piano writes a little after the voice once, above the system, the same way in " +
+            "every render and at any width (Donizetti, La lontananza, full score m1 \"Andante\")", async () => {
+            // the voice's "Andante" at the start, the piano's an eighth later (<offset>) below or above its right hand
+            const pianoAndante: (placement: string) => string = (placement: string) =>
+                `<direction placement="${placement}"><direction-type><words>Andante</words></direction-type>` +
+                "<offset>1</offset><staff>1</staff></direction>";
+            const voiceAndante: string = words("Andante", " placement=\"above\"", "");
+            for (const [canto, piano, expected] of [
+                [voiceAndante, pianoAndante("below"), [["Andante"], [], []]],
+                ["", pianoAndante("below"), [["Andante"], [], []]],
+                [voiceAndante, pianoAndante("above"), [["Andante"], [], []]],
+                ["", pianoAndante("above"), [[], ["Andante"], []]],
+            ] as [string, string, string[][]][]) {
+                const div: HTMLElement = TestUtils.getDivElement(document);
+                div.style.width = "1000px";
+                const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
+                await osmd.load(songScore(canto, piano));
+                const placed: () => { texts: string[][], ys: number[][] } = () => {
+                    const lines: StaffLine[] = staffLines(osmd);
+                    return {
+                        texts: lines.map((line) => tempoTexts(line)),
+                        ys: lines.map((line) => tempoLabels(line).map((label) => label.Label.PositionAndShape.RelativePosition.y)),
+                    };
+                };
+                const name: string = canto + piano;
+                osmd.render();
+                const first: { texts: string[][], ys: number[][] } = placed();
+                expect(first.texts, name).to.deep.equal(expected);
+                osmd.render();
+                expect(placed(), name + ": second render").to.deep.equal(first);
+                div.style.width = "800px";
+                osmd.render();
+                expect(placed().texts, name + ": other width").to.deep.equal(expected);
+                div.style.width = "1000px";
+                osmd.render();
+                expect(placed(), name + ": back to the first width").to.deep.equal(first);
+                osmd.clear();
+                div.remove();
+            }
         });
     });
 });

@@ -4234,11 +4234,11 @@ export abstract class MusicSheetCalculator {
                                                                         firstVisibleMeasureX);
             const xFromStaff: number = relative.x;
 
-            // also placement Above
+            // also placement Above (for this layout only, see InstantaneousTempoExpression.placeAboveSystemForLayout())
             if (!onOwnStaff && multiTempoExpression.EntriesList.length > 0 &&
                 multiTempoExpression.EntriesList[0].Expression instanceof InstantaneousTempoExpression) {
                 const instantaniousTempo: InstantaneousTempoExpression = (multiTempoExpression.EntriesList[0].Expression as InstantaneousTempoExpression);
-                instantaniousTempo.Placement = PlacementEnum.Above;
+                instantaniousTempo.placeAboveSystemForLayout();
 
                 // if an InstantaniousTempoExpression exists at the very beginning then
                 // check if expression is positioned at first ever StaffEntry and
@@ -4275,11 +4275,13 @@ export abstract class MusicSheetCalculator {
                 if (entry.Expression instanceof InstantaneousTempoExpression && entry.Expression.isMetronomeMark) {
                     continue;
                 }
-                // Render each distinct tempo marking only once per position. MusicXML from part-based exporters (e.g.
-                //   Finale) often repeats a tempo marking in every part, and all of them are placed on this (first
-                //   visible) staff line, which stacked "Andante Simplice." five times above the first system of
-                //   CharlesGounod_Meditation. A marking given twice in one part is skipped just the same.
-                if (this.isTempoMarkingAlreadyRendered(staffLine, entry.Expression, absoluteTimestamp)) {
+                // Render each distinct tempo marking only once per measure and staff line. MusicXML from part-based
+                //   exporters (e.g. Finale) often repeats a tempo marking in every part, and all of them are placed on
+                //   this (first visible) staff line, which stacked "Andante Simplice." five times above the first system
+                //   of CharlesGounod_Meditation. A marking given twice in one part is skipped just the same, and so is one
+                //   given a little later in a lower part (Donizetti, La lontananza, full score m1: the piano's "Andante"
+                //   an eighth after the voice's). The same marking in another measure of the system is drawn.
+                if (this.isTempoMarkingAlreadyRendered(staffLine, entry.Expression, sourceMeasure)) {
                     continue;
                 }
                 let textAlignment: TextAlignmentEnum = this.rules.TempoExpressionTextAlignment;
@@ -4323,14 +4325,42 @@ export abstract class MusicSheetCalculator {
         }
     }
 
-    /** Whether tempo text has already been placed at this position, typically from another part. */
-    protected isTempoMarkingAlreadyRendered(staffLine: StaffLine, tempoExpression: AbstractTempoExpression, absoluteTimestamp: Fraction): boolean {
+    /** The placement the first entry of multiTempoExpression is drawn with in this layout, also before
+     *  calculateTempoExpressionsForMultiTempoExpression() places it: Above when it goes above the system (not on its own
+     *  staff), where that method puts an InstantaneousTempoExpression above (placeAboveSystemForLayout()). The metronome
+     *  marks are placed before the tempo text and are raised over tempo text above them (createMetronomeMark()): with
+     *  the read placement, a main tempo mark of a direction without placement (below by default) did not raise them in
+     *  the first render and did from the second render on (Bellini, L'allegro marinaro m1: "Allegro" and ♩ = 168 in one
+     *  direction). osmd-dart lays out the tempo text first and reads the placement it is drawn with. */
+    protected drawnPlacementOfTempoExpression(multiTempoExpression: MultiTempoExpression): PlacementEnum {
+        const placement: PlacementEnum = multiTempoExpression.getPlacementOfFirstEntry();
+        if (!(multiTempoExpression.EntriesList[0]?.Expression instanceof InstantaneousTempoExpression)) {
+            return placement;
+        }
+        const measures: GraphicalMeasure[] =
+            this.graphicalMusicSheet.MeasureList[multiTempoExpression.SourceMeasureParent.measureListIndex] ?? [];
+        // the first visible staff, as calculateTempoExpressionsForMultiTempoExpression() finds it
+        let topStaffIndex: number = 0;
+        for (let j: number = 0; j < measures.length; j++) {
+            if (measures[j]?.ParentStaffLine?.Measures.length > 0 && measures[j].isVisible()) {
+                topStaffIndex = j;
+                break;
+            }
+        }
+        const ownStaffIndex: number = MusicSheetCalculator.ownStaffIndexOfTempoExpression(multiTempoExpression, topStaffIndex);
+        const ownStaffMeasure: GraphicalMeasure = ownStaffIndex !== undefined ? measures[ownStaffIndex] : undefined;
+        const onOwnStaff: boolean = ownStaffMeasure?.ParentStaffLine?.Measures.length > 0 && ownStaffMeasure.isVisible();
+        return onOwnStaff ? placement : PlacementEnum.Above;
+    }
+
+    /** Whether the tempo text has already been placed on the staff line in this measure, typically from another part. */
+    protected isTempoMarkingAlreadyRendered(staffLine: StaffLine, tempoExpression: AbstractTempoExpression, sourceMeasure: SourceMeasure): boolean {
         for (const graphicalExpression of staffLine.AbstractExpressions) {
             if (!(graphicalExpression instanceof GraphicalInstantaneousTempoExpression)) {
                 continue;
             }
             const renderedExpression: AbstractTempoExpression = graphicalExpression.SourceExpression as AbstractTempoExpression;
-            if (!renderedExpression.ParentMultiTempoExpression?.AbsoluteTimestamp.Equals(absoluteTimestamp)) {
+            if (renderedExpression.ParentMultiTempoExpression?.SourceMeasureParent !== sourceMeasure) {
                 continue;
             }
             if ((renderedExpression.Label ?? "").trim() !== (tempoExpression.Label ?? "").trim()) {
@@ -4341,11 +4371,18 @@ export abstract class MusicSheetCalculator {
         return false;
     }
 
-    /** Whether another tempo expression at the moment of multiTempoExpression is written for a staff above staffIndex
-     *  or without a placement (which could be any staff), see ownStaffIndexOfTempoExpression(). */
+    /** Whether another tempo expression at the moment of multiTempoExpression, or with its words anywhere in its measure,
+     *  is written for a staff above staffIndex or without a placement (which could be any staff), see
+     *  ownStaffIndexOfTempoExpression(). The same words a little later in a lower part (a piano's "Andante" an eighth after
+     *  the voice's) are the same instruction: drawn once, above the system (see isTempoMarkingAlreadyRendered()). */
     private static hasTempoExpressionAboveAt(multiTempoExpression: MultiTempoExpression, staffIndex: number): boolean {
+        const label: string = multiTempoExpression.EntriesList[0]?.Expression?.Label;
         for (const other of multiTempoExpression.SourceMeasureParent.TempoExpressions) {
-            if (other === multiTempoExpression || !other.Timestamp.Equals(multiTempoExpression.Timestamp)) {
+            if (other === multiTempoExpression) {
+                continue;
+            }
+            if (!other.Timestamp.Equals(multiTempoExpression.Timestamp) &&
+                (label === undefined || !other.EntriesList.some((entry) => entry.Expression?.Label === label))) {
                 continue;
             }
             for (const entry of other.EntriesList) {
@@ -7042,6 +7079,17 @@ export abstract class MusicSheetCalculator {
     private calculateTempoExpressions(): void {
         const maxIndex: number = Math.min(this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures.length - 1, this.rules.MaxMeasureToDrawIndex);
         const minIndex: number = this.rules.MinMeasureToDrawIndex;
+        // Each layout places the tempo marks from the placements read from the score, not from those of the last layout
+        //   (InstantaneousTempoExpression.placeAboveSystemForLayout()), so that any number of renders draw the same.
+        for (const sourceMeasure of this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures) {
+            for (const expression of sourceMeasure.TempoExpressions) {
+                for (const entry of expression.EntriesList) {
+                    if (entry.Expression instanceof InstantaneousTempoExpression) {
+                        entry.Expression.restorePlacementBeforeLayout();
+                    }
+                }
+            }
+        }
         // Measure marks against notation, lay out text, then resolve their actual mutual collisions.
         if (this.rules.MetronomeMarksDrawn) {
             // A direction may be stored outside the drawing range while its display anchor is inside it.

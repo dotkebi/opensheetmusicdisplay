@@ -2215,7 +2215,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     for (const expression of below ? [] : metronomeExpression.parentMeasure.TempoExpressions) {
       const isMetronomeExpression: boolean = expression.InstantaneousTempo?.TempoType === TempoType.metronomeMark;
       // Only tempo text at the time of the mark lies under it, so text elsewhere in the measure does not raise it.
-      if (expression.getPlacementOfFirstEntry() === PlacementEnum.Above &&
+      // (where the text is drawn in this layout, see drawnPlacementOfTempoExpression())
+      if (this.drawnPlacementOfTempoExpression(expression) === PlacementEnum.Above &&
           !isMetronomeExpression && expression.AbsoluteTimestamp.Equals(absoluteTimestamp)) {
         hasExpressionsAboveStaffline = true;
         break;
