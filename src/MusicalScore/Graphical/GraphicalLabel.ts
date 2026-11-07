@@ -21,6 +21,8 @@ export class GraphicalLabel extends Clickable {
     /** Read-only informational variable only set once by lyrics centering algorithm. */
     public CenteringXShift: number = 0;
     public ColorXML: string;
+    /** The MusicXML enclosure of the words drawn ("rectangle", "square": a box around the label). */
+    public Enclosure: string;
     /** The note this label was created for, if any. Set for fingerings (GraphicalStaffEntry.FingeringEntries),
      *  which are stacked in the pitch order of their notes rather than the order they were read in,
      *  so that the note a fingering belongs to can be told without re-deriving that order.
