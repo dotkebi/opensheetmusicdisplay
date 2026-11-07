@@ -292,8 +292,10 @@ export class ArticulationReader {
    * This method adds an Ornament to the currentVoiceEntry.
    * @param ornamentsNode
    * @param currentVoiceEntry
+   * @param levelNode the <level> of the ornaments' <notations>: with parentheses="yes" or bracket="yes", the ornament is
+   *   drawn enclosed (MusicXML 4.0: the editorial level of all the notations in that <notations>)
    */
-  public addOrnament(ornamentsNode: IXmlElement, currentVoiceEntry: VoiceEntry): void {
+  public addOrnament(ornamentsNode: IXmlElement, currentVoiceEntry: VoiceEntry, levelNode?: IXmlElement): void {
     if (ornamentsNode) {
       let ornament: OrnamentContainer = undefined;
 
@@ -359,10 +361,30 @@ export class ArticulationReader {
             }
           }
         }
+        if (levelNode?.attribute("bracket")?.value === "yes") {
+          ornament.LevelEnclosure = "bracket";
+        } else if (levelNode?.attribute("parentheses")?.value === "yes") {
+          ornament.LevelEnclosure = "parentheses";
+        }
         // add this to currentVoiceEntry
         currentVoiceEntry.OrnamentContainer = ornament;
       }
     }
   } // /addOrnament
+
+  /**
+   * Adds an <accidental-mark> that is not in <ornaments> (a child of <notations>) to the voice entry: an editorial
+   * accidental drawn above the note, or below it with placement="below" (VoiceEntry.AccidentalMarks).
+   */
+  public addAccidentalMark(accidentalMarkNode: IXmlElement, currentVoiceEntry: VoiceEntry): void {
+    const accidentalXml: string = accidentalMarkNode.value;
+    const accidental: AccidentalEnum = this.getAccEnumFromString(accidentalXml);
+    if (accidental === AccidentalEnum.NONE) {
+      return;
+    }
+    const placement: PlacementEnum = accidentalMarkNode.attribute("placement")?.value === "below" ?
+      PlacementEnum.Below : PlacementEnum.Above;
+    currentVoiceEntry.AccidentalMarks.push({ accidental, accidentalXml, placement });
+  }
 
 }

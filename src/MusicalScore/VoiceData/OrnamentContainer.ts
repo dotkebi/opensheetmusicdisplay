@@ -16,6 +16,10 @@ export class OrnamentContainer {
     public AccidentalAboveXml: string;
     /** The MusicXML value of the accidental mark below, see AccidentalAboveXml. */
     public AccidentalBelowXml: string;
+    /** The editorial enclosure of the ornament, from the <level parentheses="yes"> or <level bracket="yes"> that starts
+     *  its <notations>: "(tr)" or "[tr]" (Vivaldi, Op. 44 No. 11 I m72; Dittersdorf, Double Bass Concerto in D, flutes m55).
+     *  Undefined without one. */
+    public LevelEnclosure: "parentheses" | "bracket";
 
     public get GetOrnament(): OrnamentEnum {
         return this.ornament;

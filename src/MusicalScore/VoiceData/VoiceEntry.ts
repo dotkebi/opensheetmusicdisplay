@@ -68,6 +68,10 @@ export class VoiceEntry {
     /** The Arpeggio consisting of this VoiceEntry's notes. Undefined if no arpeggio exists. */
     private arpeggio: Arpeggio;
     private ornamentContainer: OrnamentContainer;
+    /** The <accidental-mark>s directly in the note's <notations>, not in <ornaments>: editorial accidentals drawn above or
+     *  below the note (Saint-Saëns, Bassoon Sonata Op. 168: an accidental printed over the note). Those in <ornaments> belong
+     *  to the ornament (OrnamentContainer.AccidentalAbove). */
+    public AccidentalMarks: AccidentalMark[] = [];
     private wantedStemDirection: StemDirectionType = StemDirectionType.Undefined;
     /** Stem direction specified in the xml stem element. */
     private stemDirectionXml: StemDirectionType = StemDirectionType.Undefined;
@@ -474,6 +478,14 @@ export enum ArticulationEnum {
     detachedlegato,
     otherarticulation,
     bend
+}
+
+/** An <accidental-mark> of a note outside <ornaments>, see VoiceEntry.AccidentalMarks. */
+export interface AccidentalMark {
+    accidental: AccidentalEnum;
+    /** The MusicXML value, e.g. "sharp-sharp", which accidental doesn't tell apart from "double-sharp". */
+    accidentalXml: string;
+    placement: PlacementEnum;
 }
 
 export enum StemDirectionType {
