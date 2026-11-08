@@ -32,6 +32,12 @@ export class Pedal {
     /** A stop that closed no pedal: the engraver's * without a Ped. before it (Viotti No.22 III m244 after a pedal already
      *  released, Schumann Op.47 II m260). Only the * is drawn, at the stop; start and end expression are one. */
     public ReleaseOnly: boolean = false;
+    /** Whether the pedal line begins without its start hook (the downstroke), e.g. MusicXML `<pedal type="resume">`:
+     *  where a discontinued line goes on, or after a Ped. sign (sign="yes": the Ped. + line style, which has no start hook anyway). */
+    public BeginsWithoutHook: boolean = false;
+    /** Whether the pedal line ends without its end hook (the lift), e.g. MusicXML `<pedal type="discontinue">`,
+     *  where a pedal stopped there would draw the hook. */
+    public EndsWithoutHook: boolean = false;
 
     public get IsLine(): boolean {
         return this.line;

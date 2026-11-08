@@ -4,7 +4,7 @@ import {Instrument} from "../Instrument";
 import {BoundingBox} from "./BoundingBox";
 import {Fraction} from "../../Common/DataObjects/Fraction";
 import {SourceMeasure} from "../VoiceData/SourceMeasure";
-import {InstrumentalGroup} from "../InstrumentalGroup";
+import {GroupSymbol, InstrumentalGroup} from "../InstrumentalGroup";
 import {TextAlignmentEnum} from "../../Common/Enums/TextAlignment";
 import {GraphicalMusicPage} from "./GraphicalMusicPage";
 import {GraphicalLabel} from "./GraphicalLabel";
@@ -21,6 +21,18 @@ import {SystemLine} from "./SystemLine";
 import {SystemLinePosition} from "./SystemLinePosition";
 import {Staff} from "../VoiceData/Staff";
 import { Label } from "../Label";
+
+/** Which labels [[MusicSystem.createMusicSystemLabel]] creates left of a system's staves. */
+export enum SystemLabelsEnum {
+    /** The part and part-group names on the first system, their abbreviations on later systems. */
+    Default,
+    /** On the first system, the part and part-group names on two lines where that makes them narrower, e.g. "Clarinet" / "in B♭". */
+    NamesOnTwoLines,
+    /** The part and part-group abbreviations, on the first system also for a single staff. */
+    Abbreviations,
+    /** No labels. */
+    None,
+}
 
 /**
  * A MusicSystem contains the [[StaffLine]]s for all instruments, until a line break
@@ -97,7 +109,7 @@ export abstract class MusicSystem extends GraphicalObject {
             return false;
         }
         this.createMusicSystemLabel(instrumentLabelTextHeight, systemLabelsRightMargin, labelMarginBorderFactor,
-                                    isFirstSystem, shown);
+                                    isFirstSystem, SystemLabelsEnum.Default, shown);
         return true;
     }
 
@@ -320,71 +332,79 @@ export abstract class MusicSystem extends GraphicalObject {
     }
 
     /**
-     * Create a GroupBracket for each [[InstrumentalGroup]], from the group's first staffline in the system down to its last
-     * one, so the bracket of a group ending with a piano takes in both of the piano's staves, as in MusicXML (a part-group
-     * groups whole parts) and MuseScore (before, it ended at the first staff of the last part): a part hidden in the system
-     * (removeHiddenStaffLines()) is not in it, so the bracket joins the parts left, if there are two or more of them. Before,
-     * it was only made when the first staff of the group's first and last parts were both in the system, so a hidden first
-     * or last part took the whole bracket with it, as did a hidden top staff of a piano at either end, or a nested group
-     * hidden at either end. Same rule as createInstrumentBrackets(); same as osmd-dart.
+     * Create a GroupBracket for each [[InstrumentalGroup]] with a group symbol (MusicXML group-symbol: a group without one
+     * draws nothing), and for the groups nested in it, which stand a column further left (EngravingRules.GroupBracketColumnDistance).
+     * The bracket goes from the group's first staffline in the system down to its last one, so the bracket of a group ending
+     * with a piano takes in both of the piano's staves: a part hidden in the system (removeHiddenStaffLines()) is not in it, so
+     * the bracket joins the parts left, if there are two or more of them (see groupBracketRange()). Same as osmd-dart.
      * @param instrumentGroups
      * @param staffHeight
-     * @param recursionDepth
+     * @param column the column of the brackets, left of the staves: 0 beside the staves, 1 for the groups nested in a bracketed
+     *   group, and so on (the brackets drawn around the groups)
      */
-    public createGroupBrackets(instrumentGroups: InstrumentalGroup[], staffHeight: number, recursionDepth: number): void {
+    public createGroupBrackets(instrumentGroups: InstrumentalGroup[], staffHeight: number, column: number): void {
         for (let idx: number = 0, len: number = instrumentGroups.length; idx < len; ++idx) {
             const instrumentGroup: InstrumentalGroup = instrumentGroups[idx];
             if (instrumentGroup.InstrumentalGroups.length < 1) {
                 continue;
             }
-            const range: StaffLine[] = this.groupBracketRange(instrumentGroup, this.staffLines);
-            if (range && instrumentGroup.GroupSymbol !== "none") {
-                this.createGroupBracket(range[0], range[1], recursionDepth, instrumentGroup.GroupSymbol);
+            const staffLines: StaffLine[] = instrumentGroup.GroupSymbol !== GroupSymbol.None ?
+                this.groupBracketRange(instrumentGroup, this.staffLines) : undefined;
+            if (staffLines) {
+                this.createGroupBracket(staffLines[0], staffLines[1], column, instrumentGroup.GroupSymbol);
             }
-            if (instrumentGroup.InstrumentalGroups.length < 1) {
-                continue;
-            }
-            this.createGroupBrackets(instrumentGroup.InstrumentalGroups, staffHeight, recursionDepth + 1);
+            this.createGroupBrackets(instrumentGroup.InstrumentalGroups, staffHeight, staffLines ? column + 1 : column);
         }
     }
 
     /**
-     * Create the Instrument's Labels (only for the first [[MusicSystem]] of the first MusicPage).
-     * The labels created before are dropped. All of the system's stafflines are moved to the right of the labels;
-     * whether the system has a single staff (part abbreviations) is judged on all of them.
+     * Create the system's labels left of its staves: the part names on the first system, the part abbreviations on later
+     * systems, and the names or abbreviations of part groups. Labels created before are replaced. All of the system's
+     * stafflines are moved to the right of the labels; whether the system has a single staff (part abbreviations) is judged
+     * on all of them.
      * @param instrumentLabelTextHeight
      * @param systemLabelsRightMargin
      * @param labelMarginBorderFactor
-     * @param labelled the stafflines whose parts (and groups) get labels, all of the system's by default
+     * @param isFirstSystem
+     * @param labelsType other labels than the default ones, e.g. when the part names leave the system's measures too little
+     *   room (see EngravingRules.FitPartLabelsToMeasures)
+     * @param labelled the stafflines whose parts (and groups) get labels, all of the system's by default (see
+     *   relabelWithoutHiddenStaffLines())
      */
     public createMusicSystemLabel(  instrumentLabelTextHeight: number, systemLabelsRightMargin: number,
                                     labelMarginBorderFactor: number, isFirstSystem: boolean = false,
+                                    labelsType: SystemLabelsEnum = SystemLabelsEnum.Default,
                                     labelled: StaffLine[] = this.staffLines): void {
-
-        for (const label of [...this.labels.values(), ...this.groupLabels.values()]) {
-            const childIndex: number = this.PositionAndShape.ChildElements.indexOf(label.PositionAndShape);
-            if (childIndex >= 0) {
-                this.PositionAndShape.ChildElements.splice(childIndex, 1);
-            }
+        this.removeLabels();
+        if (labelsType === SystemLabelsEnum.None) {
+            this.updateMusicSystemStaffLineXPosition(0);
+            return;
         }
-        this.labels.clear();
-        this.groupLabels.clear();
+        const useNames: boolean = isFirstSystem && labelsType !== SystemLabelsEnum.Abbreviations;
+        const namesOnTwoLines: boolean = useNames && labelsType === SystemLabelsEnum.NamesOnTwoLines;
+
         const originalSystemLabelsRightMargin: number = systemLabelsRightMargin;
         const groupLabelsByDepth: GraphicalLabel[][] = [];
         const groups: InstrumentalGroup[] = labelled[0]?.ParentStaff.ParentInstrument.GetMusicSheet.InstrumentalGroups ?? [];
-        this.createGroupLabels(groups, 0, isFirstSystem, instrumentLabelTextHeight, groupLabelsByDepth, labelled);
+        this.createGroupLabels(groups, 0, useNames, namesOnTwoLines, instrumentLabelTextHeight, groupLabelsByDepth, labelled);
         for (let idx: number = 0, len: number = labelled.length; idx < len; ++idx) {
             const instrument: Instrument = labelled[idx].ParentStaff.ParentInstrument;
             let instrNameLabel: Label;
-            if (isFirstSystem) {
+            if (useNames) {
                 instrNameLabel = instrument.NameLabel;
                 if (!this.rules.RenderPartNames || !instrNameLabel?.print || !instrNameLabel.text?.trim()) {
                     instrNameLabel = new Label("", instrument.NameLabel.textAlignment, instrument.NameLabel.font);
                     systemLabelsRightMargin = 0; // might affect lyricist/tempo placement. but without this there's still some extra x-spacing.
+                } else if (namesOnTwoLines) {
+                    const text: string = this.textOnTwoLines(instrNameLabel.text, instrNameLabel, instrumentLabelTextHeight);
+                    instrNameLabel = Object.assign(new Label(), instrNameLabel, { text: text });
                 }
             } else {
                 if (!this.rules.RenderPartAbbreviations || !this.rules.RenderPartNames // don't render abbreviations if we don't render part names
-                    || (this.staffLines.length === 1 && !this.rules.RenderPartAbbreviationsForSingleStaff)) {
+                    // a later system with one staff shows no abbreviation by default (the first system shows the name
+                    //   there, or the abbreviation if the name leaves its measures too little room)
+                    || (!isFirstSystem && this.staffLines.length === 1 && !this.rules.RenderPartAbbreviationsForSingleStaff)) {
+                    this.updateMusicSystemStaffLineXPosition(0); // e.g. after part names that left too little room
                     return;
                 }
                 if (!instrument.PartAbbreviation?.trim() || !instrument.PartAbbreviationPrintObject) {
@@ -400,6 +420,7 @@ export abstract class MusicSystem extends GraphicalObject {
                 const graphicalLabel: GraphicalLabel = new GraphicalLabel(
                     instrNameLabel, instrumentLabelTextHeight, TextAlignmentEnum.LeftCenter, this.rules, this.boundingBox
                 );
+                graphicalLabel.SVGClass = useNames ? "osmd-part-name" : "osmd-part-abbreviation";
                 graphicalLabel.setLabelPositionAndShapeBorders();
                 this.labels.setValue(instrument, graphicalLabel);
                 // X is set after all group and part label widths are known; Y is set after staff spacing.
@@ -442,13 +463,54 @@ export abstract class MusicSystem extends GraphicalObject {
         });
         if (this.maxLabelLength > 0) {
             systemLabelsRightMargin = originalSystemLabelsRightMargin;
-            // the labels keep from the brackets standing further left than a part brace the gap they keep from a part brace
+            // the labels keep from a bracket or brace standing further left than a part brace the distance they keep from one
             this.maxLabelLength += this.groupBracketsReachBeyondPartBrace(labelled);
         }
         this.updateMusicSystemStaffLineXPosition(systemLabelsRightMargin);
     }
 
-    private createGroupLabels(groups: InstrumentalGroup[], depth: number, isFirstSystem: boolean,
+    /** Removes the system's part and part-group labels, also from its bounding box. */
+    private removeLabels(): void {
+        const children: BoundingBox[] = this.boundingBox.ChildElements;
+        for (const label of this.Labels) {
+            const index: number = children.indexOf(label.PositionAndShape);
+            if (index > -1) {
+                children.splice(index, 1);
+            }
+        }
+        this.labels.clear();
+        this.groupLabels.clear();
+        this.maxLabelLength = 0;
+    }
+
+    /**
+     * Splits a label's text onto two lines at the space that makes the wider line narrowest, e.g. "Clarinet in B♭" into
+     * "Clarinet" and "in B♭". Returns the text unchanged if no split makes it narrower (one word, or several lines already).
+     * @param text the text to split
+     * @param label the label whose font the lines are measured in
+     * @param textHeight the font height
+     */
+    private textOnTwoLines(text: string, label: Label, textHeight: number): string {
+        const words: string[] = text.trim().split(/\s+/);
+        if (words.length < 2 || /[\n\r]/.test(text)) {
+            return text;
+        }
+        const lineWidth: (line: string) => number = (line: string): number => textHeight *
+            this.rules.TextMeasurer.computeTextWidthToHeightRatio(line, label.font, label.fontStyle, label.fontFamily);
+        let result: string = text;
+        let resultWidth: number = lineWidth(text.trim());
+        for (let i: number = 1; i < words.length; i++) {
+            const lines: string[] = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+            const width: number = Math.max(lineWidth(lines[0]), lineWidth(lines[1]));
+            if (width < resultWidth) {
+                resultWidth = width;
+                result = lines.join("\n");
+            }
+        }
+        return result;
+    }
+
+    private createGroupLabels(groups: InstrumentalGroup[], depth: number, useNames: boolean, namesOnTwoLines: boolean,
                               textHeight: number, byDepth: GraphicalLabel[][], labelled: StaffLine[]): void {
         if (!this.rules.RenderPartGroupNames) {
             return;
@@ -457,14 +519,19 @@ export abstract class MusicSystem extends GraphicalObject {
             if (group instanceof Instrument) {
                 continue;
             }
-            const text: string = isFirstSystem ? group.Name : group.Abbreviation;
-            const print: boolean = isFirstSystem ? group.PrintName && this.rules.RenderPartNames
+            const text: string = useNames ? group.Name : group.Abbreviation;
+            const print: boolean = useNames ? group.PrintName && this.rules.RenderPartNames
                 : group.PrintAbbreviation && this.rules.RenderPartNames && this.rules.RenderPartAbbreviations
                     && (this.staffLines.length !== 1 || this.rules.RenderPartAbbreviationsForSingleStaff);
             if (print && text?.trim() && this.staffLinesForGroup(group, labelled).length > 0) {
+                const groupLabel: Label = new Label(text);
+                if (namesOnTwoLines) {
+                    groupLabel.text = this.textOnTwoLines(text, groupLabel, textHeight);
+                }
                 const label: GraphicalLabel = new GraphicalLabel(
-                    new Label(text), textHeight, TextAlignmentEnum.LeftCenter, this.rules, this.boundingBox
+                    groupLabel, textHeight, TextAlignmentEnum.LeftCenter, this.rules, this.boundingBox
                 );
+                label.SVGClass = useNames ? "osmd-part-group-name" : "osmd-part-group-abbreviation";
                 label.setLabelPositionAndShapeBorders();
                 this.groupLabels.set(group, label);
                 if (!byDepth[depth]) {
@@ -472,7 +539,7 @@ export abstract class MusicSystem extends GraphicalObject {
                 }
                 byDepth[depth].push(label);
             }
-            this.createGroupLabels(group.InstrumentalGroups, depth + 1, isFirstSystem, textHeight, byDepth, labelled);
+            this.createGroupLabels(group.InstrumentalGroups, depth + 1, useNames, namesOnTwoLines, textHeight, byDepth, labelled);
         }
     }
 
@@ -624,14 +691,20 @@ export abstract class MusicSystem extends GraphicalObject {
         // no impl here
     }
 
-    protected createGroupBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine,
-                                 recursionDepth: number, groupSymbol: string): void {
+    /**
+     * Creates the bracket of a part group, from the given first staffline to the last one, in the given column left of the
+     * staves (see createGroupBrackets()): VexFlow's bracket, a brace, or a thin line with right-angled hooks (square) or
+     * without them (line), as the group symbol says.
+     */
+    protected createGroupBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine, column: number, groupSymbol: GroupSymbol): void {
         // no impl here
     }
 
     /**
      * The first and last stafflines of a group's bracket among the given stafflines (see createGroupBrackets()), or undefined
-     * when the group has no bracket there (fewer than two of its parts in them).
+     * when the group has no bracket there (fewer than two of its parts in them): a part-group groups whole parts, so the bracket
+     * reaches from the first staff of its first part to the last staff of its last part (e.g. both staves of a piano that ends
+     * the group), among the visible stafflines given (a part hidden in the system is not in them).
      */
     private groupBracketRange(instrumentGroup: InstrumentalGroup, staffLines: StaffLine[]): StaffLine[] {
         const instruments: Set<Instrument> = this.instrumentsInInstrumentalGroup(instrumentGroup);
@@ -642,43 +715,44 @@ export abstract class MusicSystem extends GraphicalObject {
         return [lines[0], lines[lines.length - 1]];
     }
 
+    /** How far left of the staves a group's bracket of the given symbol reaches in the given column, in units. */
+    protected groupBracketReach(groupSymbol: GroupSymbol, column: number): number {
+        return 0;
+    }
+
+    /** How far left of the staves a part's brace reaches in the given column, in units. */
+    protected partBraceReach(column: number): number {
+        return 0;
+    }
+
     /**
-     * How much further left than a part brace (in units) the group brackets of the system and the part braces inside them
-     * reach when drawn beside the given stafflines (createGroupBrackets()): a nested group stands left of its outer group,
-     * and a part brace inside a group left of the group's bracket. The labels move left by as much, so they keep the gap
-     * they have from a part brace (a piano in a nested group: the brace 1.0 further left).
+     * How much further left than a part brace beside the staves the system's group brackets and the part braces inside the
+     * groups reach, in units, when drawn beside the given stafflines (createGroupBrackets()): a bracket nested in another
+     * group's bracket stands a column further left, as does the brace of a multi-staff part inside a bracketed group. The
+     * labels move left by as much, so they keep the distance from the brackets that they keep from a part brace.
      */
     private groupBracketsReachBeyondPartBrace(staffLines: StaffLine[]): number {
         let reach: number = 0;
-        const reachOfGroups: (groups: InstrumentalGroup[], depth: number) => void = (groups, depth) => {
+        const reachOfGroups: (groups: InstrumentalGroup[], column: number) => void = (groups: InstrumentalGroup[], column: number): void => {
             for (const group of groups) {
                 if (group.InstrumentalGroups.length < 1) {
                     continue;
                 }
-                const range: StaffLine[] = this.groupBracketRange(group, staffLines);
-                if (range && group.GroupSymbol !== "none") {
-                    reach = Math.max(reach, this.groupBracketReach(group.GroupSymbol, depth));
-                    for (const instrument of this.instrumentsInInstrumentalGroup(group)) {
-                        if (staffLines.filter(line => line.ParentStaff.ParentInstrument === instrument && line.ParentStaff.Visible).length > 1) {
-                            reach = Math.max(reach, this.partBraceReach(depth + 1));
-                        }
+                const drawn: boolean = group.GroupSymbol !== GroupSymbol.None && this.groupBracketRange(group, staffLines) !== undefined;
+                if (drawn) {
+                    reach = Math.max(reach, this.groupBracketReach(group.GroupSymbol, column));
+                    const lines: StaffLine[] = this.staffLinesForGroup(group, staffLines);
+                    const hasBracedPart: boolean = lines.some((line: StaffLine, index: number): boolean =>
+                        index > 0 && lines[index - 1].ParentStaff.ParentInstrument === line.ParentStaff.ParentInstrument);
+                    if (hasBracedPart) { // a part with two or more staves in the system: its brace stands a column further left
+                        reach = Math.max(reach, this.partBraceReach(column + 1));
                     }
                 }
-                reachOfGroups(group.InstrumentalGroups, depth + 1);
+                reachOfGroups(group.InstrumentalGroups, drawn ? column + 1 : column);
             }
         };
         reachOfGroups(staffLines[0]?.ParentStaff.ParentInstrument.GetMusicSheet.InstrumentalGroups ?? [], 0);
         return Math.max(0, reach - this.partBraceReach(0));
-    }
-
-    /** How far left of the staves (in units) a group's bracket of the given symbol reaches at the given nesting depth. */
-    protected groupBracketReach(groupSymbol: string, depth: number): number {
-        return 0;
-    }
-
-    /** How far left of the staves (in units) a part brace reaches, moved left of the brackets of the given number of groups. */
-    protected partBraceReach(columns: number): number {
-        return 0;
     }
 
     /** The parts of an [[InstrumentalGroup]], also those of the groups nested in it. */

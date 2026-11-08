@@ -11,6 +11,7 @@ import {KeyEnum} from "../../VoiceData/Instructions/KeyInstruction";
 import {AccidentalEnum} from "../../../Common/DataObjects/Pitch";
 import {NoteEnum} from "../../../Common/DataObjects/Pitch";
 import {VexFlowGraphicalNote} from "./VexFlowGraphicalNote";
+import { TabRhythmDot } from "./TabRhythmDot";
 import {GraphicalNote} from "../GraphicalNote";
 import { GraphicalSlur } from "../GraphicalSlur";
 import {SystemLinesEnum} from "../SystemLinesEnum";
@@ -22,6 +23,7 @@ import { ArticulationEnum, StemDirectionType, VoiceEntry } from "../../VoiceData
 import { SourceStaffEntry } from "../../VoiceData/SourceStaffEntry";
 import { BreathMarkValue } from "../../VoiceData/Articulation";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
+import { Articulation } from "../../VoiceData/Articulation";
 import { SystemLinePosition } from "../SystemLinePosition";
 import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
 import { OrnamentEnum, OrnamentContainer } from "../../VoiceData/OrnamentContainer";
@@ -43,7 +45,6 @@ import { GraphicalMeasure } from "../GraphicalMeasure";
 import { Staff } from "../../VoiceData/Staff";
 import { VexFlowStaffEntry } from "./VexFlowStaffEntry";
 import { VexFlowVoiceEntry } from "./VexFlowVoiceEntry";
-import { MusicSheetCalculator } from "../MusicSheetCalculator";
 
 /**
  * Helper class, which contains static methods which actually convert
@@ -435,7 +436,7 @@ export class VexFlowConverter {
         // if (gve.octaveShiftValue !== OctaveEnum.NONE) { // gves with accidentals in octave shift brackets can be unsorted
         gve.sortForVexflow(); // also necessary for some other cases, see test_sorted_notes... sample
         //   sort and reverse replace the array anyways, so we might as well directly sort them reversely for now.
-        //   otherwise we should copy the array, see the commented GraphicalVoiceEntry.sortedNotesCopyForVexflow()
+        //   otherwise we should copy the array first
         //   another alternative: don't sort gve notes, instead collect and sort tickables in an array,
         //     then iterate over the array by addTickable() in VexFlowMeasure.graphicalMeasureCreatedCalculations()
         const notes: GraphicalNote[] = gve.notes;
@@ -456,7 +457,10 @@ export class VexFlowConverter {
             baseNote.sourceNote.TypeLength !== baseNoteLength &&
             baseNote.sourceNote.TypeLength.RealValue !== 0) {
             duration = VexFlowConverter.durations(baseNote.sourceNote.TypeLength, isTuplet)[0];
-            baseNote.numberOfDots = baseNote.sourceNote.DotsXml;
+            // Every chord member contributes to numDots below, so use the written dots for all of them.
+            for (const note of notes) {
+                note.numberOfDots = note.sourceNote.DotsXml;
+            }
         }
         let vfClefType: string = undefined;
         let numDots: number = baseNote.numberOfDots;
@@ -585,7 +589,7 @@ export class VexFlowConverter {
                             continue; // see above
                         }
                         for (const gveNote of staffGve.notes) {
-                            if (gveNote === note || gveNote.sourceNote.isRest() || !gveNote.sourceNote.PrintObject) {
+                            if (gveNote === note || gveNote.sourceNote.isRest() || !gveNote.sourceNote.isVisible()) {
                                 continue;
                             }
                             // A cross-staff note doesn't move the rest towards the staff of its voice (see restMovesTowardsStaffOfVoice()).
@@ -1069,8 +1073,9 @@ export class VexFlowConverter {
         //   sounds during any of its notes: not some dots below the heads and some above the beam. A placement from the XML
         //   still wins.
         //   Of a chord, only the first note in the XML is in the beam (not necessarily gNote, the lowest).
+        const articulations: Articulation[] = VexFlowConverter.getDrawnArticulations(gNote.sourceNote.ParentVoiceEntry);
         const beamNotes: Note[] = gNote.sourceNote.ParentVoiceEntry.Notes[0].NoteBeam?.Notes ?? [gNote.sourceNote];
-        const otherVoiceSounding: boolean = gNote.sourceNote.ParentVoiceEntry.Articulations.length > 0 &&
+        const otherVoiceSounding: boolean = articulations.length > 0 &&
             beamNotes.some((note: Note) => VexFlowConverter.otherVoiceSoundsDuring(note.ParentVoiceEntry));
         for (const articulation of gNote.sourceNote.ParentVoiceEntry.Articulations) {
             if (articulation.printObject === false) {
@@ -1200,24 +1205,8 @@ export class VexFlowConverter {
                     break;
                 }
                 case ArticulationEnum.invertedfermata: {
-                    const pve: VoiceEntry = gNote.sourceNote.ParentVoiceEntry;
-                    // find inverted fermata, push it to last voice entry in staffentry list,
-                    //   so that it doesn't overlap notes (gets displayed right below higher note)
-                    //   TODO this could maybe be moved elsewhere or done more elegantly,
-                    //     but on the other hand here it only gets checked if we have an inverted fermata anyways, seems efficient.
-                    // Only to an entry with a printed note: pushed to a hidden rest (print-object="no", the lower voice's
-                    //   filler at that time) the fermata was never drawn (Parisotti, Traetta Ombra cara Piano m11, m35;
-                    //   renderer leftovers 2, 2-2 P25-S1). osmd_dart draws it under its own note.
-                    // Not when the note itself is as low as the last entry's or lower (Brahms Op.63 No.2 Erinnerung Piano m102,
-                    //   Schumann Op.39 No.1 Piano m28: the bass voice's inverted fermata, then a tenor voice above it, last): the
-                    //   moved fermata was never drawn, as the bass voice, which kept it, is further down
-                    //   (fermataDrawnByOtherVoice()), and below the bass note is where it goes anyway.
-                    const lastPrinted: VoiceEntry = VexFlowConverter.lastVoiceEntryWithPrintedNote(pve.ParentSourceStaffEntry);
-                    if (lastPrinted && pve !== lastPrinted && !VexFlowConverter.reachesAsLow(pve, lastPrinted)) {
-                        pve.Articulations = pve.Articulations.slice(pve.Articulations.indexOf(articulation));
-                        lastPrinted.Articulations.push(articulation);
-                        continue;
-                    }
+                    // drawn at the last voice entry with a printed note of the staff entry (when that is lower), see
+                    //   getDrawnArticulations()
                     vfArtPosition = VF.Modifier.Position.BELOW;
                     articulation.placement = PlacementEnum.Below;
                     if (VexFlowConverter.fermataDrawnByOtherVoice(gNote, articulationEnum, vfArtPosition)) {
@@ -1455,9 +1444,39 @@ export class VexFlowConverter {
         return above ? Math.min(0, extreme - margin - natural) : Math.max(0, extreme + margin - natural);
     }
 
+    /** The articulations drawn at the voice entry's note: its own, but the inverted fermatas of its staff entry go to the
+     *  staff entry's last voice entry with a printed note, so that they don't overlap the notes of the other voices (#1278):
+     *  the fermata of a stem-up note is drawn right below a lower voice's note, not over it.
+     *  Only to an entry with a printed note: at a hidden rest (print-object="no", the lower voice's filler at that time) the
+     *  fermata was never drawn (Parisotti, Traetta Ombra cara Piano m11, m35). Not when the note itself is as low as the last
+     *  entry's or lower (Brahms Op.63 No.2 Erinnerung Piano m102, Schumann Op.39 No.1 Piano m28: the bass voice's inverted
+     *  fermata, then a tenor voice above it, last): below the bass note is where it goes anyway (see reachesAsLow()).
+     *  The model stays as it is. Before, the fermata was added to the last voice entry's articulations (and stayed in its
+     *  own voice entry's), so every further calculation, e.g. after updateGraphic(), drew it once more. */
+    private static getDrawnArticulations(voiceEntry: VoiceEntry): Articulation[] {
+        const isInvertedFermata: (articulation: Articulation) => boolean =
+            (articulation: Articulation): boolean => articulation.articulationEnum === ArticulationEnum.invertedfermata;
+        const staffEntry: SourceStaffEntry = voiceEntry.ParentSourceStaffEntry;
+        const lastPrinted: VoiceEntry = staffEntry ? VexFlowConverter.lastVoiceEntryWithPrintedNote(staffEntry) : undefined;
+        /** Whether the voice entry's inverted fermatas are drawn at lastPrinted instead of at its own note. */
+        const movesFermatas: (entry: VoiceEntry) => boolean = (entry: VoiceEntry): boolean =>
+            lastPrinted && entry !== lastPrinted && !VexFlowConverter.reachesAsLow(entry, lastPrinted);
+        const articulations: Articulation[] = movesFermatas(voiceEntry) ?
+            voiceEntry.Articulations.filter((articulation: Articulation): boolean => !isInvertedFermata(articulation)) :
+            voiceEntry.Articulations.slice();
+        if (voiceEntry === lastPrinted) {
+            for (const otherVoiceEntry of staffEntry.VoiceEntries) {
+                if (otherVoiceEntry !== voiceEntry && movesFermatas(otherVoiceEntry)) {
+                    articulations.push(...otherVoiceEntry.Articulations.filter(isInvertedFermata));
+                }
+            }
+        }
+        return articulations;
+    }
+
     /** Whether a visible note or rest of another voice in the staff sounds during the voice entry, e.g. a half note of
-     *  another voice under the second quarter of the measure. Hidden notes and rests (e.g. of a voice only for playback)
-     *  don't count. */
+     *  another voice under the second quarter of the measure. Notes and rests that aren't drawn (see Note.isVisible()),
+     *  e.g. of a voice only for playback, don't count. */
     private static otherVoiceSoundsDuring(voiceEntry: VoiceEntry): boolean {
         const length: (entry: VoiceEntry) => number =
             (entry: VoiceEntry): number => Math.max(...entry.Notes.map((note: Note) => note.Length.RealValue));
@@ -1473,7 +1492,7 @@ export class VexFlowConverter {
             }
             for (const other of otherStaffEntry.VoiceEntries) {
                 if (other.ParentVoice !== voiceEntry.ParentVoice && otherStart + length(other) > start &&
-                    other.Notes.some((note: Note) => note.PrintObject)) {
+                    other.Notes.some((note: Note) => note.isVisible())) {
                     return true;
                 }
             }
@@ -1594,7 +1613,7 @@ export class VexFlowConverter {
     public static CreateTabNote(gve: GraphicalVoiceEntry): VF.TabNote {
         const tabPositions: {str: number, fret: number}[] = [];
         const notes: GraphicalNote[] = gve.notes.reverse();
-        const tabPhrases: { type: number, text: string, width: number }[] = [];
+        const tabPhrases: { type: number, text: string }[] = [];
         const frac: Fraction = gve.notes[0].graphicalNoteLength;
         const isTuplet: boolean = gve.notes[0].sourceNote.NoteTuplet !== undefined;
         let duration: string = VexFlowConverter.durations(frac, isTuplet)[0];
@@ -1613,22 +1632,25 @@ export class VexFlowConverter {
                 (tabPosition as any).fret = "x";
                 isXNotehead = true;
             }
+            if (tabNote.FretVisible === false) {
+                (tabPosition as any).fret = "";
+            } else if (tabNote.FretParentheses) {
+                (tabPosition as any).fret = `(${tabPosition.fret})`;
+            }
             tabPositions.push(tabPosition);
             if (tabNote.BendArray) {
+                // Like Guitar Pro and MuseScore, a bend is labeled with how far the string is bent after it, from the unbent note:
+                //   a half step and another half step are "1/2" and "Full", a release that leaves a half step is "1/2".
+                let bentSemitones: number = 0;
                 tabNote.BendArray.forEach( function( bend: {bendalter: number, direction: string} ): void {
-                    let phraseText: string;
-                    const phraseStep: number = bend.bendalter - tabPosition.fret;
-                    if (phraseStep > 1) {
-                        phraseText = "Full";
-                    } else if (phraseStep === 1) {
-                        phraseText = "1/2";
-                    } else {
-                        phraseText = "1/4";
-                    }
+                    if (bend.bendalter === 0) { return; }
                     if (bend.direction === "up") {
-                        tabPhrases.push({type: VF.Bend.UP, text: phraseText, width: 10});
+                        bentSemitones += Math.abs(bend.bendalter);
+                        tabPhrases.push({type: VF.Bend.UP, text: VexFlowConverter.bendText(bentSemitones)});
                     } else {
-                        tabPhrases.push({type: VF.Bend.DOWN, text: phraseText, width: 10});
+                        bentSemitones -= Math.abs(bend.bendalter);
+                        // a release back to the unbent note isn't labeled
+                        tabPhrases.push({type: VF.Bend.DOWN, text: bentSemitones > 0 ? VexFlowConverter.bendText(bentSemitones) : ""});
                     }
                 });
             }
@@ -1645,13 +1667,28 @@ export class VexFlowConverter {
             duration: duration,
             positions: tabPositions,
         };
+        const stemDirection: StemDirectionType = gve.parentVoiceEntry.WantedStemDirection;
+        // MuseScore's stemless TAB and whole notes have no rhythm dots. Keep OSMD's default unchanged.
+        // Hidden playback notes must not acquire a visible flag or dot; RenderHiddenNotes can opt them back in.
+        const renderRhythm: boolean = rules.TabRhythmRendered && !gve.parentVoiceEntry.IsGrace &&
+            notes.some(note => note.sourceNote.isVisible()) &&
+            gve.parentVoiceEntry.StemDirectionXml !== StemDirectionType.None && stemDirection !== StemDirectionType.None &&
+            (gve.notes[0].sourceNote.TypeLength ?? frac).RealValue < 1;
         let vfnote: VF.TabNote;
         if (gve.parentVoiceEntry?.IsGrace) {
             // Grace note in a tab staff: Vexflow's GraceTabNote draws the fret number smaller (scale 0.6, 7.5pt instead of 10pt font).
             //   It is drawn as part of a GraceNoteGroup attached to its main note, see VexFlowTabMeasure.graphicalMeasureCreatedCalculations() (#1721)
             vfnote = new (VF as any).GraceTabNote(tabNoteStruct); // GraceTabNote is missing in the vexflow typings
         } else {
-            vfnote = new VF.TabNote(tabNoteStruct);
+            vfnote = renderRhythm ? new VF.TabNote(tabNoteStruct, true) : new VF.TabNote(tabNoteStruct);
+            if (renderRhythm) {
+                if (gve.notes[0].sourceNote.TypeLength?.RealValue === 0.5) {
+                    // Like MuseScore, distinguish half notes from quarters with a half-length TAB rhythm stem.
+                    (vfnote as any).setStemLength(vfnote.getStemLength() / 2); // the VexFlow typings omit the argument
+                }
+                vfnote.setStemDirection(stemDirection === StemDirectionType.Down ? VF.Stem.DOWN : VF.Stem.UP);
+                gve.parentVoiceEntry.StemDirection = stemDirection === StemDirectionType.Down ? StemDirectionType.Down : StemDirectionType.Up;
+            }
         }
         (vfnote as any).render_options.font = VexFlowConverter.vexFlowTextCssFont((vfnote as any).render_options.font, rules);
         if (isXNotehead) {
@@ -1669,11 +1706,22 @@ export class VexFlowConverter {
             (notes[i] as VexFlowGraphicalNote).setIndex(vfnote, i);
         }
 
-        tabPhrases.forEach(function(phrase: { type: number, text: string, width: number }): void {
-            const bend: VF.Bend = new VF.Bend(phrase.text, phrase.type !== VF.Bend.UP);
+        if (tabPhrases.length > 0) {
+            // One Bend for all segments, so that a release continues from the preceding bend
+            //   (the legacy constructor's release flag adds an up segment of its own).
+            //   Without a width, VexFlow sizes each segment by its text (Bend.updateWidth()) like the legacy constructor;
+            //   the typings require one.
+            const bend: VF.Bend = new VF.Bend("", false, tabPhrases as { type: number, text: string, width: number }[]);
             VexFlowConverter.setVexFlowTextFontOfBend(bend, rules);
             vfnote.addModifier(bend);
-        });
+        }
+
+        // The duration already contains the dots in its ticks. Add only the glyphs, once per chord.
+        if (renderRhythm) {
+            for (let index: number = 0; index < numDots; index++) {
+                vfnote.addModifier(new TabRhythmDot(), 0);
+            }
+        }
 
         return vfnote;
     }
@@ -1792,7 +1840,7 @@ export class VexFlowConverter {
         let timeSpec: string;
         switch (rhythm.SymbolEnum) {
             case RhythmSymbolEnum.NONE:
-                timeSpec = rhythm.Rhythm.Numerator + "/" + rhythm.Rhythm.Denominator;
+                timeSpec = (rhythm.NumeratorGroups?.join("+") ?? rhythm.Rhythm.Numerator) + "/" + rhythm.Rhythm.Denominator;
                 break;
             case RhythmSymbolEnum.COMMON:
                 timeSpec = "C";
@@ -1922,6 +1970,21 @@ export class VexFlowConverter {
     }
 
     /**
+     * Returns the text of a tab bend that leaves the string bent by the given semitones from the unbent note (the note's bends
+     * so far minus its releases, independent of the fret), in whole tones like in tablature:
+     * "1/4", "1/2", "3/4", "Full" (a whole tone), "1 1/4", "1 1/2", ..., "2". Rounded to quarter tones.
+     */
+    private static bendText(semitones: number): string {
+        const quarterTones: number = Math.round(Math.abs(semitones) * 2);
+        if (quarterTones === 4) {
+            return "Full";
+        }
+        const wholeTones: number = Math.floor(quarterTones / 4);
+        const fraction: string = ["", "1/4", "1/2", "3/4"][quarterTones % 4];
+        return wholeTones > 0 ? `${wholeTones} ${fraction}`.trim() : fraction;
+    }
+
+    /**
      * Draws the text of a bend in EngravingRules.VexFlowTextFontFamily, if given.
      * VexFlow sizes a bend by an estimate of its text width (7px per character, which fits its 10pt Arial),
      * so the bend is widened where its text is wider in that family, as VexFlow's Bend.updateWidth() would size it,
@@ -1933,11 +1996,11 @@ export class VexFlowConverter {
         }
         const font: string = VexFlowConverter.vexFlowTextCssFont((bend as any).font, rules);
         (bend as any).setFont(font);
-        if (!MusicSheetCalculator.TextMeasurer.computeTextWidthInCssFont) {
+        if (!rules.TextMeasurer.computeTextWidthInCssFont) {
             return;
         }
         for (const part of (bend as any).phrase) {
-            const textWidth: number = MusicSheetCalculator.TextMeasurer.computeTextWidthInCssFont(part.text, font);
+            const textWidth: number = rules.TextMeasurer.computeTextWidthInCssFont(part.text, font);
             part.width = Math.max(part.width, textWidth + 3);
             part.draw_width = part.width / 2;
         }

@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 
@@ -86,5 +86,5 @@ describe("Cursor with an invisible instrument", () => {
             expect(current.left, `cursor x at position ${index} (measure ${current.measure + 1}) must not move backwards`)
                 .to.be.at.least(previous.left - 0.01);
         }
-    }).timeout(10000);
+    }, 10000);
 });

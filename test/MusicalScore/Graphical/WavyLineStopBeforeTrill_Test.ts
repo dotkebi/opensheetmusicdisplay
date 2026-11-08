@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowVibratoBracket } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowVibratoBracket";
@@ -16,8 +16,9 @@ import Vex from "vexflow";
  *   m54): it ran from the first measure to the end of the score;
  * - a measure number under the line is raised over it, as over a slur, and the line stays at its mark (Nielsen Op.57
  *   m593·595, Viotti No.22 III m348): the line went up over the number, away from its mark;
- * - a line raised over something higher along it is drawn at VexFlow line 1 of the raised top text position, where
- *   VexFlow puts the mark too (Mozart K.313 III m263, Ganymed m58).
+ * - a line raised over something higher along it goes up by its line and takes its mark up with it, one line under the
+ *   line (Mozart K.313 III m263, Ganymed m58); since upstream 2.3.0 the mark goes up by its y_shift, the stave's top
+ *   text position, which places the stave's other marks too, stays.
  */
 describe("Trill wavy lines (bundle C)", () => {
     let container: HTMLElement;
@@ -69,8 +70,8 @@ describe("Trill wavy lines (bundle C)", () => {
         expect(ink, "the stop note's trill mark ink").to.not.equal(undefined);
         expect(stopX, "in front of the next trill mark").to.be.lessThan(ink.left);
         expect(stopX).to.be.lessThan(first.endNote.getAbsoluteX());
-        // at its mark: nothing on the stop note raised it
-        expect(first.startNote.getStave().options.top_text_position).to.equal(1);
+        // at its mark: nothing on the stop note raised it (a raised line is over VexFlow line 1)
+        expect(first.line).to.be.at.most(1);
         const second: VexFlowVibratoBracket = brackets[1];
         expect(measure(second, true)).to.equal(1);
         // it stops on the next measure's first note, the trilled half note goes on to the barline: it ends there
@@ -110,13 +111,16 @@ describe("Trill wavy lines (bundle C)", () => {
             .to.be.at.most(lineY(bracket) / 10 - 0.6 - 0.2 + 0.01);
     });
 
-    it("a line raised over something higher goes to the raised top text position with its mark", async () => {
+    it("a line raised over something higher takes its mark up with it, one line under the line", async () => {
         const brackets: VexFlowVibratoBracket[] = await render("test_wavy_line_raised_trill");
         expect(brackets.length).to.equal(1);
         const bracket: VexFlowVibratoBracket = brackets[0];
         const stave: any = bracket.startNote.getStave();
-        expect(stave.options.top_text_position).to.be.greaterThan(1);
-        expect(bracket.line).to.equal(1);
-        expect(lineY(bracket)).to.be.closeTo(stave.getYForTopText(1), 0.01);
+        expect(stave.options.top_text_position, "the stave's top text position stays").to.equal(1);
+        expect(bracket.line, "raised by its line").to.be.greaterThan(1);
+        const mark: any = (bracket.startNote as any).modifiers.find((modifier: any) => modifier?.type === "tr");
+        expect(mark.y_shift, "the mark raised by its y_shift").to.be.lessThan(0);
+        expect(mark.getExtent().bottom, "the mark's bottom one line under the line")
+            .to.be.closeTo(lineY(bracket) + stave.getSpacingBetweenLines(), 0.01);
     });
 });

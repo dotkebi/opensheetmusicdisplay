@@ -29,6 +29,7 @@ export class VexFlowInstantaneousDynamicExpression extends GraphicalInstantaneou
                                                          parent);
 
         label.Label.fontStyle = FontStyles.BoldItalic;
+        label.SVGClass = "osmd-dynamic";
         label.setLabelPositionAndShapeBorders();
         return label;
     }

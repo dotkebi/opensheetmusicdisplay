@@ -17,6 +17,7 @@ import { ChordSymbolEnum, CustomChord, DegreesInfo } from "../../MusicalScore/Vo
 import { GeometricSkyBottomLineCaches } from "./GeometricSkyBottomLineContext";
 import { GraphicalNote } from "./GraphicalNote";
 import { Note } from "../VoiceData/Note";
+import { ITextMeasurer } from "../Interfaces/ITextMeasurer";
 
 /** Rendering and Engraving options, more fine-grained than [[IOSMDOptions]].
  *  Not all of these options are meant to be modified by users of the library,
@@ -56,6 +57,13 @@ export class EngravingRules {
     public SystemLeftMargin: number;
     public SystemRightMargin: number;
     public SystemLabelsRightMargin: number;
+    /** The distance between the columns of the brackets left of a system's staves, in units (1 unit = 10 px at zoom 1):
+     *  a part group's bracket nested in another group's stands this much further left than the outer one, as does the
+     *  brace of a multi-staff part inside a bracketed group (a brace is the outermost symbol, Gould, Behind Bars, p. 516).
+     *  Default 0.9 (the fork's value, PR #1917 as proposed; upstream's default is 0.7: 0.4 between a bracket, VexFlow's is
+     *  0.3 wide, and the symbol in the next column, about MuseScore's bracketDistance of 0.45 staff spaces).
+     */
+    public GroupBracketColumnDistance: number;
     public SystemComposerDistance: number;
     public SystemLyricistDistance: number;
     public InstrumentLabelTextHeight: number;
@@ -105,6 +113,9 @@ export class EngravingRules {
     public KeyRightMargin: number;
     public RhythmRightMargin: number;
     public ShowRhythmAgainAfterPartEndOrFinalBarline: boolean;
+    /** Begin a new part after a final barline (light-heavy, without a repeat or ending) in the middle of the piece: a new system, also with
+     *  RenderSingleHorizontalStaffline, and measure numbers counted from 1 again (read in load()).
+     */
     public NewPartAndSystemAfterFinalBarline: boolean;
     public InStaffClefScalingFactor: number;
     public DistanceBetweenNaturalAndSymbolWhenCancelling: number;
@@ -192,7 +203,19 @@ export class EngravingRules {
     public ChordSymbolXSpacing: number;
     public ChordOverlapAllowedIntoNextMeasure: number;
     public ChordSymbolYOffset: number;
+    /** Meant for the y distance between alternate chord symbols placed above each other on a note (not implemented yet, see #897).
+     * No effect for now: the chord symbols of a note are placed next to each other, each with ChordSymbolYOffset like a single one.
+     */
     public ChordSymbolYPadding: number;
+    /** The minimum distance from the top staff line up to the baseline of a chord symbol above the staff, in units (staff spaces).
+     *  Chord symbols are placed above what is under them (ChordSymbolYOffset), and at least this high, e.g. over a whole rest or
+     *  over notes inside the staff. Default 0: no minimum (upstream OSMD: 1.5; MuseScore uses 2.5).
+     */
+    public ChordSymbolMinimumBaselineAboveStaff: number;
+    /** The minimum distance from the bottom staff line down to the baseline of a chord symbol below the staff, in units (staff spaces),
+     *  like ChordSymbolMinimumBaselineAboveStaff. Default 0: no minimum (MuseScore uses 3.5).
+     */
+    public ChordSymbolMinimumBaselineBelowStaff: number;
     public ChordSymbolYAlignment: boolean;
     public ChordSymbolYAlignmentScope: string;
     /** Offset to start of measure (barline) when chord symbol is on whole measure rest.
@@ -270,6 +293,11 @@ export class EngravingRules {
      */
     public TabTupletYOffsetTop: number;
     public TabTupletYOffsetEffects: number;
+    /** Opt in to TAB note rhythm (stems, flags and augmentation dots). Defaults to false.
+     * Explicit MusicXML stem=none remains stemless; whole notes and grace notes keep their existing rendering.
+     * Existing XML beams are controlled separately by TabBeamsRendered.
+     */
+    public TabRhythmRendered: boolean;
     public TabBeamsRendered: boolean;
     public TabKeySignatureRendered: boolean;
     /** Whether space should be reserved as if there was a key signature.
@@ -403,6 +431,11 @@ export class EngravingRules {
      *  moves them after the slurs, also those the slur passes over in its middle, with an ornament stacked over a moved accent and
      *  the measure numbers raised over them; the slur still starts and ends past the staccatos and tenutos and beside fingerings. */
     public SlurPlacesArticulationsOutside: boolean;
+    /** Whether a slur above the staff that runs into a measure number is calculated again over it, the number staying above
+     *  its barline (GraphicalSlur.retryPastMeasureNumbers(), upstream 2.3.0). Off in the fork: the measure number is raised
+     *  over the slur instead (MusicSheetCalculator.raiseMeasureNumberOverSlurs(), as osmd-dart), which then doesn't run with
+     *  this on. */
+    public SlurGoesOverMeasureNumbers: boolean;
     public SlurStemXOffset: number;
     public SlurSlopeMaxAngle: number;
     public SlurTangentMinAngle: number;
@@ -612,10 +645,41 @@ export class EngravingRules {
     public RenderVoiceLeadingGuides: boolean;
     /** Whether to render keyboard hand brackets (SMuFL keyboardPlayWithLH/RH, see GraphicalKeyboardHandBracket). */
     public RenderKeyboardHandBrackets: boolean;
+    /** Whether to draw hidden notes and rests (Note.PrintObject false, e.g. print-object="no" in the MusicXML) like visible
+     *  ones, with their beams, ties, tuplets and fingerings, and to let the cursor stop at them. Default false.
+     *  E.g. to show what a voice hidden for playback plays, like a tremolo written out as single notes.
+     *  Set by OSMDOptions.drawHiddenNotes. Beams and tuplets are created at load(): to change this rule after load(),
+     *  call osmd.updateGraphic() before the next render(). */
+    public RenderHiddenNotes: boolean;
+    /** The color of the hidden notes and rests drawn with RenderHiddenNotes, to tell them apart from visible ones.
+     *  Default "#A0A0A0CC", a light, slightly transparent gray, like hidden notes shown in MuseScore or Sibelius.
+     *  It colors their noteheads, accidentals, dots and articulations, and their stems, flags and ledger lines where all
+     *  notes of a chord are hidden notes, and with ColorBeams the beams of such notes. Needs ColoringEnabled.
+     *  Set it to "" to draw hidden notes in the colors of visible notes. Set by OSMDOptions.hiddenNotesColor. */
+    public HiddenNotesColor: string;
+    /** Whether hidden voices (Voice.Visible false) keep the layout of the full score: their notes are laid out like hidden notes
+     *  (print-object="no"), taking up their space and keeping the stem directions of the other voices, but they aren't drawn.
+     *  E.g. for an exercise where a missing voice is filled in, or to show voices one by one without the notes moving.
+     *  Default false: the other voices are laid out as if the hidden voices weren't there, e.g. for a singer's part of a hymn,
+     *  the alto with stems by pitch instead of the stems down it has next to the soprano, spaced by its own notes only.
+     *  To change this rule after load(), call osmd.updateGraphic() before the next render(). */
+    public HiddenVoicesKeepLayout: boolean;
+    /** Whether to draw the lyrics of hidden voices (Voice.Visible false). Default true.
+     *  Without HiddenVoicesKeepLayout, they're drawn under the visible notes that start at the same time on the staff, where
+     *  these have no lyrics of that verse themselves: e.g. a hymn's lyrics, given with the soprano, under the alto when only
+     *  the alto is shown. A syllable where no visible note starts is left out.
+     *  With HiddenVoicesKeepLayout, they stay under the hidden notes.
+     *  To change this rule after load(), call osmd.updateGraphic() before the next render(). */
+    public RenderLyricsOfHiddenVoices: boolean;
     public ColoringMode: ColoringMode;
     public ColoringEnabled: boolean;
     public ColorStemsLikeNoteheads: boolean;
+    /** Whether to draw a flag in the color of its stem. Default true. Otherwise, flags are drawn in DefaultColorStem.
+     *  A transparent stem, e.g. of a hidden note (print-object="no") or of `<stem>none</stem>`, hides its flag either way. */
     public ColorFlags: boolean;
+    /** Whether to draw a beam in the color of its stems, if two or more of them have a color, all the same, e.g. from the XML
+     *  or, with ColorStemsLikeNoteheads, the noteheads' color. Default true. The noteheads alone don't color a beam: an app
+     *  can color some noteheads without their beam. */
     public ColorBeams: boolean;
     public ColoringSetCurrent: Dictionary<NoteEnum|number, string>;
     /** Default color for all musical elements including key signature etc. Default undefined. */
@@ -639,9 +703,13 @@ export class EngravingRules {
     public VexFlowTextFontFamily: string;
     public DefaultFontStyle: FontStyles;
     public DefaultVexFlowNoteFont: string;
+    /** The index (in MusicSheet.SourceMeasures) of the last measure to draw. If MaxMeasureToDrawNumber is set (not
+     *  Number.MAX_VALUE), load(), render() and renderNext() put its index for the sheet here. */
     public MaxMeasureToDrawIndex: number;
     /** The setting given in osmd.setOptions(), which may lead to a different index if there's a pickup measure. */
     public MaxMeasureToDrawNumber: number;
+    /** The index (in MusicSheet.SourceMeasures) of the first measure to draw. If MinMeasureToDrawNumber is set (not 0), load(),
+     *  render() and renderNext() put its index for the sheet here. */
     public MinMeasureToDrawIndex: number;
     /** The setting given in osmd.setOptions(), which may lead to a different index if there's a pickup measure.
      * If there's a pickup measure (measure 0), and we want to draw from measure number 2,
@@ -676,10 +744,17 @@ export class EngravingRules {
     /** Whether to render part-group names and abbreviations. Requires RenderPartNames. Default true. */
     public RenderPartGroupNames: boolean;
     public RenderPartAbbreviations: boolean;
-    /** Whether to render part abbreviations on systems with only one staff.
+    /** Whether to render part abbreviations on later systems with only one staff (the first system shows the part name,
+     *  or its abbreviation when the name leaves too little room, see FitPartLabelsToMeasures).
      *  Requires RenderPartNames and RenderPartAbbreviations. Default false.
      */
     public RenderPartAbbreviationsForSingleStaff: boolean;
+    /** Whether a system's part names or abbreviations give way when they leave its measures too little room, e.g. in a
+     *  narrow container, where the notes of the first measure would be drawn past the end of the staff:
+     *  the first system then shows the part names on two lines, else the part abbreviations, else no labels,
+     *  and later systems leave out their abbreviations. Default false (upstream OSMD: true).
+     */
+    public FitPartLabelsToMeasures: boolean;
     /** Internal cache-gate for lazy (renderAppend) rendering: when true, the lazy reuse caches (skyline)
      *  are active. Set by OpenSheetMusicDisplay.renderAppend() and forced false by a normal render(), so
      *  the caches never affect a non-lazy render. Not a user toggle. */
@@ -715,12 +790,25 @@ export class EngravingRules {
     public RenderTimeSignaturesForSamplesWithoutTimeSignature: boolean;
     public RenderFirstTempoExpression: boolean;
     public RenderPedals: boolean;
+    /** The minimum distance between a pedal sign (Ped. or *) and what is above it, e.g. a beam below the staff, in units
+     * (1.0 = distance between two staff lines). Default 0.5.
+     * Only applies where the sign would otherwise be higher: by default, the signs are 3 units below the staff. */
+    public PedalSignMarginToBottomLine: number;
+    /** The distance between the release mark and the Ped. sign where a pedal is released and pressed again at one note by a
+     * pedal that starts with the Ped. sign (a pedal change, drawn as * Ped., or as the end of the pedal line, its hook, then
+     * Ped.), in units (1.0 = distance between two staff lines). Default 0.5. */
+    public PedalReleaseSignMarginToPedSign: number;
+    /** Whether to draw (Ped.), the Ped. sign in parentheses, at the start of a system where a pedal that starts with the
+     * Ped. sign (drawn with signs, or the Ped. sign and then the line) goes on from the system before, to confirm that it is
+     * still pressed (as recommended by Elaine Gould, Behind Bars, p. 332). Default false: MusicXML doesn't encode such a sign,
+     * the line or the signs of the pedal show it anyway, and (Ped.) takes space at the system's start. */
+    public RenderPedalContinuationSign: boolean;
     public RenderWavyLines: boolean;
     public DynamicExpressionMaxDistance: number;
     public DynamicExpressionSpacer: number;
-    /** Whether words and an instantaneous dynamic of the same staff, placement and time are drawn on one line, the words
-     *  before or after the dynamic (see MusicSheetCalculator.placeWordsBesideSameTimeDynamic()). Otherwise the words are
-     *  stacked under (over) the dynamic. */
+    /** Whether words and an instantaneous dynamic of the same staff, placement and time are drawn on one line, in the order
+     *  of the file, e.g. "più f" or "p dolce" (see MusicSheetCalculator.placeWordsBesideSameTimeDynamic()). Otherwise the
+     *  words are placed under (over) the dynamic. Default true. */
     public PlaceWordsBesideSameTimeDynamic: boolean;
     /** Skip a dynamic marking that repeats the currently active one, i.e. has the same text (e.g. a second p in a row). Default false. */
     public IgnoreRepeatedDynamics: boolean;
@@ -754,9 +842,23 @@ export class EngravingRules {
     public RenderXMeasuresPerLineAkaSystem: number;
     public PageFormat: PageFormat;
     public PageBackgroundColor: string; // vexflow-color-string (#FFFFFF). Default undefined/transparent.
+    /** Whether to leave out the SVG group (`<g>`) around a note's head, stem and flag and around a beam when it would hold
+     *  only one element, which then gets the group's class, id and pointer-events: e.g. a notehead is drawn as
+     *  `<path class="vf-notehead" ...>` instead of `<g class="vf-notehead" ...><path ...></g>`.
+     *  Default true: these groups were about a fifth of the elements, and the SVG's elements take most of a rendered score's memory.
+     *  Set it to false for the previous structure, e.g. if your code selects `.vf-notehead path` or adds elements to these groups.
+     *  VexFlowGraphicalNote's getters like getNoteheadSVGs() and its setColor() work either way.
+     *  Only for the SVG backend, read in render().
+     */
+    public SVGMergeSingleChildGroups: boolean;
     /** Whether dark mode is enabled. This is read-only, to set this, please use osmd.setOptions({darkMode: true}). */
     public DarkModeEnabled: boolean;
     public UsePageBackgroundColorForTabNotes: boolean;
+    /** Render the sheet on one horizontal staffline, without line breaks where the width is used up.
+     *  Explicit system breaks still begin a new system below, if their rules are set: NewSystemAtXMLNewSystemAttribute,
+     *  NewSystemAtXMLNewPageAttribute, NewPageAtXMLNewPageAttribute, RenderXMeasuresPerLineAkaSystem and
+     *  NewPartAndSystemAfterFinalBarline. A staffline wider than SheetMaximumWidth is broken too.
+     */
     public RenderSingleHorizontalStaffline: boolean;
     public RestoreCursorAfterRerender: boolean;
     public StretchLastSystemLine: boolean;
@@ -777,6 +879,12 @@ export class EngravingRules {
     public NoteToGraphicalNoteMap: Dictionary<number, GraphicalNote>;
     // this is basically a WeakMap, except we save the id in the Note instead of using a WeakMap.
     public NoteToGraphicalNoteMapObjectCount: number = 0;
+    /** Measures the width of texts like labels in this instance's fonts (e.g. DefaultFontFamily), set by the
+     *  VexFlowMusicSheetCalculator. Owned here (per OSMD instance) instead of statically (MusicSheetCalculator.TextMeasurer):
+     *  a static one measured with the rules of the most recently created instance in all instances,
+     *  and kept those rules, and through NoteToGraphicalNoteMap that instance's rendering, in memory after it was dropped.
+     */
+    public TextMeasurer: ITextMeasurer;
     /** How many times osmd.render() was already called on the currently loaded score.
      * Resets after osmd.load() (via osmd.reset()).
      * Can be relevant for transposition or generally informative.
@@ -786,31 +894,41 @@ export class EngravingRules {
     /** Whether to calculate the skyline and bottom-line geometrically, from the extents of the VexFlow draw calls,
      *  instead of drawing each measure on a hidden canvas and reading back its pixels (getImageData), which is much slower (see #937).
      *  Default true. If set to false, the previous pixel-based calculation is used,
-     *  see PreferredSkyBottomLineBatchCalculatorBackend etc.
+     *  see SkyBottomLineBatchMinMeasures.
      */
     public UseGeometricSkyBottomLineCalculation: boolean;
     /** Caches for the geometric skyline calculation (text measurements, flattened glyph outlines).
      *  Owned here (per OSMD instance, like NoteToGraphicalNoteMap) instead of statically,
      *  so that multiple OSMD instances stay independent. */
     public GeometricSkyBottomLineCaches: GeometricSkyBottomLineCaches;
-    /** The skyline and bottom-line batch calculation algorithm to use, if UseGeometricSkyBottomLineCalculation is false.
-     *  Note that this can be overridden if AlwaysSetPreferredSkyBottomLineBackendAutomatically is true (which is the default).
+    /** Not used anymore: the pixel-based batch calculation (UseGeometricSkyBottomLineCalculation false) always reads the pixels
+     *  with getImageData (SkyBottomLineBatchCalculatorBackendType.Plain). Its WebGL backend was removed,
+     *  as the geometric calculation (the default) is faster.
+     * @deprecated
      */
     public PreferredSkyBottomLineBatchCalculatorBackend: SkyBottomLineBatchCalculatorBackendType;
-    /** Whether to consider using WebGL in Firefox in EngravingRules.setPreferredSkyBottomLineBackendAutomatically() */
+    /** Not used anymore: the WebGL backend was removed, see PreferredSkyBottomLineBatchCalculatorBackend.
+     * @deprecated
+     */
     public DisableWebGLInFirefox: boolean;
-    /** Whether to consider using WebGL in Safari/iOS in EngravingRules.setPreferredSkyBottomLineBackendAutomatically() */
+    /** Not used anymore: the WebGL backend was removed, see PreferredSkyBottomLineBatchCalculatorBackend.
+     * @deprecated
+     */
     public DisableWebGLInSafariAndIOS: boolean;
 
-    /** The minimum number of measures in the sheet where the skyline and bottom-line batch calculation is enabled.
+    /** The minimum number of measures in the sheet where the skyline and bottom-line batch calculation is enabled,
+     *  if UseGeometricSkyBottomLineCalculation is false.
      *  Batch is faster for medium to large size scores, but slower for very short scores.
      */
     public SkyBottomLineBatchMinMeasures: number;
-    /** The minimum number of measures in the sheet where WebGL will be used. WebGL is slower for short scores, but much faster for large ones.
-     * Note that WebGL is currently never used in Safari and Firefox, because it's always slower there.
+    /** Not used anymore: the WebGL backend was removed, see PreferredSkyBottomLineBatchCalculatorBackend.
+     * @deprecated
      */
     public SkyBottomLineWebGLMinMeasures: number;
-    /** Whether to always set preferred backend (WebGL or Plain) automatically, depending on browser and number of measures. */
+    /** Not used anymore: the WebGL backend was removed, so there is no backend to choose,
+     *  see PreferredSkyBottomLineBatchCalculatorBackend.
+     * @deprecated
+     */
     public AlwaysSetPreferredSkyBottomLineBackendAutomatically: boolean;
 
     // Playback settings
@@ -861,6 +979,7 @@ export class EngravingRules {
         this.SystemLeftMargin = 0.0;
         this.SystemRightMargin = 0.0;
         this.SystemLabelsRightMargin = 2.0;
+        this.GroupBracketColumnDistance = 0.9; // the fork's value (PR #1917 as proposed, a user decision); upstream's review made it 0.7
         this.SystemComposerDistance = 2.0;
         this.SystemLyricistDistance = 2.0;
         this.InstrumentLabelTextHeight = 2;
@@ -970,6 +1089,10 @@ export class EngravingRules {
         this.ChordOverlapAllowedIntoNextMeasure = 0;
         this.ChordSymbolYOffset = 0.1;
         this.ChordSymbolYPadding = 0.0;
+        // 0 (no minimum) keeps the placement of before upstream 2.3.0, ChordSymbolYOffset above what is under the symbol; upstream
+        //   defaults to 1.5 (8cd17817). Decision pending (2.3.0 sync, 2026-11-08).
+        this.ChordSymbolMinimumBaselineAboveStaff = 0;
+        this.ChordSymbolMinimumBaselineBelowStaff = 0;
         this.ChordSymbolYAlignment = true;
         this.ChordSymbolYAlignmentScope = "staffline"; // "measure" or "staffline"
         this.ChordSymbolWholeMeasureRestXOffset = 0;
@@ -1015,6 +1138,7 @@ export class EngravingRules {
         this.TabTupletYOffsetTop = -3.5; // -3.5 is fine if you don't have effects like bends on top. Otherwise, e.g. -2 avoids overlaps.
         this.TabTupletYOffsetEffects = 1.5;
         this.TabTupletsBracketed = true;
+        this.TabRhythmRendered = false;
         this.TabBeamsRendered = true;
         this.TabKeySignatureRendered = false; // standard not to render for tab scores
         this.TabKeySignatureSpacingAdded = true; // false only works for tab-only scores, as it will prevent vertical x-alignment.
@@ -1042,6 +1166,7 @@ export class EngravingRules {
         this.SlurEndArticulationYOffset = 0.8;
         this.SlurStartArticulationYOffsetOfArticulation = 0.5;
         this.SlurPlacesArticulationsOutside = false;
+        this.SlurGoesOverMeasureNumbers = false;
         this.SlurStemXOffset = 0.3;
         this.SlurSlopeMaxAngle = 15.0;
         this.SlurTangentMinAngle = 30.0;
@@ -1230,6 +1355,10 @@ export class EngravingRules {
         this.RenderGlissandi = true;
         this.RenderVoiceLeadingGuides = true;
         this.RenderKeyboardHandBrackets = true;
+        this.RenderHiddenNotes = false;
+        this.HiddenNotesColor = "#A0A0A0CC";
+        this.HiddenVoicesKeepLayout = false;
+        this.RenderLyricsOfHiddenVoices = true;
         this.ColoringMode = ColoringMode.XML;
         this.ColoringEnabled = true;
         this.ColorStemsLikeNoteheads = false;
@@ -1261,6 +1390,9 @@ export class EngravingRules {
         this.RenderPartGroupNames = true;
         this.RenderPartAbbreviations = true;
         this.RenderPartAbbreviationsForSingleStaff = false;
+        // false keeps the layout of before upstream 2.3.0 (the part names keep their width in narrow containers); upstream
+        //   defaults to true (1fa5431e). Decision pending (2.3.0 sync, 2026-11-08).
+        this.FitPartLabelsToMeasures = false;
         this.LazyConsistentGraphic = false;
         this.RenderSystemLabelsAfterFirstPage = true;
         this.RenderFingerings = true;
@@ -1280,6 +1412,9 @@ export class EngravingRules {
         this.RenderTimeSignaturesForSamplesWithoutTimeSignature = false;
         this.RenderFirstTempoExpression = true;
         this.RenderPedals = true;
+        this.PedalSignMarginToBottomLine = 0.5;
+        this.PedalReleaseSignMarginToPedSign = 0.5;
+        this.RenderPedalContinuationSign = false;
         this.RenderWavyLines = true;
         this.ArticulationPlacementFromXML = true;
         this.BreathMarkDistance = 0.8;
@@ -1308,6 +1443,7 @@ export class EngravingRules {
 
         this.PageFormat = PageFormat.UndefinedPageFormat; // default: undefined / 'infinite' height page, using the canvas'/container's width and height
         this.PageBackgroundColor = undefined; // default: transparent. half-transparent white: #FFFFFF88"
+        this.SVGMergeSingleChildGroups = true;
         this.DarkModeEnabled = false;
         this.UsePageBackgroundColorForTabNotes = true;
         this.RenderSingleHorizontalStaffline = false;
@@ -1323,7 +1459,7 @@ export class EngravingRules {
         this.AlwaysSetPreferredSkyBottomLineBackendAutomatically = true;
         this.DisableWebGLInFirefox = true;
         this.DisableWebGLInSafariAndIOS = true;
-        this.setPreferredSkyBottomLineBackendAutomatically();
+        this.PreferredSkyBottomLineBatchCalculatorBackend = SkyBottomLineBatchCalculatorBackendType.Plain;
 
         // Playback
         this.UseInterpolatedTempoForAccelerandoEtc = false; // wait for rit support etc. can also make
@@ -1343,27 +1479,14 @@ export class EngravingRules {
         }
     }
 
+    /** Not used anymore, without effect: OSMD calculates the skylines geometrically (UseGeometricSkyBottomLineCalculation, default
+     *  true), which is faster than the pixel-based calculation with either of its backends, WebGL or Plain. This only sets
+     *  PreferredSkyBottomLineBatchCalculatorBackend, which isn't read anymore, to Plain, the only backend left.
+     *  It chose WebGL for large scores in Chromium browsers before the WebGL backend was removed.
+     * @deprecated
+     */
     public setPreferredSkyBottomLineBackendAutomatically(numberOfGraphicalMeasures: number = -1): void {
-        let vendor: string = "";
-        let userAgent: string = "";
-        if (typeof globalThis === "object") { // it looks like globalThis can be undefined and cause build issues in es2017 (e.g. Android API 28), see #1299
-            vendor = globalThis.navigator?.vendor ?? "";
-            userAgent = globalThis.navigator?.userAgent ?? "";
-        }
-        let alwaysUsePlain: boolean = false;
-        if (this.DisableWebGLInSafariAndIOS && (/apple/i).test(vendor)) { // doesn't apply to Chrome on MacOS
-            alwaysUsePlain = true;
-        } else if (this.DisableWebGLInFirefox && userAgent.includes("Firefox")) {
-            alwaysUsePlain = true;
-        }
-        // In Safari (/iOS) and Firefox, the plain version is always faster (currently, Safari 15).
-        //   WebGL is faster for large scores in Chrome and Edge (both Chromium based). See #1158
         this.PreferredSkyBottomLineBatchCalculatorBackend = SkyBottomLineBatchCalculatorBackendType.Plain;
-        if (!alwaysUsePlain) {
-            if (numberOfGraphicalMeasures >= this.SkyBottomLineWebGLMinMeasures) {
-                this.PreferredSkyBottomLineBatchCalculatorBackend = SkyBottomLineBatchCalculatorBackendType.WebGL;
-            }
-        }
     }
 
     /** Makes it so that all musical elements (including key/time signature)

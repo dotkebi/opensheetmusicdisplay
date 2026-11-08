@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
@@ -18,14 +18,14 @@ describe("Tie direction of an upper voice", () => {
     let container: HTMLElement;
     let osmd: OpenSheetMusicDisplay;
 
-    before(async () => {
+    beforeAll(async () => {
         container = TestUtils.getDivElement(document);
         container.style.width = "1400px";
         osmd = new OpenSheetMusicDisplay(container, { autoResize: false, backend: "svg" });
         await osmd.load(TestUtils.getScore("test_tie_upper_voice_direction.musicxml"));
         osmd.render();
     });
-    after(() => {
+    afterAll(() => {
         osmd.clear();
         container.remove();
     });

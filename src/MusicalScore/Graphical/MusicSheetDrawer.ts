@@ -396,7 +396,23 @@ export abstract class MusicSheetDrawer {
                 throw new ArgumentOutOfRangeException("");
         }
 
-        return this.renderLabel(graphicalLabel, layer, bitmapWidth, bitmapHeight, fontHeightInPixel, screenPosition);
+        const node: Node = this.renderLabel(graphicalLabel, layer, bitmapWidth, bitmapHeight, fontHeightInPixel, screenPosition);
+        if (graphicalLabel.SVGClass) {
+            this.addSVGClass(node, graphicalLabel.SVGClass);
+        }
+        return node;
+    }
+
+    /**
+     * Adds a class naming what a drawn element shows (e.g. "osmd-slur") to the SVG group it was drawn into, next to the
+     * class naming its shape (e.g. vf-curve), so that CSS and code can find e.g. all slurs. Labels get theirs from
+     * GraphicalLabel.SVGClass (see drawLabel()); the drawer names slurs (osmd-slur), the lines of wedges (osmd-wedge),
+     * lyric extender lines (osmd-extender) and the strokes of tremolos between notes and buzz rolls (osmd-tremolo).
+     * @param node the group, undefined if nothing was drawn, e.g. with the canvas backend
+     * @param className the class
+     */
+    protected addSVGClass(node: Node, className: string): void {
+        (node as SVGGElement)?.classList?.add(className);
     }
 
     protected applyScreenTransformation(point: PointF2D): PointF2D {
@@ -562,7 +578,6 @@ export abstract class MusicSheetDrawer {
         if (!this.leadSheet) {
             for (const measureNumberLabel of musicSystem.MeasureNumberLabels) {
                 measureNumberLabel.SVGNode = this.drawLabel(measureNumberLabel, <number>GraphicalLayers.Notes);
-                (measureNumberLabel.SVGNode as SVGGElement)?.classList?.add("measure-number");
             }
         }
         for (const staffLine of musicSystem.StaffLines) {
@@ -634,7 +649,8 @@ export abstract class MusicSheetDrawer {
             if (!this.lazyDrawsAtX(Math.max(start.x, end.x))) {
                 continue; // lazy horizontal: drawn once, with the batch that draws its end (like the lyric dashes)
             }
-            this.drawGraphicalLine(new GraphicalLine(start, end, lyricLine.Width), this.rules.LyricUnderscoreLineWidth, lyricLine.colorHex);
+            const node: Node = this.drawGraphicalLine(new GraphicalLine(start, end, lyricLine.Width), this.rules.LyricUnderscoreLineWidth, lyricLine.colorHex);
+            this.addSVGClass(node, "osmd-extender");
         }
     }
 
@@ -669,7 +685,6 @@ export abstract class MusicSheetDrawer {
     protected drawDashes(lyricsDashes: GraphicalLabel[]): void {
         lyricsDashes.forEach(dash => {
             dash.SVGNode = this.drawLabel(dash, <number>GraphicalLayers.Notes);
-            (dash.SVGNode as SVGGElement)?.classList.add("dash");
         });
     }
 

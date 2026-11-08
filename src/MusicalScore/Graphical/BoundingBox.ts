@@ -19,10 +19,14 @@ export class BoundingBox {
     protected yBordersHaveBeenSet: boolean = false;
     protected absolutePosition: PointF2D = new PointF2D();
     protected relativePosition: PointF2D = new PointF2D();
-    protected size: SizeF2D = new SizeF2D();
-    protected marginSize: SizeF2D = new SizeF2D();
-    protected upperLeftCorner: PointF2D = new PointF2D();
-    protected upperLeftMarginCorner: PointF2D = new PointF2D();
+    // The sizes, corners and rectangles are made from the borders when their getter is first called after a border
+    // changed (see calculateRectangle()): most bounding boxes, e.g. those of notes, never need them.
+    protected size: SizeF2D = undefined;
+    protected marginSize: SizeF2D = undefined;
+    protected upperLeftCorner: PointF2D = undefined;
+    protected upperLeftMarginCorner: PointF2D = undefined;
+    protected boundingRectangle: RectangleF2D = undefined;
+    protected boundingMarginRectangle: RectangleF2D = undefined;
     protected borderLeft: number = 0;
     protected borderRight: number = 0;
     protected borderTop: number = 0;
@@ -31,8 +35,6 @@ export class BoundingBox {
     protected borderMarginRight: number = 0;
     protected borderMarginTop: number = 0;
     protected borderMarginBottom: number = 0;
-    protected boundingRectangle: RectangleF2D;
-    protected boundingMarginRectangle: RectangleF2D;
     protected childElements: BoundingBox[] = [];
     protected parent: BoundingBox;
     protected dataObject: object;
@@ -91,6 +93,9 @@ export class BoundingBox {
     }
 
     public get Size(): SizeF2D {
+        if (!this.size) {
+            this.size = new SizeF2D(this.borderRight - this.borderLeft, this.borderBottom - this.borderTop);
+        }
         return this.size;
     }
 
@@ -99,14 +104,23 @@ export class BoundingBox {
     }
 
     public get MarginSize(): SizeF2D {
+        if (!this.marginSize) {
+            this.marginSize = new SizeF2D(this.BorderMarginRight - this.BorderMarginLeft, this.BorderMarginBottom - this.BorderMarginTop);
+        }
         return this.marginSize;
     }
 
     public get UpperLeftCorner(): PointF2D {
+        if (!this.upperLeftCorner) {
+            this.upperLeftCorner = new PointF2D(this.borderLeft, this.borderTop);
+        }
         return this.upperLeftCorner;
     }
 
     public get UpperLeftMarginCorner(): PointF2D {
+        if (!this.upperLeftMarginCorner) {
+            this.upperLeftMarginCorner = new PointF2D(this.BorderMarginLeft, this.BorderMarginTop);
+        }
         return this.upperLeftMarginCorner;
     }
 
@@ -183,10 +197,19 @@ export class BoundingBox {
     }
 
     public get BoundingRectangle(): RectangleF2D {
+        if (!this.boundingRectangle) {
+            this.boundingRectangle = new RectangleF2D(this.borderLeft, this.borderTop,
+                                                      this.borderRight - this.borderLeft, this.borderBottom - this.borderTop);
+        }
         return this.boundingRectangle;
     }
 
     public get BoundingMarginRectangle(): RectangleF2D {
+        if (!this.boundingMarginRectangle) {
+            const left: number = this.BorderMarginLeft;
+            const top: number = this.BorderMarginTop;
+            this.boundingMarginRectangle = new RectangleF2D(left, top, this.BorderMarginRight - left, this.BorderMarginBottom - top);
+        }
         return this.boundingMarginRectangle;
     }
 
@@ -575,17 +598,24 @@ export class BoundingBox {
         } while (hasBeenMoved); // as long as the element is moved
     }
 
-    public getClickedObjectOfType<T>(clickPosition: PointF2D): T {
-        const obj: object = this.dataObject;
-        if (this.pointLiesInsideBorders(clickPosition) && (<T>obj)) {
-            return (obj as T);
-        }
-        for (let idx: number = 0, len: number = this.childElements.length; idx < len; ++idx) {
-            const psi: BoundingBox = this.childElements[idx];
-            const innerObject: T = psi.getClickedObjectOfType<T>(clickPosition);
+    /**
+     * Returns the object of the class whose bounding box contains the position, e.g. of a click: of this bounding box or
+     * its descendants, the innermost one, e.g. without a class, at a lyric, its label rather than its staff entry, measure
+     * or page. The generic type T doesn't select the object (types don't exist at runtime), classOrName does.
+     * @param clickPosition The position in units
+     * @param classOrName The class of the object, e.g. GraphicalStaffEntry, or its name, which is unreliable in minified builds
+     *   (see isInstanceOfClass()). By default, any graphical object.
+     */
+    public getClickedObjectOfType<T>(clickPosition: PointF2D, classOrName: ClassType | string = GraphicalObject): T {
+        // the children first: the page's box contains all the others
+        for (const child of this.childElements) {
+            const innerObject: T = child.getClickedObjectOfType<T>(clickPosition, classOrName);
             if (innerObject) {
-                return (innerObject as T);
+                return innerObject;
             }
+        }
+        if (this.dataObject && (this.dataObject as GraphicalObject).isInstanceOfClass(classOrName) && this.pointLiesInsideBorders(clickPosition)) {
+            return this.dataObject as T;
         }
         return undefined;
     }
@@ -622,16 +652,25 @@ export class BoundingBox {
         //return this.childElements.SelectMany(psi => psi.getObjectsInRegion<T>(region, liesInside));
     }
 
+    /**
+     * Updates the size, upper left corner and rectangle after a border changed: drops them, and their getters make them
+     * from the borders when next called. Also the margin ones, as the margin getters include the borders.
+     */
     protected calculateRectangle(): void {
-        this.upperLeftCorner = new PointF2D(this.BorderLeft, this.BorderTop);
-        this.size = new SizeF2D(this.BorderRight - this.BorderLeft, this.BorderBottom - this.BorderTop);
-        this.boundingRectangle = RectangleF2D.createFromLocationAndSize(this.upperLeftCorner, this.size);
+        this.size = undefined;
+        this.upperLeftCorner = undefined;
+        this.boundingRectangle = undefined;
+        this.calculateMarginRectangle();
     }
 
+    /**
+     * Updates the margin size, upper left margin corner and margin rectangle after a margin changed: drops them, and their
+     * getters make them from the margins when next called.
+     */
     protected calculateMarginRectangle(): void {
-        this.upperLeftMarginCorner = new PointF2D(this.BorderMarginLeft, this.BorderMarginTop);
-        this.marginSize = new SizeF2D(this.BorderMarginRight - this.BorderMarginLeft, this.BorderMarginBottom - this.BorderMarginTop);
-        this.boundingMarginRectangle = RectangleF2D.createFromLocationAndSize(this.upperLeftMarginCorner, this.marginSize);
+        this.marginSize = undefined;
+        this.upperLeftMarginCorner = undefined;
+        this.boundingMarginRectangle = undefined;
     }
 
     /**

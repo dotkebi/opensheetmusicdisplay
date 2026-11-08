@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
@@ -16,13 +16,13 @@ describe("Cross-staff tuplet: one number and bracket", () => {
     let container: HTMLElement;
     let osmd: OpenSheetMusicDisplay;
 
-    before(async () => {
+    beforeAll(async () => {
         container = TestUtils.getDivElement(document);
         osmd = TestUtils.createOpenSheetMusicDisplay(container);
         await osmd.load(TestUtils.getScore("test_cross_staff_tuplet_number.musicxml"));
         osmd.render();
     });
-    after(() => {
+    afterAll(() => {
         osmd.clear();
         container.remove();
     });

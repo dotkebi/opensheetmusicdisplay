@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalSlur } from "../../../src/MusicalScore/Graphical/GraphicalSlur";
@@ -24,7 +24,7 @@ describe("Slurs across staves: one curve in a system, two pieces at a system bre
     interface Piece { system: number, staff: number, measures: string, isPiece: boolean, slur: GraphicalSlur }
     const pieces: { [startMeasure: number]: Piece[] } = {};
 
-    before(async () => {
+    beforeAll(async () => {
         container = TestUtils.getDivElement(document);
         container.style.width = "1600px";
         osmd = new OpenSheetMusicDisplay(container, { autoResize: false, backend: "svg", newSystemFromXML: true });
@@ -43,7 +43,7 @@ describe("Slurs across staves: one curve in a system, two pieces at a system bre
             }
         }));
     });
-    after(() => {
+    afterAll(() => {
         osmd.clear();
         container.remove();
     });

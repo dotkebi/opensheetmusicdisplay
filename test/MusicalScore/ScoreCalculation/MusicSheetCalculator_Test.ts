@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 /* eslint-disable @typescript-eslint/no-unused-expressions */
 import {MusicSheetReader} from "../../../src/MusicalScore/ScoreIO/MusicSheetReader";
 import {MusicSheet} from "../../../src/MusicalScore/MusicSheet";
@@ -6,9 +6,7 @@ import {IXmlElement} from "../../../src/Common/FileIO/Xml";
 import {MusicSheetCalculator} from "../../../src/MusicalScore/Graphical/MusicSheetCalculator";
 import {VexFlowMusicSheetCalculator} from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMusicSheetCalculator";
 import {GraphicalMusicSheet} from "../../../src/MusicalScore/Graphical/GraphicalMusicSheet";
-import {VexFlowTextMeasurer} from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowTextMeasurer";
 import {TestUtils} from "../../Util/TestUtils";
-import { EngravingRules } from "../../../src/MusicalScore/Graphical/EngravingRules";
 
 describe("Music Sheet Calculator", () => {
     const filename: string = "MuzioClementi_SonatinaOpus36No1_Part1.xml";
@@ -17,9 +15,8 @@ describe("Music Sheet Calculator", () => {
     let score: IXmlElement;
     let sheet: MusicSheet;
 
-    it("calculates music sheet", (done: Mocha.Done) => {
+    it("calculates music sheet", () => {
         // this.timeout = 10000;
-        MusicSheetCalculator.TextMeasurer = new VexFlowTextMeasurer(new EngravingRules());
         // Load the XML file
         const xml: Document = TestUtils.getScore(filename);
         expect(xml).to.not.be.undefined;
@@ -29,7 +26,6 @@ describe("Music Sheet Calculator", () => {
 
         const graphicalSheet: GraphicalMusicSheet = new GraphicalMusicSheet(sheet, calculator);
         graphicalSheet.reCalculate();
-        done();
     });
 
     it("skips lyric connectors whose staff lines have not been laid out", () => {

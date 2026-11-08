@@ -334,6 +334,12 @@ export class VexFlowMeasure extends GraphicalMeasure {
         if (this.parentSourceMeasure?.isReducedToMultiRest && !this.rules.MultipleRestMeasureAddKeySignature) {
             return;
         }
+        if (currentClef) {
+            // VexFlow places the accidentals by the stave's clef. Without a clef at its begin, the stave keeps VexFlow's default
+            //   treble clef (e.g. the courtesy key in an extra measure at a system end), or the clef resetLayout() took from
+            //   InitiallyActiveClef, which may predate a clef change at the end of the previous measure.
+            (this.stave as any).clef = VexFlowConverter.Clef(currentClef).type;
+        }
         this.stave.setKeySignature(
             VexFlowConverter.keySignature(currentKey),
             VexFlowConverter.keySignature(previousKey),
@@ -508,38 +514,8 @@ export class VexFlowMeasure extends GraphicalMeasure {
             case SystemLinePosition.MeasureBegin:
                 switch (lineType) {
                     case SystemLinesEnum.BoldThinDots:
-                        //customize the barline draw function if repeat is beginning of system
-                        if (!renderInitialLine) {
-                            (this.stave as any).modifiers[0].draw = function(stave: VF.Stave): void {
-                                (stave as any).checkContext();
-                                this.setRendered();
-                                switch (this.type) {
-                                    case VF.Barline.type.SINGLE:
-                                    this.drawVerticalBar(stave, this.x, false);
-                                    break;
-                                    case VF.Barline.type.DOUBLE:
-                                    this.drawVerticalBar(stave, this.x, true);
-                                    break;
-                                    case VF.Barline.type.END:
-                                    this.drawVerticalEndBar(stave, this.x);
-                                    break;
-                                    case VF.Barline.type.REPEAT_BEGIN:
-                                    //removed the vertical line rendering that exists in VF codebase
-                                    this.drawRepeatBar(stave, this.x, true);
-                                    break;
-                                    case VF.Barline.type.REPEAT_END:
-                                    this.drawRepeatBar(stave, this.x, false);
-                                    break;
-                                    case VF.Barline.type.REPEAT_BOTH:
-                                    this.drawRepeatBar(stave, this.x, false);
-                                    this.drawRepeatBar(stave, this.x, true);
-                                    break;
-                                    default:
-                                    // Default is NONE, so nothing to draw
-                                    break;
-                                }
-                            };
-                        }
+                        // the begin barline: the line at the staff's start only with renderInitialLine (VexFlowPatch's Barline.draw())
+                        (this.stave as any).modifiers[0].renderInitialLine = renderInitialLine;
                         this.stave.setBegBarType(VF.Barline.type.REPEAT_BEGIN);
                         break;
                     default:
@@ -766,7 +742,9 @@ export class VexFlowMeasure extends GraphicalMeasure {
 
             //convert to VF units (pixels)
             vexFlowVoltaHeight *= 10;
-            this.stave.setVoltaType(voltaType, repetitionInstruction.endingIndices[0], vexFlowVoltaHeight);
+            // all the passes it's played on, e.g. "1, 3", unless the score gives a text for it, e.g. "1., 3." (VexFlow draws it as given)
+            const label: string = repetitionInstruction.Words ?? repetitionInstruction.endingIndices.join(", ");
+            this.stave.setVoltaType(voltaType, label as any, vexFlowVoltaHeight);
             const volta: VF.StaveModifier = this.stave.getModifiers().last();
             VexFlowConverter.setVexFlowTextFontFamily((volta as any).font, this.rules);
             skyBottomLineCalculator.updateSkyLineInRange(start, end, newSkylineValueForMeasure);
@@ -802,8 +780,9 @@ export class VexFlowMeasure extends GraphicalMeasure {
         const measureNode: SVGGElement = ctx.openGroup() as SVGGElement;
         if (measureNode) {
             measureNode.classList?.add("vf-measure");
-            measureNode.id = `${this.MeasureNumber}`;
+            measureNode.id = this.getSVGGElementId();
         }
+        this.svgGElement = measureNode; // undefined with the canvas backend
 
         // Draw stave lines
         this.stave.setContext(ctx).draw();
@@ -1989,6 +1968,8 @@ export class VexFlowMeasure extends GraphicalMeasure {
                             (<any>vfBeam).render_options.beam_width = 3;
                             (<any>vfBeam).render_options.partial_beam_length = 4;
                         }
+                        // the color of the stems (ColorBeams), e.g. the noteheads' color with ColorStemsLikeNoteheads: set by
+                        //   VexFlowVoiceEntry.color() earlier in this render, before formatMeasures() calls this
                         if (stemColors.length >= 2 && this.rules.ColorBeams) {
                             beamColor = stemColors[0];
                             for (const stemColor of stemColors) {
@@ -1998,6 +1979,12 @@ export class VexFlowMeasure extends GraphicalMeasure {
                                 }
                             }
                             vfBeam.setStyle({ fillStyle: beamColor, strokeStyle: beamColor });
+                        }
+                        // a beam of hidden notes drawn with RenderHiddenNotes, in their color (see VexFlowVoiceEntry.color())
+                        const hiddenNotesColor: string = this.rules.HiddenNotesColor;
+                        if (hiddenNotesColor && this.rules.ColoringEnabled && this.rules.ColorBeams &&
+                            voiceEntries.every((entry: VexFlowVoiceEntry): boolean => entry.drawsOnlyHiddenNotes())) {
+                            vfBeam.setStyle({ fillStyle: hiddenNotesColor, strokeStyle: hiddenNotesColor });
                         }
                         if (this.rules.FlatBeams) {
                             (<any>vfBeam).render_options.flat_beams = true;
@@ -2603,7 +2590,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
      *  (Vexflow would draw a slash through each of them), and not a hidden one (Vexflow would draw its slash anyway). */
     private hasGraceSlash(graceGve: GraphicalVoiceEntry, isFirstGraceNote: boolean): boolean {
         return isFirstGraceNote && graceGve.parentVoiceEntry.GraceNoteSlash &&
-            graceGve.notes.some((note: GraphicalNote) => note.sourceNote.PrintObject);
+            graceGve.notes.some((note: GraphicalNote) => note.sourceNote.isVisible());
     }
 
     public graphicalMeasureCreatedCalculations(): void {
@@ -2785,7 +2772,10 @@ export class VexFlowMeasure extends GraphicalMeasure {
                 if (vfse && vfse.vfClefBefore && vfse.vfKeys.length === 0 &&
                     !voiceEntry.parentVoiceEntry?.GraceAfterMainNote && vfse !== staffEntryWithClef) {
                     staffEntryWithClef = vfse;
-                    if (voiceEntry.notes[0] && !voiceEntry.notes[0].sourceNote.PrintObject) {
+                    // the clef is drawn with the style of a hidden note's notehead: transparent, or with RenderHiddenNotes in
+                    //   HiddenNotesColor (VexFlowVoiceEntry.color()); the notes of a hidden voice are transparent too
+                    const clefNote: Note = voiceEntry.notes[0]?.sourceNote;
+                    if (clefNote && (!clefNote.PrintObject || !clefNote.isVisible())) {
                         const clefColor: string = this.rules.DefaultColorMusic || "#000000";
                         // need to cast to any because ClefNote actually extends Note, which extends Tickable, which extends Element,
                         //   which has setStyle. But in our definitions, Tickable doesn't implement anything, so it doesn't have setStyle.
@@ -2802,7 +2792,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
                     }
                 }
 
-                if (voiceEntry.notes.length === 0 || !voiceEntry.notes[0] || !voiceEntry.notes[0].sourceNote.PrintObject) {
+                if (voiceEntry.notes.length === 0 || !voiceEntry.notes[0] || !voiceEntry.notes[0].sourceNote.isVisible()) {
                     // GhostNote: still allow in-measure clefs on invisible notes, but skip other modifiers.
                     this.vfVoices[voice.VoiceId].addTickable(vexFlowVoiceEntry.vfStaveNote);
                     continue;

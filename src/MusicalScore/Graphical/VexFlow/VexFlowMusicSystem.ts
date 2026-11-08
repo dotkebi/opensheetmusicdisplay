@@ -13,6 +13,7 @@ import {EngravingRules} from "../EngravingRules";
 import { VexFlowInstrumentBracket } from "./VexFlowInstrumentBracket";
 import { VexFlowInstrumentBrace } from "./VexFlowInstrumentBrace";
 import { SkyBottomLineCalculator } from "../SkyBottomLineCalculator";
+import { GroupSymbol } from "../../InstrumentalGroup";
 import { unitInPixels } from "./VexFlowMusicSheetDrawer";
 
 export class VexFlowMusicSystem extends MusicSystem {
@@ -164,48 +165,41 @@ export class VexFlowMusicSystem extends MusicSystem {
         return;
     }
 
-    /** A bracket, square bracket or line stands 5 px left of the staves, a brace 14 px; 5 px further per nesting depth. */
-    protected groupBracketReach(groupSymbol: string, depth: number): number {
-        const isBrace: boolean = groupSymbol === "brace" || (!groupSymbol && depth > 0);
-        return ((isBrace ? 14 : 5) + depth * 5) / unitInPixels;
+    /** A bracket, square bracket or line stands 5 px left of the staves, a brace 14 px (VexFlow's StaveConnector); each
+     *  column a GroupBracketColumnDistance further left. */
+    protected groupBracketReach(groupSymbol: GroupSymbol, column: number): number {
+        return (groupSymbol === GroupSymbol.Brace ? 14 : 5) / unitInPixels + column * this.rules.GroupBracketColumnDistance;
     }
 
-    protected partBraceReach(columns: number): number {
-        return (14 + columns * 5) / unitInPixels;
+    protected partBraceReach(column: number): number {
+        return this.groupBracketReach(GroupSymbol.Brace, column);
     }
 
     /**
      * creates an instrument group bracket for the given dimension.
-     * There can be cascaded bracket (e.g. a group of 2 in a group of 4) -
-     * The recursion depth informs about the current depth level (needed for positioning)
+     * There can be cascaded brackets (e.g. a group of 2 in a group of 4): a nested group's bracket stands in the next column
+     * left of the outer group's (EngravingRules.GroupBracketColumnDistance), as does the brace of a multi-staff part inside
+     * the group (a brace is the outermost symbol, Gould, Behind Bars, p. 516; MuseScore and Dorico draw it so).
      * @param firstStaffLine the upper staff line of the bracket to create
      * @param lastStaffLine the lower staff line of the bracket to create
-     * @param recursionDepth
+     * @param column the column of the bracket left of the staves, 0 beside them
+     * @param groupSymbol the symbol to draw: bracket, brace, square (a thin line with right-angled hooks) or line
      */
-    protected createGroupBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine,
-                                 recursionDepth: number, groupSymbol: string): void {
+    protected createGroupBracket(firstStaffLine: StaffLine, lastStaffLine: StaffLine, column: number, groupSymbol: GroupSymbol): void {
         const firstVexStaff: VexFlowStaffLine = (firstStaffLine as VexFlowStaffLine);
         const lastVexStaff: VexFlowStaffLine = (lastStaffLine as VexFlowStaffLine);
-        // the brace of a part with two or more staves inside the group stands left of the group's bracket, a column further
-        //   out than the group (as in Dorico and MuseScore, and the Pulkert/Solc and Breitkopf scores), not on top of it
         const top: number = this.staffLines.indexOf(firstStaffLine);
         const bottom: number = this.staffLines.indexOf(lastStaffLine);
         for (const partBrace of this.InstrumentBrackets as VexFlowInstrumentBracket[]) {
-            const at: number = this.staffLines.findIndex(line => (line.Measures[0] as VexFlowMeasure)?.getVFStave() === partBrace.vexflowConnector.top_stave);
+            const at: number = this.staffLines.indexOf(partBrace.FirstStaffLine);
             if (at >= top && at <= bottom) {
-                partBrace.vexflowConnector.setXShift(Math.min(partBrace.vexflowConnector.x_shift, (recursionDepth + 1) * -5));
+                partBrace.Column = Math.max(partBrace.Column, column + 1);
             }
         }
-        if (groupSymbol === "brace" || (!groupSymbol && recursionDepth > 0)) {
-            const vexFlowBrace: VexFlowInstrumentBrace = new VexFlowInstrumentBrace(firstVexStaff, lastVexStaff, recursionDepth);
-            this.GroupBrackets.push(vexFlowBrace);
-        } else {
-            const vexFlowBracket: VexFlowInstrumentBracket = new VexFlowInstrumentBracket(firstVexStaff, lastVexStaff, recursionDepth);
-            if (groupSymbol === "square" || groupSymbol === "line") {
-                vexFlowBracket.Shape = groupSymbol;
-            }
-            this.GroupBrackets.push(vexFlowBracket);
-        }
-        return;
+        const bracket: VexFlowInstrumentBracket = groupSymbol === GroupSymbol.Brace ?
+            new VexFlowInstrumentBrace(firstVexStaff, lastVexStaff, column) :
+            new VexFlowInstrumentBracket(firstVexStaff, lastVexStaff, column);
+        bracket.Shape = groupSymbol;
+        this.GroupBrackets.push(bracket);
     }
 }

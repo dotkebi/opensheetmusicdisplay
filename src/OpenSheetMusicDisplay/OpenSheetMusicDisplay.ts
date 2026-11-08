@@ -18,7 +18,7 @@ import { ColoringModes } from "../Common/Enums/ColoringModes";
 import { IOSMDOptions, OSMDOptions, AutoBeamOptions, BackendType, CursorOptions, CursorType } from "./OSMDOptions";
 import { EngravingRules, PageFormat } from "../MusicalScore/Graphical/EngravingRules";
 import { AbstractExpression } from "../MusicalScore/VoiceData/Expressions/AbstractExpression";
-import { ContinuousDynamicExpression } from "../MusicalScore/VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
+import { MultiExpression } from "../MusicalScore/VoiceData/Expressions/MultiExpression";
 import { Dictionary } from "typescript-collections";
 import { AutoColorSet } from "../MusicalScore/Graphical/DrawingEnums";
 import { GraphicalMusicPage } from "../MusicalScore/Graphical/GraphicalMusicPage";
@@ -49,6 +49,11 @@ export interface RenderPageAsyncDiagnostics {
     elapsedMs: number;
     yieldCount: number;
 }
+import { WarmKeeperScoreMxlBase64 } from "./WarmKeeperScore";
+
+/** WeakRef (ES2021) isn't in the TypeScript lib of OSMD's target, es2020. Older browsers don't have it: Chrome before 84,
+ *  Firefox before 79, Safari before 14.1. */
+declare const WeakRef: new <T extends object>(target: T) => { deref(): T | undefined };
 
 /**
  * The main class and control point of OpenSheetMusicDisplay.<br>
@@ -56,7 +61,7 @@ export interface RenderPageAsyncDiagnostics {
  * After the constructor, use load() and render() to load and render a MusicXML file.
  */
 export class OpenSheetMusicDisplay {
-    protected version: string = "2.2.1-release"; // getter: this.Version
+    protected version: string = "2.3.0-release"; // getter: this.Version
     // at release, bump version and change to -release, afterwards to -dev again
 
     /**
@@ -122,7 +127,31 @@ export class OpenSheetMusicDisplay {
     protected rules: EngravingRules;
     protected autoResizeEnabled: boolean;
     protected resizeHandlerAttached: boolean;
+    /** The container's content width (getContainerContentWidth()) the last layout was made for: by render(), or at the start
+     *  of incremental rendering. Turning autoResize on re-renders a rendered sheet only if the width differs from it. */
+    protected layoutContainerWidth: number;
+    /** Removes the window's resize listener added for autoResize (see handleResize()), e.g. in dispose(). */
+    private disposeResizeListener: () => void;
+    /** The callbacks of the window's resize listener (see handleResize()), which reaches them only through this instance. */
+    private resizeStartCallback: () => void;
+    private resizeEndCallback: () => void;
+    /** The key of the container's property that keeps this instance in memory while autoResize is on (see handleResize()). */
+    private static readonly containerInstanceKey: symbol = Symbol("OpenSheetMusicDisplay");
     protected followCursor: boolean;
+    /** Whether this instance uses the page's warm keeper, or "auto" (in Chromium-based browsers), see KeepWarm. */
+    private keepWarm: boolean | "auto" = "auto";
+    /** Whether this instance is counted in warmKeeperUsers (it rendered with KeepWarm on, and isn't disposed). */
+    private usesWarmKeeper: boolean = false;
+    /** The page's warm keeper (see KeepWarm): one instance, shared by all instances that use it. Static on purpose: its
+     *  rendering keeps the compiled code alive for every instance, so one per page is enough. It holds no other instance. */
+    private static warmKeeper: OpenSheetMusicDisplay = undefined;
+    /** Whether the page's warm keeper was made or is scheduled, so that it's made once. */
+    private static warmKeeperScheduled: boolean = false;
+    /** How many instances use the warm keeper (see usesWarmKeeper); the last one to stop frees it. A count, not references,
+     *  so that it keeps no instance in memory. */
+    private static warmKeeperUsers: number = 0;
+    /** The layout width in pixels of the warm keeper, which has no container in the page: getContainerContentWidth() returns it. */
+    private fixedLayoutWidth: number = undefined;
     /** A function that is executed when the XML has been read.
      * The return value will be used as the actual XML OSMD parses,
      * so you can make modifications to the xml that OSMD will use.
@@ -134,6 +163,7 @@ export class OpenSheetMusicDisplay {
      * Load a MusicXML file
      * @param content is either the url of a file, or the root node of a MusicXML document,
      *   or the string content of a .xml/.mxl file, or a file blob.
+     *   A string that starts with "<" (after whitespace) is read as XML, also without the XML declaration (<?xml ...?>).
      * @param tempTitle is used as the title for the piece if there is no title in the XML.
      *   The name or path of a MusicXML file (e.g. "scores/Sonata No. 1.musicxml") is used without its folder and extension.
      */
@@ -183,9 +213,11 @@ export class OpenSheetMusicDisplay {
             }
             let trimmedStr: string = str;
             if (/^\s/.test(trimmedStr)) { // only trim if we need to. (end of string is irrelevant)
-                trimmedStr = trimmedStr.trim(); // trim away empty lines at beginning etc
+                trimmedStr = trimmedStr.trim(); // trim away empty lines at beginning etc., also a byte order mark (U+FEFF)
             }
-            if (trimmedStr.startsWith("<?xml")) { // first character is sometimes null, making first five characters '<?xm'.
+            // XML, with or without the XML declaration (<?xml ...?>), which is optional: e.g. a MusicXML string from jsdom's
+            //   XMLSerializer starts with <!DOCTYPE, one from Python's ElementTree with <score-partwise>. A URL can't start with "<".
+            if (trimmedStr.startsWith("<")) {
                 const modifiedXml: string = this.OnXMLRead(trimmedStr); // by default just returns trimmedStr unless a function options.OnXMLRead was set.
                 log.debug("[OSMD] Finally parsing XML content, length: " + modifiedXml.length);
                 // Parse the string representing an xml file
@@ -200,7 +232,7 @@ export class OpenSheetMusicDisplay {
                     (exc: Error) => { throw exc; }
                 );
             } else {
-                console.error("[OSMD] osmd.load(string): Could not process string. Did not find <?xml at beginning.");
+                console.error("[OSMD] osmd.load(string): Could not process string. It doesn't start with \"<\" (XML) and is too long for a URL.");
             }
         }
 
@@ -243,20 +275,55 @@ export class OpenSheetMusicDisplay {
     }
 
     /**
-     * (Re-)creates the graphic sheet from the music sheet
+     * (Re-)creates the graphic sheet from the music sheet, and puts the cursors back to the start.
+     * Needed e.g. after changing a rule that applies when the graphic is created, like EngravingRules.RenderHiddenNotes.
+     * A changed transposition (osmd.Sheet.Transpose, Instrument.Transpose, osmd.TransposeCalculator) or a voice shown or
+     * hidden (Voice.Visible, Instrument.Visible) doesn't need it: render() creates the graphic again then, and keeps the
+     * cursors where they are.
      */
     public updateGraphic(): void {
         this.renderGeneration++;
-        const calc: MusicSheetCalculator = new VexFlowMusicSheetCalculator(this.rules);
-        this.graphic = new GraphicalMusicSheet(this.sheet, calc);
+        // the draw range of the sheet into the rules, as render() does: the cursors start at its first measure. The rules can still have
+        //   the indices of the sheet before (e.g. index 2 for drawFromMeasureNumber 3 without a pickup measure: measure 2 with one).
+        [this.rules.MinMeasureToDrawIndex, this.rules.MaxMeasureToDrawIndex] = this.getDrawRangeIndices();
+        this.createGraphic();
         if (this.drawingParameters.drawCursors) {
             this.cursors.forEach(cursor => {
                 cursor.init(this.sheet.MusicPartManager, this.graphic);
             });
         }
+    }
+
+    /** Creates the graphic sheet from the music sheet: its graphical measures, notes and chord symbols, with the notes and chord
+     *  symbols transposed by the current transposition (see GraphicalMusicSheet.TranspositionChanged). Unlike updateGraphic(), it
+     *  leaves the cursors alone: render() and renderNext() create them again on the new graphic, where they were.
+     *  @param drawRange the first and the last measure to draw (source measure indices, see getDrawRangeIndices()): the multiple
+     *   rest measures begin and end with them (see MusicSheetCalculator.prepareGraphicalMusicSheet())
+     */
+    private createGraphic(drawRange: [number, number] = this.getDrawRangeIndices()): void {
+        const calc: MusicSheetCalculator = new VexFlowMusicSheetCalculator(this.rules);
+        // the rules have the draw range while the graphic is created, then their own values again (e.g. a draw range set during
+        //   incremental rendering, for the next session)
+        const rulesDrawRange: [number, number] = [this.rules.MinMeasureToDrawIndex, this.rules.MaxMeasureToDrawIndex];
+        [this.rules.MinMeasureToDrawIndex, this.rules.MaxMeasureToDrawIndex] = drawRange;
+        try {
+            this.graphic = new GraphicalMusicSheet(this.sheet, calc);
+        } finally {
+            [this.rules.MinMeasureToDrawIndex, this.rules.MaxMeasureToDrawIndex] = rulesDrawRange;
+        }
         if (this.drawingParameters.DrawingParametersEnum === DrawingParametersEnum.leadsheet) {
             this.graphic.LeadSheet = true;
         }
+    }
+
+    /** Whether the graphic has to be created again before it's rendered: after a change of the transposition or of the
+     *  visible voices, which apply when it's created (see GraphicalMusicSheet.TranspositionChanged and VoiceVisibilityChanged),
+     *  or for a draw range that would divide the multiple rest measures otherwise (see MusicSheetCalculator.multiRestsFitDrawRange()).
+     *  @param drawRange the first and the last measure to draw (source measure indices, see getDrawRangeIndices())
+     */
+    private graphicOutdated(drawRange: [number, number]): boolean {
+        return this.graphic.TranspositionChanged || this.graphic.VoiceVisibilityChanged ||
+            !this.graphic.GetCalculator.multiRestsFitDrawRange(drawRange[0], drawRange[1]);
     }
 
     /** Lazy rendering (LazyConsistentGraphic): number of systems already drawn into the shared
@@ -276,6 +343,14 @@ export class OpenSheetMusicDisplay {
 
     /** Incremental rendering ({@link renderNext}): whether a session is in progress (started, not yet reset). */
     private lazyIncrementalActive: boolean = false;
+    /** Incremental rendering: source-measure indices of the first and the last measure the session renders, the ones
+     *  render() draws (the draw range, see getDrawRangeIndices()), limited to the sheet. Set when the session starts. */
+    private lazyFirstMeasureIndex: number = 0;
+    private lazyLastMeasureIndex: number = 0;
+    /** Incremental rendering: source-measure index of the last measure the session draws, for its progress: lazyLastMeasureIndex,
+     *  or the last measure of the last system drawn once a batch's layout ends there before it (drawUpToSystemNumber,
+     *  drawUpToPageNumber, see lazyLayoutEndBefore()). Set by the session's first batch. */
+    private lazyLayoutLastMeasureIndex: number = 0;
     /** Incremental rendering: source-measure index where the next batch continues (the drawn frontier). */
     private lazyNextSourceIndex: number = 0;
     /** Incremental rendering of the endless page: the width in pixels all batches of the session lay the sheet out at, the
@@ -283,10 +358,6 @@ export class OpenSheetMusicDisplay {
      *  laid its systems out narrower than the ones drawn before when the container had become narrower in between, e.g. by
      *  the vertical scrollbar the page gets once the first batch makes it longer than the window. */
     private lazyLayoutWidth: number = 0;
-    /** Incremental rendering: the draw-measure range the lazy layout mutates, saved on begin and restored on
-     *  reset, so a later normal render() isn't left limited to the last batch's draw range. */
-    private lazySavedMinMeasureToDrawIndex: number = 0;
-    private lazySavedMaxMeasureToDrawIndex: number = 0;
     /** Incremental rendering: the scroll listener + its target, while enableIncrementalRenderingOnScroll() is on. */
     private lazyScrollHandler: (() => void) | undefined;
     private lazyScrollTarget: HTMLElement | Window | undefined;
@@ -297,13 +368,29 @@ export class OpenSheetMusicDisplay {
      *  parked at a yield, exits quietly instead of drawing into backends that no longer exist. */
     private renderGeneration: number = 0;
 
-    /** Render the loaded music sheet to the container. */
+    /** Render the loaded music sheet to the container.
+     *  A changed transposition (osmd.Sheet.Transpose, Instrument.Transpose, osmd.TransposeCalculator) or a voice shown or hidden
+     *  (Voice.Visible, Instrument.Visible) is applied without updateGraphic(): render() creates the graphic again then,
+     *  see GraphicalMusicSheet.TranspositionChanged and VoiceVisibilityChanged. It does so too when the draw range
+     *  (drawFromMeasureNumber, drawUpToMeasureNumber) begins or ends inside a multiple rest measure, which is divided there,
+     *  or one was divided for the previous draw range (see MusicSheetCalculator.multiRestsFitDrawRange()).
+     */
     public render(): void {
         if (!this.graphic) {
             throw new Error("OSMD: load() needs to be called before render()");
         }
         this.renderGeneration++;
         this.renderedPageNumbers.clear();
+        // drawing range, adjusted for a pickup measure
+        const drawRange: [number, number] = this.getDrawRangeIndices();
+        // The notes and chord symbols are transposed when the graphic is created, the key signatures in each layout (reCalculate()):
+        //   after a change of the transposition, create the graphic again, otherwise only the key signatures would be transposed.
+        //   The notes of hidden voices are left out when the graphic is created too, and the multiple rest measures begin and end
+        //   with the draw range.
+        //   Unlike updateGraphic(), this keeps the cursors where they are (enableOrDisableCursors() below creates them on the new graphic).
+        if (this.graphicOutdated(drawRange)) {
+            this.createGraphic(drawRange);
+        }
         // A full render() supersedes any incremental render in progress: abandon it and restore the
         // draw-measure range it mutated, so this render isn't limited to the last batch.
         this.resetIncrementalRendering();
@@ -314,18 +401,11 @@ export class OpenSheetMusicDisplay {
         // this.graphic.GetCalculator.clearSystemsAndMeasures(); // maybe?
         // this.graphic.GetCalculator.clearRecreatedObjects();
 
-        // drawing range: check if pickup measure and start or end measure number > 1
-        if (this.Sheet.SourceMeasures[0].ImplicitMeasure) {
-            if (this.rules.MinMeasureToDrawNumber > 1) {
-                this.rules.MinMeasureToDrawIndex = this.rules.MinMeasureToDrawNumber; // -1 for index, +1 for pickup
-            }
-            if (this.rules.MaxMeasureToDrawNumber > 0) {
-                this.rules.MaxMeasureToDrawIndex = this.rules.MaxMeasureToDrawNumber; // -1 for index, +1 for pickup
-            }
-        }
+        [this.rules.MinMeasureToDrawIndex, this.rules.MaxMeasureToDrawIndex] = drawRange;
 
         // Set page width
         let width: number = this.getContainerContentWidth();
+        this.layoutContainerWidth = width;
         if (this.rules.RenderSingleHorizontalStaffline) {
             width = this.rules.SheetMaximumWidth; // set safe maximum (browser limit), will be reduced later
             // reduced later in MusicSheetCalculator.calculatePageLabels (sets sheet.pageWidth to page.PositionAndShape.Size.width before labels)
@@ -387,6 +467,138 @@ export class OpenSheetMusicDisplay {
             this.renderedPageNumbers.add(index + 1);
         }
         //console.log("[OSMD] render finished");
+        this.useWarmKeeper();
+    }
+
+    /**
+     * Whether this instance uses the page's warm keeper: true, false, or "auto" (default): in Chromium-based browsers (Chrome,
+     * Edge, Opera, Electron, ...), see isChromiumBrowser(). The keeper is a small rendering OSMD keeps alive so that a sheet
+     * rendered after clear() renders about as fast as the one before it. Also the option keepWarm (constructor, setOptions()).
+     * The JavaScript engine (V8 in Chrome, Edge and Node) compiles OSMD's code for the objects it creates, and throws that
+     * compiled code away once no such object is left, at a full garbage collection. After clear(), nothing of the sheet is
+     * left, so the next sheet then rendered up to ~27% slower if such a collection happened in between (Chrome).
+     * Firefox and Safari showed no such slowdown, and no gain from the keeper: "auto" makes none there.
+     * After the first render() or renderNext() of an instance that uses it, OSMD renders a built-in score of 8 measures
+     * (WarmKeeperScore.ts) when the page is idle (requestIdleCallback), into a container that isn't in the page: about
+     * 20 ms in Chrome, and a few MB. One keeper per page, shared by the instances that use it, as any rendering keeps the
+     * compiled code alive. It's freed when the last of them is disposed (dispose()) or turns this off. Not made without
+     * requestIdleCallback (e.g. Node with jsdom).
+     */
+    public get KeepWarm(): boolean | "auto" {
+        return this.keepWarm;
+    }
+
+    public set KeepWarm(value: boolean | "auto") {
+        this.keepWarm = value;
+        if (!this.keepsWarm()) {
+            this.stopUsingWarmKeeper();
+        }
+    }
+
+    /** Whether this instance uses the page's warm keeper with its KeepWarm setting in this browser ("auto" decided). */
+    private keepsWarm(): boolean {
+        return this.keepWarm === true || this.keepWarm === "auto" && typeof navigator !== "undefined" &&
+            OpenSheetMusicDisplay.isChromiumBrowser(navigator);
+    }
+
+    /**
+     * Whether `browser` (the page's navigator) is a Chromium-based browser, whose JavaScript engine V8 throws away the code it
+     * compiled for objects of which none is left (see KeepWarm): from navigator.userAgentData (Chromium 90+, secure pages
+     * only), else from the user agent: Chromium-based browsers name "Chrome/" or "Chromium/" in it, Safari and Firefox don't
+     * (also not on iOS, where every browser is WebKit-based: CriOS, EdgiOS, FxiOS).
+     */
+    private static isChromiumBrowser(browser: Navigator): boolean {
+        const brands: { brand: string }[] = (<any>browser).userAgentData?.brands;
+        if (Array.isArray(brands) && brands.length > 0) {
+            return brands.some((b: { brand: string }) => b.brand === "Chromium");
+        }
+        return /Chrome\/|Chromium\//.test(browser.userAgent ?? "");
+    }
+
+    /** Stops using the page's warm keeper (see KeepWarm): the last instance to stop frees it. */
+    private stopUsingWarmKeeper(): void {
+        if (!this.usesWarmKeeper) {
+            return;
+        }
+        this.usesWarmKeeper = false;
+        OpenSheetMusicDisplay.warmKeeperUsers--;
+        if (OpenSheetMusicDisplay.warmKeeperUsers > 0) {
+            return;
+        }
+        const keeper: OpenSheetMusicDisplay = OpenSheetMusicDisplay.warmKeeper;
+        OpenSheetMusicDisplay.warmKeeper = undefined;
+        OpenSheetMusicDisplay.warmKeeperScheduled = false;
+        keeper?.clear();
+        keeper?.dispose();
+    }
+
+    /**
+     * Uses the page's warm keeper (see KeepWarm), after a render() or renderNext(): makes it when the page is idle, if no
+     * instance did yet. The keeper is a separate instance that renders the built-in score into a container that isn't in
+     * the page.
+     */
+    private useWarmKeeper(): void {
+        // Browsers only: without requestIdleCallback (e.g. Node with jsdom) there's no idle time to render the keeper in,
+        //   and scripts that render many sheets (e.g. generateImages_browserless) would render a keeper for each instance.
+        if (!this.keepsWarm() || this.fixedLayoutWidth !== undefined || typeof (<any>globalThis).requestIdleCallback !== "function" ||
+            typeof document === "undefined" || typeof atob === "undefined") {
+            return;
+        }
+        if (!this.usesWarmKeeper) {
+            this.usesWarmKeeper = true;
+            OpenSheetMusicDisplay.warmKeeperUsers++;
+        }
+        if (OpenSheetMusicDisplay.warmKeeperScheduled) {
+            return; // made or scheduled already
+        }
+        OpenSheetMusicDisplay.warmKeeperScheduled = true;
+        const makeKeeper: () => void = (): void => {
+            if (OpenSheetMusicDisplay.warmKeeperUsers === 0 || !OpenSheetMusicDisplay.warmKeeperScheduled) {
+                return; // no instance uses it anymore
+            }
+            const keeper: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(document.createElement("div"),
+                { autoResize: false, drawingParameters: "default", keepWarm: false });
+            keeper.fixedLayoutWidth = 1200;
+            keeper.load(atob(WarmKeeperScoreMxlBase64), "OSMD warm keeper").then(() => {
+                if (OpenSheetMusicDisplay.warmKeeperUsers === 0 || !OpenSheetMusicDisplay.warmKeeperScheduled) {
+                    keeper.clear(); // stopped meanwhile
+                    return;
+                }
+                keeper.render();
+                OpenSheetMusicDisplay.warmKeeper = keeper;
+            }).catch((e: any) => {
+                log.debug("[OSMD] warm keeper not rendered: " + e);
+            });
+        };
+        (<any>globalThis).requestIdleCallback(makeKeeper, { timeout: 3000 }); // at the latest after 3 s
+    }
+
+    /**
+     * The measures render() draws, as source-measure indices: those of the draw range set with setOptions() (drawFromMeasureNumber,
+     * drawUpToMeasureNumber, kept in EngravingRules.MinMeasureToDrawNumber and MaxMeasureToDrawNumber), where measure number n is
+     * at index n instead of n - 1 if the sheet begins with a pickup measure (number 0). Without a measure number set (the defaults
+     * 0 and Number.MAX_VALUE), the index in EngravingRules.MinMeasureToDrawIndex or MaxMeasureToDrawIndex, e.g. one set there.
+     * load(), render() and renderNext() put these indices into the rules: the ones there are those of the sheet loaded.
+     * @returns the indices of the first and the last measure. The last one can be beyond the sheet (by default
+     *  Number.MAX_VALUE), and if the first one is, the layout starts at the sheet's last measure.
+     */
+    private getDrawRangeIndices(): [number, number] {
+        // The indices in the rules can be those of the sheet laid out before, adjusted to its pickup measure (and the first one to
+        //   its measures, see MusicSheetCalculator.calculateMusicSystems()), so they're found again from the measure numbers set:
+        //   e.g. with drawFromMeasureNumber 3, a sheet without a pickup measure after one with a pickup measure was drawn from measure 4.
+        const pickup: boolean = !!this.Sheet.SourceMeasures[0]?.ImplicitMeasure;
+        let firstIndex: number = this.rules.MinMeasureToDrawIndex;
+        const fromNumber: number = this.rules.MinMeasureToDrawNumber;
+        if (fromNumber > 0) {
+            // from measure 1, the pickup measure is drawn too
+            firstIndex = pickup && fromNumber > 1 ? fromNumber : Math.max(fromNumber - 1, 0);
+        }
+        let lastIndex: number = this.rules.MaxMeasureToDrawIndex;
+        const upToNumber: number = this.rules.MaxMeasureToDrawNumber;
+        if (upToNumber < Number.MAX_VALUE) {
+            lastIndex = pickup && upToNumber > 0 ? upToNumber : Math.max(upToNumber - 1, 0);
+        }
+        return [firstIndex, lastIndex];
     }
 
     /** Whether a {@link renderAsync} call is currently running. */
@@ -582,7 +794,7 @@ export class OpenSheetMusicDisplay {
     }
 
     /** Internal range-based engine behind {@link renderNext} (the public incremental API). Lays out the
-     *  whole prefix [0..toMeasureIndex] and APPENDS the newly-stable source measures below previously
+     *  prefix of the draw range up to toMeasureIndex and APPENDS the newly-stable source measures below previously
      *  rendered batches, without clearing the container, so a large score renders "system by system".
      *  clearFirst=true starts a fresh session (clears prior content, resets the counters). Returns the
      *  source-measure index at which the next batch should continue. fromMeasureIndex is informational --
@@ -601,7 +813,7 @@ export class OpenSheetMusicDisplay {
             this.rules.LazyConsistentGraphic = false;
             return this.renderAppendGrowingHorizontal(toMeasureIndex, clearFirst);
         }
-        // Lazy rendering lays out the whole prefix [0..toMeasureIndex] into one growing, globally-consistent
+        // Lazy rendering lays out the whole prefix [first..toMeasureIndex] into one growing, globally-consistent
         // graphic and draws only the newly-stable systems (renderAppendGrowing). LazyConsistentGraphic gates
         // that path's reuse caches; a normal render() forces it off so the caches never affect a non-lazy render.
         this.rules.LazyConsistentGraphic = true;
@@ -612,10 +824,14 @@ export class OpenSheetMusicDisplay {
      * Incrementally render the loaded sheet one batch at a time, appending each batch so a large score
      * paints progressively ("system by system") instead of blocking on a full render(). The first call --
      * or the first after load(), render() or resetIncrementalRendering() -- starts a fresh session: it
-     * clears the container and lays the score out from the first measure. Each later call appends the next
-     * batch. Returns progress; once `done` is true the whole sheet is rendered and further calls are no-ops.
+     * clears the container and lays the score out from the first measure to draw. Each later call appends the
+     * next batch. Returns progress; once `done` is true all measures are rendered and further calls are no-ops.
+     * A session renders the measures render() draws: the whole sheet, or the range set with the options
+     * drawFromMeasureNumber and drawUpToMeasureNumber when the session starts (the progress counts the measures in it).
      * Like render(), a session lays the sheet out at the container's width when it starts: to adapt it to a new
      * width, e.g. after a resize, start a new session.
+     * Like render(), it applies a changed transposition (osmd.Sheet.Transpose, Instrument.Transpose, osmd.TransposeCalculator)
+     * without updateGraphic(): during a session, the next call then starts it over from its first measure.
      * Page labels are drawn with the batch that finalizes their position: the title block (title, subtitle,
      * composer, lyricist) with the first batch, the copyright (below the last system) with the final batch.
      *
@@ -636,17 +852,32 @@ export class OpenSheetMusicDisplay {
         const systemsOpt: number = options?.systems ?? 0;
         const targetNewSystems: number = systemsOpt > 0 && !this.rules.RenderSingleHorizontalStaffline
             ? Math.max(1, Math.floor(systemsOpt)) : undefined;
-        const lastSheetMeasureIndex: number = this.sheet.SourceMeasures.length - 1;
-        const totalMeasures: number = this.visualMeasureCount(0, this.sheet.SourceMeasures.length);
 
+        // As in render(): create the graphic again after a change of the transposition or of the visible voices, or for the draw range
+        //   of the session (that of render() for a new one) if it would divide the multiple rest measures otherwise.
+        const drawRange: [number, number] = this.lazyIncrementalActive
+            ? [this.lazyFirstMeasureIndex, this.lazyLastMeasureIndex] : this.getDrawRangeIndices();
+        const graphicOutdated: boolean = this.graphicOutdated(drawRange);
+        if (graphicOutdated) {
+            this.createGraphic(drawRange);
+        }
         const begin: boolean = !this.lazyIncrementalActive;
         if (begin) {
             this.beginIncrementalRendering();
+        } else if (graphicOutdated) {
+            // start the session over: the systems drawn show the previous transposition or voices
+            this.lazyNextSourceIndex = this.lazyFirstMeasureIndex;
         }
-        if (this.lazyNextSourceIndex > lastSheetMeasureIndex) {
+        // the session renders the measures [first, last], those of the draw range (see beginIncrementalRendering()), and draws
+        //   them up to the last one of the layout (see lazyLayoutLastMeasureIndex)
+        const lastMeasureIndex: number = this.lazyLastMeasureIndex;
+        // All measures rendered. A draw range without measures has none to render, but the session's first batch lays it out
+        //   like render(), which removes the previous drawing from the container.
+        if (this.lazyNextSourceIndex > lastMeasureIndex && !begin) {
+            const measuresDrawn: number = this.visualMeasureCount(this.lazyFirstMeasureIndex, this.lazyLayoutLastMeasureIndex + 1);
             return {
-                done: true, renderedMeasures: totalMeasures, totalMeasures,
-                lastRenderedMeasure: this.graphicalMeasuresAtOrBefore(lastSheetMeasureIndex), nextUnrenderedMeasure: []
+                done: true, renderedMeasures: measuresDrawn, totalMeasures: measuresDrawn,
+                lastRenderedMeasure: this.graphicalMeasuresAtOrBefore(this.lazyLayoutLastMeasureIndex), nextUnrenderedMeasure: []
             };
         }
 
@@ -655,14 +886,18 @@ export class OpenSheetMusicDisplay {
         // exactly `targetNewSystems` whole systems; otherwise advance the frontier by the visual-measure count.
         const toMeasureIndex: number = targetNewSystems !== undefined
             ? fromMeasureIndex
-            : this.visualBatchEndIndex(fromMeasureIndex, batchMeasures);
-        this.lazyNextSourceIndex = this.renderAppend(fromMeasureIndex, toMeasureIndex, begin, targetNewSystems);
+            : Math.min(this.visualBatchEndIndex(fromMeasureIndex, batchMeasures), lastMeasureIndex);
+        this.lazyNextSourceIndex = this.renderAppend(fromMeasureIndex, toMeasureIndex, begin || graphicOutdated, targetNewSystems);
 
-        const done: boolean = this.lazyNextSourceIndex > lastSheetMeasureIndex;
-        const renderedMeasures: number = done ? totalMeasures : this.visualMeasureCount(0, this.lazyNextSourceIndex);
+        const done: boolean = this.lazyNextSourceIndex > lastMeasureIndex;
+        // counted after the batch: its layout can end before the last measure (see lazyLayoutLastMeasureIndex)
+        const lastDrawnMeasureIndex: number = Math.min(this.lazyNextSourceIndex - 1, this.lazyLayoutLastMeasureIndex);
+        const totalMeasures: number = this.visualMeasureCount(this.lazyFirstMeasureIndex, this.lazyLayoutLastMeasureIndex + 1);
+        const renderedMeasures: number = done ? totalMeasures : this.visualMeasureCount(this.lazyFirstMeasureIndex, lastDrawnMeasureIndex + 1);
+        this.useWarmKeeper();
         return {
             done, renderedMeasures, totalMeasures,
-            lastRenderedMeasure: this.graphicalMeasuresAtOrBefore(this.lazyNextSourceIndex - 1),
+            lastRenderedMeasure: this.graphicalMeasuresAtOrBefore(lastDrawnMeasureIndex),
             nextUnrenderedMeasure: done ? [] : this.graphicalMeasuresAtOrBefore(this.lazyNextSourceIndex)
         };
     }
@@ -692,47 +927,56 @@ export class OpenSheetMusicDisplay {
         return this.lazyIncrementalActive;
     }
 
-    /** Whether the in-progress incremental render has rendered the whole sheet (its last measure). */
+    /** Whether the in-progress incremental render has rendered all its measures (up to the last one of the sheet, or of
+     *  the draw range, see {@link renderNext}). */
     public get IncrementalRenderingComplete(): boolean {
-        return this.lazyIncrementalActive && !!this.sheet && this.lazyNextSourceIndex > this.sheet.SourceMeasures.length - 1;
+        return this.lazyIncrementalActive && !!this.sheet && this.lazyNextSourceIndex > this.lazyLastMeasureIndex;
     }
 
     /** Current incremental-render progress as a snapshot (same shape {@link renderNext} returns), queryable
      *  at any time -- e.g. for a progress bar, or to re-render the same extent after a resize. Reports zero
-     *  rendered measures when no session is active. */
+     *  rendered measures when no session is active (of the measures a session would render now). */
     public get IncrementalRenderProgress(): IRenderNextResult {
-        const totalMeasures: number = this.graphic ? this.visualMeasureCount(0, this.sheet.SourceMeasures.length) : 0;
         const active: boolean = !!this.graphic && this.lazyIncrementalActive;
+        let totalMeasures: number = 0;
+        if (this.graphic) {
+            // the measures of the draw range, the session's ones if active, up to the last one of its layout (see
+            //   beginIncrementalRendering() and lazyLayoutLastMeasureIndex)
+            const [firstIndex, lastIndex]: [number, number] = active
+                ? [this.lazyFirstMeasureIndex, this.lazyLayoutLastMeasureIndex] : this.getDrawRangeIndices();
+            totalMeasures = this.visualMeasureCount(Math.min(firstIndex, this.sheet.SourceMeasures.length - 1), lastIndex + 1);
+        }
         const done: boolean = this.IncrementalRenderingComplete;
-        const renderedMeasures: number = active
-            ? this.visualMeasureCount(0, Math.min(this.lazyNextSourceIndex, this.sheet.SourceMeasures.length)) : 0;
+        const drawnToIndexExcl: number = Math.min(this.lazyNextSourceIndex, this.lazyLayoutLastMeasureIndex + 1);
+        const renderedMeasures: number = active ? this.visualMeasureCount(this.lazyFirstMeasureIndex, drawnToIndexExcl) : 0;
         return {
             done, renderedMeasures, totalMeasures,
-            lastRenderedMeasure: active && this.lazyNextSourceIndex > 0 ? this.graphicalMeasuresAtOrBefore(this.lazyNextSourceIndex - 1) : [],
+            lastRenderedMeasure: active && this.lazyNextSourceIndex > this.lazyFirstMeasureIndex
+                ? this.graphicalMeasuresAtOrBefore(drawnToIndexExcl - 1) : [],
             nextUnrenderedMeasure: active && !done ? this.graphicalMeasuresAtOrBefore(this.lazyNextSourceIndex) : []
         };
     }
 
     /** All GraphicalMeasures (one per staff/instrument) at the measure position for source-measure index
      *  `sourceIndex`, walking BACK over collapsed multi-rest members (which have no graphical measure of their
-     *  own) to the nearest real measure. Empty if there is none at/before it. Used to resolve the last- /
-     *  next-measure handles for renderNext(). */
+     *  own) to the nearest real measure, not before the first measure of the incremental render. Empty if there is
+     *  none at/before it. Used to resolve the last- / next-measure handles for renderNext(). */
     private graphicalMeasuresAtOrBefore(sourceIndex: number): GraphicalMeasure[] {
         if (!this.graphic) {
             return [];
         }
         const measureList: GraphicalMeasure[][] = this.graphic.MeasureList;
         let li: number = Math.min(sourceIndex, measureList.length - 1);
-        while (li >= 0 && !(measureList[li] && measureList[li].some(measure => !!measure))) {
+        while (li >= this.lazyFirstMeasureIndex && !(measureList[li] && measureList[li].some(measure => !!measure))) {
             li--;
         }
-        return li >= 0 ? measureList[li].filter(measure => !!measure) : [];
+        return li >= this.lazyFirstMeasureIndex ? measureList[li].filter(measure => !!measure) : [];
     }
 
     /**
-     * Abandon any in-progress incremental render and restore the draw-measure range it mutated, so a
-     * following normal render() draws the whole sheet again. Called
-     * automatically by render(), load() and clear(); call it directly only to cancel a session yourself.
+     * Abandon any in-progress incremental render, so that the next renderNext() starts a new session (with the draw
+     * range set then). Called automatically by render(), load() and clear(); call it directly only to cancel a session
+     * yourself.
      */
     public resetIncrementalRendering(): void {
         if (!this.lazyIncrementalActive) {
@@ -744,16 +988,14 @@ export class OpenSheetMusicDisplay {
         this.lazyDrawnSystemCount = 0;
         this.lazyDrawnSystemPositions = [];
         this.lazyDrawnHMeasureCount = 0;
-        this.rules.MinMeasureToDrawIndex = this.lazySavedMinMeasureToDrawIndex;
-        this.rules.MaxMeasureToDrawIndex = this.lazySavedMaxMeasureToDrawIndex;
     }
 
     /**
      * Drive {@link renderNext} automatically from scrolling: render the next batch whenever the user scrolls
      * within ~1.5 viewports of the not-yet-rendered edge (the page bottom for the endless vertical format,
      * the right edge for RenderSingleHorizontalStaffline). Renders the first batch immediately if none has
-     * been rendered yet, then keeps appending as the user scrolls, and detaches itself once the whole sheet
-     * is rendered. Re-enabling replaces any previous listener; reset/render/load also detach it.
+     * been rendered yet, then keeps appending as the user scrolls, and detaches itself once all measures
+     * are rendered (see {@link renderNext}). Re-enabling replaces any previous listener; reset/render/load also detach it.
      *
      * @param options batch size (as {@link renderNext}) plus an optional `scrollElement` -- the element whose
      *  scrolling drives loading. Defaults to the OSMD container for a single horizontal staffline (it scrolls
@@ -771,7 +1013,7 @@ export class OpenSheetMusicDisplay {
             this.renderNext(batchOptions); // paint the first batch so there is something to scroll
         }
         if (this.IncrementalRenderingComplete) {
-            return; // the whole sheet fit in the first batch; nothing to load on scroll
+            return; // all measures fit in the first batch; nothing to load on scroll
         }
         const nearEnd: () => boolean = () => {
             const margin: number = 1.5; // start loading ~1.5 viewports before the edge
@@ -838,14 +1080,22 @@ export class OpenSheetMusicDisplay {
         this.lazyScrollTarget = undefined;
     }
 
-    /** Start a fresh incremental session: save the draw-measure range the lazy layout mutates (restored on
-     *  reset). Lazy needs the greedy, forward-stable builder so earlier systems keep their position as the
-     *  prefix grows -- public OSMD is greedy-only, so that is already in effect (nothing to force). */
+    /** Start a fresh incremental session for the measures render() draws (the draw range). Lazy needs the greedy,
+     *  forward-stable builder so earlier systems keep their position as the prefix grows -- public OSMD is
+     *  greedy-only, so that is already in effect (nothing to force). */
     private beginIncrementalRendering(): void {
-        this.lazySavedMinMeasureToDrawIndex = this.rules.MinMeasureToDrawIndex;
-        this.lazySavedMaxMeasureToDrawIndex = this.rules.MaxMeasureToDrawIndex;
         this.lazyIncrementalActive = true;
-        this.lazyNextSourceIndex = 0;
+        const [firstIndex, lastIndex]: [number, number] = this.getDrawRangeIndices();
+        const lastSheetMeasureIndex: number = this.sheet.SourceMeasures.length - 1;
+        // a first measure beyond the sheet is its last one, as in the layout (see MusicSheetCalculator.calculateMusicSystems())
+        this.lazyFirstMeasureIndex = Math.min(firstIndex, lastSheetMeasureIndex);
+        this.lazyLastMeasureIndex = Math.min(lastIndex, lastSheetMeasureIndex);
+        this.lazyLayoutLastMeasureIndex = this.lazyLastMeasureIndex;
+        this.lazyNextSourceIndex = this.lazyFirstMeasureIndex;
+        // The draw range is in the rules like after render(), e.g. for the cursor. The batches lay out the measures from
+        //   its first one up to theirs, and leave the rules as they were.
+        this.rules.MinMeasureToDrawIndex = this.lazyFirstMeasureIndex;
+        this.rules.MaxMeasureToDrawIndex = lastIndex;
     }
 
     /** Number of VISUAL measures in the source-measure range [from, toExcl): a multi-rest renders as one
@@ -878,13 +1128,14 @@ export class OpenSheetMusicDisplay {
 
     /**
      * Lazy rendering (EngravingRules.LazyConsistentGraphic). Lays out the WHOLE prefix
-     * [0..toMeasureIndex] into ONE globally-consistent graphic and draws only the systems that became
-     * stable since the previous batch, appending them into the shared backend below what's already drawn.
+     * [first..toMeasureIndex] of the draw range (see beginIncrementalRendering()) into ONE globally-consistent
+     * graphic and draws only the systems that became stable since the previous batch, appending them into the
+     * shared backend below what's already drawn.
      *
      * There is no per-batch vertical offset or seam-distance
      * computation: the real Y-layout already stacks and crisp-snaps every system at its final absolute
      * position, and the title space / first-system instrument names fall out of laying the prefix from
-     * measure 0 each time. The greedy builder is forward-stable -- every system except the LAST of a
+     * its first measure each time. The greedy builder is forward-stable -- every system except the LAST of a
      * prefix is *usually* forward-stable (an interior system keeps its position as the prefix grows), so
      * we skip drawing the already-drawn systems above and DEFER the last system of a non-final batch (it
      * is unstretched and shifts once it becomes an interior, stretched system next batch). But this is NOT
@@ -904,26 +1155,28 @@ export class OpenSheetMusicDisplay {
             this.lazyDrawnSystemPositions = [];
             this.graphic.GetCalculator?.clearSkyBottomLineCache(); // fresh lazy session: drop reused sky/bottom lines
             this.lazyLayoutWidth = this.getContainerContentWidth();
+            this.layoutContainerWidth = this.lazyLayoutWidth;
+            this.lazyLayoutLastMeasureIndex = this.lazyLastMeasureIndex; // until a layout ends before it
         }
-        const lastSheetMeasureIndex: number = this.sheet.SourceMeasures.length - 1;
-
-        // Lay out the whole prefix [0..to] (Min stays 0). Earlier systems are re-laid-out identically;
-        // only the newly-completed systems are drawn below.
-        this.rules.MinMeasureToDrawIndex = 0;
-        this.rules.MaxMeasureToDrawIndex = Math.min(toMeasureIndex, lastSheetMeasureIndex);
+        const lastMeasureIndex: number = this.lazyLastMeasureIndex; // of the draw range
 
         this.sheet.pageWidth = this.lazyLayoutWidth / this.zoom / 10.0; // the session's width, see lazyLayoutWidth
         this.rules.PageHeight = 100001; // lazy assumes the endless (vertical scroll) page format
 
-        this.graphic.reCalculate();
-
+        // Lay out the whole prefix [first..to] of the draw range. Earlier systems are re-laid-out identically;
+        // only the newly-completed systems are drawn below. The rules' draw range is the prefix only for its layout,
+        // then the session's again (see beginIncrementalRendering()).
         // Ensure the prefix yields enough NEW systems to draw beyond the deferred last one (>= drawn +
         // minNewSystems + 1 systems total); otherwise this batch only grew the current last system. Extend the
-        // prefix by a batch span and retry until enough systems appear or the sheet ends. minNewSystems is 1 in
+        // prefix by a batch span and retry until enough systems appear or the draw range ends. minNewSystems is 1 in
         // measures mode (the batch's other complete systems are drawn too) and `targetNewSystems` in systems mode.
-        // Then also until the wedges and octave shifts reaching into the systems to draw end in a complete system (see
+        // Then also until the octave shifts reaching into the systems to draw end in a complete system (see
         // lazySpannerEndInLastSystem()), without drawing the systems this adds.
-        let systems: MusicSystem[] = this.lazyLaidOutSystems();
+        // A layout ending before the prefix's end at the last system or page to draw (drawUpToSystemNumber, drawUpToPageNumber)
+        //   has all systems to draw, and a longer prefix wouldn't add any: the batch lays out the draw range up to its last measure
+        //   like render() instead, and is the final one.
+        const drawRangeIndices: [number, number] = [this.rules.MinMeasureToDrawIndex, this.rules.MaxMeasureToDrawIndex];
+        let systems: MusicSystem[];
         const minNewSystems: number = targetNewSystems ?? 1;
         const extendStep: number = Math.max(4, toMeasureIndex - fromMeasureIndex + 1);
         // Hold the last (unstretched, not-yet-stable) system unless this is the final batch, where the last
@@ -933,30 +1186,50 @@ export class OpenSheetMusicDisplay {
         const nonFinalDrawToIdxExcl: (layoutSystemCount: number) => number = (layoutSystemCount: number): number =>
             targetNewSystems !== undefined ? Math.min(layoutSystemCount - 1, this.lazyDrawnSystemCount + targetNewSystems) : layoutSystemCount - 1;
         let drawToIdxExclCap: number; // the draw range end once the layout has enough systems
-        let extendedTo: number = this.rules.MaxMeasureToDrawIndex;
-        while (systems.length > 0 && extendedTo < lastSheetMeasureIndex) {
-            let extendTo: number = extendedTo + extendStep;
-            if (systems.length >= this.lazyDrawnSystemCount + minNewSystems + 1) {
-                if (drawToIdxExclCap === undefined) {
-                    drawToIdxExclCap = nonFinalDrawToIdxExcl(systems.length);
-                }
-                const spannerEndIndex: number = this.lazySpannerEndInLastSystem(systems, drawToIdxExclCap);
-                if (spannerEndIndex < 0) {
-                    break; // long enough
-                }
-                extendTo = Math.max(extendTo, spannerEndIndex + 1);
-            }
-            extendedTo = Math.min(extendTo, lastSheetMeasureIndex);
+        let extendedTo: number = Math.min(toMeasureIndex, lastMeasureIndex);
+        try {
+            this.rules.MinMeasureToDrawIndex = this.lazyFirstMeasureIndex;
             this.rules.MaxMeasureToDrawIndex = extendedTo;
             this.graphic.reCalculate();
             systems = this.lazyLaidOutSystems();
+            while (systems.length > 0 && extendedTo < lastMeasureIndex) {
+                let extendTo: number = extendedTo + extendStep;
+                if (systems.length >= this.lazyDrawnSystemCount + minNewSystems + 1) {
+                    if (drawToIdxExclCap === undefined) {
+                        drawToIdxExclCap = nonFinalDrawToIdxExcl(systems.length);
+                    }
+                    const spannerEndIndex: number = this.lazySpannerEndInLastSystem(systems, drawToIdxExclCap);
+                    if (spannerEndIndex < 0) {
+                        break; // long enough
+                    }
+                    extendTo = Math.max(extendTo, spannerEndIndex + 1);
+                }
+                if (this.lazyLayoutEndBefore(systems, extendedTo) !== undefined) {
+                    extendTo = lastMeasureIndex; // all systems to draw are laid out
+                }
+                extendedTo = Math.min(extendTo, lastMeasureIndex);
+                this.rules.MaxMeasureToDrawIndex = extendedTo;
+                this.graphic.reCalculate();
+                systems = this.lazyLaidOutSystems();
+            }
+        } finally {
+            [this.rules.MinMeasureToDrawIndex, this.rules.MaxMeasureToDrawIndex] = drawRangeIndices;
         }
         if (systems.length === 0) {
-            return lastSheetMeasureIndex + 1; // produced nothing (e.g. all-invisible): nothing more to do
+            // Nothing laid out, e.g. with no instrument visible or a draw range without measures: no page. A batch starting the
+            //   session removes the previous drawing from the container like render(), which creates a backend for each page.
+            if (clearFirst) {
+                this.createOrRefreshRenderBackend(this.lazyLayoutWidth);
+            }
+            return lastMeasureIndex + 1; // nothing more to do
+        }
+        const layoutEndIndex: number | undefined = this.lazyLayoutEndBefore(systems, extendedTo);
+        if (layoutEndIndex !== undefined) {
+            this.lazyLayoutLastMeasureIndex = layoutEndIndex; // the session's progress counts up to it
         }
 
         const systemCount: number = systems.length;
-        const finalBatch: boolean = extendedTo >= lastSheetMeasureIndex;
+        const finalBatch: boolean = extendedTo >= lastMeasureIndex;
         const sysAbsY: (i: number) => number = i => systems[i].StaffLines[0].PositionAndShape.AbsolutePosition.y;
         // Reconciliation: forward-stability is not universal -- this batch's full-prefix layout may have
         // moved an already-drawn system. If the topmost drawn system whose Y (or page) changed exists, everything
@@ -976,7 +1249,7 @@ export class OpenSheetMusicDisplay {
         const drawToIdxExcl: number = finalBatch ? systemCount : Math.min(nonFinalDrawToIdxExcl(systemCount), drawToIdxExclCap ?? systemCount);
         if (drawToIdxExcl <= drawFromIdx) {
             this.lazyDrawnSystemCount = Math.max(this.lazyDrawnSystemCount, drawToIdxExcl);
-            return lastSheetMeasureIndex + 1; // no new complete system (only happens at the very end)
+            return lastMeasureIndex + 1; // no new complete system (only happens at the very end)
         }
 
         // createOrRefreshRenderBackend rebuilds the drawer (resetting the lazy draw window), so it must
@@ -1081,7 +1354,7 @@ export class OpenSheetMusicDisplay {
         this.rules.RenderCount++;
 
         if (finalBatch) {
-            return lastSheetMeasureIndex + 1;
+            return lastMeasureIndex + 1;
         }
         // Continue at the deferred (held) system's first source measure.
         const heldMeasures: GraphicalMeasure[] = systems[drawToIdxExcl].StaffLines[0].Measures;
@@ -1089,13 +1362,12 @@ export class OpenSheetMusicDisplay {
     }
 
     /**
-     * Lazy rendering: where the furthest wedge or octave shift ends that reaches into the systems a batch draws and ends in the
-     * last system of its layout, or beyond. Such a wedge or octave shift needs a longer layout: their parts depend on the system
-     * they end in, e.g. a wedge's parts after the first are placed at its last system's bottom line, and an octave shift ends at
-     * a note there. The last system still grows (and is stretched once complete), and the end can be beyond the layout, where a
-     * wedge isn't calculated at all, so the systems drawn now would be drawn with other or without these parts. They aren't
-     * drawn again. A wedge or octave shift without an end is ignored, and so is a verbal continuous dynamic like "cresc.",
-     * which is drawn at its start only (see GraphicalContinuousDynamicExpression.IsVerbal).
+     * Lazy rendering: where the furthest octave shift ends that reaches into the systems a batch draws and ends in the last
+     * system of its layout, or beyond. Such an octave shift needs a longer layout: its parts depend on the system it ends in,
+     * e.g. it ends at a note there. The last system still grows (and is stretched once complete), and the end can be beyond the
+     * layout, which cuts it off there, so the systems drawn now would be drawn with other parts. They aren't drawn again. An
+     * octave shift without an end is ignored. A wedge doesn't need a longer layout: its part in a system depends only on that
+     * system and the wedge's first one (see MusicSheetCalculator.calculateGraphicalContinuousDynamic()).
      * @param systems the systems of the layout, in order
      * @param drawToIdxExcl the index of the first system the batch doesn't draw
      * @returns the source-measure index of the furthest end in the last system or beyond, or -1 if there is none
@@ -1108,12 +1380,9 @@ export class OpenSheetMusicDisplay {
         for (let measureIndex: number = 0; measureIndex < firstUndrawnMeasureIndex; measureIndex++) {
             for (const staffExpressions of this.sheet.SourceMeasures[measureIndex].StaffLinkedExpressions) {
                 for (const multiExpression of staffExpressions) {
-                    const wedge: ContinuousDynamicExpression = multiExpression.StartingContinuousDynamic;
-                    const isVerbal: boolean = wedge?.Label?.length > 0;
-                    for (const end of [isVerbal ? undefined : wedge?.EndMultiExpression, multiExpression.OctaveShiftStart?.ParentEndMultiExpression]) {
-                        if (end) {
-                            endIndex = Math.max(endIndex, end.SourceMeasureParent.measureListIndex);
-                        }
+                    const end: MultiExpression = multiExpression.OctaveShiftStart?.ParentEndMultiExpression;
+                    if (end) {
+                        endIndex = Math.max(endIndex, end.SourceMeasureParent.measureListIndex);
                     }
                 }
             }
@@ -1138,8 +1407,39 @@ export class OpenSheetMusicDisplay {
     }
 
     /**
+     * Lazy rendering: where the layout ends if it ends before a measure at the last system or page to draw
+     * (EngravingRules.MaxSystemToDrawNumber, MaxPageToDrawNumber: drawUpToSystemNumber, drawUpToPageNumber). Then the layout has
+     * all systems to draw, and the measures after them aren't drawn, like in render().
+     * @param systems the systems of the layout that are drawn, in order (see lazyLaidOutSystems())
+     * @param measureIndex the source-measure index of the last measure laid out
+     * @returns the source-measure index of the last measure of the last system (of a multiple rest measure there: its last
+     *  one), or undefined if the layout doesn't end before measureIndex at the last system or page to draw
+     */
+    private lazyLayoutEndBefore(systems: MusicSystem[], measureIndex: number): number | undefined {
+        const pages: GraphicalMusicPage[] = this.graphic.MusicPages;
+        let systemCount: number = 0;
+        for (const page of pages) {
+            systemCount += page.MusicSystems.length;
+        }
+        const lastPageNumber: number = pages.length > 0 ? pages[pages.length - 1].PageNumber : 0;
+        if (systemCount < this.rules.MaxSystemToDrawNumber && lastPageNumber <= this.rules.MaxPageToDrawNumber) {
+            return undefined; // all systems and pages laid out are drawn
+        }
+        const measures: GraphicalMeasure[] = systems[systems.length - 1]?.StaffLines[0]?.Measures ?? [];
+        // the last one with a source measure (an extra instruction measure ending a system has none)
+        const lastSourceMeasure: SourceMeasure = measures.map(measure => measure.parentSourceMeasure).filter(sourceMeasure => sourceMeasure).pop();
+        if (!lastSourceMeasure) {
+            return undefined;
+        }
+        const restMeasures: number = this.rules.RenderMultipleRestMeasures && lastSourceMeasure.multipleRestMeasures > 0
+            ? lastSourceMeasure.multipleRestMeasures : 1; // see visualMeasureCount()
+        const endIndex: number = lastSourceMeasure.measureListIndex + restMeasures - 1;
+        return endIndex < measureIndex ? endIndex : undefined;
+    }
+
+    /**
      * Lazy rendering for RenderSingleHorizontalStaffline (one staffline growing to the right, horizontal scroll).
-     * The first batch lays the whole score out like render(), and each batch reuses that layout and draws only the
+     * The first batch lays the score (its draw range) out like render(), and each batch reuses that layout and draws only the
      * measures entering the drawn frontier (and the elements ending in them), so that the finished incremental render
      * looks like a normal render(). Laying out a growing prefix instead would move what is drawn already, e.g. a
      * higher note further right moves the staffline down, and the lyrics of a staffline are aligned at one height.
@@ -1156,16 +1456,17 @@ export class OpenSheetMusicDisplay {
      * @returns the source-measure index at which the next batch should continue.
      */
     private renderAppendGrowingHorizontal(toMeasureIndex: number, clearFirst: boolean): number {
-        const lastSheetMeasureIndex: number = this.sheet.SourceMeasures.length - 1;
+        const lastMeasureIndex: number = this.lazyLastMeasureIndex; // of the draw range
         if (clearFirst) {
             this.lazyDrawnHMeasureCount = 0;
-            // One horizontal staffline: SheetMaximumWidth keeps it a single system (mirrors render()).
-            this.rules.MinMeasureToDrawIndex = 0;
-            this.rules.MaxMeasureToDrawIndex = lastSheetMeasureIndex;
+            // The draw range like render() (in the rules, see beginIncrementalRendering()), on one horizontal staffline:
+            //   SheetMaximumWidth keeps it a single system (mirrors render()).
             this.sheet.pageWidth = this.rules.SheetMaximumWidth / this.zoom / 10.0;
             this.rules.PageHeight = 100001;
             this.graphic.reCalculate();
             this.createOrRefreshRenderBackend(); // a backend per page, like render()
+            // the session's progress counts up to the last measure laid out (see lazyLayoutLastMeasureIndex)
+            this.lazyLayoutLastMeasureIndex = this.lazyLayoutEndBefore(this.lazyLaidOutSystems(), lastMeasureIndex) ?? lastMeasureIndex;
         }
         // The measures of the top staffline of all systems, in drawing order.
         const pages: GraphicalMusicPage[] = this.graphic.MusicPages.filter(page => page.PageNumber <= this.rules.MaxPageToDrawNumber);
@@ -1176,7 +1477,7 @@ export class OpenSheetMusicDisplay {
             }
         }
         if (measures.length === 0) {
-            return lastSheetMeasureIndex + 1; // produced nothing (e.g. all invisible)
+            return lastMeasureIndex + 1; // nothing laid out, e.g. with no instrument visible: the first batch removed the drawing above
         }
         // Draw the measures up to source measure toMeasureIndex, but at least one. A measure without a source measure
         // (an extra instruction measure ending a system, e.g. with the next system's clef) is drawn with the one before.
@@ -1257,7 +1558,7 @@ export class OpenSheetMusicDisplay {
         this.lazyDrawnHMeasureCount = drawToIdxExcl;
         this.rules.RenderCount++;
         if (finalBatch) {
-            return lastSheetMeasureIndex + 1;
+            return lastMeasureIndex + 1;
         }
         // Continue at the first measure not drawn yet.
         return measures[drawToIdxExcl].parentSourceMeasure.measureListIndex;
@@ -1295,8 +1596,11 @@ export class OpenSheetMusicDisplay {
 
         // Set page width
         let width: number = pageWidth ?? this.getContainerContentWidth();
-        if (this.rules.RenderSingleHorizontalStaffline) {
-            width = (this.EngravingRules.PageLeftMargin + this.graphic.MusicPages[0].PositionAndShape.Size.width + this.EngravingRules.PageRightMargin)
+        // A single horizontal staffline is as wide as its page. With nothing laid out, e.g. with no instrument visible, there's no
+        //   page, and no backend to size.
+        const firstPage: GraphicalMusicPage = this.graphic.MusicPages[0];
+        if (this.rules.RenderSingleHorizontalStaffline && firstPage) {
+            width = (this.EngravingRules.PageLeftMargin + firstPage.PositionAndShape.Size.width + this.EngravingRules.PageRightMargin)
                 * 10 * this.zoom;
             // this.container.style.width = width + "px";
             // console.log("width: " + width)
@@ -1365,6 +1669,9 @@ export class OpenSheetMusicDisplay {
      * for the layout. It's also 0 in generateImages_browserless, which only sets offsetWidth.
      */
     protected getContainerContentWidth(): number {
+        if (this.fixedLayoutWidth !== undefined) {
+            return this.fixedLayoutWidth; // the warm keeper, which isn't in the page (see KeepWarm)
+        }
         const style: CSSStyleDeclaration = window.getComputedStyle(this.container);
         // NaN -> 0: jsdom (generateImages_browserless) returns "medium" for a border that isn't set
         const pixels: (length: string) => number = (length: string): number => parseFloat(length) || 0;
@@ -1391,11 +1698,51 @@ export class OpenSheetMusicDisplay {
         return this.graphic !== undefined;
     }
 
-    /** Clears what OSMD has drawn on its canvas. */
+    /**
+     * Clears what OSMD has drawn on its canvas, and releases the loaded sheet, so that its memory can be freed while you keep
+     * this instance: the sheet's data, its graphical objects and the SVG elements they drew.
+     * To show a sheet again, call load() and render(). Until then, the cursors stay hidden, and moving them does nothing.
+     * When you don't need the instance anymore, call dispose(), which removes OSMD's listeners on the window.
+     */
     public clear(): void {
         this.renderGeneration++;
-        this.drawer?.clear();
+        const sheet: MusicSheet = this.sheet;
+        this.drawer?.clear(); // also releases the drawn sheet
         this.reset(); // without this, resize will draw loaded sheet again
+        // reset() only removes this instance's own references to the sheet. The other ones kept the whole rendering in memory,
+        //   as the graphical objects reference the SVG elements they drew.
+        this.cursors.forEach(cursor => {
+            cursor.releaseSheet();
+        });
+        this.rules.clearMusicSheetObjects(); // the graphical notes of the notes (see EngravingRules.GNote())
+        // the sheet's links to its graphical measures: an app that keeps the sheet (osmd.Sheet) would keep the rendering, too
+        for (const sourceMeasure of sheet?.SourceMeasures ?? []) {
+            sourceMeasure.VerticalMeasureList = undefined;
+        }
+    }
+
+    /**
+     * Removes the listeners OSMD added to the window and the container's reference to this instance, and ends incremental
+     * rendering (see renderNext()). Call it when you don't need this instance anymore but keep its container, e.g. to show
+     * something else in it: with autoResize (on by default), the container keeps the instance in memory with its loaded and
+     * rendered sheet, so that the drawing adapts to the window's size, and a resize would draw the sheet again, replacing the
+     * container's content.
+     * Without dispose(), an instance is freed together with its container, once the container was removed from the page and
+     * your code references neither. Except while incremental rendering on scroll (enableIncrementalRenderingOnScroll()) hasn't
+     * drawn the whole sheet: its scroll listener keeps the instance. And in browsers without WeakRef (Chrome before 84,
+     * Firefox before 79, Safari before 14.1), the window's resize listener keeps it.
+     * The drawing stays in the container. To remove it and free the sheet's memory while you keep the instance, call clear().
+     * @example
+     * osmd.dispose();
+     * container.innerHTML = ""; // the instance can be garbage collected now, once your code doesn't reference it anymore
+     */
+    public dispose(): void {
+        if (this.disposeResizeListener) {
+            this.disposeResizeListener();
+        }
+        this.disableIncrementalRenderingOnScroll(); // the scroll listener of enableIncrementalRenderingOnScroll(), if on
+        this.resetIncrementalRendering(); // so that a batch it scheduled (requestAnimationFrame) doesn't render anymore
+        this.stopUsingWarmKeeper();
     }
 
     /** Set OSMD rendering options using an IOSMDOptions object.
@@ -1480,8 +1827,11 @@ export class OpenSheetMusicDisplay {
 
         // alternative to if block: this.drawingsParameters.drawCursors = options.drawCursors !== false. No if, but always sets drawingParameters.
         // note that every option can be undefined, which doesn't mean the option should be set to false.
-        if (options.drawHiddenNotes) {
-            this.drawingParameters.drawHiddenNotes = true; // not yet supported
+        if (options.drawHiddenNotes !== undefined) {
+            this.drawingParameters.DrawHiddenNotes = options.drawHiddenNotes; // sets EngravingRules.RenderHiddenNotes
+        }
+        if (options.hiddenNotesColor !== undefined) {
+            this.rules.HiddenNotesColor = options.hiddenNotesColor;
         }
         if (options.drawCredits !== undefined) {
             this.drawingParameters.DrawCredits = options.drawCredits; // sets DrawComposer, DrawTitle, DrawSubtitle, DrawLyricist.
@@ -1619,14 +1969,13 @@ export class OpenSheetMusicDisplay {
         if (options.tripletsBracketed !== undefined) {
             this.rules.TripletsBracketed = options.tripletsBracketed;
         }
+        if (options.keepWarm !== undefined) {
+            this.KeepWarm = options.keepWarm;
+        }
         if (options.autoResize) {
-            if (!this.resizeHandlerAttached) {
-                this.autoResize();
-            }
-            this.autoResizeEnabled = true;
+            this.AutoResizeEnabled = true;
         } else if (options.autoResize === false) { // not undefined
-            this.autoResizeEnabled = false;
-            // we could remove the window EventListener here, but not necessary.
+            this.AutoResizeEnabled = false; // also removes the window's resize listener, see there
         }
         if (options.pageFormat !== undefined) { // only change this option if it was given, see above
             this.setPageFormat(options.pageFormat);
@@ -1749,7 +2098,7 @@ export class OpenSheetMusicDisplay {
      * FIXME: Probably unnecessary
      */
     protected reset(): void {
-        this.resetIncrementalRendering(); // abandon any incremental session + restore the rules it mutated
+        this.resetIncrementalRendering(); // abandon any incremental session
         if (this.drawingParameters.drawCursors) {
             this.cursors.forEach(cursor => {
                 cursor.hide();
@@ -1814,23 +2163,76 @@ export class OpenSheetMusicDisplay {
     }
 
     /**
-     * Helper function for managing window's onResize events
+     * Helper function for managing window's onResize events.
+     * The window keeps its listeners as long as the page is open, so the listener reaches this instance only through a WeakRef:
+     * it doesn't keep an instance in memory, with its sheet and drawing, that the app has dropped. Instead, the container keeps
+     * the instance until the listener is removed (e.g. by dispose()), so that the drawing adapts to the window's size as long as
+     * the container exists, also when the app keeps no reference to the instance, e.g. after
+     * `const osmd = new OpenSheetMusicDisplay(div); osmd.load(url).then(() => osmd.render());` in a function.
+     * In browsers without WeakRef, the listener keeps the instance.
      * @param startCallback is the function called when resizing starts
      * @param endCallback is the function called when resizing (kind-of) ends
      */
     protected handleResize(startCallback: () => void, endCallback: () => void): void {
+        this.resizeStartCallback = startCallback;
+        this.resizeEndCallback = endCallback;
+        const instanceRef: { deref(): OpenSheetMusicDisplay } = typeof WeakRef === "function" ?
+            new WeakRef(this) : { deref: (): OpenSheetMusicDisplay => this };
+        const removeListener: () => void = OpenSheetMusicDisplay.addWindowResizeListener(instanceRef);
+        const container: HTMLElement = this.container;
+        const key: symbol = OpenSheetMusicDisplay.containerInstanceKey;
+        // not enumerable. Replaces the reference to an older instance made for the same container.
+        Object.defineProperty(container, key, { value: this, configurable: true });
+        this.disposeResizeListener = (): void => {
+            removeListener();
+            if ((<any>container)[key] === this) { // not a newer instance's on the same container
+                delete (<any>container)[key];
+            }
+            this.disposeResizeListener = undefined;
+            this.resizeHandlerAttached = false; // setOptions({autoResize: true}) adds it again
+        };
+        this.resizeHandlerAttached = true;
+
+        // If the sheet was already rendered when autoResize was enabled, adapt it to the
+        // current width right away. (Only in that case: otherwise - e.g. with the default
+        // autoResize on creation - these initial timers would re-render the first sheet the
+        // application loads and renders a second time, once the timers fire.)
+        // And only if the container's width changed since the layout, e.g. while autoResize was off: turning it off and on
+        // again doesn't re-render a sheet that already fits.
+        const renderedBeforeAttach: boolean = this.rules.RenderCount > 0;
+        if (renderedBeforeAttach && this.getContainerContentWidth() !== this.layoutContainerWidth) {
+            window.setTimeout(startCallback, 0);
+            window.setTimeout(endCallback, 1);
+        }
+    }
+
+    /**
+     * Adds a listener to the window's resize events that calls the instance's resize callbacks (see handleResize()):
+     * the start callback when a resize starts, the end callback once no resize event came for 200 ms.
+     * The listener and its timers reach the instance only through `instanceRef`. When it's a WeakRef and the instance has been
+     * freed, the listener removes itself at the next resize event.
+     * It's made here, not in handleResize(), because all closures made in one function call share the variables that any of
+     * them uses: next to the closures there that reference `this`, the listener would keep the instance in memory too.
+     * @param instanceRef a WeakRef to the instance, or (without WeakRef) an object that keeps it
+     * @returns a function that removes the listener
+     */
+    private static addWindowResizeListener(instanceRef: { deref(): OpenSheetMusicDisplay }): () => void {
         let rtime: number;
         let timeout: number = undefined;
         const delta: number = 200;
-        const self: OpenSheetMusicDisplay = this;
 
         function resizeStart(): void {
-            if (!self.AutoResizeEnabled) {
+            const osmd: OpenSheetMusicDisplay = instanceRef.deref();
+            if (!osmd) {
+                removeListener(); // the instance was freed
+                return;
+            }
+            if (!osmd.AutoResizeEnabled) {
                 return;
             }
             rtime = (new Date()).getTime();
             if (!timeout) {
-                startCallback();
+                osmd.resizeStartCallback();
                 rtime = (new Date()).getTime();
                 timeout = window.setTimeout(resizeEnd, delta);
             }
@@ -1839,10 +2241,22 @@ export class OpenSheetMusicDisplay {
         function resizeEnd(): void {
             timeout = undefined;
             window.clearTimeout(timeout);
-            if ((new Date()).getTime() - rtime < delta) {
+            const osmd: OpenSheetMusicDisplay = instanceRef.deref();
+            if (!osmd) {
+                removeListener(); // the instance was freed
+            } else if ((new Date()).getTime() - rtime < delta) {
                 timeout = window.setTimeout(resizeEnd, delta);
             } else {
-                endCallback();
+                osmd.resizeEndCallback();
+            }
+        }
+
+        function removeListener(): void {
+            if ((<any>window).detachEvent) {
+                // Support IE<9
+                (<any>window).detachEvent("onresize", resizeStart);
+            } else {
+                window.removeEventListener("resize", resizeStart);
             }
         }
 
@@ -1852,17 +2266,7 @@ export class OpenSheetMusicDisplay {
         } else {
             window.addEventListener("resize", resizeStart);
         }
-        this.resizeHandlerAttached = true;
-
-        // If the sheet was already rendered when autoResize was enabled, adapt it to the
-        // current width right away. (Only in that case: otherwise - e.g. with the default
-        // autoResize on creation - these initial timers would re-render the first sheet the
-        // application loads and renders a second time, once the timers fire.)
-        const renderedBeforeAttach: boolean = this.rules.RenderCount > 0;
-        if (renderedBeforeAttach) {
-            window.setTimeout(startCallback, 0);
-            window.setTimeout(endCallback, 1);
-        }
+        return removeListener;
     }
 
     /** Enable or disable (hide) the cursor.
@@ -1894,7 +2298,8 @@ export class OpenSheetMusicDisplay {
                     this.cursors[i].init(this.sheet.MusicPartManager, this.graphic);
                 }
 
-                // restore old cursor state
+                // restore old cursor state, if there's a cursor: it's created on a drawn page, and with no instrument visible,
+                //   render() draws none (#1892)
                 if (this.rules.RestoreCursorAfterRerender && this.cursors[i]) {
                     this.cursors[i].hidden = hidden;
                     if (previousIterator) {
@@ -2029,7 +2434,16 @@ export class OpenSheetMusicDisplay {
     public get AutoResizeEnabled(): boolean {
         return this.autoResizeEnabled;
     }
+    /** Turns autoResize on or off, also during runtime, like setOptions({autoResize}).
+     *  Off removes the window's resize listener and the container's reference to this instance (see handleResize());
+     *  on adds them again.
+     */
     public set AutoResizeEnabled(value: boolean) {
+        if (value && !this.resizeHandlerAttached) {
+            this.autoResize();
+        } else if (!value && this.disposeResizeListener) {
+            this.disposeResizeListener();
+        }
         this.autoResizeEnabled = value;
     }
 
@@ -2104,11 +2518,15 @@ export interface IRenderNextOptions {
 /** Progress returned by {@link OpenSheetMusicDisplay.renderNext}. Measure counts are visual (a multi-rest
  *  counts as one). */
 export interface IRenderNextResult {
-    /** True once the last measure of the sheet has been rendered -- no more batches remain. */
+    /** True once the last measure to render has been rendered -- no more batches remain. The measures to render are the
+     *  ones render() draws: the whole sheet, or the draw range (drawFromMeasureNumber, drawUpToMeasureNumber), up to the last
+     *  system or page drawn (drawUpToSystemNumber, drawUpToPageNumber). */
     done: boolean;
     /** Visual measures rendered so far, cumulative across batches. */
     renderedMeasures: number;
-    /** Total visual measures in the sheet. */
+    /** Total visual measures to render: those of the sheet, or of the draw range (see `done`). With drawUpToSystemNumber or
+     *  drawUpToPageNumber, the measures after the last system or page drawn count until a batch's layout reaches it: where it
+     *  ends depends on the layout. On a single horizontal staffline, the first batch lays out all of them. */
     totalMeasures: number;
     /** The last measure position rendered so far (highest measure index): all its GraphicalMeasures, one per
      *  staff/instrument (e.g. 3 for a voice + piano score). Empty if nothing has been rendered yet. They

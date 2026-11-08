@@ -1,4 +1,4 @@
-import {expect} from "chai";
+import { expect } from "vitest";
 import {OpenSheetMusicDisplay} from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import {GraphicalLabel} from "../../../src/MusicalScore/Graphical/GraphicalLabel";
 import {Label} from "../../../src/MusicalScore/Label";
@@ -70,9 +70,9 @@ describe("First-page credits, arrangers and rights (Opusis)", (): void => {
     });
 
     it("puts an arranger under the composer unless a credit shows it", async (): Promise<void> => {
-        await osmd.load(score(`<creator type="arranger">Arranged by J. Rozemond</creator>`));
+        await osmd.load(score("<creator type=\"arranger\">Arranged by J. Rozemond</creator>"));
         expect(osmd.Sheet.ComposerString).to.equal("Camille Saint-Saëns\nArranged by J. Rozemond");
-        await osmd.load(score(`<creator type="arranger">J. Rozemond</creator>`, credit("Arranged by J. Rozemond", undefined, "right")));
+        await osmd.load(score("<creator type=\"arranger\">J. Rozemond</creator>", credit("Arranged by J. Rozemond", undefined, "right")));
         expect(osmd.Sheet.ComposerString).to.equal("Camille Saint-Saëns");
     });
 

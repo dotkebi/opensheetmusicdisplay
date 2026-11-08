@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalUnknownExpression } from "../../../src/MusicalScore/Graphical/GraphicalUnknownExpression";
@@ -19,7 +19,7 @@ describe("Words at a time only another staff of the instrument plays", () => {
     const entryX: (measure: GraphicalMeasure, index: number) => number = (measure, index) =>
         measure.PositionAndShape.RelativePosition.x + measure.staffEntries[index].PositionAndShape.RelativePosition.x;
 
-    before(async () => {
+    beforeAll(async () => {
         container = document.createElement("div");
         container.style.width = "1300px";
         document.body.appendChild(container);
@@ -36,7 +36,7 @@ describe("Words at a time only another staff of the instrument plays", () => {
             }
         }
     });
-    after(() => {
+    afterAll(() => {
         container.remove();
     });
 

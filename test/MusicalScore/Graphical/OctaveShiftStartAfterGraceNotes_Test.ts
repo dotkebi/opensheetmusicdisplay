@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalStaffEntry } from "../../../src/MusicalScore/Graphical/GraphicalStaffEntry";
@@ -20,14 +20,14 @@ describe("Octave shift start after grace notes", () => {
     let container: HTMLElement;
     let osmd: OpenSheetMusicDisplay;
 
-    before(async () => {
+    beforeAll(async () => {
         container = TestUtils.getDivElement(document);
         container.style.width = "900px";
         osmd = new OpenSheetMusicDisplay(container, { autoResize: false, backend: "svg" });
         await osmd.load(TestUtils.getScore("test_octaveshift_start_after_grace_notes.musicxml"));
         osmd.render();
     });
-    after(() => {
+    afterAll(() => {
         osmd.clear();
         container.remove();
     });

@@ -192,6 +192,9 @@ export class StaveConnector extends Element {
         topY -= 4;
         botY += 4;
         attachment_height = botY - topY;
+        // VexFlowPatch: move a bracket by its x_shift, like a brace (setXShift() was ignored for a bracket),
+        //   e.g. a bracket nested in another group's bracket, drawn in the next column left of it
+        topX += this.x_shift;
         Glyph.renderGlyph(ctx, topX - 5, topY - 3, 40, 'v1b', true);
         Glyph.renderGlyph(ctx, topX - 5, botY + 3, 40, 'v10', true);
         topX -= (this.width + 2);

@@ -124,7 +124,7 @@ export class VexFlowTabMeasure extends VexFlowMeasure {
                 if (vexFlowVoiceEntry.vfStaveNote.getTicks().denominator === 0) {
                     vexFlowVoiceEntry.vfStaveNote.getTicks().denominator = 1;
                 }
-                if (voiceEntry.notes.length === 0 || !voiceEntry.notes[0] || !voiceEntry.notes[0].sourceNote.PrintObject) {
+                if (voiceEntry.notes.length === 0 || !voiceEntry.notes[0] || !voiceEntry.notes[0].sourceNote.isVisible()) {
                     // GhostNote, don't add modifiers like in-measure clefs
                     if (vexFlowVoiceEntry.vfGhostNotes) {
                         for (const ghostNote of vexFlowVoiceEntry.vfGhostNotes) {
@@ -195,9 +195,11 @@ export class VexFlowTabMeasure extends VexFlowMeasure {
             this.multiRestElement = new VF.MultiMeasureRest(sourceMeasure.multipleRestMeasures, {
                         // number_line: 3
             });
+            ctx.openGroup("multirest"); // like VexFlowMultiRestMeasure.draw()
             this.multiRestElement.setStave(this.stave);
             this.multiRestElement.setContext(ctx);
             this.multiRestElement.draw();
+            ctx.closeGroup();
         }
      }
 }

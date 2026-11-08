@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { SkyBottomLineCalculator } from "../../../src/MusicalScore/Graphical/SkyBottomLineCalculator";
 import { GeometricSkyBottomLineContext } from "../../../src/MusicalScore/Graphical/GeometricSkyBottomLineContext";
@@ -17,7 +17,7 @@ describe("GeometricSkyBottomLineCalculation", () => {
     const originalSetLines: any = (SkyBottomLineCalculator.prototype as any).setLinesFromConcatenated;
     let savedOverflowY: string;
 
-    before((): void => {
+    beforeAll((): void => {
         (SkyBottomLineCalculator.prototype as any).setLinesFromConcatenated = function (...args: any[]): void {
             originalSetLines.apply(this, args);
             if (capture) {
@@ -38,7 +38,7 @@ describe("GeometricSkyBottomLineCalculation", () => {
         document.documentElement.style.overflowY = "scroll";
     });
 
-    after((): void => {
+    afterAll((): void => {
         (SkyBottomLineCalculator.prototype as any).setLinesFromConcatenated = originalSetLines;
         document.documentElement.style.overflowY = savedOverflowY;
     });
@@ -76,6 +76,9 @@ describe("GeometricSkyBottomLineCalculation", () => {
         /** Tolerance for the fraction of values differing by more than 0.5 units (default 0.005).
          *  E.g. the tablature sample has known benign difference classes slightly above the default. */
         bigDiffFractionTolerance?: number;
+        /** Compares with the raster batch calculation (SkyBottomLineBatchCalculator: the measures drawn into table canvases,
+         *  read with one getImageData per table) instead of the per-staffline one (a canvas per measure). */
+        batch?: boolean;
     }
 
     /** Fresh load + one captured first render with the given method.
@@ -86,8 +89,8 @@ describe("GeometricSkyBottomLineCalculation", () => {
     async function capturedRender(osmd: OpenSheetMusicDisplay, score: Document, geometric: boolean,
                                   options: ICompareOptions): Promise<ICapturedLine[]> {
         osmd.EngravingRules.UseGeometricSkyBottomLineCalculation = geometric;
-        osmd.EngravingRules.AlwaysSetPreferredSkyBottomLineBackendAutomatically = false;
-        osmd.EngravingRules.SkyBottomLineBatchMinMeasures = 9999999; // use the non-batched raster path
+        // use the non-batched raster path, or the batched one for any number of measures
+        osmd.EngravingRules.SkyBottomLineBatchMinMeasures = options.batch ? 0 : 9999999;
         osmd.EngravingRules.NewSystemAtXMLNewSystemAttribute = !!options.newSystemAttribute;
         await osmd.load(score);
         capture = [];
@@ -95,7 +98,6 @@ describe("GeometricSkyBottomLineCalculation", () => {
         const result: ICapturedLine[] = capture;
         capture = undefined;
         osmd.EngravingRules.UseGeometricSkyBottomLineCalculation = true;
-        osmd.EngravingRules.AlwaysSetPreferredSkyBottomLineBackendAutomatically = true;
         osmd.EngravingRules.SkyBottomLineBatchMinMeasures = 5;
         return result;
     }
@@ -148,47 +150,45 @@ describe("GeometricSkyBottomLineCalculation", () => {
             .to.be.below(options.bigDiffFractionTolerance ?? 0.005);
     }
 
-    it("agrees with the raster calculation for OSMD_function_test_all", async function (): Promise<void> {
-        this.timeout(30000);
+    it("agrees with the raster calculation for OSMD_function_test_all", async (): Promise<void> => {
         await compareGeometricWithRaster("OSMD_function_test_all.xml");
-    });
+    }, 30000);
 
-    it("agrees with the raster calculation for chord symbols", async function (): Promise<void> {
-        this.timeout(30000);
+    it("agrees with the raster batch calculation for OSMD_function_test_all", async (): Promise<void> => {
+        // what the raster method uses from SkyBottomLineBatchMinMeasures (5) measures on, with its Plain backend
+        await compareGeometricWithRaster("OSMD_function_test_all.xml", { batch: true });
+    }, 30000);
+
+    it("agrees with the raster calculation for chord symbols", async (): Promise<void> => {
         await compareGeometricWithRaster("OSMD_function_test_chord_symbols.musicxml");
-    });
+    }, 30000);
 
-    it("agrees with the raster calculation for a one-line (percussion) staff", async function (): Promise<void> {
-        this.timeout(30000);
+    it("agrees with the raster calculation for a one-line (percussion) staff", async (): Promise<void> => {
         await compareGeometricWithRaster("OSMD_function_test_drumset.musicxml");
-    });
+    }, 30000);
 
-    it("agrees with the raster calculation for tablature with effects", async function (): Promise<void> {
+    it("agrees with the raster calculation for tablature with effects", async (): Promise<void> => {
         // slightly raised big-diff tolerance: tablature has known benign difference classes
         // (the raster method's clearRect holes in the bottom stave line, see GeometricSkyBottomLineContext,
         // and browser-dependent text metrics at the bend texts, where the geometric result covers more)
-        this.timeout(30000);
         await compareGeometricWithRaster("OSMD_Function_Test_Tablature_Alleffects.musicxml",
             { bigDiffFractionTolerance: 0.012 });
-    });
+    }, 30000);
 
-    it("agrees with the raster calculation on the first render with extra graphical measures", async function (): Promise<void> {
+    it("agrees with the raster calculation on the first render with extra graphical measures", async (): Promise<void> => {
         // extra graphical measures used to get negative widths in stretched systems (fixed in
         // MusicSystemBuilder.addExtraInstructionMeasure); the raster method ran such widths through
         // canvas.width coercion, which the geometric calculation mirrors as defense against any
         // remaining source of invalid widths (#937)
-        this.timeout(30000);
         await compareGeometricWithRaster("test_octaveshift_extragraphicalmeasure.musicxml",
             { newSystemAttribute: true });
-    });
+    }, 30000);
 
-    it("draws the hammer-on and pull-off texts where the raster calculation draws them", async function (): Promise<void> {
+    it("draws the hammer-on and pull-off texts where the raster calculation draws them", async (): Promise<void> => {
         // VexFlow's StaveTie.renderText() centered its text with the width measured in the context's current font,
         // before setting the text's own font: 10pt Arial in the geometric context (initially, like the SVG context),
         // but 10px sans-serif on the fresh canvas of the raster method, which drew "H" 1.2 px further right.
-        this.timeout(30000);
         const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(TestUtils.getDivElement(document), { autoResize: false });
-        osmd.EngravingRules.AlwaysSetPreferredSkyBottomLineBackendAutomatically = false;
         osmd.EngravingRules.SkyBottomLineBatchMinMeasures = 9999999; // use the non-batched raster path
         await osmd.load(TestUtils.getScore("OSMD_Function_Test_Tablature_Hammeron_Pulloff.musicxml"));
 
@@ -221,5 +221,5 @@ describe("GeometricSkyBottomLineCalculation", () => {
             expect(Math.abs(rasterX - geometricX), `x of "${geometricTexts[i].text}": raster ${rasterX.toFixed(2)}`
                 + ` vs geometric ${geometricX.toFixed(2)}`).to.be.below(0.01);
         }
-    });
+    }, 30000);
 });

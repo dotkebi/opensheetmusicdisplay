@@ -1,13 +1,11 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { IXmlElement } from "../../../src/Common/FileIO/Xml";
 import { MusicSheetReader } from "../../../src/MusicalScore/ScoreIO/MusicSheetReader";
 import { MusicSheet } from "../../../src/MusicalScore/MusicSheet";
 import { MusicSheetCalculator } from "../../../src/MusicalScore/Graphical/MusicSheetCalculator";
 import { VexFlowMusicSheetCalculator } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMusicSheetCalculator";
-import { VexFlowTextMeasurer } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowTextMeasurer";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
 import { GraphicalMusicSheet } from "../../../src/MusicalScore/Graphical/GraphicalMusicSheet";
-import { EngravingRules } from "../../../src/MusicalScore/Graphical/EngravingRules";
 import { GraphicalLabel } from "../../../src/MusicalScore/Graphical/GraphicalLabel";
 import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
 import { MusicSystem } from "../../../src/MusicalScore/Graphical/MusicSystem";
@@ -32,7 +30,6 @@ interface LabelRect {
 function buildGraphicalMusicSheet(filename: string): GraphicalMusicSheet {
     const reader: MusicSheetReader = new MusicSheetReader();
     const calculator: MusicSheetCalculator = new VexFlowMusicSheetCalculator(reader.rules);
-    MusicSheetCalculator.TextMeasurer = new VexFlowTextMeasurer(new EngravingRules());
     const xml: Document = TestUtils.getScore(filename);
     expect(xml, "sample file is loaded").to.not.equal(undefined);
     const score: IXmlElement = new IXmlElement(TestUtils.getPartWiseElement(xml));
@@ -106,7 +103,7 @@ describe("Chord symbol and repetition instruction collision avoidance", () => {
         let graphicalSheet: GraphicalMusicSheet;
         let staffLines: StaffLine[];
 
-        before((): void => {
+        beforeAll((): void => {
             graphicalSheet = buildGraphicalMusicSheet(filename);
             staffLines = [];
             for (const page of graphicalSheet.MusicPages) {
@@ -148,7 +145,7 @@ describe("Chord symbol and repetition instruction collision avoidance", () => {
         let measures: VexFlowMeasure[];
         let staffLine: StaffLine;
 
-        before((): void => {
+        beforeAll((): void => {
             graphicalSheet = buildGraphicalMusicSheet(filename);
             measures = graphicalSheet.MeasureList.map(
                 (measuresOfAllStaves: VexFlowMeasure[]): VexFlowMeasure => measuresOfAllStaves[0]);

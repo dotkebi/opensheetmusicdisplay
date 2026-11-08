@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
 import { VexFlowOctaveShift } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowOctaveShift";
@@ -78,7 +78,8 @@ describe("Octave shift skyline", () => {
                         for (const shift of line.OctaveShifts as VexFlowOctaveShift[]) {
                             brackets++;
                             const stave: any = shift.startNote.getStave();
-                            const textBottom: number = -(1 + stave.options.top_text_position);
+                            // (the bracket's own text position, which it's drawn at by its line since upstream 2.3.0)
+                            const textBottom: number = -(1 + shift.textPosition);
                             for (const slur of line.GraphicalSlurs) {
                                 const top: number = slurTop(slur, shift.skylineStartX, shift.skylineStopX);
                                 if (top !== undefined) {
@@ -107,9 +108,12 @@ describe("Octave shift skyline", () => {
             const stave: any = (osmd.GraphicSheet.MeasureList[0][0] as VexFlowMeasure).getVFStave();
             const onStave: VexFlowOctaveShift[] = (line.OctaveShifts as VexFlowOctaveShift[]).filter(s => s.startNote.getStave() === stave);
             expect(onStave.length).to.equal(2);
-            const position: number = stave.options.top_text_position;
+            const position: number = onStave[0].textPosition;
             expect(onStave.map(s => s.topTextPosition)).to.deep.equal([position, position]);
+            expect(onStave.map(s => s.textPosition)).to.deep.equal([position, position]);
             expect(position).to.be.at.least(4);
+            // drawn there by their lines, not by the stave's top text position (which places the stave's other marks too)
+            expect(stave.options.top_text_position).to.equal(1);
         });
     });
 });

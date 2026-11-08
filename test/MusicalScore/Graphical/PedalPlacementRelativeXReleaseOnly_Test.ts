@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowPedal } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowPedal";
 import { Pedal } from "../../../src/MusicalScore/VoiceData/Expressions/ContinuousExpressions/Pedal";
@@ -195,8 +195,11 @@ describe("Pedal placement above, relative-x and a stop that closed nothing", () 
         const marking: any = m2[0].getPedalMarking();
         const releaseWidth: number = marking.constructor.releaseGlyphWidth(marking.render_options.glyph_point_size);
         expect(m2[0].ChangeEnd).to.equal(true);
-        // the * glyph is drawn 2px left of its x
-        expect(releaseX(m2[0]) - 2 + releaseWidth, "the * ends left of beat 2").to.be.at.most(beat2 - 3 + 1e-6);
+        // the * glyph is drawn 2px left of its x; it ends PedalReleaseSignMarginToPedSign left of the Ped. of the change, which
+        //   starts CHANGE_GAP right of beat 2 (upstream 2.3.0 PR #1924; it ended CHANGE_GAP left of beat 2)
+        const changeGap: number = marking.constructor.CHANGE_GAP;
+        expect(releaseX(m2[0]) - 2 + releaseWidth, "the * ends PedalReleaseSignMarginToPedSign left of the Ped. at beat 2")
+            .to.be.at.most(beat2 + changeGap - osmd.EngravingRules.PedalReleaseSignMarginToPedSign * 10 + 0.05);
         expect(depressX(m2[1])).to.be.closeTo(beat2, 1e-6);
         expect(m2[1].ChangeBegin).to.equal(true);
     });

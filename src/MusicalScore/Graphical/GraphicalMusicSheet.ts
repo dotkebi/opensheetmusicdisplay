@@ -28,6 +28,8 @@ import { GraphicalVoiceEntry } from "./GraphicalVoiceEntry";
 import { GraphicalObject } from "./GraphicalObject";
 import { CooperativeYielder } from "../../Util/CooperativeYielder";
 import { ClassType } from "../Interfaces/AClassHierarchyTrackable";
+import { ITransposeCalculator } from "../Interfaces/ITransposeCalculator";
+import { Voice } from "../VoiceData/Voice";
 // import { VexFlowMusicSheetDrawer } from "./VexFlow/VexFlowMusicSheetDrawer";
 // import { SvgVexFlowBackend } from "./VexFlow/SvgVexFlowBackend"; // causes build problem with npm start
 
@@ -63,6 +65,13 @@ export class GraphicalMusicSheet {
     //private systemImages: Dictionary<MusicSystem, SystemImageProperties> = new Dictionary<MusicSystem, SystemImageProperties>();
     private numberOfStaves: number;
     private leadSheet: boolean = false;
+    /** The transposition the graphical notes and chord symbols were created with (see Initialize()):
+     *  MusicSheet.Transpose, followed by each instrument's Transpose. */
+    private preparedTransposition: number[] = [];
+    /** The transpose calculator the graphical notes and chord symbols were created with (see Initialize()). */
+    private preparedTransposeCalculator: ITransposeCalculator;
+    /** Whether each voice was visible when the graphical notes were created (see Initialize()), the voices of each instrument in order. */
+    private preparedVoiceVisibility: boolean[] = [];
 
     public get ParentMusicSheet(): MusicSheet {
         return this.musicSheet;
@@ -196,10 +205,54 @@ export class GraphicalMusicSheet {
         }
     }
 
+    /** Empties the lists of graphical objects for creating them from the music sheet (MusicSheetCalculator.prepareGraphicalMusicSheet()),
+     *  and remembers the transposition and the visible voices they are created with, see {@link TranspositionChanged} and
+     *  {@link VoiceVisibilityChanged}.
+     */
     public Initialize(): void {
         this.verticalGraphicalStaffEntryContainers = [];
         this.musicPages = [];
         this.measureList = [];
+        this.preparedTransposition = this.currentTransposition();
+        this.preparedTransposeCalculator = MusicSheetCalculator.transposeCalculator;
+        this.preparedVoiceVisibility = this.currentVoiceVisibility();
+    }
+
+    /** Whether the transposition changed since the graphical notes and chord symbols were created:
+     *  osmd.Sheet.Transpose, an instrument's Transpose, or, while one of them isn't 0, osmd.TransposeCalculator.
+     *  The notes and chord symbols are transposed when they are created, the key signatures in each layout (reCalculate()),
+     *  so osmd.render() creates the graphic again when the transposition changed.
+     *  A changed option of the same calculator (e.g. IntervalTransposeCalculator.AvoidDoubleAccidentals) doesn't count:
+     *  call osmd.updateGraphic() after that.
+     */
+    public get TranspositionChanged(): boolean {
+        const transposition: number[] = this.currentTransposition();
+        if (transposition.some((halftones: number, index: number): boolean => halftones !== this.preparedTransposition[index])) {
+            return true;
+        }
+        return transposition.some((halftones: number): boolean => halftones !== 0) &&
+            MusicSheetCalculator.transposeCalculator !== this.preparedTransposeCalculator;
+    }
+
+    /** The halftones the sheet is transposed by: MusicSheet.Transpose, followed by each instrument's Transpose. */
+    private currentTransposition(): number[] {
+        return [this.musicSheet.Transpose, ...this.musicSheet.Instruments.map((instrument: Instrument): number => instrument.Transpose)];
+    }
+
+    /** Whether a voice was shown or hidden (Voice.Visible, also set by Instrument.Visible) since the graphical notes were created.
+     *  The notes of hidden voices are left out when they are created, or created invisible with EngravingRules.HiddenVoicesKeepLayout,
+     *  and the multiple rest measures follow the visible voices, so osmd.render() creates the graphic again when this changed.
+     */
+    public get VoiceVisibilityChanged(): boolean {
+        const visibility: boolean[] = this.currentVoiceVisibility();
+        return visibility.length !== this.preparedVoiceVisibility.length ||
+            visibility.some((visible: boolean, index: number): boolean => visible !== this.preparedVoiceVisibility[index]);
+    }
+
+    /** Whether each voice is visible (Voice.Visible), the voices of each instrument in order. */
+    private currentVoiceVisibility(): boolean[] {
+        return this.musicSheet.Instruments.flatMap((instrument: Instrument): boolean[] =>
+            instrument.Voices.map((voice: Voice): boolean => voice.Visible));
     }
 
     public reCalculate(): void {
@@ -226,14 +279,16 @@ export class GraphicalMusicSheet {
         }
     }
 
-    public getClickedObject<T>(positionOnMusicSheet: PointF2D): T {
-        for (let idx: number = 0, len: number = this.MusicPages.length; idx < len; ++idx) {
-            const graphicalMusicPage: GraphicalMusicPage = this.MusicPages[idx];
-            return graphicalMusicPage.PositionAndShape.getClickedObjectOfType<T>(positionOnMusicSheet);
-        }
-        return undefined;
+    /** Returns the object of the class at the position, e.g. of a click, or undefined: the same as getClickedObjectOfType(). */
+    public getClickedObject<T>(positionOnMusicSheet: PointF2D, classOrName?: ClassType<T> | string, page?: GraphicalMusicPage): T {
+        return this.getClickedObjectOfType<T>(positionOnMusicSheet, classOrName, page);
     }
 
+    /**
+     * Find a measure by its zero-based source index and staff index.
+     * Collapsed multiple-rest members resolve to their representative measure (the multiple rest measure),
+     * and an index beyond the score's end (e.g. from the cursor) resolves to the last measure.
+     */
     public findGraphicalMeasure(measureIndex: number, staffIndex: number): GraphicalMeasure {
         // note the cursor calls this with measureIndex 1 (measure 2) when advancing beyond the end of a 1-measure piece
         for (let i: number = measureIndex; i >= 0; i--) {
@@ -485,6 +540,8 @@ export class GraphicalMusicSheet {
     /**
      * Get a List with the indices of all the visible GraphicalMeasures and calculates their
      * corresponding indices in the first SourceMeasure, taking into account Instruments with multiple Staves.
+     * Hidden staves (Staff.Visible = false) of a visible instrument are left out,
+     * so the list matches the drawn staff lines (see MusicSystemBuilder.layoutSystemStaves()).
      * @param visibleMeasures
      * @returns {number[]}
      */
@@ -502,6 +559,9 @@ export class GraphicalMusicSheet {
             const instrument: Instrument = visibleInstruments[idx];
             const index: number = this.musicSheet.getGlobalStaffIndexOfFirstStaff(instrument);
             for (let j: number = 0; j < instrument.Staves.length; j++) {
+                if (!instrument.Staves[j].Visible) {
+                    continue; // e.g. the right hand of a piano for "left hand only": its measures aren't in visibleMeasures
+                }
                 visibleStavesIndices.push(index + j);
             }
         }
@@ -766,29 +826,14 @@ export class GraphicalMusicSheet {
         return new PointF2D(sp.x, sp.y);
     }
 
-    public GetClickableLabel(clickPosition: PointF2D): GraphicalLabel {
-        const initialSearchAreaX: number = 4;
-        const initialSearchAreaY: number = 4;
-        // Prepare search area
-        const region: BoundingBox = new BoundingBox();
-        region.BorderLeft = clickPosition.x - initialSearchAreaX;
-        region.BorderTop = clickPosition.y - initialSearchAreaY;
-        region.BorderRight = clickPosition.x + initialSearchAreaX;
-        region.BorderBottom = clickPosition.y + initialSearchAreaY;
-        region.AbsolutePosition = new PointF2D(0, 0);
-        for (let idx: number = 0, len: number = this.MusicPages.length; idx < len; ++idx) {
-            const graphicalMusicPage: GraphicalMusicPage = this.MusicPages[idx];
-            const entries: GraphicalLabel[] = graphicalMusicPage.PositionAndShape.getObjectsInRegion<GraphicalLabel>(region);
-            if (entries.length !== 1) {
-                continue;
-            } else {
-                for (let idx2: number = 0, len2: number = entries.length; idx2 < len2; ++idx2) {
-                    const clickedLabel: GraphicalLabel = entries[idx2];
-                    return clickedLabel;
-                }
-            }
-        }
-        return undefined;
+    /**
+     * Returns the label at the position, e.g. of a click (whose bounding box contains it), e.g. a lyric or the title, or undefined.
+     * @param clickPosition The position in units
+     * @param page The page to search, e.g. the one clicked on: each page has its own coordinates, so the position is on every page.
+     *   By default, all pages.
+     */
+    public GetClickableLabel(clickPosition: PointF2D, page?: GraphicalMusicPage): GraphicalLabel {
+        return this.getClickedObjectOfType(clickPosition, GraphicalLabel, page);
     }
 
     /**
@@ -915,30 +960,49 @@ export class GraphicalMusicSheet {
         return entry.sourceStaffEntry;
     }
 
-    public getClickedObjectOfType<T>(positionOnMusicSheet: PointF2D): T {
-        for (let idx: number = 0, len: number = this.musicPages.length; idx < len; ++idx) {
-            const page: GraphicalMusicPage = this.musicPages[idx];
-            const o: T = page.PositionAndShape.getClickedObjectOfType<T>(positionOnMusicSheet);
-            if (o) {
-                return (o as T);
+    /**
+     * Returns the object of the class whose bounding box contains the position, e.g. of a click, or undefined:
+     * e.g. getClickedObjectOfType(position, GraphicalStaffEntry) returns the staff entry there.
+     * Of objects containing each other, the innermost one, e.g. without a class, at a lyric, its label rather than its staff entry,
+     * measure or page. For the object nearest to the position, see GetNearestObject().
+     * @param positionOnMusicSheet The position in units
+     * @param classOrName The class of the object, e.g. GraphicalStaffEntry: the type parameter T alone doesn't select it, types don't exist
+     *   at runtime. Or its name, which is unreliable in minified builds (see AClassHierarchyTrackable.isInstanceOfClass()).
+     *   By default, any graphical object.
+     * @param page The page to search, e.g. the one clicked on: each page has its own coordinates, so the position is on every page.
+     *   By default, all pages: the object on the first page that has one there.
+     */
+    public getClickedObjectOfType<T>(positionOnMusicSheet: PointF2D, classOrName?: ClassType<T> | string, page?: GraphicalMusicPage): T {
+        for (const pageToSearch of this.pagesToSearch(page)) {
+            const clickedObject: T = pageToSearch.PositionAndShape.getClickedObjectOfType<T>(positionOnMusicSheet, classOrName ?? GraphicalObject);
+            if (clickedObject) {
+                return clickedObject;
             }
         }
         return undefined;
     }
 
-    public tryGetTimestampFromPosition(positionOnMusicSheet: PointF2D): Fraction {
-        const entry: GraphicalStaffEntry = this.getClickedObjectOfType<GraphicalStaffEntry>(positionOnMusicSheet);
+    /**
+     * Returns the timestamp of the staff entry at the position, e.g. of a click (whose bounding box contains it), or undefined.
+     * For the timestamp of the nearest staff entry, see tryGetTimeStampFromPosition() (with a capital S).
+     * @param positionOnMusicSheet The position in units
+     * @param page The page to search, e.g. the one clicked on: each page has its own coordinates, so the position is on every page.
+     *   By default, all pages.
+     */
+    public tryGetTimestampFromPosition(positionOnMusicSheet: PointF2D, page?: GraphicalMusicPage): Fraction {
+        const entry: GraphicalStaffEntry = this.getClickedObjectOfType(positionOnMusicSheet, GraphicalStaffEntry, page);
         if (!entry) {
             return undefined;
         }
         return entry.getAbsoluteTimestamp();
     }
 
-    public tryGetClickableLabel(positionOnMusicSheet: PointF2D): GraphicalLabel {
+    /** Returns the label at the position, e.g. of a click, or undefined: see GetClickableLabel(). */
+    public tryGetClickableLabel(positionOnMusicSheet: PointF2D, page?: GraphicalMusicPage): GraphicalLabel {
         try {
-            return this.GetClickableLabel(positionOnMusicSheet);
+            return this.GetClickableLabel(positionOnMusicSheet, page);
         } catch (ex) {
-            log.info("GraphicalMusicSheet.tryGetClickableObject", "positionOnMusicSheet: " + positionOnMusicSheet, ex);
+            log.info("GraphicalMusicSheet.tryGetClickableLabel", "positionOnMusicSheet: " + positionOnMusicSheet, ex);
         }
 
         return undefined;

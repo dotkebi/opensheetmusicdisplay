@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalMeasure } from "../../../src/MusicalScore/Graphical/GraphicalMeasure";
@@ -16,7 +16,7 @@ describe("Mozart K.191 II-III renderer follow-up", () => {
     let container: HTMLElement;
     let osmd: OpenSheetMusicDisplay;
 
-    before(async () => {
+    beforeAll(async () => {
         // (VexFlowPatch: run `npm run prebuildVexflow` before this test after changing stavenote.js)
         container = TestUtils.getDivElement(document);
         container.style.width = "1024px";
@@ -24,7 +24,7 @@ describe("Mozart K.191 II-III renderer follow-up", () => {
         await osmd.load(TestUtils.getScore("test_k191_ii_iii_followup_restemmed.musicxml"));
         osmd.render();
     });
-    after(() => {
+    afterAll(() => {
         osmd.clear();
         container.remove();
     });
@@ -115,8 +115,9 @@ describe("Mozart K.191 II-III renderer follow-up", () => {
     });
 
     it("R7: the short strokes run along the line of the stem tips (III m380)", () => {
-        const number: number = measure(380, 1).MeasureNumber;
-        const groups: Element[] = Array.from(container.querySelectorAll(`g[id^="vf-tremoloBetweenNotes-${number}-"]`));
+        // the strokes' ids (upstream 2.3.0): osmd-trem<measureListIndex>-<staffIdInMusicSheet>-<n>
+        const index: number = measure(380, 1).parentSourceMeasure.measureListIndex;
+        const groups: Element[] = Array.from(container.querySelectorAll(`g[id^="osmd-trem${index}-"]`));
         expect(groups.length).to.equal(2);
         const thickness: number = osmd.EngravingRules.TremoloBetweenNotesStrokeThickness;
         for (const group of groups) {

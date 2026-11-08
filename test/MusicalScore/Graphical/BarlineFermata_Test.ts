@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
@@ -18,7 +18,7 @@ describe("Fermata on a barline", () => {
     const glyphs: { code: string, x: number, y: number }[] = [];
     const originalRenderGlyph: any = VF.Glyph.renderGlyph;
 
-    before(async () => {
+    beforeAll(async () => {
         VF.Glyph.renderGlyph = function (ctx: any, x: number, y: number, point: number, code: string, nocache: boolean): any {
             glyphs.push({ code, x, y });
             return originalRenderGlyph.call(this, ctx, x, y, point, code, nocache);
@@ -29,7 +29,7 @@ describe("Fermata on a barline", () => {
         glyphs.length = 0;
         osmd.render();
     });
-    after(() => {
+    afterAll(() => {
         VF.Glyph.renderGlyph = originalRenderGlyph;
         osmd.clear();
         container.remove();

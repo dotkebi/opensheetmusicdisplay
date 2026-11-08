@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { PlacementEnum } from "../../../src/MusicalScore/VoiceData/Expressions/AbstractExpression";
 import { GraphicalSlur } from "../../../src/MusicalScore/Graphical/GraphicalSlur";
 import { StemDirectionType } from "../../../src/MusicalScore/VoiceData/VoiceEntry";

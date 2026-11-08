@@ -29,8 +29,10 @@ export class Cursor {
     // TODO add this for the OSMD object as well and refactor this into a util method?
     let id: number = 0;
     this.cursorElementId = "cursorImg-0";
-    // find unique cursor id in document
-    while (document.getElementById(this.cursorElementId)) {
+    // find an id that no other element has in the container's document, or in its shadow root (e.g. of a web component),
+    //   which has ids of its own: document.getElementById() doesn't find the elements in a shadow root
+    const root: ParentNode = container.getRootNode() as ParentNode; // outside a document: the topmost element
+    while (root.querySelector(`#${this.cursorElementId}`)) {
       id++;
       this.cursorElementId = `cursorImg-${id}`;
     }
@@ -63,9 +65,9 @@ export class Cursor {
 
   private container: HTMLElement;
   public cursorElement: HTMLImageElement;
-  /** a unique id of the cursor's HTMLElement in the document.
+  /** a unique id of the cursor's HTMLElement in its document, or in its shadow root (e.g. of a web component).
    * Should be constant between re-renders and backend changes,
-   * but different between different OSMD objects on the same page.
+   * but different between the cursors in the same document or shadow root, also those of different OSMD objects.
    */
   public cursorElementId: string;
   /** The desired zIndex (layer) of the cursor when no background color is set.
@@ -93,6 +95,17 @@ export class Cursor {
     this.hide();
   }
 
+  /** Releases the sheet the cursor was initialized with (see init()), so that the sheet and its rendering can be garbage collected
+   *  while the cursor is kept, e.g. by osmd.clear(). Until init() is called again (by osmd.load()), the cursor stays hidden,
+   *  Iterator is undefined, functions like next() and show() do nothing, and there are no notes under the cursor.
+   */
+  public releaseSheet(): void {
+    this.hide();
+    this.manager = undefined;
+    this.graphic = undefined;
+    this.iterator = undefined;
+  }
+
   /** Make the cursor visible. */
   public show(): void {
     this.hidden = false;
@@ -106,19 +119,18 @@ export class Cursor {
       console.log("OSMD.Cursor.resetIterator(): sheet or measures were null/undefined.");
       return;
     }
+    if (!this.manager) {
+      return; // the sheet was released (see releaseSheet()), and the cursor wasn't initialized with the loaded one yet
+    }
 
     // set selection start, so that when there's MinMeasureToDraw set, the cursor starts there right away instead of at measure 1
     const lastSheetMeasureIndex: number = this.openSheetMusicDisplay.Sheet.SourceMeasures.length - 1; // last measure in data model
     let startMeasureIndex: number = this.rules.MinMeasureToDrawIndex;
     startMeasureIndex = Math.min(startMeasureIndex, lastSheetMeasureIndex);
+    // Under incremental rendering (renderNext()), this is the session's draw range too, not the end of the measures
+    //   rendered so far: the cursor can step across all of them and is positioned lazily (update() no-ops where not yet
+    //   rendered; a later batch repositions it once that measure is drawn).
     let endMeasureIndex: number = this.rules.MaxMeasureToDrawIndex;
-    if (this.rules.LazyConsistentGraphic) {
-      // Under lazy rendering MaxMeasureToDrawIndex is only the current (growing) frontier, not a fixed
-      //   draw range, so clamp the cursor to the whole sheet: it can step across the entire score and is
-      //   positioned lazily (update() no-ops where not yet rendered; a later batch repositions it once
-      //   that measure is drawn). Playback already seeks by timestamp and is unaffected by this range.
-      endMeasureIndex = lastSheetMeasureIndex;
-    }
     endMeasureIndex = Math.min(endMeasureIndex, lastSheetMeasureIndex);
 
     if (this.openSheetMusicDisplay.Sheet && this.openSheetMusicDisplay.Sheet.SourceMeasures.length > startMeasureIndex) {
@@ -145,6 +157,9 @@ export class Cursor {
     if (this.hidden || this.hidden === undefined || this.hidden === null) {
       return;
     }
+    if (!this.iterator || !this.graphic) {
+      return; // the sheet was released, see releaseSheet()
+    }
     this.updateCurrentPage(); // attach cursor to new page DOM if necessary
     if (!this.getPageElement(this.currentPageNumber)) {
       // the page isn't drawn, e.g. after drawUpToPageNumber, so the cursor can't be shown there.
@@ -161,10 +176,13 @@ export class Cursor {
     let currentMeasureIndex: number = iterator.CurrentMeasureIndex;
     let x: number = 0, y: number = 0, height: number = 0;
     let musicSystem: MusicSystem;
+    let firstPositionWithoutVisibleNotes: boolean = false;
     if (voiceEntries.length === 0 && !iterator.FrontReached && !iterator.EndReached) {
       // e.g. when the note at the current position is in an instrument that's now invisible, and there's no other note at this position, vertically
       iterator.moveToPrevious();
       voiceEntries = iterator.CurrentVisibleVoiceEntries();
+      // nothing before it: the sheet's first position has no visible notes, e.g. after reset() when the sheet starts with a hidden rest
+      firstPositionWithoutVisibleNotes = iterator.FrontReached;
       iterator.moveToNext();
       // after this, the else condition below should trigger, positioning the cursor at the left-most note. See #1312
     }
@@ -177,6 +195,11 @@ export class Cursor {
       x = firstVisibleMeasure.PositionAndShape.AbsolutePosition.x;
       musicSystem = firstVisibleMeasure.ParentMusicSystem;
       iterator.moveToPrevious();
+    } else if (firstPositionWithoutVisibleNotes) {
+      // show the beginning of the first measure, as before the first note (above), not the end of the measure (below)
+      const firstVisibleMeasure: GraphicalMeasure = this.findVisibleGraphicalMeasure(iterator.CurrentMeasureIndex);
+      x = firstVisibleMeasure?.PositionAndShape.AbsolutePosition.x;
+      musicSystem = firstVisibleMeasure?.ParentMusicSystem;
     } else if (!iterator.EndReached && iterator.CurrentMeasure?.isReducedToMultiRest) {
       // multiple measure rests aren't used when one
       //   checked before the empty-position case below: inside a multirest the positions often only carry
@@ -365,12 +388,18 @@ export class Cursor {
 
   /** Go to previous entry / note / vertical position. */
    public previous(): void {
+    if (!this.iterator) {
+      return; // the sheet was released, see releaseSheet()
+    }
     this.iterator.moveToPreviousVisibleVoiceEntry(false);
     this.update();
   }
 
   /** Go to next entry / note / vertical position. */
   public next(): void {
+    if (!this.iterator) {
+      return; // the sheet was released, see releaseSheet()
+    }
     this.iterator.moveToNextVisibleVoiceEntry(false); // moveToNext() would not skip notes in hidden (visible = false) parts
     this.update();
   }
@@ -441,6 +470,9 @@ export class Cursor {
 
   /** returns voices under the current Cursor position. Without instrument argument, all voices are returned. */
   public VoicesUnderCursor(instrument?: Instrument): VoiceEntry[] {
+    if (!this.iterator) {
+      return []; // the sheet was released, see releaseSheet()
+    }
     return this.iterator.CurrentVisibleVoiceEntries(instrument);
   }
 
@@ -466,6 +498,9 @@ export class Cursor {
    *  This is only necessary if using PageFormat (multiple pages).
    */
   public updateCurrentPage(): number {
+    if (!this.iterator || !this.graphic) {
+      return this.currentPageNumber; // the sheet was released, see releaseSheet()
+    }
     let timestamp: Fraction = this.iterator.currentTimeStamp;
     if (timestamp.RealValue < 0) {
       timestamp = new Fraction(0, 0);
@@ -516,7 +551,9 @@ export class Cursor {
 
   public set SkipInvisibleNotes(value: boolean) {
     this.skipInvisibleNotes = value;
-    this.iterator.SkipInvisibleNotes = value;
+    if (this.iterator) { // else the sheet was released (see releaseSheet()), and resetIterator() sets it on the next one
+      this.iterator.SkipInvisibleNotes = value;
+    }
   }
 
   public get CursorOptions(): CursorOptions {
@@ -536,44 +573,55 @@ export class Cursor {
     this.cursorOptions = undefined;
   }
 
+  /** Moves to the first position of the next measure in playback order (repetitions unrolled, like next()),
+   *  from the last measure to the end.
+   */
   public nextMeasure(): void {
-    const startMeasure: SourceMeasure = this.Iterator.CurrentMeasure;
-    let previousTime: number = this.Iterator.currentTimeStamp.RealValue;
+    if (!this.iterator) {
+      return; // the sheet was released, see releaseSheet()
+    }
+    const iterator: MusicPartManagerIterator = this.iterator;
+    if (iterator.FrontReached) {
+      this.next(); // the front is before the first measure, so that's the next one
+      return;
+    }
+    const startMeasure: SourceMeasure = iterator.CurrentMeasure;
+    let previousTimestamp: number = iterator.currentTimeStamp.RealValue;
     this.next();
-    let iterations: number = 0;
-    const maxIterations: number = 999;
-    while (this.Iterator.CurrentMeasure === startMeasure &&
-      this.Iterator.currentTimeStamp.RealValue !== previousTime &&
-      iterations < maxIterations // prevent infinite loop (not expected but for safety)
+    // in one pass through a measure, the timestamps only grow: a smaller one in the same measure starts its next pass,
+    //   e.g. of a measure that is repeated by itself
+    while (!iterator.EndReached && iterator.CurrentMeasure === startMeasure &&
+      iterator.currentTimeStamp.RealValue > previousTimestamp
     ) {
-      previousTime = this.Iterator.currentTimeStamp.RealValue;
+      previousTimestamp = iterator.currentTimeStamp.RealValue;
       this.next();
-      iterations++;
     }
   }
 
+  /** Moves to the first position of the previous measure in score order (like previous(), which doesn't unroll
+   *  repetitions backwards): from the end to the last measure, from the first measure to the front (before the first note).
+   *  A measure's first position is its first one with visible notes, e.g. the one after a hidden rest.
+   */
   public previousMeasure(): void {
-    const startMeasure: SourceMeasure = this.Iterator.CurrentMeasure;
-    let previousTime: number = this.Iterator.currentTimeStamp.RealValue;
-    this.previous();
-    let iterations: number = 0;
-    const maxIterations: number = 999;
-    while (this.Iterator.CurrentMeasure === startMeasure &&
-      this.Iterator.currentTimeStamp.RealValue !== previousTime &&
-      iterations < maxIterations // prevent infinite loop (not expected but for safety)
-    ) {
-      previousTime = this.Iterator.currentTimeStamp.RealValue;
-      this.previous();
-      iterations++;
+    if (!this.iterator) {
+      return; // the sheet was released, see releaseSheet()
     }
-
-    // move to start of measure
-    iterations = 0;
-    while (this.Iterator.CurrentRelativeInMeasureTimestamp.RealValue !== 0 &&
-      iterations < maxIterations
-    ) {
+    const iterator: MusicPartManagerIterator = this.iterator;
+    // the end is after the last measure (though the iterator's CurrentMeasure is the last one there)
+    const startMeasure: SourceMeasure = iterator.EndReached ? undefined : iterator.CurrentMeasure;
+    this.previous();
+    while (!iterator.FrontReached && iterator.CurrentMeasure === startMeasure) {
       this.previous();
-      iterations++;
+    }
+    // to the measure's first position: when that's after the start of the measure (e.g. after a hidden rest),
+    //   moving back from it leaves the measure, so move forward again
+    const measure: SourceMeasure = iterator.CurrentMeasure;
+    while (!iterator.FrontReached && iterator.CurrentRelativeInMeasureTimestamp.RealValue > 0) {
+      this.previous();
+      if (iterator.FrontReached || iterator.CurrentMeasure !== measure) {
+        this.next();
+        return;
+      }
     }
   }
 }

@@ -4,14 +4,14 @@ import {VerticalSourceStaffEntryContainer} from "./VerticalSourceStaffEntryConta
 import {SourceStaffEntry} from "./SourceStaffEntry";
 import {RepetitionInstruction, RepetitionInstructionEnum, AlignmentType} from "./Instructions/RepetitionInstruction";
 import {Staff} from "./Staff";
-import {VoiceEntry} from "./VoiceEntry";
+import {VoiceEntry, ArticulationEnum} from "./VoiceEntry";
+import {Articulation} from "./Articulation";
 import {Voice} from "./Voice";
 import {MusicSheet} from "../MusicSheet";
 import {MultiExpression} from "./Expressions/MultiExpression";
 import {MultiTempoExpression} from "./Expressions/MultiTempoExpression";
 import {RehearsalExpression} from "./Expressions/RehearsalExpression";
 import {AbstractNotationInstruction} from "./Instructions/AbstractNotationInstruction";
-import {ClefInstruction} from "./Instructions/ClefInstruction";
 import {KeyInstruction} from "./Instructions/KeyInstruction";
 import {Repetition} from "../MusicSource/Repetition";
 import {SystemLinesEnum} from "../Graphical/SystemLinesEnum";
@@ -103,7 +103,13 @@ export class SourceMeasure {
     public ImplicitMeasureFromXml: boolean = false;
     public MeasureNumberPrinted: number; // measureNumber if MeasureNumberXML undefined or NaN. Set in getPrintedMeasureNumber()
     public RhythmPrinted: RhythmInstruction; // the rhythm printed (rendered) in this measure
-    public multipleRestMeasures: number; // usually undefined (0), unless "multiple-rest" given in XML (e.g. 4 measure rest)
+    /** How many measures the multiple rest measure beginning with this measure has, usually undefined (0): the number given in the
+     *  MusicXML (multipleRestMeasuresXml), or the number of one generated from rest measures
+     *  (EngravingRules.AutoGenerateMultipleRestMeasuresFromRestMeasures). Set again by each layout calculation (updateGraphic()). */
+    public multipleRestMeasures: number;
+    /** How many measures the multiple rest measure beginning with this measure has in the MusicXML (`<multiple-rest>`,
+     *  e.g. 4 for a 4 measure rest), usually undefined. Each layout calculation starts multipleRestMeasures from it. */
+    public multipleRestMeasuresXml: number;
     // public multipleRestMeasuresPerStaff: Dictionary<number, number>; // key: staffId. value: how many rest measures
     /** MusicXML measure-repeat declarations indexed by global staff. */
     public MeasureRepeatInstructions: Map<number, MeasureRepeatInstruction[]> = new Map<number, MeasureRepeatInstruction[]>();
@@ -254,7 +260,7 @@ export class SourceMeasure {
     }
 
     public getPreviousMeasure(measures: SourceMeasure[]): SourceMeasure {
-        if (this.measureListIndex > 1) {
+        if (this.measureListIndex > 0) {
             return measures[this.measureListIndex - 1];
         }
         return undefined;
@@ -670,8 +676,20 @@ export class SourceMeasure {
         }
     }
 
+    /** Whether the repetition instruction is a start marker that isn't drawn (see beginsWithLineRepetition()):
+     *  the start of the repetition of the whole piece, which RepetitionCalculator adds for the iteration (a StartLine from words),
+     *  or the start of a repetition without a start line (None), e.g. at the start of a piece with a backward repeat or a D.C.
+     */
+    private static isUndrawnStartMarker(instruction: RepetitionInstruction): boolean {
+        return instruction.type === RepetitionInstructionEnum.None ||
+            instruction.type === RepetitionInstructionEnum.StartLine &&
+            instruction.parentRepetition !== undefined && instruction.parentRepetition.FromWords;
+    }
+
     public canBeReducedToMultiRest(): boolean {
-        if (this.firstRepetitionInstructions.length > 0 || this.lastRepetitionInstructions.length > 0) {
+        // a multiple rest measure would hide the repetition instructions, except the start markers that aren't drawn anyway
+        if (this.firstRepetitionInstructions.some(instruction => !SourceMeasure.isUndrawnStartMarker(instruction)) ||
+            this.lastRepetitionInstructions.length > 0) {
             return false;
         }
         let allRestsOrInvisible: boolean = true;
@@ -699,6 +717,16 @@ export class SourceMeasure {
                     hiddenStaves.add(staffEntry.ParentStaff);
                 }
                 for (const voiceEntry of staffEntry.VoiceEntries) {
+                    // ignore the notes of a hidden voice that is left out of the layout, as if it weren't there
+                    //   (see Voice.isHiddenInShownInstrument() and EngravingRules.HiddenVoicesKeepLayout)
+                    if (!this.rules?.HiddenVoicesKeepLayout && voiceEntry.ParentVoice.isHiddenInShownInstrument()) {
+                        continue;
+                    }
+                    // a multiple rest measure would hide a fermata on a rest (a pause bar)
+                    if (voiceEntry.Articulations.some((articulation: Articulation): boolean =>
+                        articulation.articulationEnum === ArticulationEnum.fermata || articulation.articulationEnum === ArticulationEnum.invertedfermata)) {
+                        return false;
+                    }
                     for (const note of voiceEntry.Notes) {
                         if (!note.isRest()) {
                             allRestsOrInvisible = false;
@@ -732,15 +760,8 @@ export class SourceMeasure {
                 return false;
             }
         }
-        // check for clef instruction for next measure
-        for (const lastStaffEntry of this.lastInstructionsStaffEntries) {
-            for (let idx: number = 0, len: number = lastStaffEntry?.Instructions.length; idx < len; ++idx) {
-                const abstractNotationInstruction: AbstractNotationInstruction = lastStaffEntry.Instructions[idx];
-                if (abstractNotationInstruction instanceof ClefInstruction) {
-                    return false;
-                }
-            }
-        }
+        // a clef change at the end (for the next measure) is no reason against it: the multiple rest measure then ends
+        //   with this measure and draws the clef at its end (see MusicSheetCalculator.prepareGraphicalMusicSheet())
         // don't auto-rest pickup measures that aren't whole measure rests
         return this.Duration?.RealValue === this.ActiveTimeSignature?.RealValue;
         // if adding further checks, replace the above line with this:

@@ -44,7 +44,6 @@ import { GraphicalVoiceLeadingGuide } from "../GraphicalVoiceLeadingGuide";
 import { vexFlowVoiceLeadingGuideAnchor } from "./VexFlowVoiceLeadingGuideAnchor";
 import { VexFlowGlissando } from "./VexFlowGlissando";
 import { VexFlowGraphicalNote } from "./VexFlowGraphicalNote";
-import { SvgVexFlowBackend } from "./SvgVexFlowBackend";
 import { VexFlowConverter } from "./VexFlowConverter";
 import { VexFlowVibratoBracket } from "./VexFlowVibratoBracket";
 import { TremoloBetweenNotes } from "../../VoiceData/Note";
@@ -195,10 +194,23 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         this.pageIdx += 1;
     }
 
+    /** Clears what was drawn (the backends), and releases the drawn sheet and its pages, which the drawer only needs while drawing:
+     *  their graphical objects reference the drawn SVG elements, so they would keep the whole rendering in memory.
+     *  drawSheet() sets them again.
+     */
     public clear(): void {
         for (const backend of this.backends) {
             backend.clear();
+            backend.graphicalMusicPage = undefined;
         }
+        this.graphicalMusicSheet = undefined;
+        // the cross-staff maps of the last drawSheet(): their keys (systems, beams, curves) would keep the rendering
+        this.drawnCrossStaffBeams.clear();
+        this.drawnCrossStaffCurves.clear();
+        this.calculatedCrossStaffCurves.clear();
+        this.crossStaffClearances.clear();
+        this.crossStaffExpressionOffsets.clear();
+        this.crossStaffExpressionShifts.clear();
     }
 
     public setZoom(zoom: number): void {
@@ -218,10 +230,10 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         const ctx: Vex.IRenderContext = this.backend.getContext();
         const stafflineNode: Node = ctx.openGroup();
         if (stafflineNode) {
-            (stafflineNode as SVGGElement).classList.add("staffline");
-            if (staffLine.ParentStaff) {
-                (stafflineNode as SVGGElement).id =
-                    `${staffLine.ParentStaff.ParentInstrument?.Name}${staffLine.ParentStaff.ParentInstrument?.Id}-${staffLine.ParentStaff?.Id}`;
+            (stafflineNode as SVGGElement).classList.add("osmd-staffline");
+            // lazy horizontal: each batch draws its part of the staffline into a group of its own, the first one has the id
+            if (staffLine.ParentStaff && this.lazyDrawsLeftEdgeOnce()) {
+                (stafflineNode as SVGGElement).id = this.getStaffLineSVGGElementId(staffLine);
             }
         }
         super.drawStaffLine(staffLine);
@@ -262,6 +274,17 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             ctx.closeGroup?.();
             ctx.restore();
         }
+    }
+
+    /**
+     * Gets the id of the SVG group a staffline is drawn into (g.osmd-staffline), unique in the sheet's drawing: "osmd-staffline",
+     * its system's index (MusicSystem.Id, counted from 0 through the pages), "-" and its staff's index in Sheet.Staves (from 0,
+     * as in the measures' ids, see GraphicalMeasure.getSVGGElementId()): "osmd-staffline3-1" is the second staff of the 4th
+     * system. Lazy horizontal rendering (renderNext() with RenderSingleHorizontalStaffline) draws a staffline into a group per
+     * batch: the first one, which starts the staffline, has the id.
+     */
+    protected getStaffLineSVGGElementId(staffLine: StaffLine): string {
+        return `osmd-staffline${staffLine.ParentMusicSystem.Id}-${staffLine.ParentStaff.idInMusicSheet}`;
     }
 
     private drawSlurs(vfstaffLine: VexFlowStaffLine, absolutePos: PointF2D): void {
@@ -426,6 +449,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         const startNote: VexFlowGraphicalNote = this.rules.GNote(graphicalSlur.slur.StartNote) as VexFlowGraphicalNote;
         graphicalSlur.SVGElement = this.backend.renderCurve(curvePointsInPixels, true, startNote, graphicalSlur.slur.LineType,
                                                             this.pixelsPerUnit());
+        this.addSVGClass(graphicalSlur.SVGElement, "osmd-slur");
     }
 
     /** The drawing's pixels per staff space (unit), for the dashes of a dashed or dotted curve (DashedCurve). */
@@ -744,6 +768,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                 ctx.closeGroup();
                 if (curve.graphicalSlur) {
                     curve.graphicalSlur.SVGElement = node;
+                    this.addSVGClass(node, "osmd-slur");
                 }
                 curve.rendered = true;
                 return;
@@ -850,34 +875,23 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
     protected drawBuzzRolls(staffEntry: GraphicalStaffEntry, newBuzzRollId): number {
         for (const gve of staffEntry.graphicalVoiceEntries) {
             for (const note of gve.notes) {
-                if (note.sourceNote.TremoloInfo?.tremoloUnmeasured) {
+                // not for a note that isn't drawn: hidden (print-object="no") or of a hidden voice, see Note.isVisible()
+                if (note.sourceNote.TremoloInfo?.tremoloUnmeasured && note.sourceNote.isVisible()) {
                     const thickness: number = this.rules.TremoloBuzzRollThickness;
                     const baseLength: number = 0.9;
                     const baseHeight: number = 0.5;
 
                     const vfNote: VexFlowGraphicalNote = note as VexFlowGraphicalNote;
-                    let stemTip: PointF2D;
-                    let stemHeight: number;
                     const directionSign: number = vfNote.vfnote[0].getStemDirection(); // 1 or -1
-                    let stemElement: HTMLElement;
-                    if (this.backend instanceof SvgVexFlowBackend) {
-                        stemElement = vfNote.getStemSVG();
-                    }
-                    const hasBbox: boolean = (stemElement as any)?.getBbox !== undefined;
-                    if (hasBbox) {
-                        // apparently sometimes the stemElement is null, in that case we need to use the canvas method.
-                        const rect: SVGRect = (stemElement as any).getBBox();
-                        stemTip = new PointF2D(rect.x / 10, rect.y / 10);
-                        stemHeight = rect.height / 10;
-                    } else { // if this.backend instanceof CanvasVexFlowBackend // also seems to work for SVG
-                        stemHeight = vfNote.vfnote[0].getStemLength() / 10;
-                        stemTip = new PointF2D(
-                            (vfNote.vfnote[0].getStem() as any).x_begin / 10,
-                            (vfNote.vfnote[0].getStem() as any).y_top / 10,
-                        );
-                        if (directionSign === 1) {
-                            stemTip.y -= stemHeight;
-                        }
+                    // the stem's top end (an up stem's tip, a down stem's top notehead) and length, from VexFlow's stem data:
+                    //   the same for both backends and in jsdom (browserless export), which has no getBBox() for the stem's SVG element
+                    const stemHeight: number = vfNote.vfnote[0].getStemLength() / 10;
+                    const stemTip: PointF2D = new PointF2D(
+                        (vfNote.vfnote[0].getStem() as any).x_begin / 10,
+                        (vfNote.vfnote[0].getStem() as any).y_top / 10,
+                    );
+                    if (directionSign === 1) {
+                        stemTip.y -= stemHeight;
                     }
                     // this.DrawOverlayLine(stemTip, new PointF2D(stemTip.x + 5, stemTip.y), vfNote.ParentMusicPage); // debug
 
@@ -913,7 +927,9 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                         currentPoint = pathPoints.last();
                         pathPoints.push(new PointF2D(currentPoint.x + movement.x, currentPoint.y - movement.y));
                     }
-                    this.DrawPath(pathPoints, vfNote.ParentMusicPage, true, `buzzRoll${newBuzzRollId}`);
+                    const node: Node = this.DrawPath(pathPoints, vfNote.ParentMusicPage, true);
+                    this.setSVGId(node, this.getMeasureElementSVGId("buzz", staffEntry.parentMeasure, newBuzzRollId));
+                    this.addSVGClass(node, "osmd-tremolo"); // a buzz roll is an unmeasured tremolo (MusicXML)
                     newBuzzRollId++;
                 }
             }
@@ -925,6 +941,8 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
      *  e.g. two alternating half notes with 3 strokes between them, often seen in orchestral string parts.
      *  (Vexflow doesn't support these tremolos, so we draw them ourselves here.)
      *  Also updates the SkyLine/BottomLine where the strokes exceed it.
+     *  Not where a note isn't drawn (see Note.isVisible()): the strokes are left out with it, like those of a single-note
+     *  tremolo, which Vexflow draws in the style of its notehead (transparent then).
      */
     protected drawTremolosBetweenNotes(measure: VexFlowMeasure): void {
         if (measure.isTabMeasure) {
@@ -939,6 +957,9 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                         continue;
                         // only draw when reaching the stop note (second note): at this point, both notes have been drawn
                         //   and have their final positions, even if the start note is in a previously drawn measure.
+                    }
+                    if (tremolo.startNote?.isVisible() === false || !gNote.sourceNote.isVisible()) {
+                        continue; // a note isn't drawn: hidden (print-object="no") or of a hidden voice, see Note.isVisible()
                     }
                     try {
                         strokeId = this.drawTremoloBetweenTwoNotes(tremolo, gNote as VexFlowGraphicalNote, measure, strokeId);
@@ -975,8 +996,9 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                 new PointF2D(startX, strokeStartTopY + strokeThickness),
                 new PointF2D(startX, strokeStartTopY)
             ];
-            const id: string = `tremoloBetweenNotes-${measure.MeasureNumber}-${measure.ParentStaff.Id}-${strokeId}`;
-            this.DrawPath(strokePoints, stopGNote.ParentMusicPage, true, id, color);
+            const node: Node = this.DrawPath(strokePoints, stopGNote.ParentMusicPage, true, undefined, color);
+            this.setSVGId(node, this.getMeasureElementSVGId("trem", measure, strokeId));
+            this.addSVGClass(node, "osmd-tremolo");
             strokeId++;
         }
 
@@ -1159,6 +1181,31 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         return {startX, stopX, startY, stopY, totalStrokesHeight};
     }
 
+    /**
+     * Gets the id of an SVG element that is drawn for a measure, but outside the measure's group (see
+     * GraphicalMeasure.getSVGGElement()), unique in the sheet's drawing: "osmd-", the kind of element, the measure's index in
+     * Sheet.SourceMeasures, "-", its staff's index in Sheet.Staves and "-" the element's number among those of its kind in the
+     * measure, all counted from 0, the indices as in the measure's own id (see GraphicalMeasure.getSVGGElementId()):
+     * "osmd-trem11-1-0" is the first tremolo stroke drawn with the 12th measure of the second staff.
+     * @param kind "trem" for the strokes of a tremolo between two notes (drawn with the measure of the second note), "buzz" for
+     *   a buzz roll
+     * @param measure the measure the element is drawn with
+     * @param numberInMeasure the element's number among those of its kind in the measure, from 0, in the order they are drawn
+     */
+    protected getMeasureElementSVGId(kind: string, measure: GraphicalMeasure, numberInMeasure: number): string {
+        return `osmd-${kind}${measure.parentSourceMeasure?.measureListIndex}-${measure.ParentStaff.idInMusicSheet}-${numberInMeasure}`;
+    }
+
+    /**
+     * Sets the id of the SVG group a drawn element was drawn into, e.g. "osmd-trem11-1-0" for a tremolo stroke drawn with
+     * DrawPath(), which would add VexFlow's prefix (vf-) to an id given to it.
+     * @param node the group, undefined if nothing was drawn, e.g. with the canvas backend
+     * @param id the id, unique in the sheet's drawing
+     */
+    protected setSVGId(node: Node, id: string): void {
+        (node as SVGGElement)?.setAttribute?.("id", id);
+    }
+
     // private drawPixel(coord: PointF2D): void {
     //     coord = this.applyScreenTransformation(coord);
     //     const ctx: any = this.backend.getContext();
@@ -1323,7 +1370,6 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             const label: GraphicalLabel = lyricsEntry.GraphicalLabel;
             label.Label.colorDefault = this.rules.DefaultColorLyrics;
             label.SVGNode = this.drawLabel(label, layer);
-            (label.SVGNode as SVGGElement)?.classList.add("lyrics");
         });
     }
 
@@ -1392,7 +1438,12 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         for (const graphicalPedal of staffLine.Pedals) {
             if (graphicalPedal) {
                 const vexFlowPedal: VexFlowPedal = graphicalPedal as VexFlowPedal;
-                if (!this.lazyDrawsSpanToMeasure(vexFlowPedal.endMeasure)) {
+                // the pedal's part on this staffline ends in its end measure, or at the end of the staffline if it goes on
+                //   in a later system (the end measure of a part before is the pedal's own, in that system)
+                const endMeasure: GraphicalMeasure = vexFlowPedal.endMeasure;
+                const endMeasureOnStaffLine: GraphicalMeasure = !endMeasure || endMeasure.ParentStaffLine === staffLine
+                    ? endMeasure : staffLine.Measures.last();
+                if (!this.lazyDrawsSpanToMeasure(endMeasureOnStaffLine)) {
                     continue; // lazy horizontal: span not yet fully in the frontier
                 }
                 const ctx: Vex.IRenderContext = this.backend.getContext();
@@ -1504,6 +1555,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                                                    graphicalExpression.ParentStaffLine.PositionAndShape.AbsolutePosition.y + line.End.y);
                 line.SVGElement = this.drawLine(start, end, line.colorHex ?? "#000000", line.Width);
                 // the null check for colorHex is not strictly necessary anymore, but the previous default color was red.
+                this.addSVGClass(line.SVGElement, "osmd-wedge");
             }
         }
     }

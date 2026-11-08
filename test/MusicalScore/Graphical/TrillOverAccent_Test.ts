@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowVibratoBracket } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowVibratoBracket";
@@ -8,8 +8,9 @@ import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
 /**
  * A trill mark stacked over an accent (81sabo WIII-RENDER09, Weber Op.74 III m135 and m137), same as osmd-dart's
  * test/trill_over_accent_test.dart:
- * - over a stave top text position a raised wavy line moved up, the mark is at its text line there (1.5 over an
- *   accent; VexFlow 1.2.93, trillTextLine 5fbfa9de), which osmd-dart now does too;
+ * - under a wavy line raised over something higher, the mark is at its text line under the line (1.5 over an accent;
+ *   VexFlow 1.2.93, trillTextLine 5fbfa9de), which osmd-dart now does too. Since upstream 2.3.0 the line is raised by
+ *   its line and the mark by its y_shift; the stave's top text position stays (it placed the stave's other marks too);
  * - an accent moved over the slur starting at its note takes the trill mark (with its accidental mark and wavy line)
  *   over it (user decision 10-28, D1 1): the mark stayed where the accent had been and was drawn on it (m135).
  */
@@ -43,7 +44,8 @@ describe("Trill mark over an accent", () => {
     function trillInk(staveNote: any): { top: number, bottom: number } {
         const mark: any = trill(staveNote);
         const space: number = staveNote.getStave().getSpacingBetweenLines();
-        const shift: number = mark.slurClearanceYShift ?? 0;
+        // (the ink was recorded at the layout draw: with the raise over a slur and the y_shift since then)
+        const shift: number = (mark.slurClearanceYShift ?? 0) + (mark.y_shift ?? 0) - (mark.layoutYShift ?? 0);
         return { top: (mark.layoutInk.top + shift) / space, bottom: (mark.layoutInk.bottom + shift) / space };
     }
     /** The accent's ink as drawn (moved over a slur), like trillInk(). */
@@ -68,19 +70,23 @@ describe("Trill mark over an accent", () => {
         return undefined;
     }
 
-    it("over a raised top text position a trill over an accent is at its text line", async () => {
+    it("under a raised wavy line a trill over an accent is at its text line", async () => {
         // m1: F5 with an accent and a trill, m2: the same without the accent; the C7 under each wavy line raises it
         await render("test_trill_text_line_raised_wavy_line", 1000);
         const withAccent: any = note(0);
         const plain: any = note(1);
         const stave: any = withAccent.getStave();
-        expect(stave.options.top_text_position).to.be.greaterThan(1);
+        // raised by its line (one line over the mark's bottom at its text line), not by the stave's top text position
+        expect(wavyLine(withAccent).line).to.be.greaterThan(1);
+        expect(wavyLine(plain).line).to.be.greaterThan(1);
+        expect(stave.options.top_text_position).to.equal(1);
         expect(trill(withAccent).text_line).to.equal(1.5);
         expect(trill(plain).text_line).to.equal(0);
         const space: number = stave.getSpacingBetweenLines();
         const top: number = stave.getYForLine(0);
-        expect(trillInk(withAccent).bottom * space + top).to.be.closeTo(stave.getYForTopText(1.5), 1);
-        expect(trillInk(plain).bottom * space + top).to.be.closeTo(plain.getStave().getYForTopText(0), 1);
+        // the mark's bottom at the line a top text position raised to the line would draw its text line at: -(line)
+        expect(trillInk(withAccent).bottom * space + top).to.be.closeTo(stave.getYForLine(-wavyLine(withAccent).line), 1);
+        expect(trillInk(plain).bottom * space + top).to.be.closeTo(plain.getStave().getYForLine(-wavyLine(plain).line), 1);
     });
 
     for (const width of [1366, 1024]) {

@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowVoiceEntry } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowVoiceEntry";
@@ -14,13 +14,13 @@ import VF = Vex.Flow;
 describe("Notehead none with an XML stem on a shared head", () => {
     let container: HTMLElement;
     let osmd: OpenSheetMusicDisplay;
-    before(async () => {
+    beforeAll(async () => {
         container = TestUtils.getDivElement(document);
         osmd = TestUtils.createOpenSheetMusicDisplay(container);
         await osmd.load(TestUtils.getScore("test_notehead_none_shared_stem.musicxml"));
         osmd.render();
     });
-    after(() => {
+    afterAll(() => {
         osmd.clear();
         container.remove();
     });

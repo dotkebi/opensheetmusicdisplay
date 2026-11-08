@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalSlur } from "../../../src/MusicalScore/Graphical/GraphicalSlur";
@@ -19,7 +19,7 @@ describe("Slurs into a second ending", () => {
     let osmd: OpenSheetMusicDisplay;
     const byEnd: { [endMeasure: number]: GraphicalSlur[] } = {};
 
-    before(async () => {
+    beforeAll(async () => {
         container = TestUtils.getDivElement(document);
         container.style.width = "1600px";
         osmd = new OpenSheetMusicDisplay(container, { autoResize: false, backend: "svg" });
@@ -33,7 +33,7 @@ describe("Slurs into a second ending", () => {
             }
         }
     });
-    after(() => {
+    afterAll(() => {
         osmd.clear();
         container.remove();
     });

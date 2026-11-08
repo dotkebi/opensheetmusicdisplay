@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalMeasure } from "../../../../src/MusicalScore/Graphical/GraphicalMeasure";
@@ -29,14 +29,14 @@ describe("Arpeggio across voices and staves", () => {
 
     interface FoundStroke { stroke: any, voiceId: number, staff: number }
 
-    before(async () => {
+    beforeAll(async () => {
         container = TestUtils.getDivElement(document);
         container.style.width = "1400px";
         osmd = new OpenSheetMusicDisplay(container, { autoResize: false, backend: "svg" });
         await osmd.load(TestUtils.getScore("test_arpeggio_across_voices.musicxml"));
         osmd.render();
     });
-    after(() => {
+    afterAll(() => {
         osmd.clear();
         container.remove();
     });

@@ -80,6 +80,9 @@ export class Slur {
         }
         return (this.startNote.ParentStaffEntry.ParentStaff !== this.endNote.ParentStaffEntry.ParentStaff);
     }
+    /** Whether another slur at the start or end note of this slur is shorter. GraphicalSlur then gives this slur
+     *  SlursStartingAtSameStaffEntryYOffset where it starts or ends at the same note as another slur, so that the shorter
+     *  slur is closest to the notes (Behind Bars p. 113). */
     public isSlurLonger(): boolean {
         if (!this.endNote || !this.startNote) {
             return false;
@@ -92,7 +95,7 @@ export class Slur {
                 && !slur.isGraceGroupSlur()
                 && slur.EndNote !== undefined
                 && slur.StartNote !== undefined
-                && Fraction.minus(slur.EndNote.getAbsoluteTimestamp(), slur.StartNote.getAbsoluteTimestamp()).CompareTo(length) === -1
+                && Fraction.minus(slur.EndNote.getAbsoluteTimestamp(), slur.StartNote.getAbsoluteTimestamp()).lt(length)
             ) {
                 return true;
             }
@@ -104,9 +107,7 @@ export class Slur {
                 && !slur.isGraceGroupSlur()
                 && slur.EndNote !== undefined
                 && slur.StartNote !== undefined
-                // (=== -1 as for the start note: without it, a slur shorter than another one ending at its end note was "longer"
-                //   too and took the offset of the second slur: both ends at one point, Alma del core piano m90; as osmd-dart)
-                && Fraction.minus(slur.EndNote.getAbsoluteTimestamp(), slur.StartNote.getAbsoluteTimestamp()).CompareTo(length) === -1
+                && Fraction.minus(slur.EndNote.getAbsoluteTimestamp(), slur.StartNote.getAbsoluteTimestamp()).lt(length)
             ) {
                 return true;
             }

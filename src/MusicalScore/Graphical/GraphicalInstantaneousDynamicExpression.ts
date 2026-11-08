@@ -12,17 +12,18 @@ export class GraphicalInstantaneousDynamicExpression extends AbstractGraphicalEx
     /** Whether the dynamic is written inside a wedge of its staff and side (MusicSheetCalculator.dynamicsInsideWedges()): it lies
      *  under (over) the wedge or beyond it, and AlignmentManager leaves it out. Same as osmd-dart. */
     public InsideWedge: boolean = false;
-    /** Words are placed beside it, on its baseline (MusicSheetCalculator.placeWordsBesideSameTimeDynamic()). */
+    /** Whether words of the same time are drawn on this dynamic's line, before or after it
+     *  (see MusicSheetCalculator.placeWordsBesideSameTimeDynamic()). */
     public HasWordsBeside: boolean = false;
-
-    public get InstantaneousDynamic(): InstantaneousDynamicExpression {
-        return this.mInstantaneousDynamicExpression;
-    }
 
     constructor(instantaneousDynamic: InstantaneousDynamicExpression, staffLine: StaffLine, measure: GraphicalMeasure) {
         super(staffLine, instantaneousDynamic, measure.parentSourceMeasure);
         this.mInstantaneousDynamicExpression = instantaneousDynamic;
         this.mMeasure = measure;
+    }
+
+    public get InstantaneousDynamic(): InstantaneousDynamicExpression {
+        return this.mInstantaneousDynamicExpression;
     }
 
     public updateSkyBottomLine(): void {

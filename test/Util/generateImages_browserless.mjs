@@ -4,7 +4,6 @@ import FS from "fs";
 import jsdom from "jsdom";
 import Path from "path";
 import { fileURLToPath } from "url";
-//import headless_gl from "gl"; // this is now imported dynamically in a try catch, in case gl install fails, see #1160
 import OSMD from "../../build/opensheetmusicdisplay.min.js"; // window needs to be available before we can require OSMD
 // for debugging, use opensheetmusicdisplay.min.js, created by npm run build:webpack-dev
 /*
@@ -20,6 +19,11 @@ import OSMD from "../../build/opensheetmusicdisplay.min.js"; // window needs to 
   It also writes source_commit.txt into the image directory, with the git branch and commit the images were
   generated from, so that you can tell which state e.g. visual_regression/blessed shows (see writeSourceCommitFile()),
   and warns if the build is older than the files in src/, as the images may then not show that commit (checkBuildAge()).
+
+  Each page is saved as <sample filename>_<page number>.png or .svg, e.g. ActorPreludeSample.xml_1.png.
+  A PNG page taller than the canvas size limit of 32767 px (e.g. ActorPreludeSample in the endless page format)
+  continues in further images of at most 32767 px each, <sample filename>_<page number>_tile2.png, _tile3.png etc.,
+  see saveCutOffPageTiles().
 
   Note: this script needs to "fake" quite a few browser elements, like window, document,
   and a Canvas HTMLElement (for PNG) or the DOM (for SVG)   ,
@@ -43,7 +47,7 @@ let [osmdBuildDir, sampleDir, imageDir, imageFormat, pageWidth, pageHeight, filt
 imageFormat = imageFormat?.toLowerCase();
 if (!osmdBuildDir || !sampleDir || !imageDir || (imageFormat !== "png" && imageFormat !== "svg")) {
     console.log("usage: " +
-        "node test/Util/generateImages_browserless.mjs osmdBuildDir sampleDirectory imageDirectory svg|png [width|0] [height|0] [filterRegex|all|allSmall] [--debug|--osmdtesting] [debugSleepTime]");
+        "node test/Util/generateImages_browserless.mjs osmdBuildDir sampleDirectory imageDirectory svg|png [width|0] [height|0] [filterRegex|all|allSmall] [--debug|--osmdtesting] [debugSleepTime] [--batch]");
     console.log("  (use pageWidth and pageHeight 0 to not divide the rendering into pages (endless page))");
     console.log('  (use "all" to skip filterRegex parameter. "allSmall" with --osmdtesting additionally skips the two biggest OSMD samples,' +
         ' ActorPreludeSample and CharlesGounod_Meditation (a few seconds each), e.g. for quick runs on slow machines)');
@@ -110,36 +114,6 @@ async function init () {
     global.Node = window.Node;
     if (imageFormat === "png") {
         global.Canvas = window.Canvas;
-    }
-
-    // For WebGLSkyBottomLineCalculatorBackend: Try to import gl dynamically
-    //   this is so that the script doesn't fail if gl could not be installed,
-    //   which can happen in some linux setups where gcc-11 is installed, see #1160
-    try {
-        const { default: headless_gl } = await import("gl");
-        const oldCreateElement = document.createElement.bind(document);
-        document.createElement = function (tagName, options) {
-            if (tagName.toLowerCase() === "canvas") {
-                const canvas = oldCreateElement(tagName, options);
-                const oldGetContext = canvas.getContext.bind(canvas);
-                canvas.getContext = function (contextType, contextAttributes) {
-                    if (contextType.toLowerCase() === "webgl" || contextType.toLowerCase() === "experimental-webgl") {
-                        const gl = headless_gl(canvas.width, canvas.height, contextAttributes);
-                        gl.canvas = canvas;
-                        return gl;
-                    } else {
-                        return oldGetContext(contextType, contextAttributes);
-                    }
-                };
-                return canvas;
-            } else {
-                return oldCreateElement(tagName, options);
-            }
-        };
-    } catch {
-        if (skyBottomLinePreference === "--webgl") {
-            debug("WebGL image generation was requested but gl is not installed; using non-WebGL generation.");
-        }
     }
 
     if (process.platform === "win32") {
@@ -300,12 +274,17 @@ async function init () {
                 // generate one more testing image in dark mode
                 await generateSampleImage(sampleFilename, sampleDir, osmdInstance, osmdTestMode, {
                     darkMode: true, fileNameAddition: "darkmode_"}, DEBUG);
-            } else if (sampleFilename.startsWith("JohannSebastianBach_PraeludiumInCDur")) {
+            } else if (sampleFilename.startsWith("JohannSebastianBach_PraeludiumInCDur") ||
+                sampleFilename.startsWith("test_hidden_staff_clef_key_time")) {
                 // generate two more testing images, left hand only and right hand only
                 await generateSampleImage(sampleFilename, sampleDir, osmdInstance, osmdTestMode, {
                     staffVisibility: { 0: true, 1: false}, fileNameAddition: "right_hand_only_"}, DEBUG);
                 await generateSampleImage(sampleFilename, sampleDir, osmdInstance, osmdTestMode, {
                     staffVisibility: { 0: false, 1: true}, fileNameAddition: "left_hand_only_"}, DEBUG);
+            } else if (sampleFilename.startsWith("OSMD_function_test_invisible_notes")) {
+                // generate one more testing image with the hidden notes drawn (light gray, see EngravingRules.RenderHiddenNotes)
+                await generateSampleImage(sampleFilename, sampleDir, osmdInstance, osmdTestMode, {
+                    drawHiddenNotes: true, fileNameAddition: "drawHiddenNotes_"}, DEBUG);
             }
         }
     }
@@ -503,6 +482,8 @@ async function generateSampleImage (sampleFilename, directory, osmdInstance, osm
         return;
     }
     debug("xml loaded", DEBUG);
+    // for a further image of a page taller than the canvas size limit, the page's canvas shows the page's next rows
+    const stopShowingCanvasTile = options.canvasTile ? showCanvasTile(osmdInstance, options.canvasTile) : undefined;
     try {
         renderOsmdTestSample(sampleFilename, osmdInstance, osmdTestMode);
         const isTestTransposingAccidentals = sampleFilename.includes("test_transposing_accidentals_1383");
@@ -531,6 +512,7 @@ async function generateSampleImage (sampleFilename, directory, osmdInstance, osm
     } catch (ex) {
         debug("renderError: " + ex);
     }
+    stopShowingCanvasTile?.();
     debug("rendered", DEBUG);
 
     const markupStrings = []; // svg
@@ -560,10 +542,14 @@ async function generateSampleImage (sampleFilename, directory, osmdInstance, osm
     }
 
     for (let pageIndex = 0; pageIndex < Math.max(dataUrls.length, markupStrings.length); pageIndex++) {
+        if (options.canvasTile && pageIndex + 1 !== options.canvasTile.pageNumber) {
+            continue; // a further image of a page taller than the canvas size limit: only that page's canvas is saved
+        }
         const pageNumberingString = `${pageIndex + 1}`;
         // pageNumberingString = dataUrls.length > 0 ? pageNumberingString : '' // don't put '_1' at the end if only one page. though that may cause more work
         const fileNameAddition = options.fileNameAddition ?? "";
-        const pageFilename = `${imageDir}/${sampleFilename}_${fileNameAddition}${pageNumberingString}.${imageFormat}`;
+        const tileNumberingString = options.canvasTile ? `_tile${options.canvasTile.tileNumber}` : "";
+        const pageFilename = `${imageDir}/${sampleFilename}_${fileNameAddition}${pageNumberingString}${tileNumberingString}.${imageFormat}`;
 
         if (imageFormat === "png") {
             const dataUrl = dataUrls[pageIndex];
@@ -602,8 +588,105 @@ async function generateSampleImage (sampleFilename, directory, osmdInstance, osm
     }
     // debug('maxRss total: ' + (maxRss / 1024 / 1024) + 'mb' + ' for ' + maxRssFilename)
 
+    if (imageFormat === "png" && !options.canvasTile) {
+        await saveCutOffPageTiles(sampleFilename, directory, osmdInstance, osmdTestMode, options, DEBUG);
+    }
+
     // await sleep(5000)
     // }) // end read file
+}
+
+// OSMD cuts off a canvas at this height (and width) in pixels, the browsers' limit (see
+//   OpenSheetMusicDisplay.createOrRefreshRenderBackend()). node-canvas (Cairo) can't create a larger canvas either.
+const canvasSizeLimit = 32767;
+
+/**
+ * Saves the rest of each page that OSMD cut off at the canvas size limit as further images of at most canvasSizeLimit
+ * pixels each (<sample filename>_<page number>_tile2.png etc.), so that the images cover the whole page.
+ * Each further image is generated like the page's first image, by loading and rendering the sample again (see
+ * generateSampleImage()), with the page's canvas showing the page's next rows (see showCanvasTile()).
+ * Drawing the rendered sheet again into a moved canvas would be faster, but its image would then depend on a second
+ * draw of a layout giving the same as the first, which it didn't before #1795 (D.C. texts and lyric extender lines
+ * moved), and it wouldn't draw in batches where the first image was drawn with renderNext().
+ * Loading and rendering again repeats exactly what drew the page's first image.
+ * @param {string} sampleFilename Filename of the sample.
+ * @param {string} directory Directory of the sample.
+ * @param {object} osmdInstance The OSMD instance that rendered the sample's first images.
+ * @param {boolean} osmdTestMode Whether we are in osmdTestingMode (--osmdtesting), where sample-specific settings apply.
+ * @param {object} options The options the sample's first images were generated with.
+ * @param {boolean} DEBUG Whether to log debug output.
+ */
+async function saveCutOffPageTiles (sampleFilename, directory, osmdInstance, osmdTestMode, options, DEBUG) {
+    const canvasTiles = [];
+    for (const backend of osmdInstance.Drawer?.Backends ?? []) {
+        const canvasHeight = backend.getCanvas().height;
+        if (canvasHeight < canvasSizeLimit) {
+            continue; // not cut off
+        }
+        const pageHeight = getUncutCanvasHeight(osmdInstance, backend);
+        const pageNumber = backend.graphicalMusicPage.PageNumber;
+        for (let top = canvasHeight, tileNumber = 2; top < Math.floor(pageHeight); top += canvasSizeLimit, tileNumber++) {
+            canvasTiles.push({ pageNumber, tileNumber, top, height: Math.min(canvasSizeLimit, pageHeight - top) });
+        }
+    }
+    for (const canvasTile of canvasTiles) {
+        debug(`${sampleFilename}: page ${canvasTile.pageNumber} is taller than the canvas size limit of ${canvasSizeLimit} px, ` +
+            `rendering its rows from ${canvasTile.top} px on into tile ${canvasTile.tileNumber}`);
+        await generateSampleImage(sampleFilename, directory, osmdInstance, osmdTestMode, { ...options, canvasTile }, DEBUG);
+    }
+}
+
+/**
+ * Returns the height in pixels that OSMD computes for the canvas of a page before cutting it off at the canvas size
+ * limit, like OpenSheetMusicDisplay.createOrRefreshRenderBackend() does.
+ * @param {object} osmdInstance The OSMD instance that rendered the page.
+ * @param {object} backend The page's canvas backend, from osmdInstance.Drawer.Backends.
+ * @returns {number} The height of the page's canvas in pixels, without the canvas size limit.
+ */
+function getUncutCanvasHeight (osmdInstance, backend) {
+    const rules = osmdInstance.EngravingRules;
+    if (rules.PageFormat && !rules.PageFormat.IsUndefined) {
+        return backend.width / rules.PageFormat.aspectRatio;
+    }
+    const page = backend.graphicalMusicPage;
+    // + 0.1: OSMD's fix for the canvas cutting off its bottom pixel
+    let height = page.PositionAndShape.Size.height + rules.PageBottomMargin + 0.1 + page.PositionAndShape.BorderTop;
+    if (rules.RenderTitle) {
+        height += rules.TitleTopDistance;
+    }
+    return height * osmdInstance.Zoom * 10;
+}
+
+/**
+ * Lets osmdInstance render a tile of a page instead of the page's top, until the returned function is called:
+ * the page's canvas gets the tile's height, and the page is drawn shifted up by the tile's top,
+ * so that the canvas shows the page's rows from canvasTile.top on. Works for render() and renderNext().
+ * @param {object} osmdInstance The OSMD instance.
+ * @param {{pageNumber: number, top: number, height: number}} canvasTile The page, and the tile's top and height in pixels.
+ * @returns {Function} Function that lets osmdInstance render whole pages again.
+ */
+function showCanvasTile (osmdInstance, canvasTile) {
+    // OpenSheetMusicDisplay.createOrRefreshRenderBackend() creates a canvas backend for each page of a render,
+    //   renderNext() also for a page its batch reaches
+    const createBackend = osmdInstance.createBackend;
+    osmdInstance.createBackend = function (type, page, idOverride) {
+        const backend = createBackend.call(this, type, page, idOverride);
+        if (page?.PageNumber === canvasTile.pageNumber) {
+            const resize = backend.resize.bind(backend);
+            backend.resize = (width) => resize(width, canvasTile.height);
+            const scale = backend.scale.bind(backend);
+            // the drawer scales the canvas to the zoom right before drawing the page, also in each batch of renderNext(),
+            //   whose resize() before it resets the canvas' transformation
+            backend.scale = (factor) => {
+                backend.translate(0, -canvasTile.top);
+                scale(factor);
+            };
+        }
+        return backend;
+    };
+    return () => {
+        delete osmdInstance.createBackend; // OpenSheetMusicDisplay.prototype.createBackend again
+    };
 }
 
 function debug (msg, debugEnabled = true) {
@@ -612,25 +695,21 @@ function debug (msg, debugEnabled = true) {
     }
 }
 
+/**
+ * Returns the OSMD options for the skyline calculation given as the 10th command line argument (skyBottomLinePreference):
+ * with "--batch", the pixel-based batch calculation (drawing the measures on a canvas and reading its pixels),
+ * which OSMD uses if EngravingRules.UseGeometricSkyBottomLineCalculation is false, else the default geometric calculation.
+ * @returns {object} The options for osmd.setOptions().
+ */
 function makeSkyBottomLineOptions() {
     // skyBottomLinePreference assumed to be globally set
-    const preference = skyBottomLinePreference ?? "";
-    if (preference === "--batch") {
+    if (skyBottomLinePreference === "--batch") {
         return {
-            preferredSkyBottomLineBatchCalculatorBackend: 0, // plain
-            skyBottomLineBatchCriteria: 0, // use batch algorithm only
-        };
-    } else if (preference === "--webgl") {
-        return {
-            preferredSkyBottomLineBatchCalculatorBackend: 1, // webgl
-            skyBottomLineBatchCriteria: 0, // use batch algorithm only
-        };
-    } else {
-        return {
-            preferredSkyBottomLineBatchCalculatorBackend: 0, // plain
-            skyBottomLineBatchCriteria: Infinity, // use non-batch algorithm only
+            useGeometricSkyBottomLineCalculation: false,
+            skyBottomLineBatchMinMeasures: 0, // use batch algorithm only
         };
     }
+    return {};
 }
 
 /**
@@ -672,6 +751,7 @@ function setOsmdTestOptionsBeforeLoad(sampleFilename, options, osmdInstance) {
     const isTestTupletBracketTupletNumber = sampleFilename.includes("test_tuplet_bracket_tuplet_number");
     const isTestCajon2NoteSystem = sampleFilename.includes("test_cajon_2-note-system");
     const isTestOctaveShiftInvisibleInstrument = sampleFilename.includes("test_octaveshift_first_instrument_invisible");
+    const isTestPedalInvisibleInstrument = sampleFilename.includes("test_pedal_systembreak_first_instrument_invisible");
     const isTextOctaveShiftExtraGraphicalMeasure = sampleFilename.includes("test_octaveshift_extragraphicalmeasure");
     const isTestWedgeMultilineCrescendo = sampleFilename.includes("test_wedge_multiline_crescendo");
     const isTestWedgeMultilineDecrescendo = sampleFilename.includes("test_wedge_multiline_decrescendo");
@@ -681,6 +761,11 @@ function setOsmdTestOptionsBeforeLoad(sampleFilename, options, osmdInstance) {
     const isTestPartAbbreviationsPartlyMissing = sampleFilename.includes("test_part_abbreviations_partly_missing");
     const isTestPartAbbreviationSingleStaff = sampleFilename.includes("test_part_abbreviation_single_staff");
     const isTestPartGroupNames = sampleFilename.includes("test_group_name");
+    // a courtesy key signature at a system break in the alto and bass clef, see test_key_signature_courtesy_clefs: systems as in the file
+    const isTestKeySignatureCourtesyClefs = sampleFilename.startsWith("test_key_signature_courtesy_clefs");
+    // courtesy key and time signatures of different widths at system breaks, see test_courtesy_signatures_staff_ends: systems as in the file
+    const isTestCourtesySignaturesStaffEnds = sampleFilename.startsWith("test_courtesy_signatures_staff_ends");
+    const isTestTabRhythmDots = sampleFilename.startsWith("test_tab_rhythm_dots.");
     const isTestTabs4Strings = sampleFilename.includes("test_tabs_4_strings");
     const isTestFingeringLeft = sampleFilename.includes("test_fingering_left");
     const isTestArticulationAboveNote = sampleFilename.includes("test_accent_above_except_piano_left_hand");
@@ -697,6 +782,19 @@ function setOsmdTestOptionsBeforeLoad(sampleFilename, options, osmdInstance) {
     const isTestLyricsDashContinuedInNextSystem = sampleFilename.startsWith("test_lyrics_dash_continued_in_next_system");
     // tab ties across system breaks, see test_tab_hammer-on_pull-off_tie_across_system_breaks: systems as in the file
     const isTestTabTiesAcrossSystemBreaks = sampleFilename.startsWith("test_tab_hammer-on_pull-off_tie_across_system_breaks");
+    const isTestTabChordSlidesAcrossSystemBreaks = sampleFilename.startsWith("test_tabs_chord_slide_indices_system_break.");
+    // a key and time change at a system break (courtesy signatures), see test_hidden_staff_clef_key_time: systems as in the file
+    const isTestHiddenStaffClefKeyTime = sampleFilename.startsWith("test_hidden_staff_clef_key_time");
+    // multiple rest measures ending at the system and page breaks of the file, see test_multiple_rest_measures_auto_xml_breaks
+    const isTestMultipleRestMeasuresXmlBreaks = sampleFilename.startsWith("test_multiple_rest_measures_auto_xml_breaks");
+    // pedal signs under beams far below the staff, one system per case, see test_pedal_signs_below_beams: systems as in the file
+    const isTestPedalSignsBelowBeams = sampleFilename.startsWith("test_pedal_signs_below_beams");
+    // the line and sign attributes of pedals, a system per line attribute, see test_pedal_line_and_sign: systems as in the file
+    const isTestPedalLineAndSign = sampleFilename.startsWith("test_pedal_line_and_sign");
+    // pedal lines without the start or end hook (resume, discontinue), into the next system, see test_pedal_resume_discontinue
+    const isTestPedalResumeDiscontinue = sampleFilename.startsWith("test_pedal_resume_discontinue");
+    // pedal lines pressed at a hidden whole-measure rest, low notes before it, a system per case, see test_pedal_at_whole_measure_rest
+    const isTestPedalAtWholeMeasureRest = sampleFilename.startsWith("test_pedal_at_whole_measure_rest");
     const isTestCopyrightBelowLastSystem = sampleFilename.includes("copyright_below_last_system");
     const isTestFirstPageCreditWords = sampleFilename.startsWith("test_first_page_credit_words");
     const isTestOptimizeExtremeLedgerBeams = sampleFilename.includes("test_beam_intersecting_ledger_lines") && !process.argv.includes("--native-vexflow");
@@ -725,9 +823,12 @@ function setOsmdTestOptionsBeforeLoad(sampleFilename, options, osmdInstance) {
         drawUpToMeasureNumber: drawUpToMeasureNumber,
         drawMeasureNumbersOnlyAtSystemStart: isTestMeasureNumbersOnlyAtSystemStart,
         newSystemFromXML: isFunctionTestSystemAndPageBreaks || isTestMeasureNumbersOnlyAtSystemStart || isTestGraceNotesOnlyMeasure ||
-            isTestLyricsDashContinuedInNextSystem || isTestTabTiesAcrossSystemBreaks,
+            isTestLyricsDashContinuedInNextSystem || isTestTabTiesAcrossSystemBreaks || isTestTabChordSlidesAcrossSystemBreaks ||
+            isTestHiddenStaffClefKeyTime ||
+            isTestMultipleRestMeasuresXmlBreaks || isTestPedalSignsBelowBeams || isTestPedalLineAndSign || isTestPedalResumeDiscontinue ||
+            isTestPedalAtWholeMeasureRest,
         newSystemFromNewPageInXML: isTestPageBreakImpliesSystemBreak,
-        newPageFromXML: isFunctionTestSystemAndPageBreaks,
+        newPageFromXML: isFunctionTestSystemAndPageBreaks || isTestMultipleRestMeasuresXmlBreaks,
         pageBackgroundColor: "#FFFFFF", // reset by drawingparameters default
         pageFormat: pageFormat, // reset by drawingparameters default,
         ...makeSkyBottomLineOptions()
@@ -735,9 +836,11 @@ function setOsmdTestOptionsBeforeLoad(sampleFilename, options, osmdInstance) {
     if (options.darkMode) {
         osmdInstance.setOptions({darkMode: true}); // note that we set pageBackgroundColor above, so we need to overwrite it here.
     }
+    if (options.drawHiddenNotes) {
+        osmdInstance.setOptions({drawHiddenNotes: true}); // before load(), which creates the beams of the hidden notes
+    }
     // note that loadDefaultValues() may be executed in setOptions with drawingParameters default
     //osmdInstance.EngravingRules.RenderSingleHorizontalStaffline = true; // to use this option here, place it after setOptions(), see above
-    osmdInstance.EngravingRules.AlwaysSetPreferredSkyBottomLineBackendAutomatically = false; // this would override the command line options (--plain etc)
     includeSkyBottomLine = options.skyBottomLine ?? false; // apparently es6 doesn't have ?? operator
     osmdInstance.drawSkyLine = includeSkyBottomLine; // if includeSkyBottomLine, draw skyline and bottomline, else not
     osmdInstance.drawBottomLine = includeSkyBottomLine;
@@ -766,6 +869,7 @@ function setOsmdTestOptionsBeforeLoad(sampleFilename, options, osmdInstance) {
     }
     if (isTextOctaveShiftExtraGraphicalMeasure ||
         isTestOctaveShiftInvisibleInstrument ||
+        isTestPedalInvisibleInstrument ||
         isTestWedgeMultilineCrescendo ||
         isTestWedgeMultilineDecrescendo ||
         isTestWavyLineMultilineExtraGraphicalMeasure ||
@@ -773,11 +877,16 @@ function setOsmdTestOptionsBeforeLoad(sampleFilename, options, osmdInstance) {
         isTestSlidesStandardAndTabStaff ||
         isTestPartAbbreviationsPartlyMissing ||
         isTestPartAbbreviationSingleStaff ||
-        isTestPartGroupNames) {
+        isTestPartGroupNames ||
+        isTestKeySignatureCourtesyClefs ||
+        isTestCourtesySignaturesStaffEnds) {
         osmdInstance.EngravingRules.NewSystemAtXMLNewSystemAttribute = true;
     }
     if (isTestPartAbbreviationSingleStaff) {
         osmdInstance.EngravingRules.RenderPartAbbreviationsForSingleStaff = true;
+    }
+    if (isTestTabRhythmDots) {
+        osmdInstance.EngravingRules.TabRhythmRendered = true;
     }
     if (isTestTabs4Strings) {
         osmdInstance.EngravingRules.TabKeySignatureSpacingAdded = false;
@@ -824,6 +933,7 @@ function setOsmdTestOptionsAfterLoad(sampleFilename, options, osmdInstance) {
     }
 
     const isTestOctaveShiftInvisibleInstrument = sampleFilename.includes("test_octaveshift_first_instrument_invisible");
+    const isTestPedalInvisibleInstrument = sampleFilename.includes("test_pedal_systembreak_first_instrument_invisible");
     const isTestInvisibleMeasureNotAffectingLayout = sampleFilename.includes("test_invisible_measure_not_affecting_layout");
     const isTestWordsDirectionLostWhenFirstInstrumentInvisible = sampleFilename.includes("test_words_direction_lost_when_first_instrument_invisible");
     const isTestTransposeEnharmonic9 = sampleFilename.includes("test_transpose_enharmonic_9");
@@ -838,6 +948,7 @@ function setOsmdTestOptionsAfterLoad(sampleFilename, options, osmdInstance) {
         new OSMD.IntervalTransposeCalculator() : new OSMD.TransposeCalculator();
 
     if (isTestOctaveShiftInvisibleInstrument ||
+        isTestPedalInvisibleInstrument ||
         isTestWordsDirectionLostWhenFirstInstrumentInvisible
     ) {
         osmdInstance.Sheet.Instruments[0].Visible = false;

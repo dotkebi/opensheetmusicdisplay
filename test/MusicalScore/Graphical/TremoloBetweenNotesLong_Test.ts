@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalMeasure } from "../../../src/MusicalScore/Graphical/GraphicalMeasure";
@@ -30,7 +30,9 @@ describe("Tremolo strokes between long notes", () => {
     function strokes(measureNumber: number): [number, number][] {
         const result: [number, number][] = [];
         // one group per stroke (its fill path first, then its outline)
-        for (const group of Array.from(container.querySelectorAll(`g[id^="vf-tremoloBetweenNotes-${measureNumber}-"]`))) {
+        // the strokes' ids (upstream 2.3.0): osmd-trem<measureListIndex>-<staffIdInMusicSheet>-<n>, class osmd-tremolo
+        const measureListIndex: number = osmd.Sheet.SourceMeasures.find(m => m.MeasureNumber === measureNumber).measureListIndex;
+        for (const group of Array.from(container.querySelectorAll(`g[id^="osmd-trem${measureListIndex}-"]`))) {
             const xs: number[] = (group.querySelector("path")?.getAttribute("d") ?? "").split(/[MLZ]/).filter(part => part.trim().length > 0)
                 .map(part => parseFloat(part.trim().split(" ")[0]));
             result.push([Math.min(...xs) / 10, Math.max(...xs) / 10]);

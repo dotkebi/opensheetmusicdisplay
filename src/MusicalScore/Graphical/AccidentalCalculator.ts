@@ -103,12 +103,13 @@ export class AccidentalCalculator {
             return;
         }
 
-        // A printed sign that disagrees with <alter> is drawn as printed (the historical sharp of Eccles' G minor sonata
-        //   m4, which cancels the key flat and sounds E natural); the measure keeps the sounding alteration, so the next
-        //   E natural gets no natural sign. VexFlowGraphicalNote.setAccidental() draws the printed glyph. Same as osmd-dart.
-        if (this.Transpose === 0 && AccidentalCalculator.printedMismatchGlyph(pitch)) {
+        // A printed sign that disagrees with <alter> is drawn as printed (a historical sharp cancelling the key's flat,
+        //   sounding E natural); the measure keeps the sounding alteration, so the next E natural gets no natural sign.
+        const printedAccidental: AccidentalEnum = this.Transpose === 0 ? AccidentalCalculator.printedMismatchAccidental(pitch) : undefined;
+        if (printedAccidental !== undefined) {
             this.currentInMeasureNoteAlterationsDict.setValue(pitchKey, pitch.AccidentalHalfTones);
-            this.addAccidental(graphicalNote, pitch, pitchKey);
+            this.addAccidental(graphicalNote, new Pitch(pitch.FundamentalNote, pitch.Octave, printedAccidental, pitch.AccidentalXml,
+                false, pitch.OctaveShiftApplied), pitchKey);
             return;
         }
 
@@ -171,29 +172,30 @@ export class AccidentalCalculator {
         }
     }
 
-    /** The VexFlow glyph of the printed <accidental> of the pitch when it is a plain sign whose alteration differs from
-     *  the sounding one (<alter>), else undefined. Signs drawn as two glyphs (natural-sharp, ...) are left to
-     *  VexFlowGraphicalNote.setAccidental(). */
-    public static printedMismatchGlyph(pitch: Pitch): string | undefined {
-        const glyph: [string, number] = pitch?.AccidentalXml ? AccidentalCalculator.printedGlyphs[pitch.AccidentalXml] : undefined;
-        return glyph && glyph[1] !== pitch.AccidentalHalfTones ? glyph[0] : undefined;
+    /** The printed <accidental> of the pitch when it is a plain sign whose alteration differs from the sounding one
+     *  (<alter>), else undefined: e.g. SHARP for an E with <alter>0</alter> and <accidental>sharp</accidental>.
+     *  (The reader makes a note with <accidental>natural</accidental> natural, so a natural can't differ, and signs drawn
+     *  as two glyphs, natural-sharp, ..., are left to VexFlowGraphicalNote.setAccidental().)
+     *  A transposed pitch has no AccidentalXml. */
+    private static printedMismatchAccidental(pitch: Pitch): AccidentalEnum {
+        const printed: AccidentalEnum = pitch.AccidentalXml ? AccidentalCalculator.printedAccidentals[pitch.AccidentalXml] : undefined;
+        return printed !== undefined && Pitch.HalfTonesFromAccidental(printed) !== pitch.AccidentalHalfTones ? printed : undefined;
     }
 
-    private static readonly printedGlyphs: { [accidentalXml: string]: [string, number] } = {
-        "double-flat": ["bb", -2],
-        "double-sharp": ["##", 2],
-        "flat": ["b", -1],
-        "flat-flat": ["bb", -2],
-        "natural": ["n", 0],
-        "sharp": ["#", 1],
+    private static readonly printedAccidentals: { [accidentalXml: string]: AccidentalEnum } = {
+        "double-sharp": AccidentalEnum.DOUBLESHARP,
+        "flat": AccidentalEnum.FLAT,
+        "flat-flat": AccidentalEnum.DOUBLEFLAT,
+        "sharp": AccidentalEnum.SHARP,
     };
 
     /** Adds the accidental of the pitch to the note, and remembers the note for isAccidentalDrawnAtSameTime(). */
     private addAccidental(graphicalNote: GraphicalNote, pitch: Pitch, pitchKey: number): void {
         // A hidden note (print-object="no") sharing the head of a visible unison note in another voice doesn't draw its
-        //   accidental, but Vexflow kept a column for it, so the visible note's accidental stood a head away. The visible
-        //   note draws it, also without an accidental in the XML (Schumann, Myrthen 01 m42: a hidden eighth C flat 3 on
-        //   the open head of a half note C flat 3 comes first in the measure). Same as osmd-dart.
+        //   accidental, but VexFlow kept a column for it, so the visible note's accidental stood a head away (or the
+        //   visible note drew none, its pitch being altered in the measure already). The visible note draws it instead,
+        //   also without an accidental in the XML: e.g. a hidden eighth C flat starting an arpeggio on the open head of
+        //   a half note C flat, first in the measure.
         if (!graphicalNote.sourceNote.PrintObject && graphicalNote.sourceNote.sharesNoteheadWithVisibleUnisonNote()) {
             this.hiddenNoteWithAccidentalDict.setValue(pitchKey, { note: graphicalNote, accidental: pitch.Accidental });
             return;

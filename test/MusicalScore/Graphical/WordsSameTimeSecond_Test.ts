@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalMeasure } from "../../../src/MusicalScore/Graphical/GraphicalMeasure";
@@ -19,13 +19,13 @@ describe("Words at the same time as another marking", () => {
     let osmd: OpenSheetMusicDisplay;
     interface Labels { above: string[], below: string[] }
 
-    before(async () => {
+    beforeAll(async () => {
         container = TestUtils.getDivElement(document);
         osmd = TestUtils.createOpenSheetMusicDisplay(container);
         await osmd.load(TestUtils.getScore("test_words_same_time_second.musicxml"));
         osmd.render();
     });
-    after(() => {
+    afterAll(() => {
         osmd.clear();
         container.remove();
     });

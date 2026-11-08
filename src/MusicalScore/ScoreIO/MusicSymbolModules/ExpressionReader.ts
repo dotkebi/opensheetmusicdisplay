@@ -81,6 +81,11 @@ export class ExpressionReader {
     private lastWedge: ContinuousDynamicExpression;
     /** Wedge stops with an <offset> read in the current measure, closed at its end (resolvePendingWedgeStops()). */
     private pendingWedgeStops: {wedge: ContinuousDynamicExpression, measure: SourceMeasure, stopAt: Fraction, endOffset: Fraction}[] = [];
+    /** Wedge stops read in the current measure with no open wedge of their number: a stop written in the file before its start,
+     *  which follows in another voice after a `<backup>` (MuseScore, a hairpin of a voice read later: the stop is read at the
+     *  later time, `readAt`). A start before that time closes at the stop, once the measure is read (addWedge(),
+     *  pendingWedgeStops); the rest are forgotten at the measure's end. */
+    private orphanWedgeStops: {numberXml: number, measure: SourceMeasure, readAt: Fraction, endOffset: Fraction}[] = [];
     private WedgeYPosXml: number;
     private openPedal: Pedal;
     private openWavyLine: WavyLine;
@@ -210,6 +215,7 @@ export class ExpressionReader {
                 dirNodes: IXmlElement[] = directionNode.elements("direction-type")): void {
         let isTempoInstruction: boolean = false;
         this.startMeasureForDashes(currentMeasure);
+        const tempoExpressionCount: number = currentMeasure.TempoExpressions.length;
 
         const timestampFraction: Fraction = inSourceMeasureCurrentFraction.clone();
         const offsetNode: IXmlElement = directionNode.element("offset");
@@ -219,15 +225,14 @@ export class ExpressionReader {
         }
         // this.directionTimestamp is the same time (current + offset), see readExpressionParameters().
 
-        const n: IXmlElement = directionNode.element("sound");
+        const n: IXmlElement = directionNode.name === "sound" ? directionNode : directionNode.element("sound");
         if (n) {
             const tempoAttr: IXmlAttribute = n.attribute("tempo");
             const dynAttr: IXmlAttribute = n.attribute("dynamics");
             if (tempoAttr) {
-                // const match: string[] = tempoAttr.value.match(/^(\d+\.?\d{0,9}|\.\d{1,9})$/);
-                const match: string[] = tempoAttr.value.match(/^(\d+)(\.\d+)?$/);
-                if (match?.length > 0) {
-                    this.soundTempo = Math.round(Number.parseFloat(tempoAttr.value));
+                const tempo: number = ExpressionReader.readDecimal(tempoAttr.value);
+                if (Number.isFinite(tempo) && tempo >= 0) {
+                    this.soundTempo = tempo;
                 } else {
                     log.info("invalid xml tempo: " + tempoAttr.value);
                     this.soundTempo = 100;
@@ -273,7 +278,6 @@ export class ExpressionReader {
                 } else {
                     // Simple metronome mark: beat-unit = BPM
                     const beatUnit: IXmlElement = dirContentNode.element("beat-unit");
-                    const dotted: boolean = dirContentNode.element("beat-unit-dot") !== undefined;
                     const bpm: IXmlElement = dirContentNode.element("per-minute");
                     if (beatUnit !== undefined && bpm) {
                         // per-minute can contain text alongside the number (e.g. "c. 108" for circa)
@@ -283,9 +287,10 @@ export class ExpressionReader {
                         const bpmNumber: number = bpmMatch ? parseFloat(bpmMatch[1]) : NaN;
                         // keep the whole text for display ("c. 108", "80 e")
                         const perMinuteText: string = bpmMatch && bpmMatch[1] !== perMinute ? perMinute : undefined;
+                        const dotCount: number = dirContentNode.elements("beat-unit-dot").length;
                         const precedingMark: InstantaneousTempoExpression = this.metronomeMarkAt(currentMeasure, timestampFraction);
                         if (precedingMark && !isTempoInstruction &&
-                            !ExpressionReader.isSameMetronomeMark(precedingMark, beatUnit.value, dotted, perMinute)) {
+                            !ExpressionReader.isSameMetronomeMark(precedingMark, beatUnit.value, dotCount, perMinute)) {
                             // Another, different metronome mark at the same time without a <sound tempo> of its own
                             // ("♩. = 80 e ♩. = 50", two alternatives) is drawn after the first one on the same line.
                             // Only the first one sets the tempo. Repeated identical marks (exporter duplicates) and marks
@@ -298,7 +303,7 @@ export class ExpressionReader {
                                                                  precedingMark.ParentMultiTempoExpression,
                                                                  true);
                             followingMark.parentMeasure = currentMeasure;
-                            followingMark.dotted = dotted;
+                            followingMark.dotCount = dotCount;
                             followingMark.beatUnit = beatUnit.value;
                             followingMark.perMinuteText = perMinuteText;
                             precedingMark.followingMetronomeMarks.push(followingMark);
@@ -313,11 +318,22 @@ export class ExpressionReader {
                                                              this.currentMultiTempoExpression,
                                                              true);
                         instantaneousTempoExpression.parentMeasure = currentMeasure;
+                        instantaneousTempoExpression.beatUnit = beatUnit.value;
+                        instantaneousTempoExpression.dotCount = dotCount;
                         this.soundTempo = bpmNumber;
-                        // make sure to take dotted beats into account
-                        currentMeasure.TempoInBPM = this.soundTempo * (dotted?1.5:1);
+                        // measure.TempoInBPM drives playback and is expressed in quarter notes per minute.
+                        //   If this direction also carried a <sound tempo> (isTempoInstruction), that value is
+                        //   authoritative for playback and was already written to measure.TempoInBPM above, so
+                        //   keep it: this matches what MuseScore plays and respects files where the printed mark
+                        //   and the sounding tempo intentionally differ (e.g. "half = 144" with sound tempo 144).
+                        //   Otherwise derive the tempo from the metronome mark itself, converting its per-minute
+                        //   value via the beat unit: e.g. "half = 88" -> 176, "eighth = 120" -> 60 (a dotted beat
+                        //   unit is 1.5x as long). Either way the mark is still DISPLAYED with its original beat
+                        //   unit + per-minute via the InstantaneousTempoExpression, which keeps bpmNumber.
+                        if (!isTempoInstruction) {
+                            currentMeasure.TempoInBPM = instantaneousTempoExpression.TempoInQuarterNotesPerMinute;
+                        }
                         this.musicSheet.HasBPMInfo = true;
-                        instantaneousTempoExpression.dotted = dotted;
                         instantaneousTempoExpression.beatUnit = beatUnit.value;
                         instantaneousTempoExpression.perMinuteText = perMinuteText;
                         instantaneousTempoExpression.metronomeParentheses = dirContentNode.attribute("parentheses")?.value === "yes";
@@ -397,6 +413,11 @@ export class ExpressionReader {
                 continue;
             }
         }
+        if (this.explicitSoundTempo > 0 && currentMeasure.TempoExpressions.length === tempoExpressionCount) {
+            // no tempo text or metronome mark was read: the sound tempo changes playback without a printed tempo
+            this.directionTimestamp = this.soundTimestamp;
+            this.createNewTempoExpressionIfNeeded(currentMeasure);
+        }
     }
 
     /** Reads a `<bracket line-type="wavy">` start or stop as a wavy line (WavyLine.IsBracket) from its start to its stop time
@@ -434,10 +455,17 @@ export class ExpressionReader {
     /** Usually called at end of last measure. */
     public closeOpenExpressions(sourceMeasure: SourceMeasure, timestamp: Fraction): void {
         for (const openCont of this.openContinuousDynamicExpressions) {
+            // A wedge without a stop ends at the end of the measure it starts in, not at the end of the piece: that drew a
+            //   hairpin through every system to the last one (openscore string quartets, a stop with another number).
+            //   A word dynamic ("dim.") draws no line and keeps running to the end, as before: closing it earlier changes
+            //   which trailing rest measures join a multiple rest.
+            const startMeasure: SourceMeasure = openCont.Label ? undefined : openCont.parentMeasure ?? sourceMeasure;
+            const endMeasure: SourceMeasure = startMeasure?.Duration ? startMeasure : sourceMeasure;
+            const endTimestamp: Fraction = endMeasure === startMeasure ? startMeasure.Duration.clone() : timestamp;
             // add to current stafflinked expression // refactor into closeOpenContinuousDynamic?
-            this.createNewMultiExpressionIfNeeded(sourceMeasure, openCont.NumberXml, timestamp);
+            this.createNewMultiExpressionIfNeeded(endMeasure, openCont.NumberXml, endTimestamp);
 
-            this.closeOpenContinuousDynamic(openCont, sourceMeasure, timestamp);
+            this.closeOpenContinuousDynamic(openCont, endMeasure, endTimestamp);
         }
         if (this.openContinuousTempoExpression) {
             this.closeOpenContinuousTempo(Fraction.plus(sourceMeasure.AbsoluteTimestamp, timestamp));
@@ -574,6 +602,8 @@ export class ExpressionReader {
                 try {
                     if (pedalNode.attribute("line")?.value === "yes") {
                         line = true;
+                        // sign="yes": the Ped. sign, then the line (MusicXML: with a line, the sign is no by default)
+                        sign = pedalNode.attribute("sign")?.value === "yes";
                     } else if (pedalNode.attribute("line")?.value === "no"){
                         line = false;
                         //No line implies sign
@@ -585,8 +615,10 @@ export class ExpressionReader {
                         sign = false;
                         line = true;
                     }
-                    switch (pedalNode.attribute("type").value) {
-                        case "start": {
+                    const pedalType: string = pedalNode.attribute("type").value;
+                    switch (pedalType) {
+                        case "start":
+                        case "resume": { // a line without the start hook, e.g. after the Ped. sign (MuseScore 4.2-4.7.1's Ped. + line pedal)
                             const unclaimed: PendingPedalStop = this.pendingPedalStop;
                             if (unclaimed && !(unclaimed.measure === currentMeasure && unclaimed.timestamp.gt(this.directionTimestamp))) {
                                 // not the stop of this pedal (one written before its start): the * of an earlier release, drawn alone.
@@ -621,13 +653,15 @@ export class ExpressionReader {
                             }
                             this.createNewMultiExpressionIfNeeded(currentMeasure, -1);
                             this.openPedal = new Pedal(line, sign);
+                            this.openPedal.BeginsWithoutHook = pedalType === "resume";
                             this.openPedal.Placement = this.pedalPlacement(directionNode);
                             this.openPedal.RelativeX = ExpressionReader.pedalRelativeX(pedalNode);
                             const stop: { pedal: Pedal, measure: SourceMeasure, timestamp: Fraction } = this.lastPedalStop;
-                            if (stop && !line && !stop.pedal.IsLine && !stop.pedal.ReleaseHidden && stop.measure === currentMeasure &&
+                            if (stop && sign && !stop.pedal.ReleaseHidden && stop.measure === currentMeasure &&
                                 stop.timestamp.Equals(this.directionTimestamp)) {
-                                // explicit stop and start at one time: a pedal change. A stop without its sign (sign="no") is
-                                //   no change: the next Ped. alone retakes the pedal, as engraved (Gluck, Tu lo sai m31).
+                                // explicit stop and start at one time with the Ped. sign (a sign pedal, or the sign then a line): a
+                                //   pedal change, drawn as * Ped. or as the end of a pedal line, then Ped. A stop without its sign
+                                //   (sign="no") is no change: the next Ped. alone retakes the pedal, as engraved (Gluck, Tu lo sai m31).
                                 stop.pedal.ChangeEnd = true;
                                 this.openPedal.ChangeBegin = true;
                             }
@@ -646,8 +680,10 @@ export class ExpressionReader {
                             }
                             break;
                         }
-                        case "stop": {
+                        case "stop":
+                        case "discontinue": { // a line end without the end hook
                             const stopTimestamp: Fraction = this.pedalStopTimestamp(directionNode, endTimestamp);
+                            const endsWithoutHook: boolean = pedalType === "discontinue";
                             // <pedal type="stop" sign="no">: released without a *
                             const releaseHidden: boolean = pedalNode.attribute("sign")?.value === "no";
                             const relativeX: number = ExpressionReader.pedalRelativeX(pedalNode);
@@ -663,6 +699,7 @@ export class ExpressionReader {
                                 }
                                 previous.ReleaseHidden = releaseHidden;
                                 previous.ReleaseRelativeX = relativeX;
+                                previous.EndsWithoutHook = endsWithoutHook;
                                 const end: MultiExpression = this.createNewMultiExpressionIfNeeded(currentMeasure, -1, stopTimestamp);
                                 end.PedalEnd = previous;
                                 previous.ParentEndMultiExpression = end;
@@ -671,6 +708,7 @@ export class ExpressionReader {
                                 const stopped: Pedal = this.openPedal;
                                 stopped.ReleaseHidden = releaseHidden;
                                 stopped.ReleaseRelativeX = relativeX;
+                                stopped.EndsWithoutHook = endsWithoutHook;
                                 this.endOpenPedal(currentMeasure, stopTimestamp);
                                 this.lastPedalStop = { pedal: stopped, measure: currentMeasure, timestamp: stopTimestamp };
                             } else {
@@ -1055,6 +1093,7 @@ export class ExpressionReader {
                         currentMeasure,
                         markingEnum);
                 instantaneousDynamicExpression.InMeasureTimestamp = inSourceMeasureCurrentFraction.clone();
+                instantaneousDynamicExpression.YPositionXml = ExpressionReader.readYPositionXml(dynamicsNode);
                 this.getMultiExpression.addExpression(instantaneousDynamicExpression, "");
                 // addExpression unnecessary now?:
                 //const multiExpression = this.getMultiExpression(ExpressionType.InstantaneousDynamic, numberXml);
@@ -1120,7 +1159,8 @@ export class ExpressionReader {
             if (this.checkIfWordsNodeIsRepetitionInstruction(text)) {
                 return;
             }
-            this.fillMultiOrTempoExpression(text, currentMeasure, inSourceMeasureCurrentFraction, fontStyle, fontColor, defaultYXml, tempoFontStyle, language);
+            this.fillMultiOrTempoExpression(text, currentMeasure, inSourceMeasureCurrentFraction, fontStyle, fontColor, defaultYXml, tempoFontStyle, language,
+                                            ExpressionReader.readYPositionXml(wordsNode));
             // readExpressionParameters() initializes once per outer <direction>.
             // Resetting here loses placement/staff context needed by later
             // <direction-type> siblings (for example whitespace words + wedge).
@@ -1205,6 +1245,10 @@ export class ExpressionReader {
                     if (open) {
                         this.openContinuousDynamicExpressions = this.openContinuousDynamicExpressions.filter(dyn => dyn !== open);
                         this.pendingWedgeStops.push({ wedge: open, measure: currentMeasure, stopAt, endOffset });
+                    } else {
+                        // no wedge of this number open: the stop of a start written after it in this measure (addWedge(),
+                        //   orphanWedgeStops; Handel, Affanni del pensier, piano m4: the stop at the measure's end, then the start)
+                        this.orphanWedgeStops.push({ numberXml: wedgeNumberXml, measure: currentMeasure, readAt: stopAt.clone(), endOffset });
                     }
                     return;
                 }
@@ -1229,6 +1273,7 @@ export class ExpressionReader {
             this.closeOpenContinuousDynamic(pending.wedge, pending.measure, end);
         }
         this.pendingWedgeStops = [];
+        this.orphanWedgeStops = [];
     }
     /** Where a wedge stop read at the very start of a measure (`readAt` 0, no later <offset>) ends: at the last staff entry of
      *  this staff in the previous measure, if the wedge started before this measure. Such a stop closes the wedge at the barline
@@ -1316,10 +1361,10 @@ export class ExpressionReader {
         return existingMultiExpression;
     }
 
-    private static isSameMetronomeMark(mark: InstantaneousTempoExpression, beatUnit: string, dotted: boolean, perMinute: string): boolean {
+    private static isSameMetronomeMark(mark: InstantaneousTempoExpression, beatUnit: string, dotCount: number, perMinute: string): boolean {
         for (const other of [mark].concat(mark.followingMetronomeMarks)) {
             const otherPerMinute: string = other.perMinuteText ?? String(other.TempoInBpm);
-            if (other.beatUnit === beatUnit && other.dotted === dotted &&
+            if (other.beatUnit === beatUnit && other.dotCount === dotCount &&
                 (otherPerMinute === perMinute || Number(perMinute) === other.TempoInBpm)) {
                 return true;
             }
@@ -1340,13 +1385,34 @@ export class ExpressionReader {
     private readDirectionTimestamp(offset: IXmlElement, sourceTimestamp: Fraction): Fraction {
         const timestamp: Fraction = sourceTimestamp.clone();
         if (offset) {
-            const value: string = offset.value.trim();
-            const divisions: number = Number(value);
-            if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value) && Number.isFinite(divisions)) {
+            const divisions: number = ExpressionReader.readDecimal(offset.value);
+            if (Number.isFinite(divisions)) {
                 timestamp.Add(new Fraction(divisions, 4 * this.divisions));
             }
         }
         return timestamp;
+    }
+
+    /** Returns the number of a MusicXML decimal, e.g. of an `<offset>` or a `<sound tempo>`: an optional sign and digits
+     *  with an optional decimal point, e.g. "142.5", "-0.5", "+120." or ".5", with or without surrounding XML whitespace
+     *  (spaces, tabs, line breaks). Returns NaN for any other text, e.g. "1e3", "120,5" or "", and an infinite number for
+     *  a decimal too large for a number.
+     */
+    private static readDecimal(text: string): number {
+        const decimal: string = text.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "");
+        return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(decimal) ? Number(decimal) : NaN;
+    }
+
+    /** The vertical position a `<words>` or `<dynamics>` element gives, in tenths of a staff space (see
+     *  AbstractExpression.YPositionXml): its default-y plus its relative-y, or undefined without a default-y (a relative-y
+     *  alone is relative to a position the file doesn't give). */
+    private static readYPositionXml(node: IXmlElement): number {
+        const defaultY: number = ExpressionReader.readDecimal(node.attribute("default-y")?.value ?? "");
+        if (!Number.isFinite(defaultY)) {
+            return undefined;
+        }
+        const relativeY: number = ExpressionReader.readDecimal(node.attribute("relative-y")?.value ?? "");
+        return defaultY + (Number.isFinite(relativeY) ? relativeY : 0);
     }
 
     private createNewTempoExpressionIfNeeded(currentMeasure: SourceMeasure): void {
@@ -1386,7 +1452,19 @@ export class ExpressionReader {
                         this.activeInstantaneousDynamic.StaffNumber === continuousDynamicExpression.StaffNumber) {
                         this.activeInstantaneousDynamic = undefined;
                     }
+                    // a stop of this number read before the start in this measure, at a later time: the start's stop, closed
+                    //   at the measure's end like a stop with an <offset>, when the note it ends under is known
+                    const orphanStop: {numberXml: number, measure: SourceMeasure, readAt: Fraction, endOffset: Fraction} =
+                        this.orphanWedgeStops.find(stop => stop.numberXml === numberXml && stop.measure === currentMeasure &&
+                            stop.readAt.gt(inSourceMeasureCurrentFraction));
+                    if (orphanStop) {
+                        this.orphanWedgeStops = this.orphanWedgeStops.filter(stop => stop !== orphanStop);
+                        this.openContinuousDynamicExpressions = this.openContinuousDynamicExpressions.filter(dyn => dyn !== continuousDynamicExpression);
+                        this.pendingWedgeStops.push({ wedge: continuousDynamicExpression, measure: currentMeasure, stopAt: orphanStop.readAt,
+                            endOffset: orphanStop.endOffset });
+                    }
                 } else if (type === "stop") {
+                    let closedOne: boolean = false;
                     for (const openCont of this.openContinuousDynamicExpressions) {
                         if (openCont.NumberXml === numberXml) {
                             // if (openCont.NumberXml === numberXml) { // was there supposed to be another check here? someone wrote the same check twice.
@@ -1394,7 +1472,12 @@ export class ExpressionReader {
                             openCont.StopTimestamp = stopTimestamp && inSourceMeasureCurrentFraction.lt(stopTimestamp) ?
                                 stopTimestamp.clone() : undefined;
                             this.closeOpenContinuousDynamic(openCont, currentMeasure, inSourceMeasureCurrentFraction);
+                            closedOne = true;
                         }
+                    }
+                    if (!closedOne && (stopTimestamp ?? inSourceMeasureCurrentFraction)) {
+                        this.orphanWedgeStops.push({ numberXml, measure: currentMeasure, readAt: (stopTimestamp ?? inSourceMeasureCurrentFraction).clone(),
+                            endOffset });
                     }
                 }
             } catch (ex) {
@@ -1405,7 +1488,8 @@ export class ExpressionReader {
         }
     }
     private fillMultiOrTempoExpression(inputString: string, currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction,
-        fontStyle: FontStyles, fontColor: string, defaultYXml: number = undefined, tempoFontStyle: FontStyles = undefined, language: string = undefined): void {
+        fontStyle: FontStyles, fontColor: string, defaultYXml: number = undefined, tempoFontStyle: FontStyles = undefined, language: string = undefined,
+        yPositionXml: number = undefined): void {
         if (!inputString) {
             return;
         }
@@ -1415,7 +1499,7 @@ export class ExpressionReader {
 
         //for (const splitStr of splitStrings) {
         this.createExpressionFromString("", tmpInputString, currentMeasure, inSourceMeasureCurrentFraction, inputString, fontStyle, fontColor, defaultYXml,
-                                        tempoFontStyle, language);
+                                        tempoFontStyle, language, yPositionXml);
         //}
     }
     /*
@@ -1451,7 +1535,8 @@ export class ExpressionReader {
                                        fontStyle: FontStyles,
                                        fontColor: string,
                                        defaultYXml: number = undefined,
-                                       tempoFontStyle: FontStyles = undefined, language: string = undefined): boolean {
+                                       tempoFontStyle: FontStyles = undefined, language: string = undefined,
+                                       yPositionXml: number = undefined): boolean {
         // A multi-line <words> text is a tempo instruction only when its first line is one.
         // "La seconda volta\nmolto ritenuto" is a performance note that merely contains a tempo word
         // in its second line; classifying it as a tempo expression drew it on the first staff with
@@ -1556,6 +1641,7 @@ export class ExpressionReader {
             moodExpression.fontStyle = fontStyle;
             moodExpression.ColorXML = fontColor;
             moodExpression.language = language;
+            moodExpression.YPositionXml = yPositionXml;
             multiExpression.addExpression(moodExpression, prefix);
             this.addWordExpressionForDashes(moodExpression, inSourceMeasureCurrentFraction);
             return true;
@@ -1595,6 +1681,7 @@ export class ExpressionReader {
         unknownExpression.defaultYXml = defaultYXml;
         unknownExpression.enclosure = this.wordsEnclosure;
         this.wordsEnclosure = undefined;
+        unknownExpression.YPositionXml = yPositionXml;
         unknownExpression.parentMeasure = currentMeasure;
         unknownMultiExpression.addExpression(unknownExpression, prefix);
         this.addWordExpressionForDashes(unknownExpression, inSourceMeasureCurrentFraction);

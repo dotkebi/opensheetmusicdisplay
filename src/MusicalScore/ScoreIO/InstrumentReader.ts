@@ -120,8 +120,6 @@ export class InstrumentReader {
   private currentVoiceGenerator: VoiceGenerator;
   //private openSlurDict: { [n: number]: Slur; } = {};
   private maxTieNoteFraction: Fraction;
-  private currentMultirestStartMeasure: SourceMeasure;
-  private followingMultirestMeasures: number;
 
   public get ActiveKey(): KeyInstruction {
     return this.activeKeys[0];
@@ -191,7 +189,6 @@ export class InstrumentReader {
       return false;
     }
     this.currentMeasure = currentMeasure;
-    this.followingMultirestMeasures = Math.max(this.followingMultirestMeasures - 1, 0);
     this.inSourceMeasureInstrumentIndex = this.musicSheet.getGlobalStaffIndexOfFirstStaff(this.instrument);
     for (let staffIndex: number = 0; staffIndex < this.pendingEndKeys.length; staffIndex++) {
       const key: KeyInstruction = this.pendingEndKeys[staffIndex];
@@ -353,9 +350,8 @@ export class InstrumentReader {
                   //   issue: currentStaff can be undefined for first measure
                 } else {
                   currentMeasure.multipleRestMeasures = multipleRestNumber;
-                  this.currentMultirestStartMeasure = currentMeasure;
-                  this.followingMultirestMeasures = multipleRestNumber + 1; // will be decremented at the start of the loop
                 }
+                currentMeasure.multipleRestMeasuresXml = currentMeasure.multipleRestMeasures; // the layout changes multipleRestMeasures
               } catch (e) {
                 console.log("multirest parse error: " + e);
               }
@@ -497,19 +493,15 @@ export class InstrumentReader {
                                                         isGraceNote, graceNoteSlash, graceSlur);
             // we previously excluded rest notes from a voice's voice entry (!restNote && !isGraceNote),
             //   but there seems to be no reason to. Rest notes also belong to a voice line. See #1612
+          } else if (isChord && !isGraceNote) {
+            // a chord note on another staff than the chord's previous note, e.g. of a piano chord split between the hands'
+            //   staves, belongs to the chord's voice entry on its own staff, not to the previous note's one: it was drawn on
+            //   that note's staff, with ledger lines
+            this.currentVoiceGenerator.continueChordInStaffEntry(this.currentStaffEntry);
           }
           if (!isGraceNote && !isChord) {
             previousFraction = currentFraction.clone();
             currentFraction.Add(noteDuration);
-          }
-          if (
-            isChord &&
-            this.currentStaffEntry !== undefined &&
-            this.currentStaffEntry.ParentStaff !== this.currentStaff
-          ) {
-            this.currentStaffEntry = this.currentVoiceGenerator.checkForStaffEntryLink(
-              this.inSourceMeasureInstrumentIndex + noteStaff - 1, this.currentStaff, this.currentStaffEntry, this.currentMeasure
-            );
           }
           const beginOfMeasure: boolean = (
             this.currentStaffEntry !== undefined &&
@@ -726,19 +718,13 @@ export class InstrumentReader {
         } else if (xmlNode.name === "sound") {
           // (*) MetronomeReader.readTempoInstruction(xmlNode, this.musicSheet, this.currentXmlMeasureIndex);
           this.repetitionInstructionReader?.handleMeasureSoundRepetitionInstructions(xmlNode);
-          try {
-            if (xmlNode.attribute("tempo")) { // can be null, not just undefined!
-
-                const tempo: number = parseFloat(xmlNode.attribute("tempo").value);
-
-                // should set the PlaybackSettings only at first Measure
-                if (this.currentXmlMeasureIndex === 0) {
-                    this.musicSheet.DefaultStartTempoInBpm = tempo;
-                    this.musicSheet.HasBPMInfo = true;
-                }
-            }
-          } catch (e) {
-            log.debug("InstrumentReader.readTempoInstruction", e);
+          // a <sound tempo> outside a direction changes playback like one in a direction, without a printed tempo
+          const expressionReader: ExpressionReader = this.expressionReaders[0];
+          if (expressionReader && xmlNode.attribute("tempo")) {
+            expressionReader.readExpressionParameters(
+              xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, false
+            );
+            expressionReader.read(xmlNode, this.currentMeasure, currentFraction);
           }
         } else if (xmlNode.name === "harmony") {
           const noteStaff: number = this.getNoteStaff(xmlNode);
@@ -763,6 +749,7 @@ export class InstrumentReader {
       for (const reader of this.expressionReaders) {
         reader?.resolvePendingWedgeStops();
       }
+      this.savePendingClefInstructions();
       if (this.currentXmlMeasureIndex === this.xmlMeasureList.length - 1) {
         for (let i: number = 0; i < this.instrument.Staves.length; i++) {
           if (!this.activeClefsHaveBeenInitialized[i]) {
@@ -929,8 +916,8 @@ export class InstrumentReader {
     return [stemDirectionXml, stemColorXml, noteheadColorXml];
   }
 
-  /** Parse a color in XML format: #RRGGBB or #AARRGGBB (alpha first), or #RRGGBBAA from MuseScore 4 (see MusicSheet.XmlColorAlphaLast).
-   *  @return the color in CSS format (#RRGGBB or #RRGGBBAA), as used by OSMD options and passed to SVG/canvas
+  /** Parse a color in XML format: #RRGGBB or #AARRGGBB (alpha first), or #RRGGBBAA from MuseScore (see MusicSheet.XmlColorAlphaLast).
+   *  @return the color in CSS format (#RRGGBB or #RRGGBBAA), as used by OSMD's options and passed to SVG/canvas
    */
   public parseXmlColor(xmlColorString: string): string {
     return musicXmlColorToCss(xmlColorString, this.musicSheet.XmlColorAlphaLast);
@@ -955,12 +942,14 @@ export class InstrumentReader {
     return { staff, timestamp, below: direction.attribute("placement")?.value === "below" };
   }
 
-  /** Keep a key at the actual measure end for the following measure, including pickups. */
+  /** Keep a key at the actual measure end for the following measure, including pickups.
+   *  The last measure keeps it at its end, where it is drawn after the notes. */
   public finalizeKeyInstructions(): void {
     // A forward can extend beyond the last note; the other parts can also extend this measure.
     const end: Fraction = Fraction.max(this.currentMeasure.Duration, this.measureEndFraction);
-    // The last measure has no following measure to carry a key into; keep it
-    // where the MusicXML puts it so it is drawn at the end of the measure.
+    // The last measure has no following measure to carry a key into: keep it where the MusicXML puts it,
+    //   so it is drawn at the end of the measure (e.g. the return to the main key after a trio or a variation).
+    //   readNextXmlMeasure() has already advanced currentXmlMeasureIndex to the following measure.
     const hasFollowingMeasure: boolean = this.currentXmlMeasureIndex < this.xmlMeasureList.length;
     for (let staffIndex: number = 0; staffIndex < this.instrument.Staves.length; staffIndex++) {
       const globalIndex: number = this.inSourceMeasureInstrumentIndex + staffIndex;
@@ -1433,6 +1422,7 @@ export class InstrumentReader {
 
     let num: number = 0;
     let denom: number = 0;
+    let numeratorGroups: number[];
     const senzaMisura: boolean = (timeNode && timeNode.element("senza-misura") !== undefined);
     const beatsList: IXmlElement[] = [];
     const typeList: IXmlElement[] = [];
@@ -1455,6 +1445,11 @@ export class InstrumentReader {
               const numbers: string[] = s.split("+");
               for (let idx: number = 0, len: number = numbers.length; idx < len; ++idx) {
                 n += parseInt(numbers[idx], 10);
+              }
+              // drawn as given, e.g. 2+2+3/8 instead of 7/8. Several beats/beat-type pairs are still drawn as their sum.
+              const groups: number[] = numbers.map((value: string) => parseInt(value, 10));
+              if (length === 1 && groups.every((group: number) => group > 0)) {
+                numeratorGroups = groups;
               }
             } else {
               n = parseInt(s, 10);
@@ -1480,11 +1475,12 @@ export class InstrumentReader {
         this.musicSheet.SheetErrors.pushMeasureError(errorMsg);
         num = 4;
         denom = 4;
+        numeratorGroups = undefined;
         log.debug("InstrumentReader.addAbstractInstruction", errorMsg, ex);
       }
 
       const newRhythmInstruction: RhythmInstruction = new RhythmInstruction(
-        new Fraction(num, denom, 0, false), symbolEnum
+        new Fraction(num, denom, 0, false), symbolEnum, numeratorGroups
       );
       newRhythmInstruction.PrintObject = timePrintObject;
       newRhythmInstruction.Interchangeable = InstrumentReader.readInterchangeable(timeList);
@@ -1735,83 +1731,16 @@ export class InstrumentReader {
                 firstStaffEntry.Instructions.splice(0, 0, newClefInstruction);
                 this.activeClefsHaveBeenInitialized[key - 1] = true;
               } else {
-                let previousPrintedMeasure: SourceMeasure = this.previousMeasure;
-                if (this.followingMultirestMeasures > 0 && this.currentMeasure.Rules.RenderMultipleRestMeasures) {
-                  previousPrintedMeasure = this.currentMultirestStartMeasure;
-                  // TODO check if we can do the same for autogenerated multirest measures
-                }
-                this.storeClefAtMeasureEnd(previousPrintedMeasure, sseIndex, newClefInstruction);
+                // a clef change at the start of a measure goes to the end of the previous measure, whatever the layout options:
+                //   a multiple rest measure draws the ones of its measures at its end (MusicSystemBuilder.getEndInstructionsStaffEntry())
+                this.storeClefAtMeasureEnd(this.previousMeasure, sseIndex, newClefInstruction);
               }
               this.activeClefs[key - 1] = clefInstruction;
               this.abstractInstructions.splice(i, 1);
             }
-          } else {
-            let lastStaffEntryBefore: SourceStaffEntry;
-            const duration: Fraction = this.activeRhythm.Rhythm;
-            if (duration.RealValue > 0 &&
-              instructionTimestamp.RealValue / duration.RealValue > 0.90 && // necessary for #1120
-              duration.RealValue !== instructionTimestamp.RealValue // necessary for #1461
-            ) {
-              // the measure's staff index (the staff key is counted within this instrument): the clef of a later
-              //   instrument's staff went to another instrument's staff (Vieuxtemps Op. 31 m194, piano left hand)
-              const sseIndex: number = this.inSourceMeasureInstrumentIndex + key - 1;
-              if (!this.currentMeasure.LastInstructionsStaffEntries[sseIndex]) {
-                this.currentMeasure.LastInstructionsStaffEntries[sseIndex] = new SourceStaffEntry(undefined, this.instrument.Staves[key - 1]);
-              }
-              lastStaffEntryBefore = this.currentMeasure.LastInstructionsStaffEntries[sseIndex];
-              if (!clefInstruction.PrintObject && lastStaffEntryBefore.Instructions.some(
-                (earlier: AbstractNotationInstruction) => earlier instanceof ClefInstruction && earlier.PrintObject)) {
-                // a visible courtesy clef is already there: keep it, only remember the hidden clef after it
-                clefInstruction.Parent = lastStaffEntryBefore;
-                lastStaffEntryBefore.Instructions.push(clefInstruction);
-                this.activeClefs[key - 1] = clefInstruction;
-                this.abstractInstructions.splice(i, 1);
-                continue;
-              }
-            }
-            // TODO figure out a more elegant way to do this. (see #1120)
-            //   the problem is that not all the staffentries in the measure exist yet,
-            //   so we can't put the clefInstruction before the correct note.
-            //   (if we try that, it's one note too early -> save instruction for later?)
-            //let lastTimestampBefore: Fraction;
-            // for (const vssec of this.currentMeasure.VerticalSourceStaffEntryContainers) {
-            //   for (const sse of vssec.StaffEntries) {
-            //     if (sse?.ParentStaff?.Id !== key) {
-            //       continue;
-            //     }
-            //     // if (!lastTimestampBefore || sse.Timestamp.lte(instructionTimestamp)) {
-            //     //   lastTimestampBefore = sse.Timestamp;
-            //     //   lastStaffEntryBefore = sse;
-            //     // } else {
-            //     //   lastStaffEntryBefore = sse;
-            //     //   break;
-            //     // }
-            //     if (sse.Timestamp.gte(instructionTimestamp)) {
-            //       lastStaffEntryBefore = sse;
-            //       break;
-            //     }
-            //   }
-            // }
-            //const sseIndex: number = this.inSourceMeasureInstrumentIndex + staffNumber - 1;
-            // if (!lastStaffEntryBefore) {
-            //   // this doesn't work for some reason
-            //   const newContainer: VerticalSourceStaffEntryContainer = new VerticalSourceStaffEntryContainer(this.currentMeasure, instructionTimestamp, 1);
-            //   const newStaffEntry: SourceStaffEntry = new SourceStaffEntry(newContainer, this.instrument.Staves[key - 1]);
-            //   newContainer.StaffEntries.push(newStaffEntry);
-            //   this.currentMeasure.VerticalSourceStaffEntryContainers.push(newContainer);
-            //   lastStaffEntryBefore = newStaffEntry;
-            // }
-            // if (!lastStaffEntryBefore) {
-              //   lastStaffEntryBefore = new SourceStaffEntry(undefined, undefined);
-              //   this.currentMeasure.LastInstructionsStaffEntries[sseIndex] = lastStaffEntryBefore;
-              // }
-            if (lastStaffEntryBefore) {
-              clefInstruction.Parent = lastStaffEntryBefore;
-              lastStaffEntryBefore.Instructions.push(clefInstruction);
-              this.activeClefs[key - 1] = clefInstruction;
-              this.abstractInstructions.splice(i, 1);
-            } // else clefinstruction might be processed later (e.g. Haydn Concertante measure 314)
           }
+          // else the clef stays in the list: the staff entry at its timestamp may only come later in the measure (e.g. in a
+          //   voice after a <backup>), or never, and then savePendingClefInstructions() places it at the end of the measure.
         } else if (key <= this.activeClefs.length && clefInstruction === this.activeClefs[key - 1]) {
           this.abstractInstructions.splice(i, 1);
         }
@@ -1895,6 +1824,61 @@ export class InstrumentReader {
     }
     clefInstruction.Parent = lastStaffEntry;
     lastStaffEntry.Instructions.push(clefInstruction);
+  }
+
+  /**
+   * Saves the clefs that saveAbstractInstructionList() left in the list, at the end of the measure, when all its staff entries
+   * exist. A clef in the middle of a measure goes to the staff entry of its staff at its timestamp, but the staff may have no
+   * note starting there: e.g. the next note of the clef's voice is on another staff (#1836), or the clef follows a `<backup>`
+   * to a time in the middle of a note. Such a clef goes before the next note of its staff, so that it applies from there on,
+   * or to the end of the measure if no note of its staff follows. These clefs were lost before, so their staff kept its clef.
+   */
+  private savePendingClefInstructions(): void {
+    for (let i: number = this.abstractInstructions.length - 1; i >= 0; i--) {
+      const staffNumber: number = this.abstractInstructions[i][0];
+      const clefInstruction: AbstractNotationInstruction = this.abstractInstructions[i][1];
+      const clefTimestamp: Fraction = this.abstractInstructions[i][2];
+      if (!(clefInstruction instanceof ClefInstruction) || staffNumber > this.instrument.Staves.length) {
+        continue;
+      }
+      this.abstractInstructions.splice(i, 1);
+      const staffIndex: number = this.inSourceMeasureInstrumentIndex + staffNumber - 1;
+      let nextStaffEntry: SourceStaffEntry;
+      for (const container of this.currentMeasure.VerticalSourceStaffEntryContainers) { // in timestamp order
+        if (container.Timestamp.gte(clefTimestamp) && container.StaffEntries[staffIndex]?.hasNotes()) {
+          nextStaffEntry = container.StaffEntries[staffIndex];
+          break;
+        }
+      }
+      let staffEntry: SourceStaffEntry = nextStaffEntry ?? this.currentMeasure.LastInstructionsStaffEntries[staffIndex];
+      const clefThere: ClefInstruction = staffEntry?.Instructions.find(
+        (instruction: AbstractNotationInstruction): boolean => instruction instanceof ClefInstruction) as ClefInstruction;
+      if (clefThere) {
+        if (nextStaffEntry || clefInstruction.PrintObject || !clefThere.PrintObject) {
+          continue; // a later clef change is there already
+        }
+        // a hidden clef (<clef print-object="no">) after a visible courtesy clef at the end of the measure: the courtesy clef
+        //   stays, the hidden one only updates the active clef of the following measures (see storeClefAtMeasureEnd())
+        clefInstruction.Parent = staffEntry;
+        staffEntry.Instructions.push(clefInstruction);
+        this.activeClefs[staffNumber - 1] = clefInstruction;
+        continue;
+      }
+      if (!nextStaffEntry) {
+        const activeClef: ClefInstruction = this.activeClefs[staffNumber - 1];
+        if (activeClef?.ClefType === clefInstruction.ClefType && activeClef.Line === clefInstruction.Line &&
+          activeClef.OctaveOffset === clefInstruction.OctaveOffset) {
+          continue; // no clef change, which would be drawn at the end of the measure (see saveClefInstructionAtEndOfMeasure())
+        }
+        if (!staffEntry) {
+          staffEntry = new SourceStaffEntry(undefined, undefined);
+          this.currentMeasure.LastInstructionsStaffEntries[staffIndex] = staffEntry;
+        }
+      }
+      clefInstruction.Parent = staffEntry;
+      staffEntry.Instructions.push(clefInstruction);
+      this.activeClefs[staffNumber - 1] = clefInstruction;
+    }
   }
 
   /**

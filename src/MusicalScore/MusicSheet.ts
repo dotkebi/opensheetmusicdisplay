@@ -104,7 +104,7 @@ export class MusicSheet /*implements ISettableMusicSheet, IComparable<MusicSheet
     /** Whether any note has a [[VoiceLeadingGuide]]. Lets the drawer skip the search in all other sheets. */
     public HasVoiceLeadingGuides: boolean = false;
     /** Whether the MusicXML's 8-digit colors are #RRGGBBAA (alpha last) instead of the spec's #AARRGGBB.
-     *  Set by the reader from <software> (MuseScore 4 exports them like that), see [[musicXmlColorsAreAlphaLast]]. */
+     *  Set by the reader from <software>: MuseScore exports them like that, see [[musicXmlColorsAreAlphaLast]]. */
     public XmlColorAlphaLast: boolean = false;
     /** The default languages of the lyrics. A lyric's own xml:lang comes first, see LyricsEntry.language. */
     public LyricLanguages: LyricLanguage[] = [];
@@ -173,6 +173,9 @@ export class MusicSheet /*implements ISettableMusicSheet, IComparable<MusicSheet
         // (*) this.playbackSettings.BeatsPerMinute = startTempo;
         this.userStartTempoInBPM = startTempo;
     }
+    /** The start tempo the file gives, in quarter notes per minute (e.g. 60 for a metronome mark half = 30 without a
+     *  `<sound tempo>`). Setting it sets userStartTempoInBPM too.
+     */
     public get DefaultStartTempoInBpm(): number {
         return this.defaultStartTempoInBpm;
     }
@@ -487,7 +490,7 @@ export class MusicSheet /*implements ISettableMusicSheet, IComparable<MusicSheet
     //    }
     //
     //}
-    /** The tempo at the start of the piece, not the first later tempo instruction. */
+    /** The tempo at the start of the piece in quarter notes per minute, not the first later tempo instruction. */
     public getExpressionsStartTempoInBPM(): number {
         const expressions: MultiTempoExpression[] = this.TimestampSortedTempoExpressionsList;
         let me: MultiTempoExpression = expressions[0];
@@ -501,7 +504,7 @@ export class MusicSheet /*implements ISettableMusicSheet, IComparable<MusicSheet
             }
         }
         if (me.InstantaneousTempo) {
-            return me.PlaybackTempoInBpm ?? me.InstantaneousTempo.TempoInBpm;
+            return me.PlaybackTempoInBpm ?? me.InstantaneousTempo.TempoInQuarterNotesPerMinute;
         } else if (me.ContinuousTempo) {
             return me.ContinuousTempo.StartTempo;
         }
@@ -541,6 +544,7 @@ export class MusicSheet /*implements ISettableMusicSheet, IComparable<MusicSheet
      * E.g. +1 halftone will transpose Eb major to E major.
      * also see Instrument.Transpose (e.g. osmd.Sheet.Instruments[0].Transpose will additionally transpose this instrument only)
      * osmd.TransposeCaculator needs to be defined/created for this to take effect. (just set it with new TransposeCalculator())
+     * The next osmd.render() applies it (no need to call osmd.updateGraphic()).
      */
     public set Transpose(value: number) {
         this.transpose = value;
@@ -628,7 +632,7 @@ export class MusicSheet /*implements ISettableMusicSheet, IComparable<MusicSheet
         const visInstruments: Instrument[] = [];
         for (let idx: number = 0, len: number = this.Instruments.length; idx < len; ++idx) {
             const instrument: Instrument = this.Instruments[idx];
-            if (instrument.Voices.length > 0 && instrument.Voices[0].Visible) {
+            if (instrument.Visible) {
                 visInstruments.push(instrument);
             }
         }

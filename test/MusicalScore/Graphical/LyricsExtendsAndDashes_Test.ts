@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
@@ -44,7 +44,7 @@ describe("Lyrics extend lines and dashes", () => {
         });
         const dashCount: number = staffLines.reduce((count, staffLine) => count + staffLine.LyricsDashes.length, 0);
         expect(dashCount, "dashes in the sample").to.be.greaterThan(0);
-        expect(container.querySelectorAll(".dash").length, "dashes drawn").to.equal(dashCount);
+        expect(container.querySelectorAll(".osmd-dash").length, "dashes drawn").to.equal(dashCount);
     });
 
     it("puts the dashes of a word continued in the next system on that system's lyrics line", async () => {

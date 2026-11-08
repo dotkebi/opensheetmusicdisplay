@@ -57,6 +57,8 @@ export class StaveSection extends StaveModifier {
       }
     }
     let x = this.x + shift_x;
+    // VexFlowPatch: the box and the text in a group (class vf-stavesection)
+    ctx.openGroup('stavesection');
     if (this.drawRect) {
       ctx.beginPath();
       ctx.lineWidth = 2;
@@ -65,6 +67,7 @@ export class StaveSection extends StaveModifier {
     }
     x += (width - text_width) / 2;
     ctx.fillText('' + this.section, x, y + height );
+    ctx.closeGroup();
     ctx.restore();
     return this;
   }

@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
@@ -7,23 +7,23 @@ import { Note } from "../../../src/MusicalScore/VoiceData/Note";
 import { VoiceEntry } from "../../../src/MusicalScore/VoiceData/VoiceEntry";
 
 /**
- * A note whose <beam number="2"> comes before its <beam number="1"> (81sabo Haydn, Oboe Concerto Hob.VIIg:C1 I m239:
- * the sixteenth triplet inside an eighth beam) was read by its first beam element: a begin of beam 2, which closed the
- * eighth beam, so the notes after the triplet were drawn with flags, in the app too. The reader takes the primary beam
- * (number 1) whatever the element order. Same fixture and checks as osmd-dart test/beam_number_order_test.dart.
+ * A note whose <beam number="2"> comes before its <beam number="1"> (e.g. a sixteenth triplet inside an eighth beam,
+ * as some exports write it) was read by its first beam element: a begin of beam 2, which closed the open eighth beam,
+ * so the beam broke there: the eighth before the triplet and the triplet were drawn with flags. The reader now takes
+ * the primary beam (number 1) whatever the element order.
  *
  * Fixture: m1 the beam elements 2 then 1, m2 1 then 2 — both one beam of six notes.
  */
 describe("Beam elements listed number 2 before number 1", () => {
     let container: HTMLElement;
     let osmd: OpenSheetMusicDisplay;
-    before(async () => {
+    beforeAll(async () => {
         container = TestUtils.getDivElement(document);
         osmd = TestUtils.createOpenSheetMusicDisplay(container);
         await osmd.load(TestUtils.getScore("test_beam_number_order.musicxml"));
         osmd.render();
     });
-    after(() => {
+    afterAll(() => {
         osmd.clear();
         container.remove();
     });

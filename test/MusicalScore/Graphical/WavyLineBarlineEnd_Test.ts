@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowVibratoBracket } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowVibratoBracket";
@@ -95,7 +95,9 @@ describe("Wavy lines (bundle B5)", () => {
         const brackets: VexFlowVibratoBracket[] = await render("test_wavy_line_barline_end");
         const bracket: VexFlowVibratoBracket = brackets[3];
         expect(measure(bracket, true)).to.equal(6);
-        expect(bracket.startNote.getStave().options.top_text_position, "raised over the slur to A5").to.be.greaterThan(1);
+        // (by its line, the mark by its y_shift; the stave's top text position stays, since upstream 2.3.0)
+        expect(bracket.line, "raised over the slur to A5").to.be.greaterThan(1);
+        expect(bracket.startNote.getStave().options.top_text_position).to.equal(1);
         const mark: { baseline: number, top: number } = drawnTrill(bracket);
         const distance: number = mark.baseline - lineY(bracket);
         expect(distance, `mark baseline ${mark.baseline}, line ${lineY(bracket)}`).to.be.within(3, 10);

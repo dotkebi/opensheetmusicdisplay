@@ -34,10 +34,17 @@ export interface IOSMDOptions {
     autoBeam?: boolean;
     /** Options for autoBeaming like whether to beam over rests. See AutoBeamOptions interface. */
     autoBeamOptions?: AutoBeamOptions;
-    /** Automatically resize score with canvas size. Default is true. */
+    /** Automatically resize score with canvas size. Default is true.
+     *  Listens to the window's resize events. Meanwhile, the container keeps the instance in memory: it's freed together with its
+     *  container, or call osmd.dispose() when you don't need it anymore but keep the container.
+     *  Setting this to false (also during runtime) removes the listener as well.
+     */
     autoResize?: boolean;
     /** Render Backend, will be SVG if given undefined, "SVG" or "svg", otherwise Canvas. */
     backend?: string;
+    /** Whether the instance keeps a small rendering alive, so that a sheet rendered after clear() renders about as fast as
+     *  the one before it: true, false, or "auto" (default): in Chromium-based browsers. Sets osmd.KeepWarm, see there. */
+    keepWarm?: boolean | "auto";
     /** Defines the mode that is used for coloring: XML (0), Boomwhacker(1), CustomColorSet (2). Default XML.
      *  If coloringMode.CustomColorSet (2) is chosen, a coloringSetCustom parameter must be added.
      */
@@ -130,8 +137,14 @@ export interface IOSMDOptions {
     fingeringPosition?: string;
     /** For above/below fingerings, whether to draw them directly above/below notes (default), or above/below staffline. */
     fingeringInsideStafflines?: boolean;
-    /** Whether to draw hidden/invisible notes (print-object="no" in XML). Default false. Not yet supported. */ // TODO
+    /** Whether to draw hidden/invisible notes and rests (print-object="no" in XML) like visible ones. Default false.
+     *  Sets EngravingRules.RenderHiddenNotes. To change it after load(), call osmd.updateGraphic() before the next render().
+     */
     drawHiddenNotes?: boolean;
+    /** The color of the hidden notes drawn with drawHiddenNotes. Default "#A0A0A0CC", a light, slightly transparent gray.
+     *  "" draws them in the colors of visible notes. Sets EngravingRules.HiddenNotesColor.
+     */
+    hiddenNotesColor?: string;
     /** Whether to draw lyrics (and their extensions and dashes). */
     drawLyrics?: boolean;
     /** Whether to calculate extra slurs with bezier curves not covered by Vexflow slurs. Default true. */
@@ -176,6 +189,7 @@ export interface IOSMDOptions {
     /** This makes OSMD render on one single horizontal (staff-)line.
      * This option should be set before loading a score. It only starts working after load(),
      * calling setOptions() after load and then render() doesn't work in this case.
+     * Explicit system breaks still begin a new system below, e.g. with newSystemFromXML (see EngravingRules.RenderSingleHorizontalStaffline).
      */
     renderSingleHorizontalStaffline?: boolean;
     /** Whether to begin a new system ("line break") when given in XML ('new-system="yes"').
@@ -270,15 +284,17 @@ export interface IOSMDOptions {
     /**
      * Whether to calculate the skyline and bottom-line geometrically, from the extents of the VexFlow draw calls,
      * instead of drawing each measure on a hidden canvas and reading back its pixels, which is much slower. Default true.
-     * If set to false, the previous pixel-based calculation is used, see preferredSkyBottomLineBatchCalculatorBackend.
+     * If set to false, the previous pixel-based calculation is used, see skyBottomLineBatchMinMeasures.
      */
     useGeometricSkyBottomLineCalculation?: boolean;
-    /**
-     * Defines which skyline and bottom-line batch calculation algorithm to use, if useGeometricSkyBottomLineCalculation is false.
+    /** @deprecated No effect. The pixel-based batch calculation (useGeometricSkyBottomLineCalculation false) always reads the pixels
+     * with getImageData (SkyBottomLineBatchCalculatorBackendType.Plain): its WebGL backend was removed,
+     * as the geometric calculation (the default) is faster.
      */
     preferredSkyBottomLineBatchCalculatorBackend?: SkyBottomLineBatchCalculatorBackendType;
     /**
-     * Defines the minimum number of measures in the entire sheet music where the skyline and bottom-line batch calculation is enabled.
+     * Defines the minimum number of measures in the entire sheet music where the skyline and bottom-line batch calculation is enabled,
+     * if useGeometricSkyBottomLineCalculation is false.
      */
     skyBottomLineBatchMinMeasures?: number;
 }
@@ -300,8 +316,20 @@ export enum BackendType {
     Canvas = 1
 }
 
+/**
+ * The backends of the pixel-based (raster) skyline calculation in batches, which draws the measures on a canvas and reads its
+ * pixels back. OSMD uses it only if EngravingRules.UseGeometricSkyBottomLineCalculation is false (from SkyBottomLineBatchMinMeasures
+ * measures on). The geometric calculation, OSMD's default since 2.0.0, uses neither backend and is faster than both.
+ */
 export enum SkyBottomLineBatchCalculatorBackendType {
+    /**
+     * Plain, as in without WebGL: scans the canvas pixels, read with getImageData, in JavaScript. The backend of the
+     * pixel-based calculation that OSMD used before the geometric one, which is faster. The only backend since WebGL was removed.
+     */
     Plain = 0,
+    /** @deprecated No effect: the WebGL backend was removed, as the geometric calculation (the default) is faster;
+     * the pixel-based batch calculation uses Plain.
+     */
     WebGL = 1,
 }
 

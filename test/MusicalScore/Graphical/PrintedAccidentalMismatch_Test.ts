@@ -1,52 +1,41 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
+import { AccidentalEnum } from "../../../src/Common/DataObjects/Pitch";
+import { GraphicalMeasure } from "../../../src/MusicalScore/Graphical/GraphicalMeasure";
 import { TestUtils } from "../../Util/TestUtils";
 
 /**
- * The sounding pitch comes from <alter>; <accidental> is the printed sign. A printed sign that disagrees with <alter>
- * is drawn as printed, and the measure keeps the sounding alteration: Eccles, Violin Sonata in G minor (1720 engraving)
- * Largo m4, a sharp before a key-signature E flat cancels the flat (sounds E natural; 81sabo encodes <alter> 0 +
- * <accidental>sharp). Before, the sharp was drawn as a natural. Same as osmd-dart test/accidental_alter_mismatch_test.dart.
+ * In MusicXML the sounding pitch comes from `<alter>` and the printed sign from `<accidental>`. When they disagree, the
+ * note draws the printed sign: e.g. a historical engraving (Eccles, Violin Sonata in
+ * G minor, Largo m. 4) writes a sharp before an E to cancel the key's flat, sounding E natural — `<alter>0</alter>` with
+ * `<accidental>sharp</accidental>`. It was drawn as a natural. A sharp or flat written without `<alter>` (some exports)
+ * was dropped; it is drawn now. The measure keeps the sounding alteration, so the next E natural gets no natural sign.
+ * Only plain signs (sharp, flat, natural, double-sharp, flat-flat); two-glyph signs (natural-sharp, ...) are unchanged.
  */
 describe("Printed accidental that disagrees with <alter>", () => {
-    function note(step: string, accidental?: string, alter?: string): string {
-        return `<note><pitch><step>${step}</step>${alter ? `<alter>${alter}</alter>` : ""}<octave>5</octave></pitch>` +
-            `<duration>1</duration><voice>1</voice><type>eighth</type>${accidental ? `<accidental>${accidental}</accidental>` : ""}</note>`;
+    function quarter(step: string, pitchExtra: string = "", noteExtra: string = ""): string {
+        return `<note><pitch><step>${step}</step>${pitchExtra}<octave>4</octave></pitch><duration>1</duration>` +
+            `<voice>1</voice><type>quarter</type>${noteExtra}</note>`;
     }
-    function score(fifths: number, notes: string): string {
-        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\">" +
-            "<part-list><score-part id=\"P1\"><part-name>Violin</part-name></score-part></part-list><part id=\"P1\"><measure number=\"1\">" +
-            `<attributes><divisions>2</divisions><key><fifths>${fifths}</fifths></key><time><beats>2</beats><beat-type>4</beat-type></time>` +
-            "<clef><sign>G</sign><line>2</line></clef></attributes>" + notes + "</measure></part></score-partwise>";
-    }
-    async function drawn(xml: string): Promise<{ glyphs: string[], halfTones: number[] }> {
+    const xml: string = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\">" +
+        "<part-list><score-part id=\"P1\"><part-name>Violin</part-name></score-part></part-list><part id=\"P1\"><measure number=\"1\">" +
+        "<attributes><divisions>1</divisions><key><fifths>-2</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time>" +
+        "<clef><sign>G</sign><line>2</line></clef></attributes>" +
+        quarter("E", "<alter>0</alter>", "<accidental>sharp</accidental>") + // sharp cancelling the key's flat, sounding E natural
+        quarter("E") + // the same E natural again: implied, no sign
+        quarter("F", "", "<accidental>sharp</accidental>") + // printed sharp without <alter>
+        quarter("F") +
+        "</measure></part></score-partwise>";
+
+    it("draws the printed sign, and keeps the sounding alteration in the measure", async () => {
         const div: HTMLElement = TestUtils.getDivElement(document);
-        const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
+        const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
         await osmd.load(xml);
         osmd.render();
-        const measure: any = osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines[0].Measures[0];
-        const glyphs: string[] = [];
-        const halfTones: number[] = [];
-        for (const entry of measure.staffEntries) {
-            for (const gve of entry.graphicalVoiceEntries) {
-                for (const gn of gve.notes) {
-                    const accidentals: any[] = gn.vfnote[0].getModifiers().filter((m: any) => m.getCategory() === "accidentals");
-                    glyphs.push(accidentals.map((a: any) => a.type).join("") || "-");
-                    halfTones.push(gn.sourceNote.Pitch.getHalfTone());
-                }
-            }
-        }
-        return { glyphs, halfTones };
-    }
-
-    it("draws a historical sharp as printed and sounds E natural (Eccles)", async () => {
-        const { glyphs, halfTones } = await drawn(score(-2, note("D") + note("E", "sharp") + note("E") + note("D")));
-        expect(glyphs).to.deep.equal(["-", "#", "-", "-"]);
-        expect(halfTones[1]).to.equal(halfTones[2]);
-    });
-
-    it("draws an exported sign without <alter> as printed", async () => {
-        const { glyphs } = await drawn(score(1, note("C", "sharp") + note("C") + note("B", "flat") + note("B")));
-        expect(glyphs).to.deep.equal(["#", "-", "b", "-"]);
+        const measure: GraphicalMeasure = osmd.GraphicSheet.MeasureList[0][0];
+        const drawn: string[] = measure.staffEntries.map(entry => AccidentalEnum[entry.graphicalVoiceEntries[0].notes[0].DrawnAccidental]);
+        expect(drawn, "E (alter 0, printed sharp) / E / F (no alter, printed sharp) / F").to.deep.equal(["SHARP", "NONE", "SHARP", "NONE"]);
+        osmd.clear();
+        div.remove();
     });
 });

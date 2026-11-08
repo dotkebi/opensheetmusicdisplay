@@ -254,6 +254,10 @@ export class Ornament extends Modifier {
 
     L('Rendering ornament: ', this.ornament, glyphX, glyphY);
 
+    // VexFlowPatch: the glyph and its accidental marks in a group (class vf-ornament, like VexFlow 4 and 5 draw them). An
+    //   ornament of one shape, e.g. a trill without accidental marks, gets the group's class instead (<path class="vf-ornament">,
+    //   see SVGContext.openGroup() with attrs.mergeIntoChild).
+    ctx.openGroup('ornament', undefined, { mergeIntoChild: true });
     if (this.accidentalLower) {
       this.accidentalLower.render(ctx, glyphX, glyphY);
       glyphY -= this.accidentalLower.getMetrics().height;
@@ -324,6 +328,7 @@ export class Ornament extends Modifier {
       // VexFlowPatch: the y_shift the ink was drawn with (see Articulation.draw())
       this.layoutYShift = this.y_shift || 0;
     }
+    ctx.closeGroup();
   }
 
   // VexFlowPatch: where draw() renders the ornament: the x of its centre and the y of its bottom, with its lower accidental

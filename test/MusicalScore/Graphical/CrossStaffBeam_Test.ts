@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
@@ -23,6 +23,10 @@ describe("Cross-staff beams", () => {
     let osmd: OpenSheetMusicDisplay;
     const render: (centerUniform: boolean) => Promise<void> = async (centerUniform: boolean) => {
         container = TestUtils.getDivElement(document);
+        // a layout these checks hold in (the width of the web census): the staves' room depends on the layout, and in some
+        //   (e.g. Vitest's 1366 px page) m4's first beam, at its steepest slope over a longer span, ends a pixel into the
+        //   lower staff at its last stem (placeMixed() doesn't limit the primary line to the room between the staves)
+        container.style.width = "1024px";
         osmd = TestUtils.createOpenSheetMusicDisplay(container);
         osmd.EngravingRules.NewSystemAtXMLNewSystemAttribute = true;
         osmd.EngravingRules.CrossStaffBeamsCenterUniformXmlStems = centerUniform;
@@ -150,6 +154,10 @@ describe("Cross-staff beams", () => {
         osmd.clear();
         container.remove();
         container = TestUtils.getDivElement(document);
+        // a layout these checks hold in (the width of the web census): the staves' room depends on the layout, and in some
+        //   (e.g. Vitest's 1366 px page) m4's first beam, at its steepest slope over a longer span, ends a pixel into the
+        //   lower staff at its last stem (placeMixed() doesn't limit the primary line to the room between the staves)
+        container.style.width = "1024px";
         osmd = TestUtils.createOpenSheetMusicDisplay(container);
         osmd.EngravingRules.NewSystemAtXMLNewSystemAttribute = true;
         await osmd.load(TestUtils.getScore("test_cross_staff_beams.musicxml"));

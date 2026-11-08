@@ -1,6 +1,7 @@
-import {expect} from "chai";
+import {expect} from "vitest";
 import {TestUtils} from "../../../Util/TestUtils";
 import {OpenSheetMusicDisplay} from "../../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
+import {InstantaneousTempoExpression} from "../../../../src/MusicalScore/VoiceData/Expressions/InstantaneousTempoExpression";
 import {StaffLine} from "../../../../src/MusicalScore/Graphical/StaffLine";
 import {unitInPixels} from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowMusicSheetDrawer";
 
@@ -120,16 +121,38 @@ describe("Metronome position rendering", (): void => {
 
     it("keeps different printed marks and deduplicates identical note equations", async (): Promise<void> => {
         await osmd.load(score(bpm(80) + bpm(96) + bpm(80, "half") +
-            bpm(80, "quarter", "<beat-unit-dot/>") + note("C", 4, "whole")));
+            bpm(80, "quarter", "<beat-unit-dot/>") +
+            bpm(80, "quarter", "<beat-unit-dot/><beat-unit-dot/>") + note("C", 4, "whole")));
         osmd.render();
         const boxes: DOMRect[] = Array.from(div.querySelectorAll<SVGGraphicsElement>(".vf-bpm"))
             .map((element: SVGGraphicsElement): DOMRect => inkBox(element));
-        expect(boxes.length, "all four printed alternatives retained on one line").to.equal(4);
+        expect(boxes.length, "all five printed alternatives retained on one line (a double-dotted beat unit differs from a dotted one)").to.equal(5);
         for (let i: number = 0; i < boxes.length; i++) {
             for (let j: number = i + 1; j < boxes.length; j++) {
                 expect(separate(boxes[i], boxes[j])).to.equal(true);
             }
         }
+
+        // the marks of one line are one StaveTempo with following marks (one .vf-stavetempo), so the second beat-unit dot
+        //   shows as one path more than the same line with a single-dotted (and distinct) last mark
+        const pathsOfLine: () => number = (): number => div.querySelectorAll(".vf-stavetempo path").length;
+        const doubleDottedPaths: number = pathsOfLine();
+        // the first mark of the line sets the playback tempo; the following marks are printed alternatives
+        expect(osmd.Sheet.SourceMeasures[0].TempoInBPM, "quarter = 80, the first mark").to.equal(80);
+        const first: InstantaneousTempoExpression = osmd.Sheet.SourceMeasures[0].TempoExpressions[0].InstantaneousTempo;
+        const doubleDotted: InstantaneousTempoExpression = [first].concat(first.followingMetronomeMarks)
+            .find((metronomeMark: InstantaneousTempoExpression): boolean => metronomeMark.dotCount === 2);
+        expect(doubleDotted, "the double-dotted mark follows the first mark").to.not.equal(undefined);
+        expect(doubleDotted.dotted).to.equal(true);
+        doubleDotted.dotted = false;
+        expect(doubleDotted.TempoInQuarterNotesPerMinute).to.equal(80);
+        doubleDotted.dotted = true;
+        expect(doubleDotted.TempoInQuarterNotesPerMinute).to.equal(120);
+        await osmd.load(score(bpm(80) + bpm(96) + bpm(80, "half") +
+            bpm(80, "quarter", "<beat-unit-dot/>") +
+            bpm(81, "quarter", "<beat-unit-dot/>") + note("C", 4, "whole")));
+        osmd.render();
+        expect(doubleDottedPaths, "the second beat-unit dot is drawn").to.equal(pathsOfLine() + 1);
 
         const left: string = "<metronome-note><metronome-type>quarter</metronome-type></metronome-note>";
         const equals: string = "<metronome-relation>equals</metronome-relation>";
@@ -154,7 +177,6 @@ describe("Metronome position rendering", (): void => {
 
     it("separates nearby marks with the geometric skyline", async (): Promise<void> => {
         osmd.EngravingRules.UseGeometricSkyBottomLineCalculation = true;
-        osmd.EngravingRules.AlwaysSetPreferredSkyBottomLineBackendAutomatically = false;
         await osmd.load(TestUtils.getScore("test_metronome_close_positions.musicxml"));
         osmd.render();
         expect(marks().length).to.equal(2);
@@ -174,6 +196,34 @@ describe("Metronome position rendering", (): void => {
             expect(marks().length).to.be.greaterThan(0);
             expect(separate(marks()[0], inkBox(text)), `mark clear of "${label}"`).to.equal(true);
         }
+    });
+
+    // Tempo text goes above the staff, also without a placement attribute, and a mark at its time rises over it. Before fix,
+    // the calculator set the text's placement to above only after placing the marks: the first render placed the mark lower,
+    // as if the text were below the staff, and the next render (e.g. on a resize) or a render after updateGraphic() higher.
+    it("lifts a mark over tempo text without a placement attribute like over text placed above, also when rendering again", async (): Promise<void> => {
+        /** The direction with tempo text and a metronome mark, the given placement attribute (or none). */
+        function tempo(placement: string): string {
+            return `<direction${placement}><direction-type><words>Adagio</words></direction-type>` +
+                "<direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>60</per-minute></metronome></direction-type></direction>";
+        }
+        /** The distance between the mark and the tempo text below it, in pixels. */
+        function gapAboveText(): number {
+            const text: SVGGraphicsElement = Array.from(div.querySelectorAll<SVGGraphicsElement>("text"))
+                .find((element: SVGGraphicsElement): boolean => element.textContent.trim() === "Adagio");
+            return inkBox(text).top - marks()[0].bottom;
+        }
+        await osmd.load(score(tempo(' placement="above"') + note("C", 4, "whole")));
+        osmd.render();
+        const gapToTextAbove: number = gapAboveText();
+        await osmd.load(score(tempo("") + note("C", 4, "whole")));
+        osmd.render();
+        expect(gapAboveText(), "without a placement attribute").to.be.closeTo(gapToTextAbove, 0.01);
+        osmd.render();
+        expect(gapAboveText(), "without a placement attribute, rendered again").to.be.closeTo(gapToTextAbove, 0.01);
+        osmd.updateGraphic();
+        osmd.render();
+        expect(gapAboveText(), "without a placement attribute, after updateGraphic()").to.be.closeTo(gapToTextAbove, 0.01);
     });
 
     it("places an end-of-measure mark on the next system and respects the drawing range", async (): Promise<void> => {

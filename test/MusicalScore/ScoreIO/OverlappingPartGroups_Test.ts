@@ -1,7 +1,7 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { Instrument } from "../../../src/MusicalScore/Instrument";
-import { InstrumentalGroup } from "../../../src/MusicalScore/InstrumentalGroup";
+import { GroupSymbol, InstrumentalGroup } from "../../../src/MusicalScore/InstrumentalGroup";
 import { MusicSystem } from "../../../src/MusicalScore/Graphical/MusicSystem";
 import { VexFlowInstrumentBracket } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowInstrumentBracket";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
@@ -42,7 +42,7 @@ describe("Crossing and enclosing part groups", () => {
     }
     function tree(groups: InstrumentalGroup[]): string {
         return groups.map((group: InstrumentalGroup): string => group instanceof Instrument ? group.IdString :
-            `${group.GroupSymbol}${group.Number}[${tree(group.InstrumentalGroups)}]`).join(" ");
+            `${GroupSymbol[group.GroupSymbol].toLowerCase()}${group.Number}[${tree(group.InstrumentalGroups)}]`).join(" ");
     }
     let container: HTMLElement;
     let osmd: OpenSheetMusicDisplay;
@@ -80,11 +80,12 @@ describe("Crossing and enclosing part groups", () => {
             osmd.render();
             expect(tree(osmd.Sheet.InstrumentalGroups), "group tree").to.equal(expectedTree);
             const system: MusicSystem = osmd.GraphicSheet.MusicPages[0].MusicSystems[0];
+            const columnPx: number = osmd.EngravingRules.GroupBracketColumnDistance * 10; // px per nesting column at zoom 1
             const index: (stave: any) => number = (stave: any): number => system.StaffLines.findIndex(
                 line => (line.Measures[0] as VexFlowMeasure).getVFStave() === stave);
             const brackets: number[][] = system.GroupBrackets.map((bracket): number[] => {
                 const connector: any = (bracket as VexFlowInstrumentBracket).vexflowConnector;
-                return [index(connector.top_stave), index(connector.bottom_stave), Math.round(-connector.x_shift / 5)];
+                return [index(connector.top_stave), index(connector.bottom_stave), Math.round(-connector.x_shift / columnPx)];
             });
             expect(brackets, "group brackets [top, bottom staffline, depth]").to.deep.equal(expectedBrackets);
         });

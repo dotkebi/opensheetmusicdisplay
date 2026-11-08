@@ -18,7 +18,7 @@ export class Instrument extends InstrumentalGroup {
     /** Transposition halftones for this instrument only.
      *  This is additive to osmd.Sheet.Transpose (MusicSheet).
      *  osmd.TransposeCaculator needs to be defined/created for this to take effect. (just set it with new TransposeCalculator())
-     * You need to call osmd.updateGraphic() before the next render() (assuming this is set after load()).
+     *  The next osmd.render() applies it (no need to call osmd.updateGraphic()).
      */
     public Transpose: number = 0;
     public highlight: boolean;
@@ -124,12 +124,11 @@ export class Instrument extends InstrumentalGroup {
         this.partAbbreviationPrintObject = value;
     }
 
+    /** Whether the instrument is shown: whether any of its voices is visible (Voice.Visible), like Audible.
+     *  Setting it shows or hides all its voices. Of a shown instrument, the hidden voices aren't drawn, see Voice.Visible.
+     */
     public get Visible(): boolean {
-        if (this.voices.length > 0) {
-            return this.Voices[0].Visible;
-        } else {
-            return false;
-        }
+        return this.Voices.some((voice: Voice): boolean => voice.Visible);
     }
     /** Checks that Instrument.Visible and at least one staff visible. */
     public isVisible(): boolean {

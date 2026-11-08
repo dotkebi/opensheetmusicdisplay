@@ -72,6 +72,7 @@ export class RepetitionInstruction /*implements IComparable*/ {
      * as they say more than the label or say it in another language, e.g. "D.C. senza replica", "Menuetto D.C. al Fine" or "Fin".
      * Undefined for words that are the label (e.g. "D.C."), and for a segno or coda sign. Words that name the instruction in
      * another spelling than its label, e.g. "Da Capo", are drawn as written.
+     * For the start of an ending, its text, drawn instead of its numbers, e.g. "1., 3." or "Last time".
      */
     public Words: string;
     /**

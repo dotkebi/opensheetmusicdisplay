@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
@@ -20,13 +20,13 @@ import { VoiceEntry } from "../../../src/MusicalScore/VoiceData/VoiceEntry";
 describe("Beam continue/end before its begin in the document", () => {
     let container: HTMLElement;
     let osmd: OpenSheetMusicDisplay;
-    before(async () => {
+    beforeAll(async () => {
         container = TestUtils.getDivElement(document);
         osmd = TestUtils.createOpenSheetMusicDisplay(container);
         await osmd.load(TestUtils.getScore("test_beam_continue_before_begin.musicxml"));
         osmd.render();
     });
-    after(() => {
+    afterAll(() => {
         osmd.clear();
         container.remove();
     });

@@ -11,12 +11,12 @@ export default defineConfig(
         ignores: ["webpack*.js",
             "**/*.d.ts",
             "*_min.ts",
-            ".karma_temp/",
+            ".karma_temp/", // karma's bundles, left in checkouts that ran karma before
             ".claude/",
+            ".tmp/",
             "build/",
             "demo/",
             "export/",
-            "karma.conf.js",
             "osmd-native/",
             "react-native/",
             "src/SamplePlayerPatch/",
@@ -185,9 +185,7 @@ export default defineConfig(
         files: ["test/**/*.ts"],
         languageOptions: {
             globals: {
-                ...globals.mocha,
-                chai: "readonly",
-                Mocha: "readonly",
+                ...globals.vitest,
             },
         },
     },
@@ -216,7 +214,6 @@ export default defineConfig(
             globals: {
                 ...globals.browser,
                 ...globals.node,
-                ...globals.mocha,
             },
         },
         rules: {

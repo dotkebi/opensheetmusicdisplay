@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowGraphicalNote } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowGraphicalNote";
@@ -6,6 +6,7 @@ import { TransposeCalculator } from "../../../../src/Plugins/Transpose/Transpose
 import { ITransposeCalculator } from "../../../../src/MusicalScore/Interfaces/ITransposeCalculator";
 import { GraphicalStaffEntry } from "../../../../src/MusicalScore/Graphical/GraphicalStaffEntry";
 import { AccidentalEnum } from "../../../../src/Common/DataObjects/Pitch";
+import { KeyInstruction } from "../../../../src/MusicalScore/VoiceData/Instructions/KeyInstruction";
 import { unitInPixels } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowMusicSheetDrawer";
 
 describe("Mid-measure key rendering", (): void => {
@@ -186,7 +187,7 @@ describe("Mid-measure key rendering", (): void => {
     it("draws a key after the notes of the last measure at its end", async (): Promise<void> => {
         await loadScore("test_key_signature_final_measure_end.musicxml");
 
-        // The last measure has no following measure, so the key is not carried forward and lost.
+        // The last measure has no following measure to carry the key into, so it stays at the measure end (it was lost).
         const lastIndex: number = osmd.GraphicSheet.MeasureList.length - 1;
         for (let staffIndex: number = 0; staffIndex < 2; staffIndex++) {
             const keyEntries: GraphicalStaffEntry[] = osmd.GraphicSheet.MeasureList[lastIndex][staffIndex].staffEntries.filter(
@@ -194,13 +195,14 @@ describe("Mid-measure key rendering", (): void => {
             );
             expect(keyEntries, "the return key stays in the last measure").to.have.length(1);
             expect(keyEntries[0].sourceStaffEntry.Timestamp.RealValue, "at the measure end").to.equal(0.25);
+            expect((keyEntries[0].sourceStaffEntry.Instructions[0] as KeyInstruction).Key, "four sharps").to.equal(4);
         }
+        const lastNoteX: number = notesIn(lastIndex)[0].vfnote[0].getAbsoluteX();
         const lastKeys: SVGGraphicsElement[] = keys()
             .sort((a: SVGGraphicsElement, b: SVGGraphicsElement): number => a.getBBox().x - b.getBBox().x)
             .slice(-2);
-        expect(lastKeys.map((key: SVGGraphicsElement): number => key.querySelectorAll("path").length),
-            "the four-sharp key is drawn on both staves").to.deep.equal([4, 4]);
-        expect(lastKeys[0].getBBox().x, "the key follows the last note")
-            .to.be.greaterThan(notesIn(lastIndex)[0].vfnote[0].getAbsoluteX());
+        for (const key of lastKeys) {
+            expect(key.getBBox().x, "the key is drawn on both staves after the last note").to.be.greaterThan(lastNoteX);
+        }
     });
 });

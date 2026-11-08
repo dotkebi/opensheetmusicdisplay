@@ -101,6 +101,9 @@ export class PedalMarking extends Element {
     this.ReleaseX = undefined;
     // VexFlowPatch: absolute x of the depress when it falls between two notes (OSMD interpolates it by time).
     this.DepressX = undefined;
+    this.EndsWithoutHook = false; // VexFlowPatch: the bracket styles end without the end hook (where they would draw it)
+    this.ChangeEndBeforeSign = false; // ChangeEnd, and the next pedal marking draws its Ped. sign at the end note
+    this.ContinuationSign = false; // VexFlowPatch: going on from the system before: (Ped.) at the stave's note start
     this.notes = notes;
     this.style = PedalMarking.TEXT;
     this.line = 0;
@@ -121,7 +124,64 @@ export class PedalMarking extends Element {
       bracket_line_width: 1,
       glyph_point_size: 40,
       color: 'black',
+      change_release_margin: 5, // VexFlowPatch: see getChangeReleaseXShift()
+      continuation_sign_gap: 1.5, // VexFlowPatch: between the parentheses and the Ped. sign of (Ped.), see drawContinuationSign()
     };
+  }
+
+  // VexFlowPatch: the left edge of the Ped. sign that a pedal marking draws where it's pressed, from the note's x
+  getDepressSignLeft() {
+    const depress = PedalMarking.GLYPHS.pedal_depress;
+    return depress.x_shift + new Glyph(depress.code, this.render_options.glyph_point_size).getMetrics().x_min;
+  }
+
+  // VexFlowPatch: how far the * of a pedal released and pressed again at its last note (ChangeEnd, in the text style) is moved
+  //   from where a release draws it: left of the Ped. sign that the next pedal marking draws at that note, its right edge
+  //   render_options.change_release_margin away from the Ped. sign's left edge (getChangeDepressSignLeft()).
+  getChangeReleaseXShift() {
+    const release = PedalMarking.GLYPHS.pedal_release;
+    const release_right = release.x_shift + new Glyph(release.code, this.render_options.glyph_point_size).getMetrics().x_max;
+    return this.getChangeDepressSignLeft() - this.render_options.change_release_margin - release_right;
+  }
+
+  // VexFlowPatch: the left edge of the Ped. sign that the next pedal marking draws at the note where this one is released and
+  //   the pedal is pressed again (its ChangeBegin), from the note's x: in the text style CHANGE_GAP right of the note
+  //   (drawText()), in the Ped. + line style at the note like any Ped. sign (drawBracketed()).
+  getChangeDepressSignLeft() {
+    if (this.style !== PedalMarking.Styles.TEXT) {
+      return this.getDepressSignLeft();
+    }
+    const depress = PedalMarking.GLYPHS.pedal_depress;
+    return PedalMarking.CHANGE_GAP + new Glyph(depress.code, this.render_options.glyph_point_size).getMetrics().x_min;
+  }
+
+  // VexFlowPatch: draws (Ped.), the Ped. sign in parentheses, for a pedal going on from the system before (ContinuationSign):
+  //   the "(" from x, the parentheses centered on the Ped. sign, which stands on y like a Ped. sign at a note. Returns the
+  //   right edge of the ")".
+  drawContinuationSign(ctx, x, y) {
+    const point = this.render_options.glyph_point_size;
+    const depress = PedalMarking.GLYPHS.pedal_depress;
+    const ped = new Glyph(depress.code, point);
+    const open = new Glyph('v9c', point); // the parentheses of cautionary accidentals, as tall as the Ped. sign
+    const close = new Glyph('v84', point);
+    const gap = this.render_options.continuation_sign_gap;
+    const pedY = y + depress.y_shift;
+    const pedMiddle = pedY + ped.bbox.getY() + ped.bbox.getH() / 2;
+    const parenY = paren => pedMiddle - (paren.bbox.getY() + paren.bbox.getH() / 2);
+    let left = x;
+    open.render(ctx, left - open.bbox.getX(), parenY(open));
+    left += open.bbox.getW() + gap;
+    ped.render(ctx, left - ped.bbox.getX(), pedY);
+    left += ped.bbox.getW() + gap;
+    close.render(ctx, left - close.bbox.getX(), parenY(close));
+    return left + close.bbox.getW();
+  }
+
+  // VexFlowPatch: the width of (Ped.), see drawContinuationSign()
+  getContinuationSignWidth() {
+    const point = this.render_options.glyph_point_size;
+    const width = code => new Glyph(code, point).bbox.getW();
+    return width('v9c') + width(PedalMarking.GLYPHS.pedal_depress.code) + width('v84') + 2 * this.render_options.continuation_sign_gap;
   }
 
   setEndStave(stave) { // VexFlowPatch addition
@@ -196,10 +256,16 @@ export class PedalMarking extends Element {
               case PedalMarking.Styles.BRACKET_OPEN_END:
               case PedalMarking.Styles.BRACKET_OPEN_BOTH:
               case PedalMarking.Styles.MIXED_OPEN_END:
-                x = note.getNoteHeadEndX ? note.getNoteHeadEndX() : note.getAbsoluteX();
+                // VexFlowPatch: going on in the next system: to the end of the stave (the system), as far as its last
+                //   barline (end_x: before courtesy signatures at the end), not only to the end of its last note
+                x = note.getStave().end_x;
               break;
               default:
-                if (this.ReleaseX !== undefined && this.ReleaseX !== null) {
+                if (this.ChangeEnd && this.ChangeEndBeforeSign) {
+                  // VexFlowPatch: pressed again at this note by a pedal marking that draws its Ped. sign here: the end of
+                  //   the line, its hook, render_options.change_release_margin left of the Ped. sign
+                  x = note.getAbsoluteX() + this.getDepressSignLeft() - pedal.render_options.change_release_margin;
+                } else if (this.ReleaseX !== undefined && this.ReleaseX !== null) {
                   // the pedal lifts between two notes: end the bracket there
                   x = this.ReleaseX;
                 } else if(this.ChangeEnd){
@@ -267,7 +333,10 @@ export class PedalMarking extends Element {
         // Adjustment for release+depress
         x_shift =  prev_is_same ? 5 : 0;
 
-        if ((pedal.style === PedalMarking.Styles.MIXED || pedal.style === PedalMarking.Styles.MIXED_OPEN_END) && !prev_is_same) {
+        if (this.ContinuationSign && !prev_is_same) {
+          // VexFlowPatch: going on from the system before: (Ped.), then the line
+          x_shift = this.drawContinuationSign(ctx, x, y) - x + pedal.render_options.text_margin_right;
+        } else if ((pedal.style === PedalMarking.Styles.MIXED || pedal.style === PedalMarking.Styles.MIXED_OPEN_END) && !prev_is_same) {
           // For MIXED style, start with text instead of bracket
           if (pedal.custom_depress_text) {
             // If we have custom text, use instead of the default "Ped" glyph
@@ -306,8 +375,9 @@ export class PedalMarking extends Element {
         ctx.moveTo(prev_x, prev_y);
         ctx.lineTo(x + x_shift, y);
         if (pedal.style !== PedalMarking.Styles.BRACKET_OPEN_END && pedal.style !== PedalMarking.Styles.MIXED_OPEN_END &&
-            pedal.style !== PedalMarking.Styles.BRACKET_OPEN_BOTH) {
-            if(this.ChangeEnd){
+            pedal.style !== PedalMarking.Styles.BRACKET_OPEN_BOTH && !this.EndsWithoutHook) {
+            // ChangeEnd: the up-stroke of the change notch (VexFlowPatch: before a Ped. sign, the hook, see above)
+            if(this.ChangeEnd && !this.ChangeEndBeforeSign){
               x += 5;
             }
             ctx.lineTo(x, y - pedal.render_options.bracket_height);
@@ -325,8 +395,9 @@ export class PedalMarking extends Element {
   // Draw the text based pedal markings. This defaults to the traditional
   // "Ped" and "*"" symbols if no custom text has been provided.
   // VexFlowPatch: the end note is the note BEFORE which the pedal is released; the release mark sits at its x,
-  //   between two notes at ReleaseX, or right-aligned before the stave end for EndsStave. A release+depress at one
-  //   note (ChangeEnd/ChangeBegin) keeps CHANGE_GAP on each side of the note x between the two marks.
+  //   between two notes at ReleaseX, or right-aligned before the stave end for EndsStave. At a release+depress at one
+  //   note (ChangeEnd/ChangeBegin) the Ped. starts CHANGE_GAP right of the note x and the * ends change_release_margin
+  //   left of the Ped. (getChangeReleaseXShift()).
   drawText() {
     const ctx = this.context;
     let is_pedal_depressed = false;
@@ -350,7 +421,10 @@ export class PedalMarking extends Element {
       let text_width = 0;
       if (is_pedal_depressed) {
         const anchor = (this.DepressX !== undefined && this.DepressX !== null && !this.BeginsStave) ? this.DepressX : x;
-        if (pedal.custom_depress_text) {
+        if (pedal.ContinuationSign) {
+          // VexFlowPatch: going on from the system before: (Ped.) at the stave's note start
+          pedal.drawContinuationSign(ctx, stave.getNoteStartX(), y);
+        } else if (pedal.custom_depress_text) {
           text_width = ctx.measureText(pedal.custom_depress_text).width;
           const left = this.ChangeBegin ? anchor + PedalMarking.CHANGE_GAP : anchor - (text_width / 2);
           if (!PedalMarking.isBlankText(pedal.custom_depress_text)) {
@@ -385,7 +459,8 @@ export class PedalMarking extends Element {
           } else if (this.EndsStave) {
             glyphX = stave.getNoteEndX() + (this.endStaveAddedWidth || 0) - margin - PedalMarking.releaseGlyphWidth(point) - glyphData.x_shift;
           } else if (this.ChangeEnd) {
-            glyphX = x - PedalMarking.CHANGE_GAP - PedalMarking.releaseGlyphWidth(point) - glyphData.x_shift;
+            // VexFlowPatch: pressed again at this note (the next pedal marking draws its Ped. sign here): the * left of it
+            glyphX = x + pedal.getChangeReleaseXShift();
           }
           drawPedalGlyph('pedal_release', ctx, glyphX, y, point);
         }
@@ -402,7 +477,7 @@ export class PedalMarking extends Element {
     return typeof text === 'string' && text.trim() === '';
   }
 
-  // VexFlowPatch: horizontal gap kept between a release glyph and the depress glyph of a change at the same note.
+  // VexFlowPatch: horizontal gap between the note x and the depress glyph (Ped.) of a change at that note, in the text style.
   static get CHANGE_GAP() { return 3; }
 
   // VexFlowPatch: drawn width of the default release glyph (*) at the given point size.
@@ -435,6 +510,10 @@ export class PedalMarking extends Element {
 
     L('Rendering Pedal Marking');
 
+    // VexFlowPatch: the marks and brackets in a group (class vf-pedalmarking). A pedal marking of one shape gets the group's
+    //   class instead (<path class="vf-pedalmarking">), and one without shapes gets no group (see SVGContext.openGroup() with
+    //   attrs.mergeIntoChild and omitIfEmpty).
+    ctx.openGroup('pedalmarking', undefined, { mergeIntoChild: true, omitIfEmpty: true });
     if (this.style === PedalMarking.Styles.BRACKET || this.style === PedalMarking.Styles.MIXED || this.style === PedalMarking.Styles.MIXED_OPEN_END ||
         this.style === PedalMarking.Styles.BRACKET_OPEN_BEGIN || this.style === PedalMarking.Styles.BRACKET_OPEN_END || this.style === PedalMarking.Styles.BRACKET_OPEN_BOTH) {
       ctx.setLineWidth(this.render_options.bracket_line_width);
@@ -442,6 +521,7 @@ export class PedalMarking extends Element {
     } else if (this.style === PedalMarking.Styles.TEXT) {
       this.drawText();
     }
+    ctx.closeGroup();
 
     ctx.restore();
   }

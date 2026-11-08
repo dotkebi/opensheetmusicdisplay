@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalUnknownExpression } from "../../../src/MusicalScore/Graphical/GraphicalUnknownExpression";
@@ -13,7 +13,7 @@ import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
 describe("Words above and below a staff at the same time", () => {
     let container: HTMLElement;
     let words: {text: string, placement: PlacementEnum, y: number}[];
-    before(async () => {
+    beforeAll(async () => {
         container = document.createElement("div");
         container.style.width = "1300px";
         document.body.appendChild(container);
@@ -29,7 +29,7 @@ describe("Words above and below a staff at the same time", () => {
                         y: label.Label.PositionAndShape.RelativePosition.y};
             });
     });
-    after(() => {
+    afterAll(() => {
         container.remove();
     });
 

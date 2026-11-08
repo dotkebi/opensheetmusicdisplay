@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import Vex from "vexflow";
 import VF = Vex.Flow;
 import { TestUtils } from "../../Util/TestUtils";

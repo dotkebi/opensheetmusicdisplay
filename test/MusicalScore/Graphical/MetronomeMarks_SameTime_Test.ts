@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { MultiTempoExpression } from "../../../src/MusicalScore/VoiceData/Expressions/MultiTempoExpression";
 import { InstantaneousTempoExpression, TempoType } from "../../../src/MusicalScore/VoiceData/Expressions/InstantaneousTempoExpression";

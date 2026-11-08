@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalContinuousDynamicExpression } from "../../../src/MusicalScore/Graphical/GraphicalContinuousDynamicExpression";
@@ -30,7 +30,8 @@ describe("Verbal crescendo sky line extent", () => {
         for (const system of osmd.GraphicSheet.MusicPages[0].MusicSystems) {
             for (const line of system.StaffLines as StaffLine[]) {
                 const sky: number[] = line.SkyBottomLineCalculator.SkyLine;
-                const su: number = sky.length / line.PositionAndShape.Size.width;
+                // the line has a sample per 1/SamplingUnit, rounded up to whole samples (its length / width is a bit more)
+                const su: number = osmd.EngravingRules.SamplingUnit;
                 for (const e of line.AbstractExpressions) {
                     if (!(e instanceof GraphicalContinuousDynamicExpression) || !e.IsVerbal) {
                         continue;

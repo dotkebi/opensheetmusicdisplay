@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import Vex from "vexflow";
 import { TestUtils } from "../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
@@ -21,8 +21,7 @@ describe("Web 2.2.0 benchmark and parity", () => {
         };
     }
     for (const score of ["ActorPreludeSample.xml", "Beethoven_AnDieFerneGeliebte.xml"]) {
-        it(`measures cold and warm sync/async with identical output: ${score}`, async function(): Promise<void> {
-            this.timeout(100000);
+        it(`measures cold and warm sync/async with identical output: ${score}`, async (): Promise<void> => {
             await document.fonts.ready;
             const original: any = Vex.Flow.Formatter.prototype.format;
             let formats: number = 0;
@@ -55,6 +54,6 @@ describe("Web 2.2.0 benchmark and parity", () => {
                 font: "Times New Roman (default)", width: 1200, geometric: true, rows}));
             expect(new Set(rows.map(row => row.svg)).size, "all sync/async SVG bytes except IDs").to.equal(1);
             expect(new Set(rows.map(row => row.contours)).size, "all sync/async skyline values").to.equal(1);
-        });
+        }, 100000);
     }
 });

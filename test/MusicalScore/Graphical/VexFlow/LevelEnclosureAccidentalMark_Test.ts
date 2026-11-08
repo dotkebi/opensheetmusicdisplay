@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import Vex from "vexflow";
 import VF = Vex.Flow;
 import { OpenSheetMusicDisplay } from "../../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
@@ -19,7 +19,7 @@ import { TestUtils } from "../../../Util/TestUtils";
 describe("Editorial level enclosure and accidental marks", () => {
     let osmd: OpenSheetMusicDisplay;
 
-    before(async () => {
+    beforeAll(async () => {
         const div: HTMLElement = TestUtils.getDivElement(document);
         div.style.width = "1000px";
         osmd = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });

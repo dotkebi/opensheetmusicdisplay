@@ -15,7 +15,7 @@ import {Staff} from "../VoiceData/Staff";
 import {VoiceEntry} from "../VoiceData/VoiceEntry";
 import {LyricsEntry} from "../VoiceData/Lyrics/LyricsEntry";
 import {LyricWord} from "../VoiceData/Lyrics/LyricsWord";
-import {InstrumentalGroup} from "../InstrumentalGroup";
+import {GroupSymbol, InstrumentalGroup} from "../InstrumentalGroup";
 import {SubInstrument} from "../SubInstrument";
 import {MidiInstrument} from "../VoiceData/Instructions/ClefInstruction";
 import {AbstractNotationInstruction} from "../VoiceData/Instructions/AbstractNotationInstruction";
@@ -61,7 +61,7 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
         return this.completeNumberOfStaves;
     }
 
-    /** All <identification><encoding><software> values (a file can name several programs). */
+    /** All <identification><encoding><software> values (a file can name several programs, e.g. Finale and Dolet). */
     private static readEncodingSoftware(root: IXmlElement): string[] {
         const software: string[] = [];
         for (const identification of root.elements("identification")) {
@@ -185,6 +185,8 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
         // Guitar Pro 5 writes the dynamic of every note (its velocity) as <dynamics> in the note's <notations>:
         //   drawn, they would repeat at almost every note (Guitar Pro 7 writes them only where a dynamic is set)
         const readNotationDynamics: boolean = encoding?.value !== "Guitar Pro 5";
+        // MuseScore writes 8-digit colors as #RRGGBBAA instead of MusicXML's #AARRGGBB, see musicXmlColorsAreAlphaLast()
+        this.musicSheet.XmlColorAlphaLast = musicXmlColorsAreAlphaLast(MusicSheetReader.readEncodingSoftware(root));
 
         while (couldReadMeasure) {
             // TODO changing this.rules.PartAndSystemAfterFinalBarline requires a reload of the piece for measure numbers to be updated
@@ -239,7 +241,8 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
 
         //this.musicSheet.DefaultStartTempoInBpm = this.musicSheet.SourceMeasures[0].TempoInBPM;
         this.musicSheet.userStartTempoInBPM = this.musicSheet.userStartTempoInBPM || this.musicSheet.DefaultStartTempoInBpm;
-
+        // the mapping between enrolled and sheet timestamps (absoluteEnrolledToSheetTimestamp()) and the selection
+        this.musicSheet.MusicPartManager.init();
         return this.musicSheet;
     }
 
@@ -1353,14 +1356,16 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                     for (let idx2: number = 0, len2: number = partElements.length; idx2 < len2; ++idx2) {
                         const partElement: IXmlElement = partElements[idx2];
                         try {
+                            // trimmed like the title: a line break at the end (e.g. "Voice" with its closing tag on the next
+                            //   line) gave the label an empty second line, which drew the text above its staff's center
                             if (partElement.name === "part-name") {
-                                instrument.Name = partElement.value;
+                                instrument.Name = this.trimString(partElement.value);
                                 if (partElement.attribute("print-object") &&
                                    partElement.attribute("print-object").value === "no") {
                                     instrument.NameLabel.print = false;
                                 }
                             } else if (partElement.name === "part-abbreviation") {
-                                instrument.PartAbbreviation = partElement.value;
+                                instrument.PartAbbreviation = this.trimString(partElement.value);
                                 if (partElement.attribute("print-object")?.value === "no") {
                                     instrument.PartAbbreviationPrintObject = false;
                                 }
@@ -1449,7 +1454,6 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                     if ((node.name === "part-group") && (node.attribute("type").value === "start")) {
                         const groupName: IXmlElement = node.element("group-name");
                         const groupAbbreviation: IXmlElement = node.element("group-abbreviation");
-                        const groupSymbol: IXmlElement = node.element("group-symbol");
                         const iG: InstrumentalGroup = new InstrumentalGroup(
                             groupName ? this.trimString(groupName.value) : "",
                             this.musicSheet,
@@ -1457,7 +1461,7 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                         );
                         iG.Number = node.attribute("number") ? node.attribute("number").value : "";
                         iG.Abbreviation = groupAbbreviation ? this.trimString(groupAbbreviation.value) : "";
-                        iG.GroupSymbol = groupSymbol ? this.trimString(groupSymbol.value) : "";
+                        iG.GroupSymbol = this.readGroupSymbol(node.element("group-symbol"));
                         iG.PrintName = canAssignGroupNames;
                         iG.PrintAbbreviation = canAssignGroupNames;
                         const nameDisplay: IXmlElement = node.element("group-name-display");
@@ -1489,28 +1493,19 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                             openGroups.splice(stopped, 1);
                         } else if (stopped >= 0) {
                             if (currentGroup) {
-                                const hasMultipleParts: boolean = this.countInstrumentsInGroup(currentGroup) > 1;
-                                currentGroup.PrintName = currentGroup.PrintName && hasMultipleParts;
-                                currentGroup.PrintAbbreviation = currentGroup.PrintAbbreviation && hasMultipleParts;
-                                // A group around one part is dissolved; a group around one group (the same parts, e.g. a bracket
-                                // and a brace on the horns of OpenScore Beach, Gaelic Symphony/2) stays, so both are drawn, as in
-                                // osmd-dart. Before, it was dissolved too and only the inner one was drawn.
-                                if (currentGroup.InstrumentalGroups.length === 1 && currentGroup.InstrumentalGroups[0] instanceof Instrument) {
-                                    const instr: InstrumentalGroup = currentGroup.InstrumentalGroups[0];
-                                    if (currentGroup.Parent) {
-                                        currentGroup.Parent.InstrumentalGroups.push(instr);
-                                        this._removeFromArray(currentGroup.Parent.InstrumentalGroups, currentGroup);
-                                    } else {
-                                        this.musicSheet.InstrumentalGroups.push(instr);
-                                        this._removeFromArray(this.musicSheet.InstrumentalGroups, currentGroup);
-                                    }
-                                }
+                                this.closePartGroup(currentGroup);
                                 openGroups.pop();
                                 currentGroup = openGroups[openGroups.length - 1];
                             }
                         }
                     }
                 }
+            }
+            // a part-group that is never stopped (e.g. MuseScore 3's brace before a piano part) ends with the part-list
+            while (currentGroup) {
+                this.closePartGroup(currentGroup);
+                openGroups.pop();
+                currentGroup = openGroups[openGroups.length - 1];
             }
         } catch (e) {
             const errorMsg: string = ITextTranslation.translateText(
@@ -1529,6 +1524,44 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
             }
         }
         return -1;
+    }
+
+    /**
+     * Ends a part-group, at its stop or at the end of the part-list. A group around one part is dissolved, and a group around
+     * one group with the same symbol (the same parts, drawn twice at one place): a group around one group with another symbol
+     * (e.g. a bracket and a brace on the horns of OpenScore Beach, Gaelic Symphony/2, MuseScore's bracket and square bracket)
+     * stays, so both are drawn, as in osmd-dart (user decision 10-24; upstream 2.3.0 has the same rule).
+     */
+    private closePartGroup(group: InstrumentalGroup): void {
+        const hasMultipleParts: boolean = this.countInstrumentsInGroup(group) > 1;
+        group.PrintName = group.PrintName && hasMultipleParts;
+        group.PrintAbbreviation = group.PrintAbbreviation && hasMultipleParts;
+        const onlyChild: InstrumentalGroup = group.InstrumentalGroups.length === 1 ? group.InstrumentalGroups[0] : undefined;
+        if (onlyChild && (onlyChild instanceof Instrument || onlyChild.GroupSymbol === group.GroupSymbol)) {
+            if (group.Parent) {
+                group.Parent.InstrumentalGroups.push(onlyChild);
+                this._removeFromArray(group.Parent.InstrumentalGroups, group);
+            } else {
+                this.musicSheet.InstrumentalGroups.push(onlyChild);
+                this._removeFromArray(this.musicSheet.InstrumentalGroups, group);
+            }
+        }
+    }
+
+    /** The MusicXML group-symbol of a part-group: none if not given (MusicXML 4.0, group-symbol), and for an unknown value. */
+    private readGroupSymbol(groupSymbol: IXmlElement): GroupSymbol {
+        switch (groupSymbol?.value?.trim()) {
+            case "brace":
+                return GroupSymbol.Brace;
+            case "line":
+                return GroupSymbol.Line;
+            case "bracket":
+                return GroupSymbol.Bracket;
+            case "square":
+                return GroupSymbol.Square;
+            default:
+                return GroupSymbol.None;
+        }
     }
 
     private countInstrumentsInGroup(group: InstrumentalGroup): number {

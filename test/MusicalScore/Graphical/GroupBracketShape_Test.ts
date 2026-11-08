@@ -1,8 +1,10 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
 import { VexFlowInstrumentBracket } from "../../../src/MusicalScore/Graphical/VexFlow/VexFlowInstrumentBracket";
+import { GroupSymbol } from "../../../src/MusicalScore/InstrumentalGroup";
 import { MusicSystem } from "../../../src/MusicalScore/Graphical/MusicSystem";
+import { EngravingRules } from "../../../src/MusicalScore/Graphical/EngravingRules";
 import { TestUtils } from "../../Util/TestUtils";
 
 /**
@@ -11,6 +13,7 @@ import { TestUtils } from "../../Util/TestUtils";
  * nested in another stands left of it, also a bracket (VexFlow leaves a bracket's x shift out, so it stood on top of the
  * outer one); the brace of a piano inside a group stands left of the group's bracket; and the labels move left by as much as
  * the brackets reach further than a part brace. Same as osmd-dart test/group_bracket_shape_test.dart.
+ * A nested symbol stands EngravingRules.GroupBracketColumnDistance (0.5 units = 5 px) further left per column.
  */
 describe("Part group bracket shape and place", () => {
     const names: { [abbr: string]: string } = { Vn: "Violin", Va: "Viola", Fl: "Flute", Ob: "Oboe", Pno: "Piano" };
@@ -55,6 +58,9 @@ describe("Part group bracket shape and place", () => {
             `<part-list>${partList}</part-list>${parts}</score-partwise>`;
     }
     const rendered: { container: HTMLElement, osmd: OpenSheetMusicDisplay }[] = [];
+    /** The column distance in px (zoom 1) and in units. */
+    const columnPx: number = new EngravingRules().GroupBracketColumnDistance * 10;
+    const column: number = columnPx / 10;
     function firstSystem(layout: string[]): Promise<MusicSystem> {
         const container: HTMLElement = TestUtils.getDivElement(document);
         container.style.width = "800px";
@@ -89,7 +95,7 @@ describe("Part group bracket shape and place", () => {
         return firstSystem(["[square", "Vn", "Va", "]"]).then(system => {
             const bracket: VexFlowInstrumentBracket = system.GroupBrackets[0] as VexFlowInstrumentBracket;
             expect(system.GroupBrackets.length).to.equal(1);
-            expect(bracket.Shape).to.equal("square");
+            expect(bracket.Shape).to.equal(GroupSymbol.Square);
             // the line, then the hooks reaching right
             expect(drawn(bracket)).to.deep.equal([[-5, 1.5], [-5, 5], [-5, 5]]);
         });
@@ -98,7 +104,7 @@ describe("Part group bracket shape and place", () => {
     it("draws a line as a thin line", () => {
         return firstSystem(["[line", "Vn", "Va", "]"]).then(system => {
             const bracket: VexFlowInstrumentBracket = system.GroupBrackets[0] as VexFlowInstrumentBracket;
-            expect(bracket.Shape).to.equal("line");
+            expect(bracket.Shape).to.equal(GroupSymbol.Line);
             expect(drawn(bracket)).to.deep.equal([[-5, 1.5]]);
         });
     });
@@ -106,14 +112,14 @@ describe("Part group bracket shape and place", () => {
     it("draws a bracket as VexFlow does", () => {
         return firstSystem(["[bracket", "Vn", "Va", "]"]).then(system => {
             const bracket: VexFlowInstrumentBracket = system.GroupBrackets[0] as VexFlowInstrumentBracket;
-            expect(bracket.Shape).to.equal("");
+            expect(bracket.Shape).to.equal(GroupSymbol.Bracket);
             expect(drawn(bracket)).to.deep.equal([[-5, 3]]);
         });
     });
 
     const nested: [string, number[][]][] = [
-        ["square", [[-10, 1.5], [-10, 5], [-10, 5]]],
-        ["bracket", [[-10, 3]]],
+        ["square", [[-5 - columnPx, 1.5], [-5 - columnPx, 5], [-5 - columnPx, 5]]],
+        ["bracket", [[-5 - columnPx, 3]]],
     ];
     for (const [symbol, inner] of nested) {
         it(`draws a nested ${symbol} left of the outer bracket`, () => {
@@ -128,9 +134,9 @@ describe("Part group bracket shape and place", () => {
 
     // layout, the group brackets [top, bottom staffline], the x shift of the piano's brace (px)
     const pianos: [string[], number[][], number][] = [
-        [["[bracket", "Vn", "Pno", "]"], [[0, 2]], -5],
-        [["[square", "Pno", "Vn", "]"], [[0, 2]], -5],
-        [["[bracket", "Fl", "[bracket", "Vn", "Pno", "]", "]"], [[0, 3], [1, 3]], -10],
+        [["[bracket", "Vn", "Pno", "]"], [[0, 2]], -columnPx],
+        [["[square", "Pno", "Vn", "]"], [[0, 2]], -columnPx],
+        [["[bracket", "Fl", "[bracket", "Vn", "Pno", "]", "]"], [[0, 3], [1, 3]], -2 * columnPx],
         [["Vn", "Pno"], [], 0],
     ];
     for (const [layout, spans, braceShift] of pianos) {
@@ -151,8 +157,8 @@ describe("Part group bracket shape and place", () => {
     // layout, how much further right the staves start than without the groups' brackets (units): as far as the piano's
     // brace moves left beyond its place
     const rooms: [string[], number][] = [
-        [["[bracket", "Vn", "Pno", "]"], 0.5],
-        [["[bracket", "Fl", "[bracket", "Vn", "Pno", "]", "]"], 1.0],
+        [["[bracket", "Vn", "Pno", "]"], column],
+        [["[bracket", "Fl", "[bracket", "Vn", "Pno", "]", "]"], 2 * column],
         [["[bracket", "Fl", "Ob", "[square", "Vn", "Va", "]", "]"], 0],
         [["[bracket", "Vn", "Va", "]", "Pno"], 0],
     ];

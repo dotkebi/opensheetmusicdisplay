@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { BoundingBox } from "../../../src/MusicalScore/Graphical/BoundingBox";
@@ -21,7 +21,8 @@ describe("Tremolo between notes: strokes reserved before the expressions", () =>
             osmd.render();
             // the strokes as drawn, in units: one group per stroke (its fill path first)
             const strokes: {left: number, right: number, top: number, bottom: number}[] = [];
-            for (const group of Array.from(container.querySelectorAll("g[id^=\"vf-tremoloBetweenNotes-\"]"))) {
+            // (ids osmd-trem<measureListIndex>-<staffIdInMusicSheet>-<n> since upstream 2.3.0)
+            for (const group of Array.from(container.querySelectorAll("g[id^=\"osmd-trem\"]"))) {
                 const points: number[][] = (group.querySelector("path")?.getAttribute("d") ?? "").split(/[MLZ]/)
                     .filter(part => part.trim().length > 0).map(part => part.trim().split(" ").map(parseFloat));
                 strokes.push({left: Math.min(...points.map(p => p[0])) / 10, right: Math.max(...points.map(p => p[0])) / 10,

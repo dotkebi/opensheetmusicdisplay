@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 /* eslint-disable @typescript-eslint/no-unused-expressions */
 import {MusicSheetReader} from "../../../src/MusicalScore/ScoreIO/MusicSheetReader";
 import {MusicSheet} from "../../../src/MusicalScore/MusicSheet";
@@ -8,7 +8,7 @@ import {Note, TremoloInfo} from "../../../src/MusicalScore/VoiceData/Note";
 import {VoiceEntry} from "../../../src/MusicalScore/VoiceData/VoiceEntry";
 import {SourceMeasure} from "../../../src/MusicalScore/VoiceData/SourceMeasure";
 import {Instrument} from "../../../src/MusicalScore/Instrument";
-import {InstrumentalGroup} from "../../../src/MusicalScore/InstrumentalGroup";
+import {GroupSymbol, InstrumentalGroup} from "../../../src/MusicalScore/InstrumentalGroup";
 import {InstrumentFamily} from "../../../src/MusicalScore/SubInstrument";
 import {PlacementEnum} from "../../../src/MusicalScore/VoiceData/Expressions/AbstractExpression";
 import {ContinuousDynamicExpression} from
@@ -27,7 +27,7 @@ describe("Music Sheet Reader", () => {
       return ((window as any).__xml__)[filename];
     }
 
-    before((): void => {
+    beforeAll((): void => {
         // Load the xml file
         const doc: Document = getSheet(path);
         expect(doc).to.not.be.undefined;
@@ -36,14 +36,13 @@ describe("Music Sheet Reader", () => {
         sheet = reader.createMusicSheet(score, path);
     });
 
-    it("checks XML", (done: Mocha.Done) => {
-      done(); // TODO implement test
+    it("checks XML", () => {
+      // TODO implement test
     });
 
-    it("reads title and composer", (done: Mocha.Done) => {
+    it("reads title and composer", () => {
         expect(sheet.TitleString).to.equal("Sonatina Op.36 No 1 Teil 1 Allegro");
         expect(sheet.ComposerString).to.equal("Muzio Clementi");
-        done();
     });
 
     describe("credits", () => {
@@ -72,7 +71,7 @@ describe("Music Sheet Reader", () => {
 
         // The sample has no page layout (no <defaults>) and no <work> or <movement-title>: its credits alone give
         //   the title, two subtitles, the composer, the lyricist (in two credit-words) and the rights. Some omit page.
-        it("reads the credits of a score without page layout by their credit-type", (done: Mocha.Done) => {
+        it("reads the credits of a score without page layout by their credit-type", () => {
             const creditsPath: string = "test/data/test_credits_without_page_layout.musicxml";
             const creditsSheet: MusicSheet = new MusicSheetReader().createMusicSheet(
                 new IXmlElement(getSheet(creditsPath).getElementsByTagName("score-partwise")[0]), creditsPath);
@@ -81,10 +80,9 @@ describe("Music Sheet Reader", () => {
             expect(creditsSheet.ComposerString, "composer").to.equal("Traditional");
             expect(creditsSheet.LyricistString, "lyricist").to.equal("Words: Jane Taylor");
             expect(creditsSheet.CopyrightString, "rights").to.equal("Public domain");
-            done();
         });
 
-        it("reads the other credits of a score with page layout when a credit omits page", (done: Mocha.Done) => {
+        it("reads the other credits of a score with page layout when a credit omits page", () => {
             const creditsSheet: MusicSheet = readScore(scoreXml(`
                 <work><work-title>Twinkle, Twinkle, Little Star</work-title></work>
                 <defaults><scaling><millimeters>7</millimeters><tenths>40</tenths></scaling>
@@ -96,12 +94,11 @@ describe("Music Sheet Reader", () => {
                     <credit-words default-x="1130" default-y="1500" justify="right">Traditional</credit-words></credit>`));
             expect(creditsSheet.SubtitleString, "subtitle").to.equal("Ah! vous dirai-je, maman");
             expect(creditsSheet.ComposerString, "composer").to.equal("Traditional");
-            done();
         });
 
         // The composer is only in a credit, so it must be read from it for this to be a meaningful guard: on develop,
         //   which reads no credits without page layout, the title and lyricist checks below would pass anyway.
-        it("reads the composer from a credit but keeps the title, lyricist and rights given in the metadata", (done: Mocha.Done) => {
+        it("reads the composer from a credit but keeps the title, lyricist and rights given in the metadata", () => {
             const creditsSheet: MusicSheet = readScore(scoreXml(`
                 <work><work-title>Twinkle, Twinkle, Little Star</work-title></work>
                 <identification>
@@ -116,7 +113,6 @@ describe("Music Sheet Reader", () => {
             expect(creditsSheet.TitleString, "title kept from the metadata").to.equal("Twinkle, Twinkle, Little Star");
             expect(creditsSheet.LyricistString, "lyricist kept from the metadata").to.equal("Jane Taylor");
             expect(creditsSheet.CopyrightString, "rights kept from the metadata").to.equal("© 1806 Jane Taylor");
-            done();
         });
     });
 
@@ -138,28 +134,25 @@ describe("Music Sheet Reader", () => {
             ["https://example.com/scores/song.xml", "song"],
         ];
         for (const [tempTitle, title] of titlesByTempTitle) {
-            it(`is "${title}" for the tempTitle "${tempTitle}"`, (done: Mocha.Done) => {
+            it(`is "${title}" for the tempTitle "${tempTitle}"`, () => {
                 const doc: Document = new DOMParser().parseFromString(untitledXml, "text/xml");
                 const untitledSheet: MusicSheet = new MusicSheetReader().createMusicSheet(
                     new IXmlElement(doc.getElementsByTagName("score-partwise")[0]), tempTitle);
                 expect(untitledSheet.TitleString).to.equal(title);
-                done();
             });
         }
     });
 
-    it("reads measures", (done: Mocha.Done) => {
+    it("reads measures", () => {
         expect(sheet.SourceMeasures.length).to.equal(38);
-        done();
     });
 
-    it("reads instruments", (done: Mocha.Done) => {
+    it("reads instruments", () => {
         expect(reader.CompleteNumberOfStaves).to.equal(2);
         expect(sheet.Instruments.length).to.equal(2);
         expect(sheet.InstrumentalGroups.length).to.equal(2);
         expect(sheet.Instruments[0].Name).to.equal("Piano (right)");
         expect(sheet.Instruments[1].Name).to.equal("Piano (left)");
-        done();
     });
 
     it("fills a missing staff rhythm when all available signatures are symbolic", () => {
@@ -192,7 +185,7 @@ describe("Music Sheet Reader", () => {
         expect(parsed.SourceMeasures).to.have.length(1);
     });
 
-    it("preserves part-group and instrument family metadata", (done: Mocha.Done) => {
+    it("preserves part-group and instrument family metadata", () => {
         const metadataXml: string = `
           <score-partwise version="4.0">
             <part-list>
@@ -240,7 +233,7 @@ describe("Music Sheet Reader", () => {
         expect(group.Name).to.equal("Winds");
         expect(group.Number).to.equal("1");
         expect(group.Abbreviation).to.equal("Ww.");
-        expect(group.GroupSymbol).to.equal("bracket");
+        expect(group.GroupSymbol).to.equal(GroupSymbol.Bracket);
         expect(group.InstrumentalGroups.map((entry: InstrumentalGroup) => (entry as Instrument).IdString))
             .to.deep.equal(["P1", "P2"]);
 
@@ -250,17 +243,15 @@ describe("Music Sheet Reader", () => {
         expect(flute.SubInstruments[0].Family).to.equal(InstrumentFamily.Woodwind);
         expect(metadataSheet.Instruments[1].SubInstruments[0].Family).to.equal(InstrumentFamily.Woodwind);
         expect(metadataSheet.Instruments[2].SubInstruments[0].Family).to.equal(InstrumentFamily.Strings);
-        done();
     });
 
-    it("reads notes", (done: Mocha.Done) => {
+    it("reads notes", () => {
         // TODO implement test
         // Staff Entries on first measure
         // expect(sheet.SourceMeasures[0].VerticalSourceStaffEntryContainers[0].StaffEntries.length).to.equal(4);
-        done();
     });
 
-    it("keeps direction placement for a wedge after a whitespace words node", (done: Mocha.Done) => {
+    it("keeps direction placement for a wedge after a whitespace words node", () => {
         const xml: string = `
           <score-partwise version="4.0">
             <part-list>
@@ -304,27 +295,25 @@ describe("Music Sheet Reader", () => {
 
         expect(wedge).to.not.be.undefined;
         expect(wedge.Placement).to.equal(PlacementEnum.Below);
-        done();
     });
 
     describe("Notehead None (Hidden Notes)", () => {
         const noneNoteheadPath: string = "test/data/test_notehead_none_hidden.musicxml";
         let noneNoteheadSheet: MusicSheet;
 
-        before((): void => {
+        beforeAll((): void => {
             const doc: Document = getSheet(noneNoteheadPath);
             expect(doc).to.not.be.undefined;
             const noneScore: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
             noneNoteheadSheet = reader.createMusicSheet(noneScore, noneNoteheadPath);
         });
 
-        it("loads file with notehead='none' without errors", (done: Mocha.Done) => {
+        it("loads file with notehead='none' without errors", () => {
             expect(noneNoteheadSheet).to.not.be.undefined;
             expect(noneNoteheadSheet.SourceMeasures.length).to.be.greaterThan(0);
-            done();
         });
 
-        it("correctly parses notehead='none' as NoteHeadShape.NONE", (done: Mocha.Done) => {
+        it("correctly parses notehead='none' as NoteHeadShape.NONE", () => {
             // eslint-disable-next-line @typescript-eslint/typedef
             const firstMeasure = noneNoteheadSheet.SourceMeasures[0];
             expect(firstMeasure).to.not.be.undefined;
@@ -346,10 +335,9 @@ describe("Music Sheet Reader", () => {
             const firstNote = firstVoiceEntry.Notes[0];
             expect(firstNote.Notehead).to.not.be.undefined;
             expect(firstNote.Notehead.Shape).to.equal(NoteHeadShape.NONE);
-            done();
         });
 
-        it("hidden notes (notehead='none') should not have PrintObject set to false by default", (done: Mocha.Done) => {
+        it("hidden notes (notehead='none') should not have PrintObject set to false by default", () => {
             // eslint-disable-next-line @typescript-eslint/typedef
             const firstMeasure = noneNoteheadSheet.SourceMeasures[0];
             // eslint-disable-next-line @typescript-eslint/typedef
@@ -363,10 +351,9 @@ describe("Music Sheet Reader", () => {
 
             // PrintObject should be true (default), but the note is hidden via notehead='none'
             expect(firstNote.PrintObject).to.be.true;
-            done();
         });
 
-        it("visible notes (normal notehead) in same measure should remain visible", (done: Mocha.Done) => {
+        it("visible notes (normal notehead) in same measure should remain visible", () => {
             // eslint-disable-next-line @typescript-eslint/typedef
             const firstMeasure = noneNoteheadSheet.SourceMeasures[0];
             // eslint-disable-next-line @typescript-eslint/typedef
@@ -387,7 +374,6 @@ describe("Music Sheet Reader", () => {
             if (note.Notehead) {
                 expect(note.Notehead.Shape).to.not.equal(NoteHeadShape.NONE);
             }
-            done();
         });
     });
 
@@ -395,14 +381,14 @@ describe("Music Sheet Reader", () => {
         const tremoloBetweenNotesPath: string = "test/data/test_tremolo_between_notes_short.musicxml";
         let tremoloSheet: MusicSheet;
 
-        before((): void => {
+        beforeAll((): void => {
             const doc: Document = getSheet(tremoloBetweenNotesPath);
             expect(doc).to.not.be.undefined;
             const tremoloScore: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
             tremoloSheet = reader.createMusicSheet(tremoloScore, tremoloBetweenNotesPath);
         });
 
-        it("links start and stop notes of tremolos between two notes", (done: Mocha.Done) => {
+        it("links start and stop notes of tremolos between two notes", () => {
             expect(tremoloSheet).to.not.be.undefined;
             let tremoloCount: number = 0;
             for (const instrument of tremoloSheet.Instruments) {
@@ -415,15 +401,15 @@ describe("Music Sheet Reader", () => {
                             expect(tremoloInfo.tremoloBetweenNotes, "start and stop notes are linked").to.not.be.undefined;
                             expect(tremoloInfo.tremoloBetweenNotes.strokes).to.equal(3);
                             if (tremoloInfo.tremoloBetweenNotesStart) {
-                                expect(tremoloInfo.tremoloBetweenNotes.startNote).to.equal(note);
+                                expect(tremoloInfo.tremoloBetweenNotes.startNote === note, "the start note is the tremolo's startNote").to.equal(true);
                                 openTremoloStartNote = note;
                             } else {
                                 expect(tremoloInfo.tremoloBetweenNotesStop, "note is start or stop note").to.be.true;
-                                expect(tremoloInfo.tremoloBetweenNotes.stopNote).to.equal(note);
-                                expect(tremoloInfo.tremoloBetweenNotes.startNote,
-                                       "stop note is linked to the previous start note in the same voice").to.equal(openTremoloStartNote);
-                                // start and stop note share the same TremoloBetweenNotes object:
-                                expect(openTremoloStartNote.TremoloInfo.tremoloBetweenNotes).to.equal(tremoloInfo.tremoloBetweenNotes);
+                                expect(tremoloInfo.tremoloBetweenNotes.stopNote === note, "the stop note is the tremolo's stopNote").to.equal(true);
+                                expect(tremoloInfo.tremoloBetweenNotes.startNote === openTremoloStartNote,
+                                       "stop note is linked to the previous start note in the same voice").to.equal(true);
+                                expect(openTremoloStartNote.TremoloInfo.tremoloBetweenNotes === tremoloInfo.tremoloBetweenNotes,
+                                       "start and stop note share the same TremoloBetweenNotes object").to.equal(true);
                                 tremoloCount++;
                             }
                         }
@@ -431,10 +417,9 @@ describe("Music Sheet Reader", () => {
                 }
             }
             expect(tremoloCount, "the test sample has 4 tremolos between two notes").to.equal(4);
-            done();
         });
 
-        it("does not add single note tremolo strokes for tremolos between two notes", (done: Mocha.Done) => {
+        it("does not add single note tremolo strokes for tremolos between two notes", () => {
             for (const instrument of tremoloSheet.Instruments) {
                 for (const voice of instrument.Voices) {
                     for (const voiceEntry of voice.VoiceEntries) {
@@ -447,12 +432,11 @@ describe("Music Sheet Reader", () => {
                     }
                 }
             }
-            done();
         });
     });
 
     describe("Tremolo without type attribute", () => {
-        it("reads a tremolo without type attribute as single note tremolo (MusicXML default)", (done: Mocha.Done) => {
+        it("reads a tremolo without type attribute as single note tremolo (MusicXML default)", () => {
             const noTypePath: string = "test/data/test_tremolo_no_type_attribute.musicxml";
             const doc: Document = getSheet(noTypePath);
             expect(doc).to.not.be.undefined;
@@ -467,7 +451,6 @@ describe("Music Sheet Reader", () => {
             expect(noTypeNote.TremoloInfo.tremoloBetweenNotesStart).to.be.undefined;
             expect(noTypeNote.TremoloInfo.tremoloBetweenNotesStop).to.be.undefined;
             expect(noTypeNote.TremoloInfo.tremoloStrokes).to.equal(singleTypeNote.TremoloInfo.tremoloStrokes);
-            done();
         });
     });
 
@@ -476,7 +459,7 @@ describe("Music Sheet Reader", () => {
         let enharmonicTieSheet: MusicSheet;
         let tiedNotes: Note[];
 
-        before((): void => {
+        beforeAll((): void => {
             const doc: Document = getSheet(enharmonicTiePath);
             expect(doc).to.not.be.undefined;
             const enharmonicTieScore: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
@@ -486,15 +469,16 @@ describe("Music Sheet Reader", () => {
                 .filter((note: Note): boolean => !note.isRest());
         });
 
-        it("links tie notes with enharmonic spellings", (done: Mocha.Done) => {
+        it("links tie notes with enharmonic spellings", () => {
             expect(tiedNotes.length).to.equal(2);
             expect(tiedNotes[0].Pitch.getHalfTone()).to.equal(tiedNotes[1].Pitch.getHalfTone());
             expect(tiedNotes[0].Pitch.FundamentalNote).to.not.equal(tiedNotes[1].Pitch.FundamentalNote);
             expect(tiedNotes[0].NoteTie).to.not.be.undefined;
-            expect(tiedNotes[1].NoteTie).to.equal(tiedNotes[0].NoteTie);
-            expect(tiedNotes[0].NoteTie.Notes).to.deep.equal(tiedNotes);
+            expect(tiedNotes[1].NoteTie === tiedNotes[0].NoteTie, "both notes have the same tie").to.equal(true);
+            const tieNotes: Note[] = tiedNotes[0].NoteTie.Notes;
+            expect(tieNotes.length, "notes of the tie").to.equal(2);
+            expect(tieNotes[0] === tiedNotes[0] && tieNotes[1] === tiedNotes[1], "the tie's notes are the two tied notes, in order").to.equal(true);
             expect(Object.keys(enharmonicTieSheet.Staves[0].openTieDict)).to.be.empty;
-            done();
         });
     });
 
@@ -529,7 +513,7 @@ describe("Music Sheet Reader", () => {
 
         function readSheet(filename: string): MusicSheet {
             const doc: Document = getSheet("test/data/" + filename);
-            expect(doc, filename + " should be preprocessed by karma").to.not.be.undefined;
+            expect(doc, filename + " should be in test/data").to.not.be.undefined;
             const fileScore: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
             return reader.createMusicSheet(fileScore, "test/data/" + filename);
         }
@@ -546,7 +530,7 @@ describe("Music Sheet Reader", () => {
             expect(notes[4].Length.RealValue, `${label}: second plain eighth is 1/8`).to.be.closeTo(oneEighth, 1e-8);
         }
 
-        it("reads the un-reduced musx2mxl triplet (measure 7) as three 1/12 notes, not three eighths", (done: Mocha.Done) => {
+        it("reads the un-reduced musx2mxl triplet (measure 7) as three 1/12 notes, not three eighths", () => {
             const sheet7: MusicSheet = readSheet("test_triplet_playback_musx2mxl_encoded.musicxml");
             const measure7: SourceMeasure = sheet7.SourceMeasures[6];
             const notes: Note[] = measureNonRestNotes(measure7);
@@ -555,14 +539,12 @@ describe("Music Sheet Reader", () => {
             const measureSum: number =
                 measureNonRestNotes(measure7).reduce((sum: number, n: Note) => sum + n.Length.RealValue, 0.5); // + half rest
             expect(measureSum, "measure 7 sums to a full 4/4 bar").to.be.closeTo(1, 1e-8);
-            done();
         });
 
-        it("reads the correctly-reduced MuseScore re-export (measure 1) identically (regression guard)", (done: Mocha.Done) => {
+        it("reads the correctly-reduced MuseScore re-export (measure 1) identically (regression guard)", () => {
             const sheet1: MusicSheet = readSheet("test_triplet_playback_musescore_encoded_from_musx2mxl_encoded.musicxml");
             const notes: Note[] = measureNonRestNotes(sheet1.SourceMeasures[0]);
             expectTripletThenTwoEighths(notes, "MuseScore measure 1");
-            done();
         });
 
         /**
@@ -585,20 +567,18 @@ describe("Music Sheet Reader", () => {
             expect(measure.Duration.RealValue, `${label}: the 4/2 measure lasts a breve`).to.be.closeTo(2, 1e-8);
         }
 
-        it("reads a correctly reduced dotted whole note in a whole-note triplet as a whole note, not 2/3 (measure 1)", (done: Mocha.Done) => {
+        it("reads a correctly reduced dotted whole note in a whole-note triplet as a whole note, not 2/3 (measure 1)", () => {
             const dottedSheet: MusicSheet = readSheet("test_triplet_dotted_whole_note_duration.musicxml");
             expectDottedWholeNoteTriplet(dottedSheet.SourceMeasures[0], "correctly reduced measure 1");
             // as 5/3 of 4/2, the first measure used to be read as a pickup measure (measure number 0)
             expect(dottedSheet.SourceMeasures[0].MeasureNumber, "measure 1 isn't read as a pickup measure").to.equal(1);
-            done();
         });
 
-        it("reads an un-reduced dotted whole note in a whole-note triplet as a whole note, not 3/2 (measure 2)", (done: Mocha.Done) => {
+        it("reads an un-reduced dotted whole note in a whole-note triplet as a whole note, not 3/2 (measure 2)", () => {
             const dottedSheet: MusicSheet = readSheet("test_triplet_dotted_whole_note_duration.musicxml");
             expectDottedWholeNoteTriplet(dottedSheet.SourceMeasures[1], "un-reduced measure 2");
             expect(dottedSheet.SourceMeasures[2].AbsoluteTimestamp.RealValue, "the breve of measure 3 starts after two breves")
                 .to.be.closeTo(4, 1e-8);
-            done();
         });
     });
 
@@ -624,7 +604,7 @@ describe("Music Sheet Reader", () => {
                 .filter((entry: LyricsEntry): boolean => entry !== undefined);
         }
 
-        it("re-links a word whose syllables alternate between voices", (done: Mocha.Done) => {
+        it("re-links a word whose syllables alternate between voices", () => {
             const crossVoiceSheet: MusicSheet = readCrossVoiceSheet();
             const voice1Lyrics: LyricsEntry[] = lyricsOfVoice(crossVoiceSheet, 1);
             const voice2Lyrics: LyricsEntry[] = lyricsOfVoice(crossVoiceSheet, 2);
@@ -642,10 +622,9 @@ describe("Music Sheet Reader", () => {
             const tenorWords: string[] = lyricsOfVoice(crossVoiceSheet, 5).map((entry: LyricsEntry): string =>
                 entry.Word?.Syllables.map((syllable: LyricsEntry): string => syllable.Text + syllable.Parent.ParentVoice.VoiceId).join("-"));
             expect(tenorWords, "the word of each syllable, with voice ids").to.deep.equal([undefined, "ri5-sing5", "ri5-sing5", "glo5-ry5", "glo5-ry5"]);
-            done();
         });
 
-        it("keeps a same-voice word intact after re-linking, also with its last syllable marked single", (done: Mocha.Done) => {
+        it("keeps a same-voice word intact after re-linking, also with its last syllable marked single", () => {
             const crossVoiceSheet: MusicSheet = readCrossVoiceSheet();
             const voice1Lyrics: LyricsEntry[] = lyricsOfVoice(crossVoiceSheet, 1);
             const gloEntry: LyricsEntry = voice1Lyrics[2];
@@ -653,10 +632,9 @@ describe("Music Sheet Reader", () => {
             expect(gloEntry.Word).to.not.be.undefined;
             expect(ryEntry.Word === gloEntry.Word, "ry is in the word of glo").to.be.true;
             expect(gloEntry.Word.Syllables.map((syllable: LyricsEntry): string => syllable.Text)).to.deep.equal(["glo", "ry"]);
-            done();
         });
 
-        it("leaves chains untouched when RelinkLyricWordsAcrossVoices is disabled", (done: Mocha.Done) => {
+        it("leaves chains untouched when RelinkLyricWordsAcrossVoices is disabled", () => {
             const rules: EngravingRules = new EngravingRules();
             rules.RelinkLyricWordsAcrossVoices = false;
             const crossVoiceSheet: MusicSheet = readCrossVoiceSheet(rules);
@@ -664,17 +642,16 @@ describe("Music Sheet Reader", () => {
             const riEntry: LyricsEntry = lyricsOfVoice(crossVoiceSheet, 2)[0];
             expect(singEntry.Word).to.be.undefined; // "end" arrived with no open word in its voice
             expect(riEntry.Word.Syllables.length).to.equal(1); // dangling "begin"
-            done();
         });
 
         // A verse sung by one voice can't have a word split across voices,
         // so it must come out exactly as LyricsReader linked it.
-        it("leaves a single-voice score untouched, dashes included", (done: Mocha.Done) => {
+        it("leaves a single-voice score untouched, dashes included", () => {
             const samplePath: string = "test/data/test_divisions_after_first_note_JingleBellRock_extract.musicxml";
 
             function wordShapes(rules?: EngravingRules): string[] {
                 const doc: Document = getSheet(samplePath);
-                expect(doc, samplePath + " should be preprocessed by karma").to.not.be.undefined;
+                expect(doc, samplePath + " should be in test/data").to.not.be.undefined;
                 const sampleScore: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
                 const sampleSheet: MusicSheet = new MusicSheetReader(undefined, rules)
                     .createMusicSheet(sampleScore, samplePath);
@@ -705,7 +682,6 @@ describe("Music Sheet Reader", () => {
             const withFeature: string[] = wordShapes();
             expect(withFeature.length, "sample should carry lyrics").to.be.greaterThan(0);
             expect(withFeature).to.deep.equal(wordShapes(disabled));
-            done();
         });
     });
 
@@ -713,28 +689,25 @@ describe("Music Sheet Reader", () => {
         const filename: string = "test/data/test_transpose_octave_change.musicxml";
         let transposeSheet: MusicSheet;
 
-        before((): void => {
+        beforeAll((): void => {
             const doc: Document = getSheet(filename);
-            expect(doc, filename + " should be preprocessed by karma").to.not.be.undefined;
+            expect(doc, filename + " should be in test/data").to.not.be.undefined;
             const fileScore: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
             transposeSheet = new MusicSheetReader().createMusicSheet(fileScore, filename);
         });
 
         // MusicXML: sounding pitch = written pitch + chromatic + 12 * octave-change.
         // Only <chromatic> used to be read, so octave-transposing instruments were an octave off.
-        it("reads chromatic without octave-change unchanged (regression guard)", (done: Mocha.Done) => {
+        it("reads chromatic without octave-change unchanged (regression guard)", () => {
             expect(transposeSheet.Instruments[0].PlaybackTranspose).to.equal(-2);
-            done();
         });
 
-        it("adds 12 per octave-change (Bb tenor sax: chromatic -2, octave-change -1)", (done: Mocha.Done) => {
+        it("adds 12 per octave-change (Bb tenor sax: chromatic -2, octave-change -1)", () => {
             expect(transposeSheet.Instruments[1].PlaybackTranspose).to.equal(-14);
-            done();
         });
 
-        it("reads octave-change without chromatic", (done: Mocha.Done) => {
+        it("reads octave-change without chromatic", () => {
             expect(transposeSheet.Instruments[2].PlaybackTranspose).to.equal(12);
-            done();
         });
     });
 });

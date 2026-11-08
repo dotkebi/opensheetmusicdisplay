@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { OpenSheetMusicDisplay } from "../../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { VexFlowVoiceEntry } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowVoiceEntry";
 import { GraphicalVoiceEntry } from "../../../../src/MusicalScore/Graphical/GraphicalVoiceEntry";
@@ -14,7 +14,7 @@ describe("Notehead none dot", () => {
     const transparent: string = "#00000000";
     let osmd: OpenSheetMusicDisplay;
 
-    before(async () => {
+    beforeAll(async () => {
         const div: HTMLElement = TestUtils.getDivElement(document);
         div.style.width = "800px";
         osmd = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });

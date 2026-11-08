@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { ClefEnum } from "../../../src/MusicalScore/VoiceData/Instructions/ClefInstruction";
 import { TestUtils } from "../../Util/TestUtils";
@@ -10,7 +10,7 @@ import { TestUtils } from "../../Util/TestUtils";
  */
 describe("Multirests: the clef at the end, a rehearsal mark inside", () => {
     let osmd: OpenSheetMusicDisplay;
-    before(async () => {
+    beforeAll(async () => {
         const div: HTMLElement = TestUtils.getDivElement(document);
         div.style.width = "1200px";
         osmd = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg", autoGenerateMultipleRestMeasuresFromRestMeasures: true });

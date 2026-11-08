@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalLine } from "../../../src/MusicalScore/Graphical/GraphicalLine";
 import { GraphicalMeasure } from "../../../src/MusicalScore/Graphical/GraphicalMeasure";
@@ -58,7 +58,7 @@ describe("Lyric extend lines", () => {
     let osmd: OpenSheetMusicDisplay;
     let staffLine: StaffLine;
 
-    before(async () => {
+    beforeAll(async () => {
         const div: HTMLElement = TestUtils.getDivElement(document);
         div.style.width = "1200px";
         osmd = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });

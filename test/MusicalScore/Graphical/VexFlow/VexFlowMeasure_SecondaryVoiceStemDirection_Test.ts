@@ -8,7 +8,8 @@ import {TestUtils} from "../../../Util/TestUtils";
 import {GraphicalStaffEntry} from "../../../../src/MusicalScore/Graphical/GraphicalStaffEntry";
 import {GraphicalVoiceEntry} from "../../../../src/MusicalScore/Graphical/GraphicalVoiceEntry";
 import {StemDirectionType} from "../../../../src/MusicalScore/VoiceData/VoiceEntry";
-import {expect} from "chai";
+import {OpenSheetMusicDisplay} from "../../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
+import {expect} from "vitest";
 
 describe("VexFlow Measure - Secondary Voice Stem Direction (issue #1719)", () => {
 
@@ -43,33 +44,51 @@ describe("VexFlow Measure - Secondary Voice Stem Direction (issue #1719)", () =>
    }
 
    it("Should force a lone secondary (linked) voice stem-down by default (AutoStemSecondaryVoicesWhenAloneInMeasure off)",
-      (done: Mocha.Done) => {
+      () => {
       const gms: GraphicalMusicSheet = graphicalMusicSheet(false);
       const secondaryVoiceEntry: GraphicalVoiceEntry = loneVoiceEntry(gms, 1); // measure 2, voice 7
       expect(secondaryVoiceEntry.parentVoiceEntry.WantedStemDirection).to.equal(
          StemDirectionType.Down,
          "by default a secondary voice keeps its stems down, the usual signal for a secondary voice");
-      done();
    });
 
-   it("Should not force a lone secondary (linked) voice stem-down with AutoStemSecondaryVoicesWhenAloneInMeasure", (done: Mocha.Done) => {
+   it("Should not force a lone secondary (linked) voice stem-down with AutoStemSecondaryVoicesWhenAloneInMeasure", () => {
       const gms: GraphicalMusicSheet = graphicalMusicSheet(true);
       const secondaryVoiceEntry: GraphicalVoiceEntry = loneVoiceEntry(gms, 1); // measure 2, voice 7
       expect(secondaryVoiceEntry.parentVoiceEntry.WantedStemDirection).to.equal(
          StemDirectionType.Undefined,
          "a linked voice alone in its measure must keep an undefined (auto) stem, not forced Down");
-      done();
    });
 
    it("Should stem the lone secondary voice identically to the identical main-voice measure with the rule enabled",
-      (done: Mocha.Done) => {
+      () => {
       const gms: GraphicalMusicSheet = graphicalMusicSheet(true);
       const mainVoiceEntry: GraphicalVoiceEntry = loneVoiceEntry(gms, 0);      // measure 1, voice 1
       const secondaryVoiceEntry: GraphicalVoiceEntry = loneVoiceEntry(gms, 1); // measure 2, voice 7
       expect(secondaryVoiceEntry.parentVoiceEntry.WantedStemDirection).to.equal(
          mainVoiceEntry.parentVoiceEntry.WantedStemDirection,
          "identical notes should get the same stem treatment whether in the main or a secondary voice");
-      done();
+   });
+
+   // The calculation sets WantedStemDirection only where it forces a direction. Before the fix, a new calculation started from
+   // the previous one's: after loading with the rule off, turning it on had no effect, the stems stayed down.
+   it("Should apply AutoStemSecondaryVoicesWhenAloneInMeasure turned on or off after loading in updateGraphic()", async () => {
+      const container: HTMLElement = TestUtils.getDivElement(document);
+      const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(container);
+      await osmd.load(TestUtils.getScore(path));
+      osmd.render();
+      /** The drawn stem direction of the lone secondary voice in measure 2. */
+      const stemDirection: () => StemDirectionType = () => loneVoiceEntry(osmd.GraphicSheet, 1).parentVoiceEntry.StemDirection;
+      expect(stemDirection(), "rule off when loading").to.equal(StemDirectionType.Down);
+      for (const autoStem of [true, false, true]) {
+         osmd.EngravingRules.AutoStemSecondaryVoicesWhenAloneInMeasure = autoStem;
+         osmd.updateGraphic();
+         osmd.render();
+         expect(stemDirection(), `rule turned ${autoStem ? "on: pitch-based, up" : "off"}`).to.equal(
+            autoStem ? StemDirectionType.Up : StemDirectionType.Down);
+      }
+      osmd.clear();
+      container.remove();
    });
 
 });

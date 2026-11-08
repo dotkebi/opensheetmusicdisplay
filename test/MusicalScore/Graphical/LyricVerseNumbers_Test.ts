@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { TestUtils } from "../../Util/TestUtils";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
@@ -17,7 +17,7 @@ import { BoundingBox } from "../../../src/MusicalScore/Graphical/BoundingBox";
 describe("Lyric verse number labels", () => {
     let container: HTMLElement;
     let osmd: OpenSheetMusicDisplay;
-    const threeVerses: string = "test_lyrics_verse_numbers.musicxml";
+    const threeVerses: string = "test_lyrics_verse_numbers_three_verses.musicxml";
     const firstNote: string = "test_lyrics_verse_numbers_first_note.musicxml";
 
     beforeEach(() => {

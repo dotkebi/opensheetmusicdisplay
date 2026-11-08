@@ -1,4 +1,4 @@
-import { expect } from "chai";
+import { expect } from "vitest";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalSlur } from "../../../src/MusicalScore/Graphical/GraphicalSlur";
 import { GraphicalStaffEntry } from "../../../src/MusicalScore/Graphical/GraphicalStaffEntry";
@@ -16,7 +16,7 @@ import { TestUtils } from "../../Util/TestUtils";
 describe("Grace note slurs", () => {
     let osmd: OpenSheetMusicDisplay;
 
-    before(async () => {
+    beforeAll(async () => {
         const div: HTMLElement = TestUtils.getDivElement(document);
         div.style.width = "1200px";
         osmd = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });

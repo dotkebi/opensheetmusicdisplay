@@ -55,7 +55,7 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
             "OSMD Function Test - Selecting Measures To Draw": "OSMD_function_test_measuresToDraw_Beethoven_AnDieFerneGeliebte.xml",
             "OSMD Function Test - System and Page Breaks": "OSMD_Function_Test_System_and_Page_Breaks_4_pages.mxl",
             "OSMD Function Test - Tabulature": "OSMD_Function_Test_Tabulature_hayden_study_1.mxl",
-            "OSMD Function Test - Tabulature MultiBends": "OSMD_Function_Test_Tablature_Multibends.musicxml",
+            "OSMD Function Test - Tabulature MultiBends": "test_tabs_multibend.musicxml",
             "OSMD Function Test - Tabulature All Effects": "OSMD_Function_Test_Tablature_Alleffects.musicxml",
             "OSMD Function Test - Tremolo": "OSMD_Function_Test_Tremolo_2bars.musicxml",
             "OSMD Function Test - Tremolo between two notes": "test_tremolo_between_notes.musicxml",
@@ -141,9 +141,6 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
     var autobeamOptionStashedValue = false;
     var autoCustomColoringOptionNeedsReset = false;
     var autoCustomColoringOptionStashedValue = false;
-    var drawPartNamesOptionStashedValue = true;
-    var drawPartAbbreviationsStashedValue = true;
-    var drawPartNamesOptionNeedsReset = false;
     var pageBreaksOptionStashedValue = false;
     var pageBreaksOptionNeedsReset = false;
     var systemBreaksOptionStashedValue = false; // reset handled by pageBreaksOptionNeedsReset
@@ -786,17 +783,13 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
                 openSheetMusicDisplay.TransposeCalculator = transposeIntervalCheckbox && transposeIntervalCheckbox.checked ?
                     new IntervalTransposeCalculator() : new TransposeCalculator();
                 openSheetMusicDisplay.Sheet.Transpose = transposeValue;
-                openSheetMusicDisplay.updateGraphic();
-                rerender();
+                rerender(); // render() applies the transposition (no updateGraphic() needed), and keeps the cursor where it is
             }
         }
 
         if (paramDarkMode) {
             openSheetMusicDisplay.setOptions({darkMode: true});
         }
-        // TODO after selectSampleOnChange, the resize handler triggers immediately,
-        //   so we render twice at the start of the demo.
-        //   maybe delay the first osmd render, e.g. when window ready?
         if (paramOpenUrl) {
             if (openSheetMusicDisplay.getLogLevel() < 2) { // debug or trace
                 console.log("[OSMD] selectSampleOnChange with " + paramOpenUrl);
@@ -919,7 +912,7 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
                 window.osmd = openSheetMusicDisplay;
                 openSheetMusicDisplay.zoom = zoom;
                 // openSheetMusicDisplay.Sheet.Instruments[0].Staves[1].Visible = false;
-                //openSheetMusicDisplay.Sheet.Transpose = 3; // try transposing between load and first render if you have transpose issues with F# etc
+                //openSheetMusicDisplay.Sheet.Transpose = 3; // transpose by 3 halftones up: the next render() applies it
 
                 // braille: settings for the Music Braille samples (e.g. test_Braille_Facsimile_option) are
                 //   applied per-sample in setSampleSpecificOptions() (which runs before this load), and
@@ -1028,15 +1021,6 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
         else if (pageBreaksOptionNeedsReset) {
             openSheetMusicDisplay.setOptions({ newPageFromXML: pageBreaksOptionStashedValue, newSystemFromXML: systemBreaksOptionStashedValue });
             pageBreaksOptionNeedsReset = false;
-        }
-        if (!isCustom && str.includes("Schubert_An_die_Musik")) { // TODO weird layout bug here with part names. but shouldn't be in score anyways
-            drawPartNamesOptionStashedValue = openSheetMusicDisplay.EngravingRules.RenderPartNames;
-            drawPartAbbreviationsStashedValue = openSheetMusicDisplay.EngravingRules.RenderPartAbbreviations;
-            openSheetMusicDisplay.setOptions({ drawPartNames: false, drawPartAbbreviations: false }); // TODO sets osmd.drawingParameters.DrawPartNames! also check EngravingRules.RenderPartAbbreviations, was false
-            drawPartNamesOptionNeedsReset = true;
-        } else if (drawPartNamesOptionNeedsReset) {
-            openSheetMusicDisplay.setOptions({ drawPartNames: drawPartNamesOptionStashedValue, drawPartAbbreviations: drawPartAbbreviationsStashedValue });
-            drawPartNamesOptionNeedsReset = false;
         }
 
         // ── Music Braille sample hooks (see the "Music Braille" section at the bottom of this file) ──
