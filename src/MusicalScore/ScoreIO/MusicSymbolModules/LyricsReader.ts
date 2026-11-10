@@ -25,7 +25,12 @@ export class LyricsReader {
                 const lyricNode: IXmlElement = lyricNodeListArr[idx];
                 try {
                     let syllabic: string = "single"; // Single as default
-                    if (lyricNode.element("text")) {
+                    // An empty <text> with a continuing or stopping <extend> is read like a lyric without <text> (below):
+                    //   it only carries the previous syllable's extend line on to this note, and is no syllable of its own -
+                    //   it neither draws a short line of its own under the note nor ends or continues a word (Schumann, In der
+                    //   Fremde Op. 39 No. 1 m19: "keit," and its line over the next note; Liederkreis Op. 24 No. 1 m24:
+                    //   "Kum-" over two notes, then "mer").
+                    if (lyricNode.element("text") && !LyricsReader.isEmptyTextExtendOnly(lyricNode)) {
                         let textNode: IXmlElement = lyricNode.element("text");
                         if (lyricNode.element("syllabic")) {
                             syllabic = lyricNode.element("syllabic").value;
@@ -160,8 +165,9 @@ export class LyricsReader {
                             }
                         }
                     } else if (lyricNode.element("extend") !== undefined && lyricNode.element("extend").attribute("type")?.value !== "start") {
-                        // a lyric node without text that only continues or stops the previous syllable's extend line, e.g. on the
-                        //   grace notes before the next syllable's note (Gluck, O del mio dolce ardor m12: "fin" over 8 grace notes)
+                        // a lyric node without text (or with empty text, see above) that only continues or stops the previous
+                        //   syllable's extend line, e.g. on the grace notes before the next syllable's note (Gluck, O del mio dolce
+                        //   ardor m12: "fin" over 8 grace notes)
                         let verseNumber: string = "1";
                         if (lyricNode.attributes() !== undefined && lyricNode.attribute("number")) {
                             verseNumber = lyricNode.attribute("number").value;
@@ -177,6 +183,14 @@ export class LyricsReader {
                 }
             }
         }
+    }
+
+    /** Whether a lyric node has only empty <text> (no <elision>) and an <extend> that isn't type="start". */
+    private static isEmptyTextExtendOnly(lyricNode: IXmlElement): boolean {
+        const extend: IXmlElement = lyricNode.element("extend");
+        return extend !== undefined && extend.attribute("type")?.value !== "start" &&
+            lyricNode.element("elision") === undefined &&
+            lyricNode.elements("text").every((node: IXmlElement) => !node.value?.trim());
     }
 
     /**
