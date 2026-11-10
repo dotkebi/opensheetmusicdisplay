@@ -428,6 +428,17 @@ export class Formatter {
     });
 
     this.totalTicks = voices[0].getTicksUsed().clone();
+    // VexFlowPatch: the leftover width is shared out per tick up to the last
+    // tick context, which lies in the voice using the most ticks. With the
+    // first voice's ticks only, a measure whose later voice uses more (a solo
+    // cadenza of 5.6 measures' worth over an orchestra's 3/8 rests: Weber,
+    // Bassoon Concerto Op. 75 II m60 full score) got that many times its
+    // leftover width and ran beyond its barline.
+    voices.forEach(voice => {
+      if (voice.getTicksUsed().greaterThan(this.totalTicks)) {
+        this.totalTicks = voice.getTicksUsed().clone();
+      }
+    });
     this.tickContexts = contexts;
     return contexts;
   }
