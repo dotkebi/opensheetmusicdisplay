@@ -15,7 +15,10 @@ import { TestUtils } from "../../Util/TestUtils";
  *   rest without lyrics (Torna vezzosa Fillide m91 "sta." stops on the G4, "Il" follows the grace group and a rest);
  * - a line cut before the next syllable keeps EngravingRules.LyricExtendEndGap to its label, not
  *   HorizontalBetweenLyricsDistance (Almen se non poss'io m27 "voi ___ non": the stop note's flag reaches under "non");
- * - inputs without continue/stop nodes end the line at the note before the next syllable, as before.
+ * - inputs without continue/stop nodes end the line at the note before the next syllable, as before;
+ * - an empty <text> with a continue/stop extend is read like a text-less node: Schumann, In der Fremde Op. 39 No. 1 m19
+ *   "keit, ___" draws one line over the next note instead of a short line under it, and Liederkreis Op. 24 No. 1 m24
+ *   "Kum - mer" keeps its word across the empty syllable.
  * Same as osmd-dart test/lyric_extend_stop_test.dart.
  */
 describe("Lyric extend stop note", () => {
@@ -64,6 +67,24 @@ describe("Lyric extend stop note", () => {
     /** an old input: the melisma's notes have no lyric nodes at all */
     const noStopNodes: string = score([
         note("D", 5, 8, "quarter", "sta.", "start") + note("B", 4, 8, "quarter") + note("G", 4, 8, "quarter") + note("B", 4, 8, "quarter", "Il"),
+    ], "4", "4");
+    /** a note whose lyric has an empty <text> and a continue/stop extend */
+    function emptyTextExtend(step: string, octave: number, duration: number, type: string, extend: string, syllabic: string): string {
+        return `<note><pitch><step>${step}</step><octave>${octave}</octave></pitch><duration>${duration}</duration>` +
+            `<voice>1</voice><type>${type}</type><lyric number="1"><syllabic>${syllabic}</syllabic><text></text>` +
+            `<extend type="${extend}"/></lyric></note>`;
+    }
+    /** In der Fremde Op. 39 No. 1 m19: "keit," (half) with an extend start, the next quarter has an empty text that stops it,
+     *  an eighth rest, "die" */
+    const emptyTextStop: string = score([
+        note("B", 4, 16, "half", "keit,", "start", "end") + emptyTextExtend("A", 4, 8, "quarter", "stop", "end") +
+        rest(4, "eighth") + note("A", 4, 4, "eighth", "die"),
+    ], "4", "4");
+    /** Liederkreis Op. 24 No. 1 m24: "Kum" (begin, extend start) over two eighths, the second with an empty text (single)
+     *  that stops the extend, then "mer" */
+    const emptyTextInWord: string = score([
+        note("F", 4, 4, "eighth", "Kum", "start", "begin") + emptyTextExtend("G", 4, 4, "eighth", "stop", "single") +
+        note("G", 4, 8, "quarter", "mer", undefined, "end") + rest(16, "half"),
     ], "4", "4");
     /** Ma rendi pur contento m12-13: "Gli‿af-fan-ni" — the elision is the undertie U+203F, the second syllable begins the word */
     const undertieElision: string = score([
@@ -186,5 +207,26 @@ describe("Lyric extend stop note", () => {
         const dashes: number = osmd.GraphicSheet.MusicPages[0].MusicSystems.flatMap(s => s.StaffLines).map(l => l.LyricsDashes.length)
             .reduce((a, b) => a + b, 0);
         expect(dashes).to.equal(2);
+    });
+
+    it("only ends the previous syllable's line with an empty text and an extend stop", async () => {
+        const osmd: OpenSheetMusicDisplay = await render(emptyTextStop);
+        const line: StaffLine = staffLine(osmd);
+        const lines: [number, number][] = extendLines(line);
+        expect(lines.length, "no short line of its own under the stop note").to.equal(1);
+        const labelRight: number = labelEdges(entryWithLyric(line, "keit,"), "keit,")[1];
+        const stop: GraphicalStaffEntry = stopEntry(line);
+        expect(stop.LyricsEntries.length, "the empty text is no syllable of its own").to.equal(0);
+        expect(lines[0][0]).to.be.closeTo(labelRight, 1e-6);
+        expect(lines[0][1], "the line runs from \"keit,\" to the end of the stop note").to.be.closeTo(entryRight(stop), 1e-6);
+    });
+
+    it("keeps the word across an empty text with an extend stop", async () => {
+        const osmd: OpenSheetMusicDisplay = await render(emptyTextInWord);
+        const kum: LyricsEntry = lyricsEntry(osmd, "Kum");
+        const mer: LyricsEntry = lyricsEntry(osmd, "mer");
+        expect(kum.Word).to.equal(mer.Word);
+        expect(kum.Word.Syllables.map(e => e.Text)).to.deep.equal(["Kum", "mer"]);
+        expect(staffLine(osmd).LyricsDashes.length, "the hyphen of \"Kum - mer\"").to.equal(1);
     });
 });

@@ -38,6 +38,7 @@ import { VexFlowOctaveShift } from "../../../../src/MusicalScore/Graphical/VexFl
 import { VexFlowTabMeasure } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowTabMeasure";
 import { VexFlowVibratoBracket } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowVibratoBracket";
 import { GraphicalNote } from "../../../../src/MusicalScore/Graphical/GraphicalNote";
+import { NoteHeadShape } from "../../../../src/MusicalScore/VoiceData/Notehead";
 import { unitInPixels } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowMusicSheetDrawer";
 import { VexFlowMeasure } from "../../../../src/MusicalScore/Graphical/VexFlow/VexFlowMeasure";
 import Vex from "vexflow";
@@ -982,6 +983,75 @@ describe("VexFlow Measure", () => {
       expect(hidden.getStemStyle()?.fillStyle, "the eighth's stem rises from the shared head").to.not.equal("#00000000");
       expect(accidentals(visible), "the half note draws the flat of the shared head").to.equal(1);
       expect(accidentals(hidden), "the hidden eighth keeps no invisible flat").to.equal(0);
+   });
+
+   // The same for a printed note whose head is notehead="none": the first 16th B#2 of an arpeggio on the open head of a
+   //   half note B#2 in another voice, both with a sharp in the XML. The headless 16th took the sharp (not drawn with its
+   //   head) and the half note's own sharp was skipped as drawn at the same time, so the shared head had none (Schumann,
+   //   In der Fremde Op. 39 No. 1 m6, 81sabo RENDER-SUSTAIN-ACCIDENTALS). The half note draws it, also when only the
+   //   16th has it in the XML. Same as osmd-dart.
+   for (const [label, halfAccidental] of [["both with a sharp in the XML", "<accidental>sharp</accidental>"],
+                                          ["only the headless 16th with a sharp in the XML", ""]]) {
+      it(`Lets the visible note draw the accidental of a headless unison note that shares its head, ${label}`, async () => {
+         const sixteenth: (step: string, octave: number, alter: number, extra: string) => string =
+            (step: string, octave: number, alter: number, extra: string): string =>
+               `<note><pitch><step>${step}</step>${alter ? `<alter>${alter}</alter>` : ""}<octave>${octave}</octave></pitch>` +
+               `<duration>1</duration><voice>1</voice><type>16th</type>${extra}</note>`;
+         const beam: (value: string) => string = (value: string): string =>
+            `<beam number="1">${value}</beam><beam number="2">${value}</beam>`;
+         const xml: string = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\"><part-list>" +
+            "<score-part id=\"P1\"><part-name>Piano</part-name></score-part></part-list><part id=\"P1\"><measure number=\"1\">" +
+            "<attributes><divisions>4</divisions><key><fifths>3</fifths></key><time><beats>2</beats><beat-type>4</beat-type></time>" +
+            "<clef><sign>F</sign><line>4</line></clef></attributes>" +
+            sixteenth("B", 2, 1, `<accidental>sharp</accidental><stem>up</stem><notehead>none</notehead>${beam("begin")}`) +
+            sixteenth("D", 3, 1, `<accidental>sharp</accidental><stem>up</stem>${beam("continue")}`) +
+            sixteenth("F", 3, 1, `<stem>up</stem>${beam("continue")}`) + sixteenth("A", 3, 0, `<stem>up</stem>${beam("end")}`) +
+            sixteenth("A", 3, 0, `<stem>up</stem>${beam("begin")}`) + sixteenth("F", 3, 1, `<stem>up</stem>${beam("continue")}`) +
+            sixteenth("D", 3, 1, `<stem>up</stem>${beam("continue")}`) + sixteenth("B", 2, 1, `<stem>up</stem>${beam("end")}`) +
+            "<backup><duration>8</duration></backup><note><pitch><step>B</step><alter>1</alter><octave>2</octave></pitch>" +
+            `<duration>8</duration><voice>2</voice><type>half</type>${halfAccidental}<stem>down</stem></note>` +
+            "</measure></part></score-partwise>";
+         const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(TestUtils.getDivElement(document));
+         await osmd.load(xml);
+         osmd.render();
+         const notes: GraphicalNote[] = osmd.GraphicSheet.findGraphicalMeasure(0, 0).staffEntries[0].graphicalVoiceEntries
+            .flatMap(gve => gve.notes).filter(note => note.sourceNote.Pitch.FundamentalNote === NoteEnum.B);
+         const headless: GraphicalNote = notes.find(note => note.sourceNote.Notehead?.Shape === NoteHeadShape.NONE);
+         const half: GraphicalNote = notes.find(note => note !== headless);
+         expect(headless, "should find the headless 16th").to.not.be.undefined;
+         expect(half, "should find the half note").to.not.be.undefined;
+         expect(half.DrawnAccidental, "the half note draws the sharp of the shared head").to.equal(AccidentalEnum.SHARP);
+         expect(headless.DrawnAccidental, "the headless 16th keeps no invisible sharp").to.equal(AccidentalEnum.NONE);
+      });
+   }
+
+   // A headless 16th's natural (written, or for the return to the natural) goes to the visible note sharing its head also
+   //   when that note has no accidental of its own (AccidentalEnum.NONE): Vieuxtemps, Grand Concerto Op. 31 (piano) m891, an
+   //   A flat and then an A natural 16th without head on quarter notes A flat and A. Same as osmd-dart.
+   it("Lets a note without an accidental of its own draw the natural of a headless unison note", async () => {
+      const sixteenth: (step: string, extra: string) => string = (step: string, extra: string): string =>
+         `<note><pitch><step>${step}</step>${extra.includes("flat") ? "<alter>-1</alter>" : ""}<octave>${step === "A" ? 2 : 3}</octave>` +
+         `</pitch><duration>1</duration><voice>1</voice><type>16th</type>${extra}<stem>up</stem></note>`;
+      const quarter: (alter: number) => string = (alter: number): string =>
+         `<note><pitch><step>A</step>${alter ? `<alter>${alter}</alter>` : ""}<octave>2</octave></pitch><duration>4</duration>` +
+         "<voice>2</voice><type>quarter</type><stem>down</stem></note>";
+      const arpeggio: (accidental: string) => string = (accidental: string): string =>
+         sixteenth("A", `<accidental>${accidental}</accidental><notehead>none</notehead>`) + sixteenth("C", "") +
+         sixteenth("E", "") + sixteenth("C", "");
+      const xml: string = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\"><part-list>" +
+         "<score-part id=\"P1\"><part-name>Piano</part-name></score-part></part-list><part id=\"P1\"><measure number=\"1\">" +
+         "<attributes><divisions>4</divisions><key><fifths>0</fifths></key><time><beats>2</beats><beat-type>4</beat-type></time>" +
+         "<clef><sign>F</sign><line>4</line></clef></attributes>" + arpeggio("flat") + arpeggio("natural") +
+         "<backup><duration>8</duration></backup>" + quarter(-1) + quarter(0) + "</measure></part></score-partwise>";
+      const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(TestUtils.getDivElement(document));
+      await osmd.load(xml);
+      osmd.render();
+      const quarters: AccidentalEnum[] = osmd.GraphicSheet.findGraphicalMeasure(0, 0).staffEntries
+         .flatMap(staffEntry => staffEntry.graphicalVoiceEntries).flatMap(gve => gve.notes)
+         .filter(note => !note.sourceNote.Notehead && note.sourceNote.Pitch.FundamentalNote === NoteEnum.A)
+         .map(note => note.DrawnAccidental);
+      expect(quarters, "the quarter notes draw the flat and the natural of the headless 16ths sharing their heads")
+         .to.deep.equal([AccidentalEnum.FLAT, AccidentalEnum.NATURAL]);
    });
 
    // A hidden note in unison with a visible one doesn't stagger it: Vexflow shifted one of the two notes aside and lifted

@@ -7,6 +7,7 @@ import { Dictionary } from "typescript-collections";
 // import { Dictionary } from "typescript-collections/dist/lib";
 import { MusicSheetCalculator } from "./MusicSheetCalculator";
 import { Tie } from "../VoiceData/Tie";
+import { NoteHeadShape } from "../VoiceData/Notehead";
 
 /**
  * Compute the accidentals for notes according to the current key instruction
@@ -16,8 +17,8 @@ export class AccidentalCalculator {
     private currentInMeasureNoteAlterationsDict: Dictionary<number, AccidentalEnum> = new Dictionary<number, AccidentalEnum>();
     /** The last note of each pitch in the current measure that got an accidental, except grace notes (see isAccidentalDrawnAtSameTime()) */
     private lastNoteWithAccidentalDict: Dictionary<number, GraphicalNote> = new Dictionary<number, GraphicalNote>();
-    /** The hidden notes (print-object="no") sharing a visible unison note's head that would have got an accidental,
-     * by pitch key: see addAccidental(). */
+    /** The notes whose head isn't drawn (print-object="no" or notehead="none") sharing a visible unison note's head that
+     * would have got an accidental, by pitch key: see addAccidental(). */
     private hiddenNoteWithAccidentalDict: Dictionary<number, { note: GraphicalNote, accidental: AccidentalEnum }> =
         new Dictionary<number, { note: GraphicalNote, accidental: AccidentalEnum }>();
     private activeKeyInstruction: KeyInstruction;
@@ -157,7 +158,11 @@ export class AccidentalCalculator {
                 this.addAccidental(graphicalNote, pitch, pitchKey);
             } else if ((pitch.AccidentalXml && this.Transpose === 0 || this.isAccidentalOfHiddenNoteAtSameTime(graphicalNote, pitch, pitchKey)) &&
                 !this.isAccidentalDrawnAtSameTime(graphicalNote, pitch, pitchKey)) {
-                // courtesy accidental, or the accidental a hidden note at the same time left to this note (see addAccidental())
+                // courtesy accidental, or the accidental a hidden note at the same time left to this note (see addAccidental()):
+                //   a natural for a note without an accidental of its own (AccidentalEnum.NONE would draw nothing)
+                if (pitch.Accidental === AccidentalEnum.NONE) {
+                    pitch = new Pitch(pitch.FundamentalNote, pitch.Octave, AccidentalEnum.NATURAL, undefined, false, pitch.OctaveShiftApplied);
+                }
                 this.addAccidental(graphicalNote, pitch, pitchKey);
                 // if transpose !== 0 (we're transposing), the courtesy accidental might not be appropriate here.
             }
@@ -168,6 +173,12 @@ export class AccidentalCalculator {
                     return;
                 }
                 this.addAccidental(graphicalNote, pitch, pitchKey);
+            } else if (this.isAccidentalOfHiddenNoteAtSameTime(graphicalNote, pitch, pitchKey) &&
+                !this.isAccidentalDrawnAtSameTime(graphicalNote, pitch, pitchKey)) {
+                // the natural a hidden note at the same time left to this note (see addAccidental()), its return to the
+                //   natural having removed the pitch from the dict
+                this.addAccidental(graphicalNote, new Pitch(pitch.FundamentalNote, pitch.Octave, AccidentalEnum.NATURAL,
+                    undefined, false, pitch.OctaveShiftApplied), pitchKey);
             }
         }
     }
@@ -191,12 +202,15 @@ export class AccidentalCalculator {
 
     /** Adds the accidental of the pitch to the note, and remembers the note for isAccidentalDrawnAtSameTime(). */
     private addAccidental(graphicalNote: GraphicalNote, pitch: Pitch, pitchKey: number): void {
-        // A hidden note (print-object="no") sharing the head of a visible unison note in another voice doesn't draw its
-        //   accidental, but VexFlow kept a column for it, so the visible note's accidental stood a head away (or the
-        //   visible note drew none, its pitch being altered in the measure already). The visible note draws it instead,
+        // A note whose head isn't drawn (print-object="no", or notehead="none") sharing the head of a visible unison note
+        //   in another voice doesn't draw its accidental, but VexFlow kept a column for it, so the visible note's
+        //   accidental stood a head away (or the visible note drew none, its pitch being altered in the measure already,
+        //   or its own accidental given in the XML skipped as drawn at the same time). The visible note draws it instead,
         //   also without an accidental in the XML: e.g. a hidden eighth C flat starting an arpeggio on the open head of
-        //   a half note C flat, first in the measure.
-        if (!graphicalNote.sourceNote.PrintObject && graphicalNote.sourceNote.sharesNoteheadWithVisibleUnisonNote()) {
+        //   a half note C flat, first in the measure, or the headless first 16th B sharp of an arpeggio on a half note
+        //   B sharp, both with a sharp in the XML (Schumann, In der Fremde Op. 39 No. 1 m6: the half note had none).
+        //   Same as osmd-dart.
+        if (graphicalNote.sourceNote.sharesNoteheadWithVisibleUnisonNote()) {
             this.hiddenNoteWithAccidentalDict.setValue(pitchKey, { note: graphicalNote, accidental: pitch.Accidental });
             return;
         }
@@ -220,14 +234,19 @@ export class AccidentalCalculator {
             noteWithAccidental.DrawnAccidental === pitch.Accidental;
     }
 
-    /** Whether a hidden note of the same pitch at the same time left this accidental to the visible note (see addAccidental()). */
+    /** Whether a note of the same pitch at the same time whose head isn't drawn left this accidental to the visible note
+     *  (see addAccidental()). */
     private isAccidentalOfHiddenNoteAtSameTime(graphicalNote: GraphicalNote, pitch: Pitch, pitchKey: number): boolean {
         const hidden: { note: GraphicalNote, accidental: AccidentalEnum } = this.hiddenNoteWithAccidentalDict.getValue(pitchKey);
         return hidden !== undefined &&
             graphicalNote.sourceNote.PrintObject &&
+            graphicalNote.sourceNote.Notehead?.Shape !== NoteHeadShape.NONE &&
             !graphicalNote.parentVoiceEntry.parentVoiceEntry.IsGrace &&
             hidden.note.parentVoiceEntry.parentStaffEntry === graphicalNote.parentVoiceEntry.parentStaffEntry &&
-            hidden.accidental === pitch.Accidental;
+            (hidden.accidental === pitch.Accidental ||
+             // the natural of the hidden note (written, or drawn for a return to the natural), the visible note has none
+             //   written: Vieuxtemps, Grand Concerto Op. 31 (piano) m891, a headless A natural 16th on a half note A
+             hidden.accidental === AccidentalEnum.NATURAL && pitch.Accidental === AccidentalEnum.NONE);
     }
 
     private isAlterAmbiguousAccidental(accidental: AccidentalEnum): boolean {
