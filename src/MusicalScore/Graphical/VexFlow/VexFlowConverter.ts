@@ -216,19 +216,13 @@ export class VexFlowConverter {
         const codeStart: string = "/";
         const codeFilled: string = notehead.Filled ? "2" : "1"; // filled/unfilled notehead code in most vexflow glyphs
         switch (notehead.Shape) {
-            case NoteHeadShape.NORMAL: {
-                // A normal head only gets a Notehead object when the XML gives filled="yes|no". VexFlow picks the
-                // head from the duration (open for half or longer), so only draw a custom head when the fill differs.
-                const typeLength: Fraction = notehead.SourceNote?.TypeLength ?? notehead.SourceNote?.Length;
-                if (!typeLength) {
-                    return "";
-                }
-                const openByDuration: boolean = typeLength.RealValue >= 0.5;
-                if (notehead.Filled === openByDuration) {
-                    return codeStart + (notehead.Filled ? "N2" : "N1");
-                }
+            case NoteHeadShape.NORMAL:
+                // A normal head only gets a Notehead object when the XML gives filled="yes|no". The fill is ignored and
+                // VexFlow draws the duration's head: an open head on a quarter or shorter, or a black one on a half note,
+                // doesn't exist in common notation. Exporters write it for a unison of two voices sharing one head
+                // (Dichterliebe01 m26, left hand: a 16th C#3 filled="no" on a half note C#3), but a white and a black
+                // head aren't merged into one: each note keeps its own head, side by side (decision 2026-11-11).
                 return "";
-            }
             case NoteHeadShape.NONE:
                 return ""; // none noteheads are invisible, handled via transparency
             case NoteHeadShape.DIAMOND:

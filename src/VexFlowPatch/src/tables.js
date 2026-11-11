@@ -231,11 +231,6 @@ Flow.keyProperties.customNoteHeads = {
   'R1': { code: 'vd5', shift_right: 0 },
   'R2': { code: 'vd4', shift_right: 0 },
 
-  // VexFlowPatch: ordinary note heads with an explicit fill (MusicXML <notehead filled="no|yes">normal</notehead>),
-  // independent of the duration: N1 = open (half) head, N2 = black head.
-  'N1': { code: 'v81', shift_right: 0 },
-  'N2': { code: 'vb', shift_right: 0 },
-
   /* Whole and Half Rests with ledger line */
   'rwl': { code: 'rwl', shift_right: 0 },
   'rhl': { code: 'rhl', shift_right: 0 },
