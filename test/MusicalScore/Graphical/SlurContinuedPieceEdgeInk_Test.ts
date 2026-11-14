@@ -25,12 +25,14 @@ describe("A slur piece at a system edge", () => {
         }).join("");
     }
 
-    function score(placement: string): string {
+    function score(placement: string, inStaff: boolean = false): string {
         const below: boolean = placement === "below";
         const up: string[] = ["G3", "A3", "B3", "C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5", "F5", "G5", "A5"];
         const down: string[] = ["D6", "C6", "B5", "A5", "G5", "F5", "E5", "D5", "C5", "B4", "A4", "G4", "F4", "E4", "D4", "C4"];
-        const m1: string[] = below ? down : up;
-        const m2: string[] = below ? up.slice().reverse() : down;
+        // notes inside the staff, stems away from the slur: no ink outside it
+        const middle: string[] = ["B4", "C5", "D5", "C5", "B4", "C5", "D5", "C5", "B4", "C5", "D5", "C5", "B4", "C5", "D5", "C5"];
+        const m1: string[] = inStaff ? middle : below ? down : up;
+        const m2: string[] = inStaff ? middle : below ? up.slice().reverse() : down;
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\">" +
             "<part-list><score-part id=\"P1\"><part-name>Clarinet</part-name></score-part></part-list><part id=\"P1\">" +
             "<measure number=\"1\"><attributes><divisions>4</divisions><key><fifths>0</fifths></key><time><beats>4</beats>" +
@@ -41,11 +43,11 @@ describe("A slur piece at a system edge", () => {
             "</measure></part></score-partwise>";
     }
 
-    async function render(placement: string): Promise<OpenSheetMusicDisplay> {
+    async function render(placement: string, inStaff: boolean = false): Promise<OpenSheetMusicDisplay> {
         const div: HTMLElement = TestUtils.getDivElement(document);
         div.style.width = "1000px";
         const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg", newSystemFromXML: true });
-        await osmd.load(score(placement));
+        await osmd.load(score(placement, inStaff));
         osmd.render();
         return osmd;
     }
@@ -62,7 +64,8 @@ describe("A slur piece at a system edge", () => {
         const samplingUnit: number = 3; // samples per staff space in both engines
         let ink: number = below ? -Infinity : Infinity;
         for (let i: number = Math.floor(left * samplingUnit); i <= Math.ceil(right * samplingUnit) && i < lines.length; i++) {
-            if (i < 0 || !Number.isFinite(lines[i])) {
+            // ink outside the staff only: the lines have the staff's own lines elsewhere (0 above, its height below)
+            if (i < 0 || !Number.isFinite(lines[i]) || (below ? lines[i] <= line.StaffHeight : lines[i] >= 0)) {
                 continue;
             }
             ink = below ? Math.max(ink, lines[i]) : Math.min(ink, lines[i]);
@@ -90,4 +93,12 @@ describe("A slur piece at a system edge", () => {
             expect(r.clear, `the piece starts at ${r.y}, ${-r.clear} into the ink`).to.be.at.least(0.3);
         });
     }
+
+    it("keeps a piece at notes inside the staff 1 unit out from its note at the system end (the staff's line is no ink)", async () => {
+        const osmd: OpenSheetMusicDisplay = await render("above", true);
+        const line: StaffLine = osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines[0];
+        expect(line.GraphicalSlurs.length).to.equal(1);
+        const piece: GraphicalSlur = line.GraphicalSlurs[0];
+        expect(piece.bezierEndPt.y).to.be.closeTo(piece.bezierStartPt.y - 1, 1e-9);
+    });
 });

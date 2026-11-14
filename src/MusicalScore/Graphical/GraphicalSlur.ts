@@ -1699,12 +1699,12 @@ export class GraphicalSlur extends GraphicalCurve {
         } else if (slurStartNote && !slurEndNote && this.slur.EndNote) {
             const last: GraphicalStaffEntry = this.staffEntries[this.staffEntries.length - 1];
             const lastX: number = last.parentMeasure.PositionAndShape.RelativePosition.x + last.PositionAndShape.RelativePosition.x;
-            endY = this.outOfInkAtEdge(skyBottomLineCalculator, lastX, endX, endY);
+            endY = this.outOfInkAtEdge(skyBottomLineCalculator, lastX, endX, endY, staffLine.StaffHeight);
         } else if (!slurStartNote && slurEndNote) {
             const first: GraphicalStaffEntry = this.staffEntries[0];
             const firstX: number = first.parentMeasure.PositionAndShape.RelativePosition.x + first.PositionAndShape.RelativePosition.x +
                 first.PositionAndShape.BorderRight;
-            startY = this.outOfInkAtEdge(skyBottomLineCalculator, startX, firstX, startY);
+            startY = this.outOfInkAtEdge(skyBottomLineCalculator, startX, firstX, startY, staffLine.StaffHeight);
         }
 
         // if two slurs start/end at the same GraphicalNote, then the second gets an offset
@@ -1834,14 +1834,17 @@ export class GraphicalSlur extends GraphicalCurve {
     }
 
     /** y at a system edge of a piece continued from (to) another system, out of the sky (bottom) line from left to
-     *  right, the stretch between the edge and the piece's note next to it (see calculateStartAndEnd). */
-    private outOfInkAtEdge(lines: SkyBottomLineCalculator, left: number, right: number, y: number): number {
+     *  right, the stretch between the edge and the piece's note next to it (see calculateStartAndEnd). Only ink outside
+     *  the staff counts: the lines have the staff's top (0) and bottom line (its height) wherever there is nothing beyond
+     *  them, and a piece at notes inside the staff keeps its height there, as before (1 unit out from its note); taking
+     *  the staff's line for ink pushed it out of the staff, steep (Sibelius III m43 in the app at 1366). */
+    private outOfInkAtEdge(lines: SkyBottomLineCalculator, left: number, right: number, y: number, staffHeight: number): number {
         if (!(right > left)) {
             return y;
         }
         const above: boolean = this.placement === PlacementEnum.Above;
         const ink: number = above ? lines.getSkyLineMinInRange(left, right) : lines.getBottomLineMaxInRange(left, right);
-        if (!Number.isFinite(ink)) {
+        if (!Number.isFinite(ink) || (above ? ink >= 0 : ink <= staffHeight)) {
             return y;
         }
         return above ? Math.min(y, ink) : Math.max(y, ink);
