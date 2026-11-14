@@ -152,13 +152,17 @@ describe("Slurs continued at the same system edge", () => {
                 }
             });
 
-            it(`keeps a piece continued alone 1 unit out from its other end at the ${edge} (${side})`, async () => {
+            // at least 1 unit out from its other end; further out over the ink between the edge and its note there (the
+            // first chord's stem up at the system start, see SlurContinuedPieceEdgeInk_Test.ts)
+            it(`keeps a piece continued alone at least 1 unit out from its other end at the ${edge} (${side})`, async () => {
                 const outer: GraphicalSlur = pieces(await render(below, true, false), measure).outer;
                 const out: number = below ? 1 : -1;
-                if (measure === 3) {
-                    expect(outer.bezierStartPt.y).to.be.closeTo(outer.bezierEndPt.y + out, 1e-9);
+                const edgeY: number = measure === 3 ? outer.bezierStartPt.y : outer.bezierEndPt.y;
+                const otherY: number = measure === 3 ? outer.bezierEndPt.y : outer.bezierStartPt.y;
+                if (below) {
+                    expect(edgeY).to.be.at.least(otherY + out - 1e-9);
                 } else {
-                    expect(outer.bezierEndPt.y).to.be.closeTo(outer.bezierStartPt.y + out, 1e-9);
+                    expect(edgeY).to.be.at.most(otherY + out + 1e-9);
                 }
             });
         }

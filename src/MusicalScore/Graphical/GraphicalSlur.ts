@@ -1682,6 +1682,22 @@ export class GraphicalSlur extends GraphicalCurve {
                 endY = startY + 1;
             }
         }
+        // A piece with only one of its notes on this staff line ends (starts) at the system edge out of the ink between
+        // its last (first) note and the edge, not inside it: 1 unit out from its note's height only, a slur up from a low
+        // note ended in the rising beam of the last notes of the system (Weber, Clarinet Concerto 2 III m216 at 820, 834
+        // and 1024). Same as osmd-dart.
+        if (!skyBottomLineCalculator || this.staffEntries.length === 0) {
+            // (no staff entries: a slur calculated alone)
+        } else if (slurStartNote && !slurEndNote && this.slur.EndNote) {
+            const last: GraphicalStaffEntry = this.staffEntries[this.staffEntries.length - 1];
+            const lastX: number = last.parentMeasure.PositionAndShape.RelativePosition.x + last.PositionAndShape.RelativePosition.x;
+            endY = this.outOfInkAtEdge(skyBottomLineCalculator, lastX, endX, endY);
+        } else if (!slurStartNote && slurEndNote) {
+            const first: GraphicalStaffEntry = this.staffEntries[0];
+            const firstX: number = first.parentMeasure.PositionAndShape.RelativePosition.x + first.PositionAndShape.RelativePosition.x +
+                first.PositionAndShape.BorderRight;
+            startY = this.outOfInkAtEdge(skyBottomLineCalculator, startX, firstX, startY);
+        }
 
         // if two slurs start/end at the same GraphicalNote, then the second gets an offset
         if (this.slur.startNoteHasMoreStartingSlurs() && this.slur.isSlurLonger()) {
@@ -1807,6 +1823,20 @@ export class GraphicalSlur extends GraphicalCurve {
         }
         const measure: GraphicalMeasure = this.staffEntries[0].parentMeasure;
         return measure.PositionAndShape.RelativePosition.x + measure.beginInstructionsWidth;
+    }
+
+    /** y at a system edge of a piece continued from (to) another system, out of the sky (bottom) line from left to
+     *  right, the stretch between the edge and the piece's note next to it (see calculateStartAndEnd). */
+    private outOfInkAtEdge(lines: SkyBottomLineCalculator, left: number, right: number, y: number): number {
+        if (!(right > left)) {
+            return y;
+        }
+        const above: boolean = this.placement === PlacementEnum.Above;
+        const ink: number = above ? lines.getSkyLineMinInRange(left, right) : lines.getBottomLineMaxInRange(left, right);
+        if (!Number.isFinite(ink)) {
+            return y;
+        }
+        return above ? Math.min(y, ink) : Math.max(y, ink);
     }
 
     /** Start x of a piece continued from the system before (no start note on its staff line, not a cross-staff or
