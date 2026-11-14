@@ -307,10 +307,13 @@ export class CrossStaffExpressionClearance {
      *  from its staff, the nearest, its top not above ceiling (a text above its staff) or its bottom not below floor
      *  (below). below: the text lies below its staff (tried downwards first, away from its staff), else above (tried
      *  upwards first). others: the boxes of the system's other expressions, lyrics, pedals and octave shifts, as
-     *  drawn. */
+     *  drawn. minLeft: a text moved sideways starts no further left, the start of its measure when that is not the
+     *  first of the staves (Sibelius Op.47 III piano m230 "poco cresc." went left over the barline into m229, m263
+     *  "mp" onto it: the text belongs to its measure). Same as osmd-dart. */
     public offset(box: ClearanceBox, below: boolean, others: ClearanceBox[], offBarlines: boolean = false,
                   ceiling: number = Number.NEGATIVE_INFINITY,
-                  floor: number = Number.POSITIVE_INFINITY): { dx: number, dy: number } {
+                  floor: number = Number.POSITIVE_INFINITY,
+                  minLeft: number = Number.NEGATIVE_INFINITY): { dx: number, dy: number } {
         const none: { dx: number, dy: number } = { dx: 0, dy: 0 };
         const near: ClearanceBox = box.inflated(CrossStaffExpressionClearance.Clearance);
         if (this.ink.length === 0 || !(this.touchesInk(near) || offBarlines && this.touchesBarline(near))) {
@@ -333,7 +336,8 @@ export class CrossStaffExpressionClearance {
         }
         const staffStart: number = Math.min(...this.lines.map(line => line.PositionAndShape.AbsolutePosition.x));
         const freeSideways: (moved: ClearanceBox) => boolean = (moved: ClearanceBox): boolean =>
-            moved.left >= staffStart - CrossStaffExpressionClearance.MaxOverStart - 1e-6 && free(moved) &&
+            moved.left >= staffStart - CrossStaffExpressionClearance.MaxOverStart - 1e-6 && moved.left >= minLeft - 1e-6 &&
+            free(moved) &&
             !others.some(other => other.overlaps(new ClearanceBox(moved.left - CrossStaffExpressionClearance.TextGap, moved.top,
                                                                   moved.right + CrossStaffExpressionClearance.TextGap, moved.bottom)));
         const right: number = Math.round(CrossStaffExpressionClearance.MaxShift / step);

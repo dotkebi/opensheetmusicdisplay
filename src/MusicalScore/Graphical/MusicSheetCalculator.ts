@@ -3451,12 +3451,18 @@ export abstract class MusicSheetCalculator {
         // The label is at (0, 0) in the expression's box (see VexFlowContinuousDynamicExpression), so the box is positioned,
         //   like the box of an instantaneous dynamic: the alignment of close dynamics compares and moves the boxes.
         const box: BoundingBox = graphicalContinuousDynamic.PositionAndShape;
+        const staffLine: StaffLine = graphicalContinuousDynamic.ParentStaffLine;
+        // Not beyond the staff line's right end, as osmd-dart: a word at the last note of a system went past its end
+        //   (Sibelius Op.47 III violin m217 "cresc." at the last eighth, 81sabo SIB3C-WP-RENDER-04).
+        const staffWidth: number = staffLine.PositionAndShape.Size.width;
+        if (startPosInStaffline.x + box.BorderMarginRight > staffWidth) {
+            startPosInStaffline.x = Math.max(0, staffWidth - (box.BorderMarginRight - box.BorderMarginLeft) - 0.5);
+        }
         const left: number = startPosInStaffline.x + box.BorderMarginLeft;
         const right: number = startPosInStaffline.x + box.BorderMarginRight;
         // placement always below the currentStaffLine, with the exception of Voice Instrument (-> above)
         const continuousDynamic: ContinuousDynamicExpression = graphicalContinuousDynamic.ContinuousDynamic;
         const placement: PlacementEnum = continuousDynamic.Placement;
-        const staffLine: StaffLine = graphicalContinuousDynamic.ParentStaffLine;
         const skyBottomLineCalculator: SkyBottomLineCalculator = staffLine.SkyBottomLineCalculator;
         // a text followed by a dashed line ("cres. - - - -") must also clear what is under the line, like calculateLabel()
         const staffIndex: number = staffLine.ParentStaff.idInMusicSheet;
@@ -4819,28 +4825,158 @@ export abstract class MusicSheetCalculator {
         return false;
     }
 
-    /** Whether another tempo expression at the moment of multiTempoExpression, or with its words anywhere in its measure,
-     *  is written for a staff above staffIndex or without a placement (which could be any staff), see
-     *  ownStaffIndexOfTempoExpression(). The same words a little later in a lower part (a piano's "Andante" an eighth after
-     *  the voice's) are the same instruction: drawn once, above the system (see isTempoMarkingAlreadyRendered()). */
+    /** Whether a part above the staff staffIndex (or a tempo expression whose staff is unknown, which could be any)
+     *  gives the same tempo at the moment of multiTempoExpression as the part that wrote it, or writes its words
+     *  anywhere in its measure, see ownStaffIndexOfTempoExpression(). The same tempo is drawn once, above the system;
+     *  the same words a little later in a lower part (a piano's "Andante" an eighth after the voice's) are the same
+     *  instruction (see isTempoMarkingAlreadyRendered()). A different tempo given at that moment by a part above
+     *  (Saint-Saëns Op.61 m881: the violin's "Più Allegro ♩=158", the piano's "Più Allegro ♩=138") does not count: each
+     *  part's goes above that part, as printed. osmd-dart places them by the same rule. */
     private static hasTempoExpressionAboveAt(multiTempoExpression: MultiTempoExpression, staffIndex: number): boolean {
         const label: string = multiTempoExpression.EntriesList[0]?.Expression?.Label;
-        for (const other of multiTempoExpression.SourceMeasureParent.TempoExpressions) {
+        const measure: SourceMeasure = multiTempoExpression.SourceMeasureParent;
+        const own: AbstractTempoExpression = multiTempoExpression.EntriesList[0]?.Expression;
+        const ownPart: number = own ? MusicSheetCalculator.partTopStaffIndex(own) : undefined;
+        const ownSignature: string = ownPart === undefined ? undefined :
+            MusicSheetCalculator.partTempoSignature(measure, multiTempoExpression.Timestamp, ownPart);
+        for (const other of measure.TempoExpressions) {
             if (other === multiTempoExpression) {
                 continue;
             }
-            if (!other.Timestamp.Equals(multiTempoExpression.Timestamp) &&
-                (label === undefined || !other.EntriesList.some((entry) => entry.Expression?.Label === label))) {
+            const sameMoment: boolean = other.Timestamp.Equals(multiTempoExpression.Timestamp);
+            if (!sameMoment && (label === undefined || !other.EntriesList.some((entry) => entry.Expression?.Label === label))) {
                 continue;
             }
             for (const entry of other.EntriesList) {
-                const otherStaffIndex: number = entry.Expression?.placementStaffIndex;
-                if (otherStaffIndex === undefined || otherStaffIndex < staffIndex) {
+                const otherExpression: AbstractTempoExpression = entry.Expression;
+                if (!otherExpression) {
+                    continue;
+                }
+                const otherPart: number = MusicSheetCalculator.partTopStaffIndex(otherExpression);
+                const otherStaffIndex: number = otherPart ?? otherExpression.placementStaffIndex;
+                if (otherStaffIndex !== undefined && otherStaffIndex >= staffIndex) {
+                    continue;
+                }
+                if (!sameMoment || ownSignature === undefined || otherPart === undefined) {
+                    return true;
+                }
+                if (otherPart !== ownPart &&
+                    MusicSheetCalculator.partTempoSignature(measure, other.Timestamp, otherPart) === ownSignature) {
                     return true;
                 }
             }
         }
         return false;
+    }
+
+    /** Whether a part other than the one with first staff partTopIndex gives a tempo (words or a metronome mark) at the
+     *  moment of multiTempoExpression. */
+    private static otherPartGivesTempoAt(multiTempoExpression: MultiTempoExpression, partTopIndex: number): boolean {
+        for (const other of multiTempoExpression.SourceMeasureParent.TempoExpressions) {
+            if (!other.Timestamp.Equals(multiTempoExpression.Timestamp)) {
+                continue;
+            }
+            for (const entry of other.EntriesList) {
+                if (!entry.Expression) {
+                    continue;
+                }
+                const part: number = MusicSheetCalculator.partTopStaffIndex(entry.Expression);
+                if (part === undefined || part !== partTopIndex) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** The index (over all staves) of the first staff of the part that wrote expression, from the staff it was read
+     *  for; undefined if unknown. */
+    private static partTopStaffIndex(expression: AbstractTempoExpression): number {
+        if (expression.writtenStaffIndex === undefined) {
+            return undefined;
+        }
+        return Math.max(0, expression.writtenStaffIndex - (expression.StaffNumber - 1));
+    }
+
+    /** What the part with first staff partTopIndex prints as tempo at timestamp of measure: its words and metronome
+     *  marks, in a fixed order, for comparing the tempos of parts. */
+    private static partTempoSignature(measure: SourceMeasure, timestamp: Fraction, partTopIndex: number): string {
+        const items: string[] = [];
+        for (const multi of measure.TempoExpressions) {
+            if (!multi.Timestamp.Equals(timestamp)) {
+                continue;
+            }
+            for (const entry of multi.EntriesList) {
+                const expression: AbstractTempoExpression = entry.Expression;
+                if (!expression || MusicSheetCalculator.partTopStaffIndex(expression) !== partTopIndex) {
+                    continue;
+                }
+                if (expression instanceof InstantaneousTempoExpression) {
+                    if (!expression.printObject) {
+                        continue;
+                    }
+                    if (expression.TempoType === TempoType.metronomeMark) {
+                        items.push(`m:${expression.beatUnit}:${expression.dotCount}:${expression.perMinuteText ?? expression.TempoInBpm}:` +
+                            `${expression.metronomeRelation}:` +
+                            (expression.followingMetronomeMarks ?? []).map(
+                                (m: InstantaneousTempoExpression) => `${m.beatUnit}/${m.dotCount}/${m.perMinuteText ?? m.TempoInBpm}`).join(","));
+                        continue;
+                    }
+                }
+                items.push(`w:${(expression.Label ?? "").trim()}`);
+            }
+        }
+        items.sort();
+        return items.join("|");
+    }
+
+    /** The MeasureList staff index a metronome mark is drawn at instead of the first visible staff of its measure
+     *  (createMetronomeMark()): a mark placed below goes under the staff it was written for; a mark of a part below the
+     *  top one that gives a different tempo than the parts above at that time goes above that part (with its tempo
+     *  words, see ownStaffIndexOfTempoExpression()). Undefined: the first visible staff. */
+    protected tempoStaffIndexOfMetronomeMark(mark: InstantaneousTempoExpression): number {
+        if (mark.metronomeBelow) {
+            return mark.writtenStaffIndex;
+        }
+        const partTop: number = MusicSheetCalculator.partTopStaffIndex(mark);
+        const multi: MultiTempoExpression = mark.ParentMultiTempoExpression;
+        if (partTop === undefined) {
+            return undefined;
+        }
+        const measures: GraphicalMeasure[] = this.graphicalMusicSheet.MeasureList[multi.SourceMeasureParent.measureListIndex] ?? [];
+        let topStaffIndex: number = 0;
+        for (let j: number = 0; j < measures.length; j++) {
+            if (measures[j]?.ParentStaffLine?.Measures.length > 0 && measures[j].isVisible()) {
+                topStaffIndex = j;
+                break;
+            }
+        }
+        if (partTop <= topStaffIndex || !MusicSheetCalculator.otherPartGivesTempoAt(multi, partTop) ||
+            MusicSheetCalculator.hasTempoExpressionAboveAt(multi, partTop)) {
+            return undefined;
+        }
+        // with the part's tempo words at that time, if they go to their own staff
+        return MusicSheetCalculator.ownStaffIndexOfPartTempoWords(multi, partTop, topStaffIndex) ?? partTop;
+    }
+
+    /** The staff the tempo words the part with first staff partTop gives at the moment of multi are drawn at, when that
+     *  is their own staff (see ownStaffIndexOfTempoExpression()); undefined otherwise. */
+    private static ownStaffIndexOfPartTempoWords(multi: MultiTempoExpression, partTop: number, topStaffIndex: number): number {
+        for (const other of multi.SourceMeasureParent.TempoExpressions) {
+            // (also its own: words and mark of one direction, or of directions read together)
+            if (!other.Timestamp.Equals(multi.Timestamp) || other.EntriesList.length === 0) {
+                continue;
+            }
+            const first: AbstractTempoExpression = other.EntriesList[0].Expression;
+            if (!first || MusicSheetCalculator.partTopStaffIndex(first) !== partTop) {
+                continue;
+            }
+            const own: number = MusicSheetCalculator.ownStaffIndexOfTempoExpression(other, topStaffIndex);
+            if (own !== undefined) {
+                return own;
+            }
+        }
+        return undefined;
     }
 
     /** The MeasureList staff index of a tempo change (e.g. "rit.", "a tempo", "accel.") placed at a lower staff
@@ -4864,16 +5000,30 @@ export abstract class MusicSheetCalculator {
         if (expression instanceof InstantaneousTempoExpression && expression.TempoType === TempoType.metronomeMark) {
             return undefined;
         }
+        // the first staff of the part that wrote it
+        let partTopIndex: number = MusicSheetCalculator.partTopStaffIndex(expression);
+        if (partTopIndex === undefined && expression.StaffNumber === 1) {
+            partTopIndex = ownStaffIndex;
+        }
         if (expression instanceof InstantaneousTempoExpression && expression.TempoType === TempoType.inst &&
             InstantaneousTempoExpression.isWholeWordInstantaneousTempo(expression.Label)) {
-            if (ownStaffIndex !== undefined && ownStaffIndex > topStaffIndex && expression.StaffNumber === 1 &&
+            // also for a lower staff of the part (a piano's "Allegro non troppo" above its left hand, between the
+            //   staves: Saint-Saëns Op.61 m465), as long as the part is not the top one
+            if (ownStaffIndex !== undefined && partTopIndex !== undefined && partTopIndex > topStaffIndex &&
                 expression.Placement !== PlacementEnum.Below &&
-                !MusicSheetCalculator.hasTempoExpressionAboveAt(multiTempoExpression, ownStaffIndex)) {
+                !MusicSheetCalculator.hasTempoExpressionAboveAt(multiTempoExpression, partTopIndex)) {
                 return ownStaffIndex;
             }
             return undefined;
         }
         if (ownStaffIndex === undefined) {
+            // a part below the top one giving a tempo of its own at a time another part gives a different one (see
+            //   hasTempoExpressionAboveAt()): above its first staff
+            if (partTopIndex !== undefined && partTopIndex > topStaffIndex && expression.Placement !== PlacementEnum.Below &&
+                MusicSheetCalculator.otherPartGivesTempoAt(multiTempoExpression, partTopIndex) &&
+                !MusicSheetCalculator.hasTempoExpressionAboveAt(multiTempoExpression, partTopIndex)) {
+                return partTopIndex;
+            }
             return undefined;
         }
         if (expression.StaffNumber > 1 || expression.Placement === PlacementEnum.Below || ownStaffIndex > topStaffIndex) {

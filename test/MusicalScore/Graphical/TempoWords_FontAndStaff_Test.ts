@@ -288,15 +288,12 @@ describe("Tempo words: font and staff", () => {
             }
         });
 
-        it("keeps a main tempo mark of the piano above the system when the voice writes a tempo at that moment, " +
-            "or when it is below or for the left hand", async () => {
+        it("keeps a main tempo mark of the piano above the system when the voice writes the same tempo at that moment, " +
+            "or when it is below", async () => {
             const voice: (text: string) => string = (text: string) => words(text, " placement=\"above\"", "");
             for (const [canto, piano] of [
                 [voice("Allegro"), words("Allegro")],
-                [voice("Allegro"), words("Adagio")],
-                [voice("ritard."), words("Adagio")],
                 ["", words("Adagio", " placement=\"below\"")],
-                ["", words("Adagio", " placement=\"above\"", "<staff>2</staff>")],
             ]) {
                 const osmd: OpenSheetMusicDisplay = await render(songScore(canto, piano));
                 const lines: StaffLine[] = staffLines(osmd);
@@ -304,6 +301,31 @@ describe("Tempo words: font and staff", () => {
                 expect(tempoTexts(lines[1]), canto + piano).to.deep.equal([]);
                 expect(tempoTexts(lines[2]), canto + piano).to.deep.equal([]);
             }
+        });
+
+        it("draws a main tempo mark of the piano different from the voice's at that moment above the piano " +
+            "(Saint-Saëns Op.61 m881, user decision 11-14)", async () => {
+            const voice: (text: string) => string = (text: string) => words(text, " placement=\"above\"", "");
+            for (const [canto, piano] of [
+                [voice("Allegro"), words("Adagio")],
+                [voice("ritard."), words("Adagio")],
+            ]) {
+                const osmd: OpenSheetMusicDisplay = await render(songScore(canto, piano));
+                const lines: StaffLine[] = staffLines(osmd);
+                expect(tempoTexts(lines[0]).length, canto + piano).to.be.greaterThan(0);
+                expect(tempoTexts(lines[1]), canto + piano).to.deep.equal(["Adagio"]);
+                expect(tempoTexts(lines[2]), canto + piano).to.deep.equal([]);
+            }
+        });
+
+        it("draws a main tempo mark of the piano written above its left hand there, between the staves " +
+            "(Saint-Saëns Op.61 m465, user decision 11-14)", async () => {
+            const osmd: OpenSheetMusicDisplay = await render(songScore("", words("Adagio", " placement=\"above\"", "<staff>2</staff>")));
+            const lines: StaffLine[] = staffLines(osmd);
+            expect(tempoTexts(lines[0])).to.deep.equal([]);
+            expect(tempoTexts(lines[1])).to.deep.equal([]);
+            expect(tempoTexts(lines[2])).to.deep.equal(["Adagio"]);
+            expect(tempoLabels(lines[2])[0].Label.PositionAndShape.RelativePosition.y, "above the left hand").to.be.lessThan(0);
         });
 
         it("draws a tempo word that only contains a main tempo mark like a tempo change, above each part " +

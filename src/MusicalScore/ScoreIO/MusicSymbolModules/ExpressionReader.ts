@@ -338,6 +338,7 @@ export class ExpressionReader {
                         instantaneousTempoExpression.perMinuteText = perMinuteText;
                         instantaneousTempoExpression.metronomeParentheses = dirContentNode.attribute("parentheses")?.value === "yes";
                         instantaneousTempoExpression.metronomeBelow = directionNode.attribute("placement")?.value === "below";
+                        instantaneousTempoExpression.writtenStaffIndex = this.globalStaffIndex;
                         this.lastMetronomeMark = { expression: instantaneousTempoExpression, timestamp: timestampFraction.clone() };
                         instantaneousTempoExpression.printObject = dirContentNode.attribute("print-object")?.value !== "no";
                         this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, "");
@@ -374,6 +375,7 @@ export class ExpressionReader {
                         text, this.placement, this.staffNumber, this.soundTempo, this.currentMultiTempoExpression);
                     instantaneousTempoExpression.fontStyle = ExpressionReader.readWordsFontStyle(dirContentNode);
                     instantaneousTempoExpression.placementStaffIndex = this.placementStaffIndex();
+                    instantaneousTempoExpression.writtenStaffIndex = this.globalStaffIndex;
                     instantaneousTempoExpression.language = dirContentNode.attribute("xml:lang")?.value;
                     this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, "");
                     this.addWordExpressionForDashes(instantaneousTempoExpression, timestampFraction);
@@ -1567,6 +1569,7 @@ export class ExpressionReader {
                 instantaneousTempoExpression.ColorXML = fontColor;
                 instantaneousTempoExpression.fontStyle = tempoFontStyle;
                 instantaneousTempoExpression.placementStaffIndex = this.placementStaffIndex();
+                instantaneousTempoExpression.writtenStaffIndex = this.globalStaffIndex;
                 instantaneousTempoExpression.language = language;
                 this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, prefix);
                 this.addWordExpressionForDashes(instantaneousTempoExpression, inSourceMeasureCurrentFraction);
@@ -1581,6 +1584,7 @@ export class ExpressionReader {
                 continuousTempoExpression.ColorXML = fontColor;
                 continuousTempoExpression.fontStyle = tempoFontStyle;
                 continuousTempoExpression.placementStaffIndex = this.placementStaffIndex();
+                continuousTempoExpression.writtenStaffIndex = this.globalStaffIndex;
                 continuousTempoExpression.language = language;
                 this.currentMultiTempoExpression.addExpression(continuousTempoExpression, prefix);
                 this.addWordExpressionForDashes(continuousTempoExpression, inSourceMeasureCurrentFraction);

@@ -106,6 +106,18 @@ describe("Text expressions moved sideways off cross-staff stems", () => {
             return r.osmd;
         };
 
+    it("keeps a text moved sideways right of the bound it is given (the start of its measure: Sibelius Op.47 III m230 " +
+        "\"poco cresc.\" went into m229, 81sabo SIB3C-WP-RENDER-03; same as osmd-dart)", async () => {
+        const on: OpenSheetMusicDisplay = keep(await render(true));
+        const inkOf: CrossStaffExpressionClearance = ink(on);
+        const poco: ClearanceBox = box(labels(on, "poco f")[0]);
+        const free: { dx: number, dy: number } = inkOf.offset(poco, true, []);
+        expect(free.dx, "moved sideways without a bound").to.not.equal(0);
+        const bound: number = poco.left + free.dx + 0.1;
+        const bounded: { dx: number, dy: number } = inkOf.offset(poco, true, [], false, undefined, undefined, bound);
+        expect(bounded.dx === 0 || poco.left + bounded.dx >= bound - 1e-6, JSON.stringify(bounded)).to.equal(true);
+    });
+
     it("moves the texts the stems cross from staff to staff, within reach (poco f sideways, the p by its glyph); the layout unchanged", async () => {
         const off: OpenSheetMusicDisplay = keep(await render(false));
         const on: OpenSheetMusicDisplay = keep(await render(true));
