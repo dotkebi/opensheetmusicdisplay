@@ -1659,6 +1659,14 @@ export class GraphicalSlur extends GraphicalCurve {
             endX = this.pieceEndX() ?? staffLine.PositionAndShape.Size.width;
         }
 
+        // a piece continued from the system before to a note right after the clef and key signature keeps a visible
+        // length (from after them it was 0.14 long to such a note in Beethoven's Fifth IV in osmd-dart): it starts that
+        // far before the note, over the key signature's end
+        if (!slurStartNote && slurEndNote && this.pieceStartX() === undefined &&
+            endX - startX < GraphicalSlur.continuedPieceMinLength) {
+            startX = Math.max(0, endX - GraphicalSlur.continuedPieceMinLength);
+        }
+
         // if GraphicalSlur breaks over System, then the end/start of the curve is at the corresponding height with the known start/end
         //   (a middle piece, with neither note in this staff line, on the slur's side of the staff: a slur below at -1.5
         //   started in the staff lines at the clef and crossed the staff, Schumann, Myrthen 11 m36)
@@ -1838,6 +1846,10 @@ export class GraphicalSlur extends GraphicalCurve {
         }
         return above ? Math.min(y, ink) : Math.max(y, ink);
     }
+
+    /** The least length (in staff spaces) of a piece continued from the system before to its end note (see
+     *  calculateStartAndEnd). */
+    public static readonly continuedPieceMinLength: number = 1.5;
 
     /** Start x of a piece continued from the system before (no start note on its staff line, not a cross-staff or
      *  volta piece): after the begin instructions (clef, key and time signature) of its first measure. */

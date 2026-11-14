@@ -21,22 +21,23 @@ describe("A slur piece continued on the next system", () => {
         }).join("");
     }
 
-    function score(placement: string): string {
+    function score(placement: string, toFirstNote: boolean = false): string {
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\">" +
             "<part-list><score-part id=\"P1\"><part-name>Violin</part-name></score-part></part-list><part id=\"P1\">" +
             "<measure number=\"1\"><attributes><divisions>1</divisions><key><fifths>2</fifths></key><time><beats>4</beats>" +
             "<beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>" +
             notes(["D5", "E5", "F5", "G5"], `<slur type="start" number="1" placement="${placement}"/>`) +
             "</measure><measure number=\"2\"><print new-system=\"yes\"/>" +
-            notes(["A5", "G5", "F5", "E5"], "", "<slur type=\"stop\" number=\"1\"/>") +
+            (toFirstNote ? notes(["A5"], "", "<slur type=\"stop\" number=\"1\"/>") + notes(["G5", "F5", "E5"]) :
+                notes(["A5", "G5", "F5", "E5"], "", "<slur type=\"stop\" number=\"1\"/>")) +
             "</measure></part></score-partwise>";
     }
 
-    async function render(placement: string): Promise<OpenSheetMusicDisplay> {
+    async function render(placement: string, toFirstNote: boolean = false): Promise<OpenSheetMusicDisplay> {
         const div: HTMLElement = TestUtils.getDivElement(document);
         div.style.width = "1000px";
         const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg", newSystemFromXML: true });
-        await osmd.load(score(placement));
+        await osmd.load(score(placement, toFirstNote));
         osmd.render();
         return osmd;
     }
@@ -59,4 +60,13 @@ describe("A slur piece continued on the next system", () => {
             expect(piece.bezierEndPt.x).to.be.greaterThan(piece.bezierStartPt.x + 2);
         });
     }
+
+    it("keeps a visible length for a piece to the first note", async () => {
+        const osmd: OpenSheetMusicDisplay = await render("above", true);
+        const line: StaffLine = osmd.GraphicSheet.MusicPages[0].MusicSystems[1].StaffLines[0];
+        expect(line.GraphicalSlurs.length).to.equal(1);
+        const piece: GraphicalSlur = line.GraphicalSlurs[0];
+        expect(piece.bezierEndPt.x - piece.bezierStartPt.x).to.be.at.least(GraphicalSlur.continuedPieceMinLength - 1e-9);
+        expect(piece.bezierStartPt.x).to.be.at.least(0);
+    });
 });
