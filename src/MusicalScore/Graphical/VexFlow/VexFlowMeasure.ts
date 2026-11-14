@@ -1385,6 +1385,89 @@ export class VexFlowMeasure extends GraphicalMeasure {
                 note.setStave(this.stave);
             }
             beam.postFormat();
+            this.moveBeamClearOfInStaffClefs(beam);
+        }
+    }
+
+    /** The clearance between a beam and an in-staff clef it passes, in staff spaces. */
+    public static readonly BeamInStaffClefClearance: number = 0.5;
+
+    /**
+     * Moves a beam that runs through an in-staff clef between its notes away from the clef, by its stem direction: VexFlow
+     * places a beam from its notes only, so a clef change inside a beamed group (drawn left of the note after it) could lie
+     * under the beam, e.g. the F clef in the bass of Sibelius' violin concerto III m202/m204 (the beam from F1 up to a chord
+     * in the G clef ran through the top of the F clef) or the G clef in the viola's quintuplets of Enescu's Konzertstück
+     * m109 (the beam under the notes ran through the clef's lower loop); the printed scores keep the beam clear of the
+     * clef (Sibelius: the beam above the F clef). The beam keeps its slope and moves
+     * outward until it is BeamInStaffClefClearance staff spaces away from the clef's outline box: its stems are extended
+     * (a post-formatted beam is drawn from its first stem's tip). Not for flat beams; only for
+     * a beam whose notes are all on this stave (OSMD places cross-staff beams itself) that overlaps the clef. Same as
+     * osmd-dart VexFlowMeasure._moveBeamClearOfInStaffClefs().
+     */
+    private moveBeamClearOfInStaffClefs(beam: VF.Beam): void {
+        const b: any = beam;
+        const notes: any[] = b.getNotes();
+        if (b.unbeamable || b.render_options.flat_beams || notes.length < 2 ||
+            notes.some(note => note.getStave() !== this.stave)) {
+            return;
+        }
+        const firstX: number = notes[0].getStemX();
+        const lastX: number = notes[notes.length - 1].getStemX();
+        const dir: number = b.stem_direction;
+        const space: number = this.stave.getSpacingBetweenLines();
+        const beamWidth: number = b.render_options.beam_width;
+        const thickness: number = beamWidth + (b.getBeamCount() - 1) * beamWidth * 1.5;
+        const clearance: number = VexFlowMeasure.BeamInStaffClefClearance * space;
+        const firstTipY: number = b.getBeamYToDraw();
+        let shift: number = 0; // how far the beam moves by its stem direction (in pixels, positive = away from the notes)
+        for (const voiceID in this.vfVoices) {
+            if (!this.vfVoices.hasOwnProperty(voiceID)) {
+                continue;
+            }
+            for (const tickable of this.vfVoices[voiceID].getTickables() as any[]) {
+                for (const group of tickable.getModifiers?.() ?? []) {
+                    if (group.getCategory?.() !== "notesubgroup") {
+                        continue;
+                    }
+                    for (const clef of group.subNotes as any[]) {
+                        if (clef.getCategory?.() !== "clefnote" || !clef.glyph?.bbox) {
+                            continue;
+                        }
+                        // the clef's place as NoteSubGroup.draw() gives it (the notes' tick contexts are formatted)
+                        clef.setStave(this.stave);
+                        group.alignSubNotesWithNote(group.subNotes, tickable);
+                        const box: any = clef.glyph.bbox;
+                        const left: number = clef.getAbsoluteX() + box.getX();
+                        const right: number = left + box.getW();
+                        if (right <= firstX || left >= lastX) {
+                            continue; // not between the beam's first and last stem
+                        }
+                        const top: number = this.stave.getYForLine(clef.clef.line) + box.getY();
+                        const bottom: number = top + box.getH();
+                        for (const x of [Math.max(left, firstX), Math.min(right, lastX)]) {
+                            // (a post-formatted beam is drawn from its first stem's tip)
+                            const line: number = b.getSlopeY(x, firstX, firstTipY, b.slope) - dir * shift;
+                            // the beam block: from its line (at the stem tips) toward the notes by its thickness
+                            const beamTop: number = dir === VF.Stem.UP ? line : line - thickness;
+                            const beamBottom: number = dir === VF.Stem.UP ? line + thickness : line;
+                            if (beamBottom <= top - clearance || beamTop >= bottom + clearance) {
+                                continue;
+                            }
+                            shift += dir === VF.Stem.UP ? beamBottom - (top - clearance) : bottom + clearance - beamTop;
+                        }
+                    }
+                }
+            }
+        }
+        if (shift <= 0) {
+            return;
+        }
+        for (const note of notes) {
+            const stem: any = note.getStem?.();
+            if (stem) {
+                // a stem pointing like the beam grows by the move, one pointing the other way (from the beam's far side) shrinks
+                stem.setExtension(stem.getExtension() + (note.getStemDirection() === dir ? shift : -shift));
+            }
         }
     }
 
