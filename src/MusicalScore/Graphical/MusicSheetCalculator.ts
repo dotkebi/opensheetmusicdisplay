@@ -2199,6 +2199,7 @@ export abstract class MusicSheetCalculator {
                 (a.pending.staffLine === b.pending.staffLine ? a.pending.textBox.RelativePosition.x - b.pending.textBox.RelativePosition.x : 0) ||
                 a.index - b.index)
             .map(entry => entry.pending);
+        const nextPieces: Map<typeof pendings[0], typeof pendings[0]> = this.alignChainedExpressionDashesTexts(pendings);
         for (const pending of pendings) {
             const expression: AbstractExpression = pending.expression;
             const endMeasureIndex: number = Math.min(sourceMeasures.indexOf(expression.DashesEndMeasure), this.graphicalMusicSheet.MeasureList.length - 1);
@@ -2242,6 +2243,13 @@ export abstract class MusicSheetCalculator {
                     y = below ?
                         Math.max(y, skyBottomLine.getMaxInRangeOf(before[1], startX, endX) + distance) :
                         Math.min(y, skyBottomLine.getMinInRangeOf(before[0], startX, endX) - distance);
+                    // on the line of the next piece of a divided word, its baseline (Ganymed m88-89: "scen - - -" continued on
+                    //   the system of "do")
+                    const next: typeof pendings[0] = nextPieces.get(pending);
+                    if (next?.staffLine === line) {
+                        const nextY: number = next.textBox.RelativePosition.y + (next.textBox.BorderTop + next.textBox.BorderBottom) / 2;
+                        y = below ? Math.max(y, nextY) : Math.min(y, nextY);
+                    }
                 }
                 // the words in the line go on it, the line broken around them
                 const words: BoundingBox[] = this.moveWordsOntoExpressionDashes(line, pending.textBox, pending.placement, startX,
@@ -2279,12 +2287,106 @@ export abstract class MusicSheetCalculator {
     }
 
     /**
+     * The pieces of a word divided by dashed lines, each piece with its own line ending at the next one ("cre - - - scen - - - do":
+     * Schubert, Ganymed piano m86-91, m102-104), go on one baseline on a staff line: the one farthest from the staff, each piece
+     * having been placed clear of the notes under it only, which made steps of them and their lines. A piece moves only away from
+     * the staff, and not onto another text. A piece's line continued on a later system goes on the baseline of the next piece
+     * there (calculateExpressionDashes()).
+     * @returns the next piece of each piece
+     */
+    private alignChainedExpressionDashesTexts(pendings: typeof this.pendingExpressionDashes):
+        Map<typeof pendings[0], typeof pendings[0]> {
+        const linked: Set<typeof pendings[0]> = new Set();
+        const chains: (typeof pendings)[] = [];
+        const nextPieces: Map<typeof pendings[0], typeof pendings[0]> = new Map();
+        for (const pending of pendings) {
+            if (linked.has(pending)) {
+                continue;
+            }
+            const chain: typeof pendings = [pending];
+            for (let current: typeof pendings[0] = pending; ;) {
+                const endX: number = this.expressionDashesEndX(current.expression, current.staffLine, current.staffIndex);
+                const next: typeof pendings[0] = endX === undefined ? undefined : pendings.find(other =>
+                    other !== current && !linked.has(other) && !chain.includes(other) && other.staffLine === current.staffLine &&
+                    other.placement === current.placement &&
+                    Math.abs(other.textBox.RelativePosition.x + other.textBox.BorderMarginLeft - endX) < 3);
+                // (the next piece on a later system: the line ends at its time there)
+                const nextOnLaterSystem: typeof pendings[0] = next ? undefined : this.pieceAtDashesEnd(current, pendings);
+                if (nextOnLaterSystem) {
+                    nextPieces.set(current, nextOnLaterSystem);
+                }
+                if (!next) {
+                    break;
+                }
+                nextPieces.set(current, next);
+                chain.push(next);
+                current = next;
+            }
+            if (chain.length > 1) {
+                chain.forEach(member => linked.add(member));
+                chains.push(chain);
+            }
+        }
+        for (const chain of chains) {
+            const below: boolean = chain[0].placement === PlacementEnum.Below;
+            const staffLine: StaffLine = chain[0].staffLine;
+            const centers: number[] = chain.map(member => member.textBox.RelativePosition.y +
+                (member.textBox.BorderTop + member.textBox.BorderBottom) / 2);
+            const target: number = below ? Math.max(...centers) : Math.min(...centers);
+            const others: BoundingBox[] = staffLine.AbstractExpressions.map(expression => this.expressionTextBox(expression))
+                .filter(box => box && !chain.some(member => member.textBox === box));
+            chain.forEach((member, index) => {
+                const box: BoundingBox = member.textBox;
+                const shift: number = target - centers[index];
+                if (Math.abs(shift) < 0.01) {
+                    return;
+                }
+                const left: number = box.RelativePosition.x + box.BorderMarginLeft;
+                const right: number = box.RelativePosition.x + box.BorderMarginRight;
+                const top: number = box.RelativePosition.y + box.BorderMarginTop + shift;
+                const bottom: number = box.RelativePosition.y + box.BorderMarginBottom + shift;
+                if (others.some(other => other.RelativePosition.x + other.BorderMarginLeft < right &&
+                    left < other.RelativePosition.x + other.BorderMarginRight &&
+                    other.RelativePosition.y + other.BorderMarginTop < bottom && top < other.RelativePosition.y + other.BorderMarginBottom)) {
+                    return;
+                }
+                box.RelativePosition.y += shift;
+                if (below) {
+                    staffLine.SkyBottomLineCalculator.updateBottomLineInRange(left, right, bottom);
+                } else {
+                    staffLine.SkyBottomLineCalculator.updateSkyLineInRange(left, right, top);
+                }
+            });
+        }
+        return nextPieces;
+    }
+
+    /** The text with a dashed line of pendings at the end of pending's line on a later system: on the staff line of its end
+     *  measure, starting at the x of its end. */
+    private pieceAtDashesEnd(pending: typeof this.pendingExpressionDashes[0],
+                             pendings: typeof this.pendingExpressionDashes): typeof this.pendingExpressionDashes[0] {
+        const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+        const endMeasureIndex: number = sourceMeasures.indexOf(pending.expression.DashesEndMeasure);
+        const endLine: StaffLine = this.graphicalMusicSheet.MeasureList[endMeasureIndex]?.[pending.staffIndex]?.ParentStaffLine;
+        if (!endLine || endLine === pending.staffLine) {
+            return undefined;
+        }
+        const endX: number = this.expressionDashesEndX(pending.expression, endLine, pending.staffIndex);
+        return endX === undefined ? undefined : pendings.find(other => other !== pending && other.staffLine === endLine &&
+            other.placement === pending.placement && Math.abs(other.textBox.RelativePosition.x + other.textBox.BorderMarginLeft - endX) < 3);
+    }
+
+    /**
      * Moves the words of staffLine on the side of a dashed line that start in it (from startX up to its end, endX) onto the line
      * (the height y of its text), as printed: "cres: - - - ed - - - accel." in one row between the staves (Parisotti, A. Scarlatti
      * Se tu della mia morte Piano m18–20). The text of the line was placed clear of everything under the whole line, the words
      * only of what is under them, so they were nearer the staff. A word moves only away from the staff, and only if the notes
      * (the sky-/bottomline before the expressions) and the other texts leave room for it there.
-     * @returns the text boxes of the moved words, by their x
+     * A word starting a little before the line (the start of a later system's line, after the clef) is in it too, and a word on
+     * the line already (or beyond it) stays where it is but is in the line too: the line is broken around it, not ended there
+     * (Schubert/Reger, Gretchen am Spinnrade m56-59 "scen- - - do - - - poco - - - a - - - poco": on the web "scen-" started
+     * just before the line of its system and "do" and "a" were on it, which ended the line at each of them).
+     * @returns the text boxes of the moved words and of those on the line, by their x
      */
     private moveWordsOntoExpressionDashes(staffLine: StaffLine, ownBox: BoundingBox, placement: PlacementEnum,
                                           startX: number, endX: number, y: number): BoundingBox[] {
@@ -2309,12 +2411,15 @@ export abstract class MusicSheetCalculator {
             }
             const left: number = textBox.RelativePosition.x + textBox.BorderMarginLeft;
             const right: number = textBox.RelativePosition.x + textBox.BorderMarginRight;
-            if (left < startX || left > endX) {
+            if (right <= startX || left > endX) {
                 continue;
             }
             const center: number = textBox.RelativePosition.y + (textBox.BorderTop + textBox.BorderBottom) / 2;
             const shift: number = y - center;
             if (below ? shift <= 0.01 : shift >= -0.01) {
+                if (textBox.RelativePosition.y + textBox.BorderMarginTop < y && y < textBox.RelativePosition.y + textBox.BorderMarginBottom) {
+                    moved.push(textBox); // on the line already
+                }
                 continue;
             }
             const top: number = textBox.RelativePosition.y + textBox.BorderMarginTop + shift;
@@ -2375,9 +2480,16 @@ export abstract class MusicSheetCalculator {
         //   reservation reached the start of the line and ended it at once).
         const ownLeft: number = ownBox.RelativePosition.x + ownBox.BorderMarginLeft - 1;
         const ownRight: number = ownBox.RelativePosition.x + ownBox.BorderMarginRight + 1;
+        //   The same next to the other texts on the line, outside their boxes (over a text, what is there now counts): the
+        //   reservation of a word moved onto the line rounded out past its right margin and ended the line after it at once
+        //   (Schubert/Reger, Gretchen am Spinnrade m58 "poco - - - a" on the app). Same as osmd-dart.
+        const textRanges: number[][] = labelBoxes.map(box =>
+            [box.RelativePosition.x + box.BorderMarginLeft, box.RelativePosition.x + box.BorderMarginRight]);
         const step: number = 0.1;
         for (let x: number = startX; x < endX; x += step) {
-            const besideOwnText: boolean = before !== undefined && x < ownRight && x + step > ownLeft;
+            const besideOwnText: boolean = before !== undefined && (x < ownRight && x + step > ownLeft ||
+                textRanges.some(([left, right]) => x < right + 1 && x + step > left - 1) &&
+                !textRanges.some(([left, right]) => x < right && x + step > left));
             const current: number = besideOwnText ?
                 (below ? skyBottomLine.getMaxInRangeOf(before[1], x, x + step) : skyBottomLine.getMinInRangeOf(before[0], x, x + step)) :
                 (below ? skyBottomLine.getBottomLineMaxInRange(x, x + step) : skyBottomLine.getSkyLineMinInRange(x, x + step));
