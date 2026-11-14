@@ -283,7 +283,7 @@ export class InstrumentReader {
             this.readMeasureRepeats(xmlNode);
           }
           if (this.isAttributesNodeAtEndOfMeasure(xmlMeasureListArr, xmlNodeIndex, currentFraction)) {
-            this.saveClefInstructionAtEndOfMeasure();
+            this.saveClefInstructionAtEndOfMeasure(currentFraction);
           }
           const staffDetailsNodes: IXmlElement[] = xmlNode.elements("staff-details"); // there can be multiple, even if redundant. see #1041
           for (const staffDetailsNode of staffDetailsNodes) {
@@ -1786,17 +1786,26 @@ export class InstrumentReader {
   /**
    * Save any ClefInstruction given - exceptionally - at the end of the currentMeasure.
    */
-  private saveClefInstructionAtEndOfMeasure(): void {
+  /**
+   * Stores the clefs read at the end of the measure (endFraction) in its end-instructions slot, when they change the clef. A
+   * clef read earlier in the measure and still pending stays for savePendingClefInstructions(), which places it at its time;
+   * it went to the end of the measure too, and the end clef was compared with the clef of before it (Vieuxtemps, Grand
+   * Concerto Op. 31, piano m104: F4 at the last beat, G2 at the measure's end; the F4 was drawn at the end and the G2, "no
+   * change" from the G2 of m103, was lost: the staff stayed in the bass clef to m116). As osmd_dart.
+   */
+  private saveClefInstructionAtEndOfMeasure(endFraction: Fraction): void {
     for (let i: number = this.abstractInstructions.length - 1; i >= 0; i--) {
       const key: number = this.abstractInstructions[i][0];
       const value: AbstractNotationInstruction = this.abstractInstructions[i][1];
-      if (value instanceof ClefInstruction) {
+      const timestamp: Fraction = this.abstractInstructions[i][2];
+      if (value instanceof ClefInstruction && timestamp.gte(endFraction)) {
         const clefInstruction: ClefInstruction = <ClefInstruction>value;
+        const activeClef: ClefInstruction = this.pendingClefBefore(i, key, timestamp) ?? this.activeClefs[key - 1];
         if (
-          (!this.activeClefs[key - 1]) ||
-          (clefInstruction.ClefType !== this.activeClefs[key - 1].ClefType || (
-            clefInstruction.ClefType === this.activeClefs[key - 1].ClefType &&
-            clefInstruction.Line !== this.activeClefs[key - 1].Line
+          (!activeClef) ||
+          (clefInstruction.ClefType !== activeClef.ClefType || (
+            clefInstruction.ClefType === activeClef.ClefType &&
+            clefInstruction.Line !== activeClef.Line
           ))) {
           this.storeClefAtMeasureEnd(this.currentMeasure, this.inSourceMeasureInstrumentIndex + key - 1, clefInstruction);
           this.activeClefs[key - 1] = clefInstruction;
@@ -1834,6 +1843,24 @@ export class InstrumentReader {
    * or to the end of the measure if no note of its staff follows. These clefs were lost before, so their staff kept its clef.
    */
   private savePendingClefInstructions(): void {
+    // The list is gone through from its end, so a staff's later clefs come first: a clef only becomes the active one when
+    //   no later clef of its staff was placed before it (by timestamp).
+    //   A clef at the end of the measure (saveClefInstructionAtEndOfMeasure()) is later than all of them.
+    const latestPlaced: Map<number, Fraction> = new Map<number, Fraction>();
+    const setActive: (staffNumber: number, clef: ClefInstruction, timestamp: Fraction) => void =
+      (staffNumber: number, clef: ClefInstruction, timestamp: Fraction): void => {
+      const latest: Fraction = latestPlaced.get(staffNumber);
+      if (latest && latest.gt(timestamp)) {
+        return;
+      }
+      const end: SourceStaffEntry = this.currentMeasure.LastInstructionsStaffEntries[this.inSourceMeasureInstrumentIndex + staffNumber - 1];
+      if (end?.Instructions.some((instruction: AbstractNotationInstruction): boolean =>
+        instruction instanceof ClefInstruction && instruction !== clef)) {
+        return;
+      }
+      latestPlaced.set(staffNumber, timestamp);
+      this.activeClefs[staffNumber - 1] = clef;
+    };
     for (let i: number = this.abstractInstructions.length - 1; i >= 0; i--) {
       const staffNumber: number = this.abstractInstructions[i][0];
       const clefInstruction: AbstractNotationInstruction = this.abstractInstructions[i][1];
@@ -1861,11 +1888,15 @@ export class InstrumentReader {
         //   stays, the hidden one only updates the active clef of the following measures (see storeClefAtMeasureEnd())
         clefInstruction.Parent = staffEntry;
         staffEntry.Instructions.push(clefInstruction);
-        this.activeClefs[staffNumber - 1] = clefInstruction;
+        setActive(staffNumber, clefInstruction, clefTimestamp);
         continue;
       }
       if (!nextStaffEntry) {
-        const activeClef: ClefInstruction = this.activeClefs[staffNumber - 1];
+        // The clef this one follows: an earlier clef of the staff still pending in this measure, else the active one. A
+        //   measure ending with two clef changes after its staff's last note (Vieuxtemps, Grand Concerto Op. 31, piano m104:
+        //   F4 before the last beat's notes, G2 at the measure's end) kept the active clef of before them, the G2 of m103, so
+        //   the G2 counted as no change and was lost, and the staff stayed in the bass clef to m116. As osmd_dart.
+        const activeClef: ClefInstruction = this.pendingClefBefore(i, staffNumber, clefTimestamp) ?? this.activeClefs[staffNumber - 1];
         if (activeClef?.ClefType === clefInstruction.ClefType && activeClef.Line === clefInstruction.Line &&
           activeClef.OctaveOffset === clefInstruction.OctaveOffset) {
           continue; // no clef change, which would be drawn at the end of the measure (see saveClefInstructionAtEndOfMeasure())
@@ -1877,8 +1908,26 @@ export class InstrumentReader {
       }
       clefInstruction.Parent = staffEntry;
       staffEntry.Instructions.push(clefInstruction);
-      this.activeClefs[staffNumber - 1] = clefInstruction;
+      setActive(staffNumber, clefInstruction, clefTimestamp);
     }
+  }
+
+  /** The latest clef of the staff before the pending clef at the index (by timestamp, else by its place in the XML) still in
+   *  abstractInstructions. */
+  private pendingClefBefore(index: number, staffNumber: number, timestamp: Fraction): ClefInstruction {
+    let clef: ClefInstruction;
+    let clefTime: Fraction;
+    for (let j: number = 0; j < index && j < this.abstractInstructions.length; j++) {
+      const [staff, instruction, time] = this.abstractInstructions[j];
+      if (!(instruction instanceof ClefInstruction) || staff !== staffNumber || time.gt(timestamp)) {
+        continue;
+      }
+      if (!clefTime || !clefTime.gt(time)) {
+        clef = instruction;
+        clefTime = time;
+      }
+    }
+    return clef;
   }
 
   /**

@@ -244,7 +244,15 @@ export class ArticulationReader {
       currentNote.StringInstruction = currentTechnicalInstruction;
       currentVoiceEntry.TechnicalInstructions.push(currentTechnicalInstruction);
     }
-    // other-technical: kept on the note by its SMuFL name and text. Only keyboard hand brackets are drawn (see OtherTechnical).
+    // thumb-position: the thumb sign, kept as the other-technical of its SMuFL glyph and drawn like a fingering, outside the
+    //   note's fingerings (MusicSheetCalculator.calculateFingerings(), VexFlowThumbPositionGlyph). It was not read
+    //   (Goltermann, Cello Concerto No. 1 Op. 14, m167: only the "2" under the sign was drawn). As osmd_dart.
+    const nodeThumb: IXmlElement = technicalNode.element("thumb-position");
+    if (nodeThumb) {
+      currentNote.OtherTechnicals.push(new OtherTechnical(OtherTechnical.ThumbPosition, "", this.getPlacement(nodeThumb.attribute("placement"))));
+    }
+    // other-technical: kept on the note by its SMuFL name and text. Only keyboard hand brackets and the thumb position are
+    //   drawn (see OtherTechnical).
     for (const nodeOther of technicalNode.elements("other-technical")) {
       const smufl: string = nodeOther.attribute("smufl")?.value || undefined;
       const text: string = nodeOther.value?.trim() ?? "";
