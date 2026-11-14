@@ -1822,14 +1822,14 @@ export abstract class MusicSheetCalculator {
             MusicSheetCalculator.labelBaselineOffset(dynamic.Label);
         const y: number = dynamicBaseline - MusicSheetCalculator.labelBaselineOffset(graphLabel);
         // The words after the dynamic at gap (units) right of its box, or undefined if they don't fit there.
-        const fit: (gap: number) => {x: number, carry: number, dynamicShift: number} = gap => {
+        const fit: (gap: number, fromFirstNote?: boolean) => {x: number, carry: number, dynamicShift: number} = (gap, fromFirstNote = true) => {
             // the boxes touch: their margins leave about a word space between the texts
             let wordsLeft: number = dynamicRight + gap;
             let dynamicShift: number = 0;
             if (MusicSheetCalculator.wordsQualifyFollowingDynamic(text)) {
                 wordsLeft = dynamicLeft - width;
                 const firstNoteX: number = this.firstNoteX(measure);
-                if (wordsLeft < firstNoteX) {
+                if (fromFirstNote && wordsLeft < firstNoteX) {
                     dynamicShift = firstNoteX - wordsLeft;
                     wordsLeft = firstNoteX;
                     // At the end of the staff line the dynamic moves only as far as there is room, and the words start that
@@ -1879,7 +1879,11 @@ export abstract class MusicSheetCalculator {
         //   Violin Concerto Op. 47 III m188 "mf Poco a poco", the f's hook on the P; 81sabo SIB3C-APP1024-09), where they fit;
         //   else at the box, as before, rather than off the dynamic's line ("mf espress." under it, Nielsen, Clarinet Concerto).
         const reach: number = MusicSheetCalculator.dynamicGlyphReach(dynamic.Label.Label.text).right;
-        const placed: {x: number, carry: number, dynamicShift: number} = fit(reach) ?? (reach > 0 ? fit(0) : undefined);
+        // Qualifying words that can't start at the first note, the dynamic moved after them (a wedge from the dynamic on: Schubert/
+        //   Reger, Gretchen am Spinnrade m8 "mezzo f" and a diminuendo), go left of the dynamic at its note, as in the source, where
+        //   they are clear of the rest.
+        const placed: {x: number, carry: number, dynamicShift: number} = fit(reach) ?? (reach > 0 ? fit(0) : undefined) ??
+            (MusicSheetCalculator.wordsQualifyFollowingDynamic(text) ? fit(0, false) : undefined);
         if (!placed) {
             return undefined;
         }

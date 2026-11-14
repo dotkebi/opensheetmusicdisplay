@@ -2,6 +2,7 @@ import { expect } from "vitest";
 import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import { GraphicalInstantaneousDynamicExpression } from "../../../src/MusicalScore/Graphical/GraphicalInstantaneousDynamicExpression";
 import { GraphicalMeasure } from "../../../src/MusicalScore/Graphical/GraphicalMeasure";
+import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
 import { TestUtils } from "../../Util/TestUtils";
 
 /**
@@ -17,7 +18,7 @@ describe("A dynamic after the last note of a staff", () => {
         const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
         await osmd.load(TestUtils.getScore("test_dynamic_after_last_note_of_staff.musicxml"));
         osmd.render();
-        const staffLine = osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines[0];
+        const staffLine: StaffLine = osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines[0];
         const pp: GraphicalInstantaneousDynamicExpression = staffLine.AbstractExpressions.find(e =>
             e instanceof GraphicalInstantaneousDynamicExpression) as GraphicalInstantaneousDynamicExpression;
         expect(pp).toBeDefined();
