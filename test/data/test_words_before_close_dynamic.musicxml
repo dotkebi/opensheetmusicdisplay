@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <!-- m1: at the start of the line, words qualifying f ("sempre più e") and a diminuendo from the f to the end of the measure:
+       the words can't go left of the f (the start of the staff) and the f moved after them from the first note would leave
+       the wedge too short; the words start at the start of the measure's content, the f and the start of the wedge after
+       them (Schubert/Reger, Gretchen am Spinnrade m37 "mezzo f" and a diminuendo, on the web at the start of a line).
+       m2: "mezzo" and f in one direction (Gretchen am Spinnrade m8): "mezzo f".
+       m3: "più" at the third beat, f half a beat later (Schumann, Piano Quartet Op. 47 II m22, m26): "più f" on one line.
+       m4: "dolce" (not qualifying a dynamic) at the second beat, p half a beat later: not joined.
+       m5: one beat at the end of the line, "sempre più" and f at its note (Schumann, Piano Quartet Op. 47 IV m294): "sempre più f",
+       the f moved only as far as there is room, the words starting left of the note. -->
+  <part-list><score-part id="P1"><part-name>Violin</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>2</divisions><key><fifths>0</fifths></key><time><beats>3</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <direction placement="below"><direction-type><words>sempre più e </words></direction-type><direction-type><dynamics><f/></dynamics></direction-type></direction>
+      <direction placement="below"><direction-type><wedge type="diminuendo" number="1"/></direction-type></direction>
+      <direction placement="below"><direction-type><wedge type="stop" number="1"/></direction-type><offset>5</offset></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+    </measure>
+    <measure number="2">
+      <direction placement="below"><direction-type><words>mezzo </words></direction-type><direction-type><dynamics><f/></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+    </measure>
+    <measure number="3">
+      <direction placement="below"><direction-type><words>più</words></direction-type><offset>4</offset></direction>
+      <direction placement="below"><direction-type><dynamics><f/></dynamics></direction-type><offset>5</offset></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+    </measure>
+    <measure number="4">
+      <direction placement="below"><direction-type><words>dolce</words></direction-type><offset>2</offset></direction>
+      <direction placement="below"><direction-type><dynamics><p/></dynamics></direction-type><offset>3</offset></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note><note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type></note>
+    </measure>
+    <measure number="5">
+      <attributes><time><beats>1</beats><beat-type>4</beat-type></time></attributes>
+      <direction placement="below"><direction-type><words>sempre più</words></direction-type></direction>
+      <direction placement="below"><direction-type><dynamics><f/></dynamics></direction-type></direction>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>

@@ -1803,7 +1803,11 @@ export abstract class MusicSheetCalculator {
             (placement !== PlacementEnum.Above && placement !== PlacementEnum.Below) || MusicSheetCalculator.isInstrumentCue(text)) {
             return undefined;
         }
-        const dynamic: GraphicalInstantaneousDynamicExpression = this.sameTimeDynamic(staffLine, multiExpression, placement);
+        // Words qualifying a dynamic also go before one shortly after them (closelyFollowingDynamic()): "più" at the third beat
+        //   and f half a beat later, printed "più f" (Schumann, Piano Quartet Op. 47 II m22 strings, m26 piano).
+        const dynamic: GraphicalInstantaneousDynamicExpression = this.sameTimeDynamic(staffLine, multiExpression, placement) ??
+            (MusicSheetCalculator.wordsQualifyFollowingDynamic(text) ?
+                this.closelyFollowingDynamic(staffLine, multiExpression, placement) : undefined);
         if (!dynamic?.Label) {
             return undefined;
         }
@@ -1817,17 +1821,37 @@ export abstract class MusicSheetCalculator {
         const dynamicBaseline: number = dynamicBox.RelativePosition.y + dynamic.Label.PositionAndShape.RelativePosition.y +
             MusicSheetCalculator.labelBaselineOffset(dynamic.Label);
         const y: number = dynamicBaseline - MusicSheetCalculator.labelBaselineOffset(graphLabel);
+        // The wedges starting right after the dynamic (at its time, on its side) move their start with it when it moves after
+        //   the words: "mezzo f" and a diminuendo from the f on (Schubert/Reger, Gretchen am Spinnrade m8, m37).
+        const followingWedges: GraphicalContinuousDynamicExpression[] = this.wedgesStartingAfter(staffLine, dynamic, placement);
         // The words after the dynamic at gap (units) right of its box, or undefined if they don't fit there.
-        const fit: (gap: number) => {x: number, carry: number, dynamicShift: number} = gap => {
+        // from: where qualifying words start at the latest, the dynamic moved after them: the measure's first note, the start
+        //   of its content (after the barline, the clef etc.), or anywhere left of the dynamic.
+        const fit: (gap: number, from?: "firstNote" | "measure" | "anywhere") => {x: number, carry: number, dynamicShift: number} =
+            (gap, from = "firstNote") => {
             // the boxes touch: their margins leave about a word space between the texts
             let wordsLeft: number = dynamicRight + gap;
             let dynamicShift: number = 0;
             if (MusicSheetCalculator.wordsQualifyFollowingDynamic(text)) {
                 wordsLeft = dynamicLeft - width;
-                const firstNoteX: number = this.firstNoteX(measure);
+                const firstNoteX: number = from === "firstNote" ? this.firstNoteX(measure) :
+                    from === "measure" ? measure.PositionAndShape.RelativePosition.x + measure.beginInstructionsWidth : -Infinity;
                 if (wordsLeft < firstNoteX) {
                     dynamicShift = firstNoteX - wordsLeft;
                     wordsLeft = firstNoteX;
+                    // At the end of the staff line the dynamic moves only as far as there is room, and the words start that
+                    //   much left of the first note, inside the measure (Schumann, Piano Quartet Op. 47 IV m294, the one beat
+                    //   before the double bar at the end of the line: "sempre f"; the dynamic went off the line, and the
+                    //   words under it).
+                    const over: number = Math.min(dynamicShift,
+                        dynamicRight + dynamicShift - staffLine.PositionAndShape.Size.width);
+                    if (over > 0) {
+                        dynamicShift -= over;
+                        wordsLeft -= over;
+                        if (wordsLeft < measure.PositionAndShape.RelativePosition.x) {
+                            return undefined;
+                        }
+                    }
                 }
             }
             if (wordsLeft < 0 || wordsLeft + width > staffLine.PositionAndShape.Size.width) {
@@ -1852,8 +1876,15 @@ export abstract class MusicSheetCalculator {
             }
             // Only the first words beside a dynamic move it: a second one ("sempre" before and "stacc." after an ff) would take
             //   it off the first one's line.
+            // The wedges after the dynamic move their start with it (shortened, as long as they stay long enough), not down.
+            const movedWedges: GraphicalContinuousDynamicExpression[] = dynamicShift !== 0 ? followingWedges : [];
+            if (movedWedges.length > 0 && (carry !== 0 || movedWedges.some(wedge =>
+                MusicSheetCalculator.wedgeXRange(wedge)[1] - MusicSheetCalculator.wedgeXRange(wedge)[0] - dynamicShift <
+                    this.rules.WedgeOpeningLength * 2))) {
+                return undefined;
+            }
             if (dynamic.HasWordsBeside && (dynamicShift !== 0 || carry !== 0) ||
-                ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic))) {
+                ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic, movedWedges))) {
                 return undefined;
             }
             return {x: wordsLeft - box.BorderMarginLeft, carry, dynamicShift};
@@ -1862,7 +1893,12 @@ export abstract class MusicSheetCalculator {
         //   Violin Concerto Op. 47 III m188 "mf Poco a poco", the f's hook on the P; 81sabo SIB3C-APP1024-09), where they fit;
         //   else at the box, as before, rather than off the dynamic's line ("mf espress." under it, Nielsen, Clarinet Concerto).
         const reach: number = MusicSheetCalculator.dynamicGlyphReach(dynamic.Label.Label.text).right;
-        const placed: {x: number, carry: number, dynamicShift: number} = fit(reach) ?? (reach > 0 ? fit(0) : undefined);
+        // Qualifying words that can't start at the first note, the dynamic moved after them (the wedge from the dynamic on would
+        //   get too short: Schubert/Reger, Gretchen am Spinnrade m8, m37 "mezzo f" and a diminuendo), start at the start of the
+        //   measure's content, the dynamic moved less, or else go left of the dynamic at its note, where they are clear of the rest.
+        const qualifying: boolean = MusicSheetCalculator.wordsQualifyFollowingDynamic(text);
+        const placed: {x: number, carry: number, dynamicShift: number} = fit(reach) ?? (reach > 0 ? fit(0) : undefined) ??
+            (qualifying ? fit(0, "measure") ?? fit(0, "anywhere") : undefined);
         if (!placed) {
             return undefined;
         }
@@ -1873,7 +1909,44 @@ export abstract class MusicSheetCalculator {
                                                         dynamicBox.RelativePosition.y + placed.carry);
             dynamic.updateSkyBottomLine();
         }
+        if (placed.dynamicShift !== 0) {
+            for (const wedge of followingWedges) {
+                wedge.squeeze(placed.dynamicShift);
+                wedge.updateSkyBottomLine();
+            }
+        }
         return graphLabel;
+    }
+
+    /** The left and right x of a wedge's lines (relative to its staff line). */
+    private static wedgeXRange(wedge: GraphicalContinuousDynamicExpression): [number, number] {
+        const xs: number[] = wedge.Lines.flatMap(line => [line.Start.x, line.End.x]);
+        return [Math.min(...xs), Math.max(...xs)];
+    }
+
+    /** The wedges of staffLine on the given side that start right after the dynamic: at its time, their start at most a
+     *  staff space right of its box. */
+    private wedgesStartingAfter(staffLine: StaffLine, dynamic: GraphicalInstantaneousDynamicExpression,
+                                placement: PlacementEnum): GraphicalContinuousDynamicExpression[] {
+        const multiExpression: MultiExpression = dynamic.InstantaneousDynamic?.ParentMultiExpression;
+        const dynamicRight: number = dynamic.PositionAndShape.RelativePosition.x + dynamic.PositionAndShape.BorderMarginRight;
+        const wedges: GraphicalContinuousDynamicExpression[] = [];
+        for (const expression of staffLine.AbstractExpressions) {
+            if (!(expression instanceof GraphicalContinuousDynamicExpression) || expression.IsVerbal || expression.Lines.length < 2 ||
+                expression.Placement !== placement || expression.IsSplittedPart) {
+                continue;
+            }
+            const start: MultiExpression = expression.ContinuousDynamic.StartMultiExpression;
+            if (!multiExpression || !start || start.SourceMeasureParent !== multiExpression.SourceMeasureParent ||
+                !start.Timestamp.Equals(multiExpression.Timestamp)) {
+                continue;
+            }
+            const left: number = MusicSheetCalculator.wedgeXRange(expression)[0];
+            if (left >= dynamicRight - 0.5 && left <= dynamicRight + 1) {
+                wedges.push(expression);
+            }
+        }
+        return wedges;
     }
 
     /** The x of the first note of measure's measure on its staffline: of the first staff entry of any staff (the first notes
@@ -1909,13 +1982,38 @@ export abstract class MusicSheetCalculator {
         return undefined;
     }
 
+    /** The instantaneous dynamic of staffLine with the given placement in multiExpression's measure that follows it closely: at
+     *  most a quarter later (the nearest one). Words qualifying it are written before it, at the time of the note before. */
+    private closelyFollowingDynamic(staffLine: StaffLine, multiExpression: MultiExpression,
+                                    placement: PlacementEnum): GraphicalInstantaneousDynamicExpression {
+        const limit: Fraction = Fraction.plus(multiExpression.Timestamp, new Fraction(1, 4));
+        let found: GraphicalInstantaneousDynamicExpression = undefined;
+        let foundTime: Fraction = undefined;
+        for (const expression of staffLine.AbstractExpressions) {
+            if (!(expression instanceof GraphicalInstantaneousDynamicExpression) || expression.Placement !== placement) {
+                continue;
+            }
+            const other: MultiExpression = expression.InstantaneousDynamic?.ParentMultiExpression;
+            if (!other || other.SourceMeasureParent !== multiExpression.SourceMeasureParent ||
+                !multiExpression.Timestamp.lt(other.Timestamp) || limit.lt(other.Timestamp)) {
+                continue;
+            }
+            if (!foundTime || other.Timestamp.lt(foundTime)) {
+                found = expression;
+                foundTime = other.Timestamp;
+            }
+        }
+        return found;
+    }
+
     /** Whether words go before the dynamic they are written with, qualifying it: a short qualifier ("sempre p", "più f",
      *  "poco f", "subito p") or words ending with a conjunction ("leggero e pp"). Other words follow the dynamic ("p dolce",
      *  "p e leggero", "p dolcissimo e legato sempre"). The MusicXML order of the two doesn't say it: generators write the
      *  words first. */
     public static wordsQualifyFollowingDynamic(text: string): boolean {
         const words: string = text.trim().toLowerCase().replace(/[,;:]+$/, "").replace(/\s+/g, " ");
-        if (["sempre", "più", "piu", "piú", "poco", "molto", "subito", "sub.", "meno", "ben", "quasi", "sempre più", "sempre piu",
+        // "mezzo f": the half (mezzo forte) written out (Schubert/Reger, Gretchen am Spinnrade, piano m8, m37)
+        if (["sempre", "più", "piu", "piú", "poco", "molto", "subito", "sub.", "meno", "ben", "quasi", "mezzo", "mezza", "sempre più", "sempre piu",
              "poco più", "poco piu", "molto più", "molto piu", "un poco", "più che", "piu che"].includes(words)) {
             return true;
         }
@@ -1951,10 +2049,11 @@ export abstract class MusicSheetCalculator {
 
     /** Whether rect [left, right, top, bottom] (relative to staffLine) is clear of the dynamics, wedges and words placed on
      *  staffLine, except the given dynamic. */
-    private clearOfExpressions(staffLine: StaffLine, rect: number[], except: AbstractGraphicalExpression): boolean {
+    private clearOfExpressions(staffLine: StaffLine, rect: number[], except: AbstractGraphicalExpression,
+                               alsoExcept: AbstractGraphicalExpression[] = []): boolean {
         const [left, right, top, bottom] = rect;
         for (const expression of staffLine.AbstractExpressions) {
-            if (expression === except) {
+            if (expression === except || alsoExcept.includes(expression)) {
                 continue;
             }
             let other: BoundingBox;
@@ -2100,6 +2199,7 @@ export abstract class MusicSheetCalculator {
                 (a.pending.staffLine === b.pending.staffLine ? a.pending.textBox.RelativePosition.x - b.pending.textBox.RelativePosition.x : 0) ||
                 a.index - b.index)
             .map(entry => entry.pending);
+        const nextPieces: Map<typeof pendings[0], typeof pendings[0]> = this.alignChainedExpressionDashesTexts(pendings);
         for (const pending of pendings) {
             const expression: AbstractExpression = pending.expression;
             const endMeasureIndex: number = Math.min(sourceMeasures.indexOf(expression.DashesEndMeasure), this.graphicalMusicSheet.MeasureList.length - 1);
@@ -2143,6 +2243,13 @@ export abstract class MusicSheetCalculator {
                     y = below ?
                         Math.max(y, skyBottomLine.getMaxInRangeOf(before[1], startX, endX) + distance) :
                         Math.min(y, skyBottomLine.getMinInRangeOf(before[0], startX, endX) - distance);
+                    // on the line of the next piece of a divided word, its baseline (Ganymed m88-89: "scen - - -" continued on
+                    //   the system of "do")
+                    const next: typeof pendings[0] = nextPieces.get(pending);
+                    if (next?.staffLine === line) {
+                        const nextY: number = next.textBox.RelativePosition.y + (next.textBox.BorderTop + next.textBox.BorderBottom) / 2;
+                        y = below ? Math.max(y, nextY) : Math.min(y, nextY);
+                    }
                 }
                 // the words in the line go on it, the line broken around them
                 const words: BoundingBox[] = this.moveWordsOntoExpressionDashes(line, pending.textBox, pending.placement, startX,
@@ -2180,12 +2287,106 @@ export abstract class MusicSheetCalculator {
     }
 
     /**
+     * The pieces of a word divided by dashed lines, each piece with its own line ending at the next one ("cre - - - scen - - - do":
+     * Schubert, Ganymed piano m86-91, m102-104), go on one baseline on a staff line: the one farthest from the staff, each piece
+     * having been placed clear of the notes under it only, which made steps of them and their lines. A piece moves only away from
+     * the staff, and not onto another text. A piece's line continued on a later system goes on the baseline of the next piece
+     * there (calculateExpressionDashes()).
+     * @returns the next piece of each piece
+     */
+    private alignChainedExpressionDashesTexts(pendings: typeof this.pendingExpressionDashes):
+        Map<typeof pendings[0], typeof pendings[0]> {
+        const linked: Set<typeof pendings[0]> = new Set();
+        const chains: (typeof pendings)[] = [];
+        const nextPieces: Map<typeof pendings[0], typeof pendings[0]> = new Map();
+        for (const pending of pendings) {
+            if (linked.has(pending)) {
+                continue;
+            }
+            const chain: typeof pendings = [pending];
+            for (let current: typeof pendings[0] = pending; ;) {
+                const endX: number = this.expressionDashesEndX(current.expression, current.staffLine, current.staffIndex);
+                const next: typeof pendings[0] = endX === undefined ? undefined : pendings.find(other =>
+                    other !== current && !linked.has(other) && !chain.includes(other) && other.staffLine === current.staffLine &&
+                    other.placement === current.placement &&
+                    Math.abs(other.textBox.RelativePosition.x + other.textBox.BorderMarginLeft - endX) < 3);
+                // (the next piece on a later system: the line ends at its time there)
+                const nextOnLaterSystem: typeof pendings[0] = next ? undefined : this.pieceAtDashesEnd(current, pendings);
+                if (nextOnLaterSystem) {
+                    nextPieces.set(current, nextOnLaterSystem);
+                }
+                if (!next) {
+                    break;
+                }
+                nextPieces.set(current, next);
+                chain.push(next);
+                current = next;
+            }
+            if (chain.length > 1) {
+                chain.forEach(member => linked.add(member));
+                chains.push(chain);
+            }
+        }
+        for (const chain of chains) {
+            const below: boolean = chain[0].placement === PlacementEnum.Below;
+            const staffLine: StaffLine = chain[0].staffLine;
+            const centers: number[] = chain.map(member => member.textBox.RelativePosition.y +
+                (member.textBox.BorderTop + member.textBox.BorderBottom) / 2);
+            const target: number = below ? Math.max(...centers) : Math.min(...centers);
+            const others: BoundingBox[] = staffLine.AbstractExpressions.map(expression => this.expressionTextBox(expression))
+                .filter(box => box && !chain.some(member => member.textBox === box));
+            chain.forEach((member, index) => {
+                const box: BoundingBox = member.textBox;
+                const shift: number = target - centers[index];
+                if (Math.abs(shift) < 0.01) {
+                    return;
+                }
+                const left: number = box.RelativePosition.x + box.BorderMarginLeft;
+                const right: number = box.RelativePosition.x + box.BorderMarginRight;
+                const top: number = box.RelativePosition.y + box.BorderMarginTop + shift;
+                const bottom: number = box.RelativePosition.y + box.BorderMarginBottom + shift;
+                if (others.some(other => other.RelativePosition.x + other.BorderMarginLeft < right &&
+                    left < other.RelativePosition.x + other.BorderMarginRight &&
+                    other.RelativePosition.y + other.BorderMarginTop < bottom && top < other.RelativePosition.y + other.BorderMarginBottom)) {
+                    return;
+                }
+                box.RelativePosition.y += shift;
+                if (below) {
+                    staffLine.SkyBottomLineCalculator.updateBottomLineInRange(left, right, bottom);
+                } else {
+                    staffLine.SkyBottomLineCalculator.updateSkyLineInRange(left, right, top);
+                }
+            });
+        }
+        return nextPieces;
+    }
+
+    /** The text with a dashed line of pendings at the end of pending's line on a later system: on the staff line of its end
+     *  measure, starting at the x of its end. */
+    private pieceAtDashesEnd(pending: typeof this.pendingExpressionDashes[0],
+                             pendings: typeof this.pendingExpressionDashes): typeof this.pendingExpressionDashes[0] {
+        const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+        const endMeasureIndex: number = sourceMeasures.indexOf(pending.expression.DashesEndMeasure);
+        const endLine: StaffLine = this.graphicalMusicSheet.MeasureList[endMeasureIndex]?.[pending.staffIndex]?.ParentStaffLine;
+        if (!endLine || endLine === pending.staffLine) {
+            return undefined;
+        }
+        const endX: number = this.expressionDashesEndX(pending.expression, endLine, pending.staffIndex);
+        return endX === undefined ? undefined : pendings.find(other => other !== pending && other.staffLine === endLine &&
+            other.placement === pending.placement && Math.abs(other.textBox.RelativePosition.x + other.textBox.BorderMarginLeft - endX) < 3);
+    }
+
+    /**
      * Moves the words of staffLine on the side of a dashed line that start in it (from startX up to its end, endX) onto the line
      * (the height y of its text), as printed: "cres: - - - ed - - - accel." in one row between the staves (Parisotti, A. Scarlatti
      * Se tu della mia morte Piano m18–20). The text of the line was placed clear of everything under the whole line, the words
      * only of what is under them, so they were nearer the staff. A word moves only away from the staff, and only if the notes
      * (the sky-/bottomline before the expressions) and the other texts leave room for it there.
-     * @returns the text boxes of the moved words, by their x
+     * A word starting a little before the line (the start of a later system's line, after the clef) is in it too, and a word on
+     * the line already (or beyond it) stays where it is but is in the line too: the line is broken around it, not ended there
+     * (Schubert/Reger, Gretchen am Spinnrade m56-59 "scen- - - do - - - poco - - - a - - - poco": on the web "scen-" started
+     * just before the line of its system and "do" and "a" were on it, which ended the line at each of them).
+     * @returns the text boxes of the moved words and of those on the line, by their x
      */
     private moveWordsOntoExpressionDashes(staffLine: StaffLine, ownBox: BoundingBox, placement: PlacementEnum,
                                           startX: number, endX: number, y: number): BoundingBox[] {
@@ -2210,12 +2411,15 @@ export abstract class MusicSheetCalculator {
             }
             const left: number = textBox.RelativePosition.x + textBox.BorderMarginLeft;
             const right: number = textBox.RelativePosition.x + textBox.BorderMarginRight;
-            if (left < startX || left > endX) {
+            if (right <= startX || left > endX) {
                 continue;
             }
             const center: number = textBox.RelativePosition.y + (textBox.BorderTop + textBox.BorderBottom) / 2;
             const shift: number = y - center;
             if (below ? shift <= 0.01 : shift >= -0.01) {
+                if (textBox.RelativePosition.y + textBox.BorderMarginTop < y && y < textBox.RelativePosition.y + textBox.BorderMarginBottom) {
+                    moved.push(textBox); // on the line already
+                }
                 continue;
             }
             const top: number = textBox.RelativePosition.y + textBox.BorderMarginTop + shift;
@@ -2276,9 +2480,16 @@ export abstract class MusicSheetCalculator {
         //   reservation reached the start of the line and ended it at once).
         const ownLeft: number = ownBox.RelativePosition.x + ownBox.BorderMarginLeft - 1;
         const ownRight: number = ownBox.RelativePosition.x + ownBox.BorderMarginRight + 1;
+        //   The same next to the other texts on the line, outside their boxes (over a text, what is there now counts): the
+        //   reservation of a word moved onto the line rounded out past its right margin and ended the line after it at once
+        //   (Schubert/Reger, Gretchen am Spinnrade m58 "poco - - - a" on the app). Same as osmd-dart.
+        const textRanges: number[][] = labelBoxes.map(box =>
+            [box.RelativePosition.x + box.BorderMarginLeft, box.RelativePosition.x + box.BorderMarginRight]);
         const step: number = 0.1;
         for (let x: number = startX; x < endX; x += step) {
-            const besideOwnText: boolean = before !== undefined && x < ownRight && x + step > ownLeft;
+            const besideOwnText: boolean = before !== undefined && (x < ownRight && x + step > ownLeft ||
+                textRanges.some(([left, right]) => x < right + 1 && x + step > left - 1) &&
+                !textRanges.some(([left, right]) => x < right && x + step > left));
             const current: number = besideOwnText ?
                 (below ? skyBottomLine.getMaxInRangeOf(before[1], x, x + step) : skyBottomLine.getMinInRangeOf(before[0], x, x + step)) :
                 (below ? skyBottomLine.getBottomLineMaxInRange(x, x + step) : skyBottomLine.getSkyLineMinInRange(x, x + step));
@@ -5143,6 +5354,15 @@ export abstract class MusicSheetCalculator {
         }
         leftStaffEntry = this.getFirstLeftNotNullStaffEntryFromContainer(leftIndex, verticalIndex, multiStaffInstrument);
         rightStaffEntry = this.getFirstRightNotNullStaffEntryFromContainer(rightIndex, verticalIndex, multiStaffInstrument);
+        // A time after the staff's last staff entry of the piece, in that entry's measure, (another staff has an entry there)
+        //   has no entry on the right: it lies inside the staff's last note, as below. It was given no x (0), and the dynamic
+        //   there was drawn at the start of the system (Bowen, Viola Sonata No. 2 I, viola m437: the pp at the third beat of the
+        //   last dotted half, the piano's rest there). Same as osmd-dart.
+        if (leftStaffEntry && !rightStaffEntry && leftStaffEntry.parentMeasure.parentSourceMeasure &&
+            timestamp.lt(Fraction.plus(leftStaffEntry.parentMeasure.parentSourceMeasure.AbsoluteTimestamp,
+                                       leftStaffEntry.parentMeasure.parentSourceMeasure.Duration))) {
+            rightStaffEntry = leftStaffEntry;
+        }
         if (leftStaffEntry && rightStaffEntry) {
             let measureRelativeX: number = leftStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x;
             if (firstVisibleMeasureRelativeX > 0) {
