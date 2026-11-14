@@ -3034,9 +3034,29 @@ export class GraphicalSlur extends GraphicalCurve {
             const bottomLineValue: number = staffLine.BottomLine[i];
 
             // ignore default value (= 4) which is lower border of staffline
-            if (bottomLineValue !== 0) {
+            //   (as the sky line's 0 in calculateTopPoints: the check was against 0, so the staff's bottom line was an
+            //   obstacle to every slur below, and one between notes over the staff sagged to it, Schubert, Ganymed piano
+            //   m120-121: the slur under the B-flat 5 and the A5 across the staff. Same as osmd-dart.)
+            if (bottomLineValue !== staffLine.StaffHeight) {
                 const point: PointF2D = new PointF2D((0.5 + i) / skyBottomLineCalculator.SamplingUnit, bottomLineValue);
                 points.push(point);
+            }
+        }
+        // The staff's bottom line hides the ink inside the staff from the bottom line: the notes between the ends, at the
+        // bottoms of their voice entries (noteheads and down stems), are obstacles where inside it. Same as osmd-dart.
+        for (const entry of this.staffEntries) {
+            const entryX: number = entry.parentMeasure.PositionAndShape.RelativePosition.x + entry.PositionAndShape.RelativePosition.x;
+            for (const voiceEntry of entry.graphicalVoiceEntries) {
+                const box: BoundingBox = voiceEntry.PositionAndShape;
+                const bottom: number = box.RelativePosition.y + box.BorderBottom;
+                if (!(bottom < staffLine.StaffHeight)) {
+                    continue;
+                }
+                for (const x of [entryX + box.RelativePosition.x + box.BorderLeft, entryX + box.RelativePosition.x + box.BorderRight]) {
+                    if (x > start.x && x < end.x) {
+                        points.push(new PointF2D(x, bottom));
+                    }
+                }
             }
         }
 
