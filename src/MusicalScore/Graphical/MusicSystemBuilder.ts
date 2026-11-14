@@ -446,6 +446,14 @@ export class MusicSystemBuilder {
         const musicSystem: MusicSystem = MusicSheetCalculator.symbolFactory.createMusicSystem(this.globalSystemIndex++, this.rules);
         this.musicSystems.push(musicSystem);
         this.layoutSystemStaves(musicSystem);
+        // the measure that starts it, for its margin titles (MusicSystem.marginTitles)
+        for (let i: number = this.measureListIndex ?? 0; i < (this.measureList?.length ?? 0); i++) {
+            const source: SourceMeasure = this.measureList[i]?.find(m => m?.parentSourceMeasure)?.parentSourceMeasure;
+            if (source) {
+                musicSystem.firstSourceMeasure = source;
+                break;
+            }
+        }
         musicSystem.createMusicSystemLabel(
             this.rules.InstrumentLabelTextHeight,
             this.rules.SystemLabelsRightMargin,

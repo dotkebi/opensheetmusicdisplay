@@ -1505,7 +1505,11 @@ export abstract class MusicSheetCalculator {
     protected calculateMoodAndUnknownExpression(multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void {
         if ((multiExpression.MoodList.length > 0) || (multiExpression.UnknownList.length > 0)) {
             // words above and below the staff at the same time are drawn as one label each on their own side
-            for (const entries of multiExpression.getEntryGroupsByPlacement()) {
+            // (words drawn as a margin title of the system, see MusicSystem.marginTitles, are not placed again)
+            const system: MusicSystem = this.graphicalMusicSheet.MeasureList[measureIndex][staffIndex]?.ParentStaffLine?.ParentMusicSystem;
+            const notMarginTitle: (entry: MultiExpressionEntry) => boolean = (entry: MultiExpressionEntry): boolean =>
+                !system || !(entry.expression instanceof UnknownExpression) || !system.isMarginTitle(entry.expression);
+            for (const entries of multiExpression.getEntryGroupsByPlacement().flatMap(g => MusicSheetCalculator.wordsGroupsByFont(g.filter(notMarginTitle)))) {
                 if (!entries.some(MultiExpression.isMoodOrUnknownEntry)) {
                     // a verbal dynamic alone on its side ("cresc." below "allarg."): drawn as a dynamic (calculateDynamicExpressions())
                     continue;
@@ -1660,6 +1664,82 @@ export abstract class MusicSheetCalculator {
         return undefined;
     }
 
+    /** The entries (one side's, see MultiExpression.getEntryGroupsByPlacement()) split into one label per font size,
+     *  font style and default-y of their words, the higher default-y placed later (further out above the staff, nearer
+     *  below it): Stamitz Viola Concerto No.2 m243 "Rondeau" (24 pt, bold, default-y 80) and "Solo" read "Solo Rondeau" in
+     *  one small line (user decision 11-14). Words of one font and height stay one label. Same as osmd-dart. */
+    private static wordsGroupsByFont(entries: MultiExpressionEntry[]): MultiExpressionEntry[][] {
+        // (a mood word, "dolce", and words without font attributes read alike)
+        const key: (entry: MultiExpressionEntry) => string = (entry: MultiExpressionEntry): string => {
+            const expression: any = entry.expression;
+            if (!(expression instanceof UnknownExpression)) {
+                return "undefined|plain|0";
+            }
+            const style: string = expression.fontStyle === undefined || expression.fontStyle === FontStyles.Regular ? "plain" : `${expression.fontStyle}`;
+            return `${expression.fontSizeXml}|${style}|${expression.wordsDefaultY ?? 0}`;
+        };
+        // (blank words, as an exporter leaves them, go with the first label)
+        const keyed: (entry: MultiExpressionEntry) => boolean = (entry: MultiExpressionEntry): boolean =>
+            MultiExpression.isMoodOrUnknownEntry(entry) && (entry.label ?? "").trim().length > 0;
+        const keys: string[] = [];
+        for (const entry of entries) {
+            if (keyed(entry) && !keys.includes(key(entry))) {
+                keys.push(key(entry));
+            }
+        }
+        if (keys.length < 2) {
+            return [entries];
+        }
+        const groups: MultiExpressionEntry[][] = keys.map(() => []);
+        for (const entry of entries) {
+            groups[keyed(entry) ? keys.indexOf(key(entry)) : 0].push(entry);
+        }
+        const defaultY: (group: MultiExpressionEntry[]) => number = (group: MultiExpressionEntry[]): number =>
+            (group.map(e => e.expression).find(e => e instanceof UnknownExpression) as UnknownExpression)?.wordsDefaultY ?? 0;
+        const below: boolean = MultiExpression.getPlacementOfEntry(entries[0]) === PlacementEnum.Below;
+        // a stable sort: the order read for the same height
+        const order: number[] = groups.map((_, i) => i).sort((a, b) => {
+            const c: number = below ? defaultY(groups[b]) - defaultY(groups[a]) : defaultY(groups[a]) - defaultY(groups[b]);
+            return c !== 0 ? c : a - b;
+        });
+        return order.map(i => groups[i]);
+    }
+
+    /** The scale of words of fontSizeXml points: relative to the words size the score uses most (its body text stays as
+     *  before), 1 without a size. Same as osmd-dart. */
+    protected wordsFontScale(fontSizeXml: number): number {
+        if (!(fontSizeXml > 0)) {
+            return 1;
+        }
+        const sheet: any = this.graphicalMusicSheet.ParentMusicSheet;
+        if (this.wordsFontSizeSheet !== sheet) {
+            this.wordsFontSizeSheet = sheet;
+            const counts: Map<number, number> = new Map<number, number>();
+            for (const measure of sheet.SourceMeasures as SourceMeasure[]) {
+                for (const staffExpressions of measure.StaffLinkedExpressions) {
+                    for (const multi of staffExpressions) {
+                        for (const entry of multi.EntriesList) {
+                            const size: number = entry.expression instanceof UnknownExpression ? entry.expression.fontSizeXml : undefined;
+                            if (size > 0) {
+                                counts.set(size, (counts.get(size) ?? 0) + 1);
+                            }
+                        }
+                    }
+                }
+            }
+            let mode: number = undefined;
+            counts.forEach((count: number, size: number) => {
+                if (mode === undefined || count > counts.get(mode) || count === counts.get(mode) && size < mode) {
+                    mode = size;
+                }
+            });
+            this.wordsFontSizeMode = mode;
+        }
+        return this.wordsFontSizeMode === undefined ? 1 : fontSizeXml / this.wordsFontSizeMode;
+    }
+    private wordsFontSizeSheet: any;
+    private wordsFontSizeMode: number;
+
     /** Calculates one words label of the given entries of multiExpression (see getEntryGroupsByPlacement()). */
     private calculateMoodAndUnknownExpressionEntries(multiExpression: MultiExpression, entries: MultiExpressionEntry[],
                                                      measureIndex: number, staffIndex: number): void {
@@ -1708,7 +1788,10 @@ export abstract class MusicSheetCalculator {
         // words that are a dynamic's name are drawn like a dynamic: bold italic, its height
         //   (see InstantaneousDynamicExpression.isWordsDrawnAsDynamic())
         const drawnAsDynamic: boolean = InstantaneousDynamicExpression.isWordsDrawnAsDynamic(combinedExprString);
-        const fontHeight: number = drawnAsDynamic ? this.rules.ContinuousDynamicTextHeight : this.rules.UnknownTextHeight;
+        // (the words' font-size relative to the score's usual words size)
+        const fontHeight: number = drawnAsDynamic ? this.rules.ContinuousDynamicTextHeight :
+            this.rules.UnknownTextHeight * this.wordsFontScale(
+                (entries.map(e => e.expression).find(e => e instanceof UnknownExpression) as UnknownExpression)?.fontSizeXml);
         const fontStyle: FontStyles = drawnAsDynamic ? FontStyles.BoldItalic : MultiExpression.getFontstyleOfEntry(entries[0]);
         const placement: PlacementEnum = MultiExpression.getPlacementOfEntry(entries[0]);
         relative.x = this.keepWordsBeforeStrongBarline(measures[staffIndex], staffLine, relative.x, multiExpression.Timestamp,

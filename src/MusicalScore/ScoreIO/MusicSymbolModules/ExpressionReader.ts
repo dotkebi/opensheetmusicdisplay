@@ -77,6 +77,12 @@ export class ExpressionReader {
     private openOctaveShifts: Map<number, OctaveShift> = new Map();
     /** The enclosure of the <words> being read (interpretWords()), for its UnknownExpression. */
     private wordsEnclosure: string;
+    /** The font-size (points) of the <words> being read, for its UnknownExpression. */
+    private wordsFontSize: number;
+    /** The default-x and justify of the <words> being read, for its UnknownExpression. */
+    private wordsDefaultX: number;
+    private wordsJustify: string;
+    private wordsDefaultY: number;
     private pendingOctaveShiftStops: Map<number, {measure: SourceMeasure, endTimestamp: Fraction}> = new Map();
     private lastWedge: ContinuousDynamicExpression;
     /** Wedge stops with an <offset> read in the current measure, closed at its end (resolvePendingWedgeStops()). */
@@ -1116,6 +1122,13 @@ export class ExpressionReader {
     }
     private interpretWords(wordsNode: IXmlElement, text: string, currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction): void {
         this.wordsEnclosure = wordsNode.attribute("enclosure")?.value;
+        const fontSizeText: string = wordsNode.attribute("font-size")?.value;
+        this.wordsFontSize = fontSizeText !== undefined && !isNaN(Number.parseFloat(fontSizeText)) ? Number.parseFloat(fontSizeText) : undefined;
+        const defaultXText: string = wordsNode.attribute("default-x")?.value;
+        this.wordsDefaultX = defaultXText !== undefined && !isNaN(Number.parseFloat(defaultXText)) ? Number.parseFloat(defaultXText) : undefined;
+        this.wordsJustify = wordsNode.attribute("justify")?.value;
+        const defaultYText: string = wordsNode.attribute("default-y")?.value;
+        this.wordsDefaultY = defaultYText !== undefined && !isNaN(Number.parseFloat(defaultYText)) ? Number.parseFloat(defaultYText) : undefined;
         if (currentMeasure.Rules.IgnoreBracketsWords && (
             /^\(\s*\)$/.test(text) || /^\[\s*\]$/.test(text) // (*) and [*]
         )) { // regex: brackets with arbitrary white space in-between
@@ -1685,6 +1698,14 @@ export class ExpressionReader {
         unknownExpression.defaultYXml = defaultYXml;
         unknownExpression.enclosure = this.wordsEnclosure;
         this.wordsEnclosure = undefined;
+        unknownExpression.fontSizeXml = this.wordsFontSize;
+        this.wordsFontSize = undefined;
+        unknownExpression.defaultXXml = this.wordsDefaultX;
+        unknownExpression.justifyXml = this.wordsJustify;
+        unknownExpression.wordsDefaultY = this.wordsDefaultY;
+        this.wordsDefaultX = undefined;
+        this.wordsJustify = undefined;
+        this.wordsDefaultY = undefined;
         unknownExpression.YPositionXml = yPositionXml;
         unknownExpression.parentMeasure = currentMeasure;
         unknownMultiExpression.addExpression(unknownExpression, prefix);
