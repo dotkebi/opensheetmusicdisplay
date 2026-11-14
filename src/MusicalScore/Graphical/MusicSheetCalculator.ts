@@ -5143,6 +5143,15 @@ export abstract class MusicSheetCalculator {
         }
         leftStaffEntry = this.getFirstLeftNotNullStaffEntryFromContainer(leftIndex, verticalIndex, multiStaffInstrument);
         rightStaffEntry = this.getFirstRightNotNullStaffEntryFromContainer(rightIndex, verticalIndex, multiStaffInstrument);
+        // A time after the staff's last staff entry of the piece, in that entry's measure, (another staff has an entry there)
+        //   has no entry on the right: it lies inside the staff's last note, as below. It was given no x (0), and the dynamic
+        //   there was drawn at the start of the system (Bowen, Viola Sonata No. 2 I, viola m437: the pp at the third beat of the
+        //   last dotted half, the piano's rest there). Same as osmd-dart.
+        if (leftStaffEntry && !rightStaffEntry && leftStaffEntry.parentMeasure.parentSourceMeasure &&
+            timestamp.lt(Fraction.plus(leftStaffEntry.parentMeasure.parentSourceMeasure.AbsoluteTimestamp,
+                                       leftStaffEntry.parentMeasure.parentSourceMeasure.Duration))) {
+            rightStaffEntry = leftStaffEntry;
+        }
         if (leftStaffEntry && rightStaffEntry) {
             let measureRelativeX: number = leftStaffEntry.parentMeasure.PositionAndShape.RelativePosition.x;
             if (firstVisibleMeasureRelativeX > 0) {
