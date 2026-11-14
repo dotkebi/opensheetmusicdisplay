@@ -1803,7 +1803,11 @@ export abstract class MusicSheetCalculator {
             (placement !== PlacementEnum.Above && placement !== PlacementEnum.Below) || MusicSheetCalculator.isInstrumentCue(text)) {
             return undefined;
         }
-        const dynamic: GraphicalInstantaneousDynamicExpression = this.sameTimeDynamic(staffLine, multiExpression, placement);
+        // Words qualifying a dynamic also go before one shortly after them (closelyFollowingDynamic()): "più" at the third beat
+        //   and f half a beat later, printed "più f" (Schumann, Piano Quartet Op. 47 II m22 strings, m26 piano).
+        const dynamic: GraphicalInstantaneousDynamicExpression = this.sameTimeDynamic(staffLine, multiExpression, placement) ??
+            (MusicSheetCalculator.wordsQualifyFollowingDynamic(text) ?
+                this.closelyFollowingDynamic(staffLine, multiExpression, placement) : undefined);
         if (!dynamic?.Label) {
             return undefined;
         }
@@ -1828,6 +1832,19 @@ export abstract class MusicSheetCalculator {
                 if (wordsLeft < firstNoteX) {
                     dynamicShift = firstNoteX - wordsLeft;
                     wordsLeft = firstNoteX;
+                    // At the end of the staff line the dynamic moves only as far as there is room, and the words start that
+                    //   much left of the first note, inside the measure (Schumann, Piano Quartet Op. 47 IV m294, the one beat
+                    //   before the double bar at the end of the line: "sempre f"; the dynamic went off the line, and the
+                    //   words under it).
+                    const over: number = Math.min(dynamicShift,
+                        dynamicRight + dynamicShift - staffLine.PositionAndShape.Size.width);
+                    if (over > 0) {
+                        dynamicShift -= over;
+                        wordsLeft -= over;
+                        if (wordsLeft < measure.PositionAndShape.RelativePosition.x) {
+                            return undefined;
+                        }
+                    }
                 }
             }
             if (wordsLeft < 0 || wordsLeft + width > staffLine.PositionAndShape.Size.width) {
@@ -1909,13 +1926,38 @@ export abstract class MusicSheetCalculator {
         return undefined;
     }
 
+    /** The instantaneous dynamic of staffLine with the given placement in multiExpression's measure that follows it closely: at
+     *  most a quarter later (the nearest one). Words qualifying it are written before it, at the time of the note before. */
+    private closelyFollowingDynamic(staffLine: StaffLine, multiExpression: MultiExpression,
+                                    placement: PlacementEnum): GraphicalInstantaneousDynamicExpression {
+        const limit: Fraction = Fraction.plus(multiExpression.Timestamp, new Fraction(1, 4));
+        let found: GraphicalInstantaneousDynamicExpression = undefined;
+        let foundTime: Fraction = undefined;
+        for (const expression of staffLine.AbstractExpressions) {
+            if (!(expression instanceof GraphicalInstantaneousDynamicExpression) || expression.Placement !== placement) {
+                continue;
+            }
+            const other: MultiExpression = expression.InstantaneousDynamic?.ParentMultiExpression;
+            if (!other || other.SourceMeasureParent !== multiExpression.SourceMeasureParent ||
+                !multiExpression.Timestamp.lt(other.Timestamp) || limit.lt(other.Timestamp)) {
+                continue;
+            }
+            if (!foundTime || other.Timestamp.lt(foundTime)) {
+                found = expression;
+                foundTime = other.Timestamp;
+            }
+        }
+        return found;
+    }
+
     /** Whether words go before the dynamic they are written with, qualifying it: a short qualifier ("sempre p", "più f",
      *  "poco f", "subito p") or words ending with a conjunction ("leggero e pp"). Other words follow the dynamic ("p dolce",
      *  "p e leggero", "p dolcissimo e legato sempre"). The MusicXML order of the two doesn't say it: generators write the
      *  words first. */
     public static wordsQualifyFollowingDynamic(text: string): boolean {
         const words: string = text.trim().toLowerCase().replace(/[,;:]+$/, "").replace(/\s+/g, " ");
-        if (["sempre", "più", "piu", "piú", "poco", "molto", "subito", "sub.", "meno", "ben", "quasi", "sempre più", "sempre piu",
+        // "mezzo f": the half (mezzo forte) written out (Schubert/Reger, Gretchen am Spinnrade, piano m8, m37)
+        if (["sempre", "più", "piu", "piú", "poco", "molto", "subito", "sub.", "meno", "ben", "quasi", "mezzo", "mezza", "sempre più", "sempre piu",
              "poco più", "poco piu", "molto più", "molto piu", "un poco", "più che", "piu che"].includes(words)) {
             return true;
         }
