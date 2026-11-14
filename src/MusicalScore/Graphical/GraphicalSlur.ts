@@ -1567,7 +1567,7 @@ export class GraphicalSlur extends GraphicalCurve {
                     startY = Math.max(endY, slurStartVE.parentStaffEntry.getBottomlineMax());
                 }
             }
-            startY = this.getYPastArticulations(slurStartNote, true, startX, startY);
+            startY = this.getYPastArticulations(slurStartNote, true, startX, startY, slurEndNote);
 
             // If the stem points towards the starting point of the slur, shift the slur by a small amount to start (approximately) at the x-position
             // of the notehead. Note: an exact calculation using the position of the note is too complicate for the payoff
@@ -1617,7 +1617,7 @@ export class GraphicalSlur extends GraphicalCurve {
                     endY = Math.max(endY, slurEndVE.parentStaffEntry.getBottomlineMax());
                 }
             }
-            endY = this.getYPastArticulations(slurEndNote, false, endX, endY);
+            endY = this.getYPastArticulations(slurEndNote, false, endX, endY, slurStartNote);
 
             // If the stem points towards the endpoint of the slur, shift the slur by a small amount to start (approximately) at the x-position
             // of the notehead. Note: an exact calculation using the position of the note is too complicate for the payoff
@@ -1892,8 +1892,9 @@ export class GraphicalSlur extends GraphicalCurve {
      * @param y the border of the note's voice entry on the slur's side, relative to the staff line
      * @returns y, or the outer edge of the outermost of the marks inside the slur
      */
-    private getYPastArticulations(note: GraphicalNote, isStart: boolean, headX: number, y: number): number {
+    private getYPastArticulations(note: GraphicalNote, isStart: boolean, headX: number, y: number, otherNote?: GraphicalNote): number {
         const vfnote: any = (note as VexFlowGraphicalNote).vfnote?.[0];
+        const otherVfnote: any = (otherNote as VexFlowGraphicalNote)?.vfnote?.[0];
         const stave: any = vfnote?.getStave?.();
         if (!stave) {
             return y;
@@ -1950,14 +1951,20 @@ export class GraphicalSlur extends GraphicalCurve {
             this.articulationCorners.push(new PointF2D(mark.left, mark.far * outward), new PointF2D(mark.right, mark.far * outward));
             passed++;
         }
-        // (fork: past the number or bracket of the note's tuplet over the marks it went past as well, as the sky line raise over
-        //   the marks did before 2.2.1: the 3 over the up-bow of Prokofiev Op.19 I violin m58 G3, where the slur from the G3 starts,
-        //   stays inside the slur - a slur through it moved it beyond the slur, see
-        //   VexFlowMusicSheetCalculator.layoutFermatasOverSlurs())
+        // (fork: past the number of the note's tuplet over the marks it went past as well, as the sky line raise over the marks
+        //   did before 2.2.1: the 3 over the up-bow of Prokofiev Op.19 I violin m58 G3, where the slur from the G3 starts, stays
+        //   inside the slur - a slur through it moved it beyond the slur, see VexFlowMusicSheetCalculator.layoutFermatasOverSlurs().
+        //   Not past the bracket of a tuplet the slur is within (its other end's note in the tuplet too): the bracket goes outside
+        //   the slur, as at a note without marks (Gliere, Horn Concerto III m226: the slur from F5 to Db5, staccatos on both, in a
+        //   bracketed triplet from an eighth rest went over the bracket, the print has it under; user decision 11-14). The bracket
+        //   of a tuplet the slur goes on out of stays inside it (Prokofiev, the slur from the G3 to the next measure's E5). As in
+        //   osmd-dart (GraphicalSlur._articulationInkInBracketedTuplet()).)
         if (passed > 0) {
             const measure: VexFlowMeasure = note.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure;
             for (const ink of measure.TupletNumberInk ?? []) {
-                if (ink.above === above && ink.left <= headX && headX <= ink.right && ink.tuplet.getNotes().includes(vfnote)) {
+                if (ink.above === above && !(ink.bracketed && otherVfnote && ink.tuplet.getNotes().includes(otherVfnote)) &&
+                    ink.left <= headX && headX <= ink.right &&
+                    ink.tuplet.getNotes().includes(vfnote)) {
                     distance = Math.max(distance, above ? -ink.top : ink.bottom);
                 }
             }
