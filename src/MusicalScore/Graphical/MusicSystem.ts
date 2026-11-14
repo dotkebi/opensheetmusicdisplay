@@ -21,6 +21,7 @@ import {SystemLine} from "./SystemLine";
 import {SystemLinePosition} from "./SystemLinePosition";
 import {Staff} from "../VoiceData/Staff";
 import { Label } from "../Label";
+import { UnknownExpression } from "../VoiceData/Expressions/UnknownExpression";
 
 /** Which labels [[MusicSystem.createMusicSystemLabel]] creates left of a system's staves. */
 export enum SystemLabelsEnum {
@@ -52,6 +53,15 @@ export abstract class MusicSystem extends GraphicalObject {
     protected groupLabels: Map<InstrumentalGroup, GraphicalLabel> = new Map<InstrumentalGroup, GraphicalLabel>();
     protected measureNumberLabels: GraphicalLabel[] = [];
     protected maxLabelLength: number;
+    /** The first measure of the system, set by the system builder before the labels are created (marginTitles). */
+    public firstSourceMeasure: SourceMeasure;
+    /** Words at the start of the system's first measure written left of it, right-justified
+     *  (UnknownExpression.isMarginTitle): drawn in the system's left margin, left of the part names, at their default-y, as
+     *  printed (Vieuxtemps Op.31 "INTRODUZIONE." left of the piano's first system, user decision 11-14). The label column is
+     *  widened for them; the words are not placed again as expressions (MusicSheetCalculator.calculateMoodAndUnknownExpression()).
+     *  Same as osmd-dart. */
+    public marginTitles: Map<UnknownExpression, GraphicalLabel> = new Map<UnknownExpression, GraphicalLabel>();
+    private marginTitleLines: Map<UnknownExpression, StaffLine> = new Map<UnknownExpression, StaffLine>();
     protected objectsToRedraw: [object[], object][] = [];
     protected instrumentBrackets: GraphicalObject[] = [];
     protected groupBrackets: GraphicalObject[] = [];
@@ -168,7 +178,54 @@ export abstract class MusicSystem extends GraphicalObject {
     }
 
     public get Labels(): GraphicalLabel[] {
-        return [...this.groupLabels.values(), ...this.labels.values()];
+        return [...this.groupLabels.values(), ...this.labels.values(), ...this.marginTitles.values()];
+    }
+
+    /** Whether the expression is drawn as a margin title of this system. */
+    public isMarginTitle(expression: UnknownExpression): boolean {
+        return this.marginTitles.has(expression);
+    }
+
+    /** Creates marginTitles from firstSourceMeasure for the labelled staff lines and moves the other labels right of them. */
+    private createMarginTitles(labelled: StaffLine[], gap: number): void {
+        const first: SourceMeasure = this.firstSourceMeasure;
+        if (!first) {
+            return;
+        }
+        let width: number = 0;
+        for (const line of labelled) {
+            const staffIndex: number = line.ParentStaff.idInMusicSheet;
+            for (const multi of first.StaffLinkedExpressions[staffIndex] ?? []) {
+                if (multi.Timestamp.RealValue !== 0) {
+                    continue;
+                }
+                for (const entry of multi.EntriesList) {
+                    const expression: any = entry.expression;
+                    if (!(expression instanceof UnknownExpression) || !expression.isMarginTitle || !expression.Label?.trim()) {
+                        continue;
+                    }
+                    const label: Label = new Label(expression.Label, TextAlignmentEnum.RightCenter);
+                    label.fontStyle = expression.fontStyle;
+                    const graphicalLabel: GraphicalLabel = new GraphicalLabel(label, this.rules.UnknownTextHeight, TextAlignmentEnum.RightCenter,
+                                                                              this.rules, this.boundingBox);
+                    graphicalLabel.setLabelPositionAndShapeBorders();
+                    this.marginTitles.set(expression, graphicalLabel);
+                    this.marginTitleLines.set(expression, line);
+                    width = Math.max(width, graphicalLabel.PositionAndShape.Size.width);
+                }
+            }
+        }
+        if (this.marginTitles.size === 0) {
+            return;
+        }
+        const shift: number = width + gap;
+        for (const label of [...this.groupLabels.values(), ...this.labels.values()]) {
+            label.PositionAndShape.RelativePosition.x += shift;
+        }
+        for (const label of this.marginTitles.values()) {
+            label.PositionAndShape.RelativePosition = new PointF2D(width, 0);
+        }
+        this.maxLabelLength += shift;
     }
 
     public get ObjectsToRedraw(): [object[], object][] {
@@ -377,7 +434,8 @@ export abstract class MusicSystem extends GraphicalObject {
                                     labelled: StaffLine[] = this.staffLines): void {
         this.removeLabels();
         if (labelsType === SystemLabelsEnum.None) {
-            this.updateMusicSystemStaffLineXPosition(0);
+            this.createMarginTitles(labelled, systemLabelsRightMargin);
+            this.updateMusicSystemStaffLineXPosition(this.marginTitles.size > 0 ? systemLabelsRightMargin : 0);
             return;
         }
         const useNames: boolean = isFirstSystem && labelsType !== SystemLabelsEnum.Abbreviations;
@@ -461,6 +519,7 @@ export abstract class MusicSystem extends GraphicalObject {
             label.PositionAndShape.RelativePosition = new PointF2D(x, 0);
             this.maxLabelLength = Math.max(this.maxLabelLength, x + label.PositionAndShape.Size.width);
         });
+        this.createMarginTitles(labelled, originalSystemLabelsRightMargin);
         if (this.maxLabelLength > 0) {
             systemLabelsRightMargin = originalSystemLabelsRightMargin;
             // the labels keep from a bracket or brace standing further left than a part brace the distance they keep from one
@@ -480,6 +539,8 @@ export abstract class MusicSystem extends GraphicalObject {
         }
         this.labels.clear();
         this.groupLabels.clear();
+        this.marginTitles.clear();
+        this.marginTitleLines.clear();
         this.maxLabelLength = 0;
     }
 
@@ -592,6 +653,13 @@ export abstract class MusicSystem extends GraphicalObject {
                 value.PositionAndShape.RelativePosition = new PointF2D(
                     value.PositionAndShape.RelativePosition.x, ypositionSum / staffCounter + 2.0);
             }
+        });
+        // a margin title at its default-y below the staff's top line (tenths), else the staff's middle
+        this.marginTitles.forEach((label: GraphicalLabel, expression: UnknownExpression): void => {
+            const line: StaffLine = this.marginTitleLines.get(expression);
+            const defaultY: number = expression.wordsDefaultY ?? 0;
+            label.PositionAndShape.RelativePosition = new PointF2D(label.PositionAndShape.RelativePosition.x,
+                                                                   line.PositionAndShape.RelativePosition.y + (defaultY !== 0 ? -defaultY / 10 : 2.0));
         });
     }
 

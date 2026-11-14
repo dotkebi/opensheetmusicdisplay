@@ -19,6 +19,10 @@ export abstract class AbstractTempoExpression extends AbstractExpression {
     /** Index (over all staves of the sheet) of the staff the expression was read for, if its direction gives a
      *  placement (placement attribute or default-y) relative to that staff. Undefined otherwise. */
     public placementStaffIndex: number;
+    /** Index (over all staves of the sheet) of the staff the expression was read for (<staff> of its direction, the
+     *  part's first staff without one), with or without a placement. Tells the part that wrote it, for tempos the parts
+     *  give differently at one time. Undefined for expressions not read from MusicXML. */
+    public writtenStaffIndex: number;
 
     public get Label(): string {
         return this.label;

@@ -2148,8 +2148,20 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         staffLine,
         startMeasure);
       graphicalInstantaneousDynamic.InsideWedge = this.dynamicsWithinWedges.has(multiExpression);
+      // A dynamic a wedge starts from is centred at its note's left border (useStaffEntryBorderLeft); at the first note of a
+      //   measure that is not the first of the line, it is kept inside its measure (Sibelius Op.47 III piano m263 "mp" with a
+      //   crescendo from it reached over the barline into m262; the wedge starts after it, see dynamicExpressionMap). Same as
+      //   osmd-dart.
+      let dynamicPosition: PointF2D = dynamicStartPosition;
+      if (useStaffEntryBorderLeft && staffLine.Measures.length > 0 && staffLine.Measures[0] !== startMeasure) {
+        const minX: number = startMeasure.PositionAndShape.RelativePosition.x -
+          graphicalInstantaneousDynamic.PositionAndShape.BorderMarginLeft;
+        if (dynamicStartPosition.x < minX) {
+          dynamicPosition = new PointF2D(minX, dynamicStartPosition.y);
+        }
+      }
       // compare with multiExpression.InstantaneousDynamic.InMeasureTimestamp or add a relative timestamp? if we ever need a separate timestamp
-      this.calculateGraphicalInstantaneousDynamicExpression(graphicalInstantaneousDynamic, dynamicStartPosition, absoluteTimestamp);
+      this.calculateGraphicalInstantaneousDynamicExpression(graphicalInstantaneousDynamic, dynamicPosition, absoluteTimestamp);
       this.dynamicExpressionMap.set(absoluteTimestamp.RealValue, graphicalInstantaneousDynamic.PositionAndShape);
     }
     if (continuousDynamic) {
@@ -2223,8 +2235,13 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     if (measureIndex < this.rules.MinMeasureToDrawIndex || measureIndex > this.rules.MaxMeasureToDrawIndex) {
       return;
     }
-    const vfMeasure: VexFlowMeasure = this.graphicalMusicSheet.MeasureList[measureIndex]?.find(
-      (measure: GraphicalMeasure) => measure?.ParentStaffLine && measure.isVisible()) as VexFlowMeasure;
+    // (or on its own part, when parts give different tempos at that time, see tempoStaffIndexOfMetronomeMark())
+    const column: GraphicalMeasure[] = this.graphicalMusicSheet.MeasureList[measureIndex] ?? [];
+    const ownIndex: number = measureIndex === metronomeExpression.ParentMultiTempoExpression.SourceMeasureParent.measureListIndex ?
+      this.tempoStaffIndexOfMetronomeMark(metronomeExpression) : undefined;
+    const ownMeasure: GraphicalMeasure = ownIndex !== undefined ? column[ownIndex] : undefined;
+    const vfMeasure: VexFlowMeasure = (ownMeasure?.ParentStaffLine && ownMeasure.isVisible() ? ownMeasure :
+      column.find((measure: GraphicalMeasure) => measure?.ParentStaffLine && measure.isVisible())) as VexFlowMeasure;
     if (!vfMeasure) {
       return;
     }

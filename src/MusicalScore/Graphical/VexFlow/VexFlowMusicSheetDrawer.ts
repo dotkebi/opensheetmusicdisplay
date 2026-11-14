@@ -27,6 +27,7 @@ import { StaffLine } from "../StaffLine";
 import { GraphicalSlur } from "../GraphicalSlur";
 import { GraphicalNote } from "../GraphicalNote";
 import { GraphicalMeasure } from "../GraphicalMeasure";
+import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { PlacementEnum } from "../../VoiceData/Expressions/AbstractExpression";
 import { GraphicalInstantaneousTempoExpression } from "../GraphicalInstantaneousTempoExpression";
 import { GraphicalInstantaneousDynamicExpression } from "../GraphicalInstantaneousDynamicExpression";
@@ -674,6 +675,25 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         return boxes;
     }
 
+    /** The left of the measure the expression belongs to on staffLine (absolute units), when it is not the first measure
+     *  of the line; else no bound (see CrossStaffExpressionClearance.offset()'s minLeft). Same as osmd-dart. */
+    private measureStartOf(expression: AbstractGraphicalExpression, staffLine: StaffLine): number {
+        const source: any = (expression as any).SourceExpression;
+        const sourceMeasure: SourceMeasure = (expression as any).sourceMultiExpression?.SourceMeasureParent ??
+            source?.parentMultiExpression?.SourceMeasureParent ??
+            source?.ParentMultiExpression?.SourceMeasureParent ?? source?.ParentMultiTempoExpression?.SourceMeasureParent;
+        if (!sourceMeasure) {
+            return Number.NEGATIVE_INFINITY;
+        }
+        const measures: GraphicalMeasure[] = staffLine.Measures;
+        for (let i: number = 1; i < measures.length; i++) {
+            if (measures[i].parentSourceMeasure === sourceMeasure) {
+                return measures[i].PositionAndShape.AbsolutePosition.x;
+            }
+        }
+        return Number.NEGATIVE_INFINITY;
+    }
+
     /** The vertical move this drawing gives the expression's label off the cross-staff beams and curves of its system
      *  (0: none); its sideways move is kept in crossStaffExpressionShifts. */
     private crossStaffOffsetOf(expression: AbstractGraphicalExpression, label: GraphicalLabel): number {
@@ -710,7 +730,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                 }
                 const move: { dx: number, dy: number } = clearance.offset(box, below, this.otherBoxesOf(system, label),
                                                                           expression instanceof GraphicalInstantaneousDynamicExpression,
-                                                                          ceiling, floor);
+                                                                          ceiling, floor, this.measureStartOf(expression, staffLine));
                 dy = move.dy;
                 if (move.dx !== 0) {
                     this.crossStaffExpressionShifts.set(label, move.dx);
