@@ -1589,7 +1589,10 @@ export class GraphicalSlur extends GraphicalCurve {
             //     }
             // }
         } else {
-            startX = this.pieceStartX() ?? 0;
+            // A piece continued from the system before starts after the clef and key signature of its first measure,
+            // not at the staff line's start across them (Sibelius, Violin Concerto III m42-43 in the app at 820 and
+            // 1366: the nonuplet's slur over the clef and the two sharps).
+            startX = this.pieceStartX() ?? this.continuedPieceStartX();
         }
 
         if (slurEndNote) {
@@ -1803,6 +1806,16 @@ export class GraphicalSlur extends GraphicalCurve {
             return undefined;
         }
         const measure: GraphicalMeasure = this.staffEntries[0].parentMeasure;
+        return measure.PositionAndShape.RelativePosition.x + measure.beginInstructionsWidth;
+    }
+
+    /** Start x of a piece continued from the system before (no start note on its staff line, not a cross-staff or
+     *  volta piece): after the begin instructions (clef, key and time signature) of its first measure. */
+    private continuedPieceStartX(): number {
+        const measure: GraphicalMeasure = this.staffEntries[0]?.parentMeasure;
+        if (!measure) {
+            return 0;
+        }
         return measure.PositionAndShape.RelativePosition.x + measure.beginInstructionsWidth;
     }
 
