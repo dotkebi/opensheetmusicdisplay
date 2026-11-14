@@ -3,6 +3,7 @@ import { OpenSheetMusicDisplay } from "../../../src/OpenSheetMusicDisplay/OpenSh
 import { MusicSheetCalculator } from "../../../src/MusicalScore/Graphical/MusicSheetCalculator";
 import { GraphicalInstantaneousDynamicExpression } from "../../../src/MusicalScore/Graphical/GraphicalInstantaneousDynamicExpression";
 import { GraphicalUnknownExpression } from "../../../src/MusicalScore/Graphical/GraphicalUnknownExpression";
+import { GraphicalContinuousDynamicExpression } from "../../../src/MusicalScore/Graphical/GraphicalContinuousDynamicExpression";
 import { StaffLine } from "../../../src/MusicalScore/Graphical/StaffLine";
 import { GraphicalMeasure } from "../../../src/MusicalScore/Graphical/GraphicalMeasure";
 import { TestUtils } from "../../Util/TestUtils";
@@ -45,7 +46,7 @@ describe("Words before a dynamic shortly after them", () => {
     }
 
     it("puts qualifying words before the dynamic on its line", () => {
-        for (const measure of [1, 2]) {
+        for (const measure of [1, 2, 3]) {
             const w: GraphicalUnknownExpression = words(measure);
             const d: GraphicalInstantaneousDynamicExpression = dynamic(measure);
             expect(w.besideDynamic).toBe(true);
@@ -58,11 +59,11 @@ describe("Words before a dynamic shortly after them", () => {
     });
 
     it("at the end of the line moves the dynamic only as far as there is room", () => {
-        const w: GraphicalUnknownExpression = words(4);
-        const d: GraphicalInstantaneousDynamicExpression = dynamic(4);
+        const w: GraphicalUnknownExpression = words(5);
+        const d: GraphicalInstantaneousDynamicExpression = dynamic(5);
         expect(w.besideDynamic).toBe(true);
         expect(wordsBaseline(w)).toBeCloseTo(dynamicBaseline(d), 2);
-        const measure: GraphicalMeasure = staffLine.Measures.find(m => m.MeasureNumber === 4);
+        const measure: GraphicalMeasure = staffLine.Measures.find(m => m.MeasureNumber === 5);
         const noteX: number = measure.PositionAndShape.RelativePosition.x + measure.staffEntries[0].PositionAndShape.RelativePosition.x;
         const wordsLeft: number = w.Label.PositionAndShape.RelativePosition.x + w.Label.PositionAndShape.BorderMarginLeft;
         expect(wordsLeft).toBeLessThan(noteX);
@@ -71,7 +72,17 @@ describe("Words before a dynamic shortly after them", () => {
             .toBeLessThanOrEqual(staffLine.PositionAndShape.Size.width + 0.01);
     });
 
+    it("moves the start of the wedge from the dynamic with it", () => {
+        const d: GraphicalInstantaneousDynamicExpression = dynamic(1);
+        const wedge: GraphicalContinuousDynamicExpression = staffLine.AbstractExpressions.find(e =>
+            e instanceof GraphicalContinuousDynamicExpression) as GraphicalContinuousDynamicExpression;
+        const wedgeLeft: number = Math.min(...wedge.Lines.flatMap(line => [line.Start.x, line.End.x]));
+        expect(wedgeLeft).toBeGreaterThanOrEqual(d.PositionAndShape.RelativePosition.x + d.PositionAndShape.BorderMarginRight - 0.01);
+        const w: GraphicalUnknownExpression = words(1);
+        expect(w.Label.PositionAndShape.RelativePosition.x + w.Label.PositionAndShape.BorderMarginLeft).toBeGreaterThanOrEqual(0);
+    });
+
     it("doesn't join other words to a later dynamic", () => {
-        expect(words(3).besideDynamic).toBe(false);
+        expect(words(4).besideDynamic).toBe(false);
     });
 });

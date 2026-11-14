@@ -1821,15 +1821,22 @@ export abstract class MusicSheetCalculator {
         const dynamicBaseline: number = dynamicBox.RelativePosition.y + dynamic.Label.PositionAndShape.RelativePosition.y +
             MusicSheetCalculator.labelBaselineOffset(dynamic.Label);
         const y: number = dynamicBaseline - MusicSheetCalculator.labelBaselineOffset(graphLabel);
+        // The wedges starting right after the dynamic (at its time, on its side) move their start with it when it moves after
+        //   the words: "mezzo f" and a diminuendo from the f on (Schubert/Reger, Gretchen am Spinnrade m8, m37).
+        const followingWedges: GraphicalContinuousDynamicExpression[] = this.wedgesStartingAfter(staffLine, dynamic, placement);
         // The words after the dynamic at gap (units) right of its box, or undefined if they don't fit there.
-        const fit: (gap: number, fromFirstNote?: boolean) => {x: number, carry: number, dynamicShift: number} = (gap, fromFirstNote = true) => {
+        // from: where qualifying words start at the latest, the dynamic moved after them: the measure's first note, the start
+        //   of its content (after the barline, the clef etc.), or anywhere left of the dynamic.
+        const fit: (gap: number, from?: "firstNote" | "measure" | "anywhere") => {x: number, carry: number, dynamicShift: number} =
+            (gap, from = "firstNote") => {
             // the boxes touch: their margins leave about a word space between the texts
             let wordsLeft: number = dynamicRight + gap;
             let dynamicShift: number = 0;
             if (MusicSheetCalculator.wordsQualifyFollowingDynamic(text)) {
                 wordsLeft = dynamicLeft - width;
-                const firstNoteX: number = this.firstNoteX(measure);
-                if (fromFirstNote && wordsLeft < firstNoteX) {
+                const firstNoteX: number = from === "firstNote" ? this.firstNoteX(measure) :
+                    from === "measure" ? measure.PositionAndShape.RelativePosition.x + measure.beginInstructionsWidth : -Infinity;
+                if (wordsLeft < firstNoteX) {
                     dynamicShift = firstNoteX - wordsLeft;
                     wordsLeft = firstNoteX;
                     // At the end of the staff line the dynamic moves only as far as there is room, and the words start that
@@ -1869,8 +1876,15 @@ export abstract class MusicSheetCalculator {
             }
             // Only the first words beside a dynamic move it: a second one ("sempre" before and "stacc." after an ff) would take
             //   it off the first one's line.
+            // The wedges after the dynamic move their start with it (shortened, as long as they stay long enough), not down.
+            const movedWedges: GraphicalContinuousDynamicExpression[] = dynamicShift !== 0 ? followingWedges : [];
+            if (movedWedges.length > 0 && (carry !== 0 || movedWedges.some(wedge =>
+                MusicSheetCalculator.wedgeXRange(wedge)[1] - MusicSheetCalculator.wedgeXRange(wedge)[0] - dynamicShift <
+                    this.rules.WedgeOpeningLength * 2))) {
+                return undefined;
+            }
             if (dynamic.HasWordsBeside && (dynamicShift !== 0 || carry !== 0) ||
-                ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic))) {
+                ![wordsRect, dynamicRect].every(rect => this.clearOfExpressions(staffLine, rect, dynamic, movedWedges))) {
                 return undefined;
             }
             return {x: wordsLeft - box.BorderMarginLeft, carry, dynamicShift};
@@ -1879,11 +1893,12 @@ export abstract class MusicSheetCalculator {
         //   Violin Concerto Op. 47 III m188 "mf Poco a poco", the f's hook on the P; 81sabo SIB3C-APP1024-09), where they fit;
         //   else at the box, as before, rather than off the dynamic's line ("mf espress." under it, Nielsen, Clarinet Concerto).
         const reach: number = MusicSheetCalculator.dynamicGlyphReach(dynamic.Label.Label.text).right;
-        // Qualifying words that can't start at the first note, the dynamic moved after them (a wedge from the dynamic on: Schubert/
-        //   Reger, Gretchen am Spinnrade m8 "mezzo f" and a diminuendo), go left of the dynamic at its note, as in the source, where
-        //   they are clear of the rest.
+        // Qualifying words that can't start at the first note, the dynamic moved after them (the wedge from the dynamic on would
+        //   get too short: Schubert/Reger, Gretchen am Spinnrade m8, m37 "mezzo f" and a diminuendo), start at the start of the
+        //   measure's content, the dynamic moved less, or else go left of the dynamic at its note, where they are clear of the rest.
+        const qualifying: boolean = MusicSheetCalculator.wordsQualifyFollowingDynamic(text);
         const placed: {x: number, carry: number, dynamicShift: number} = fit(reach) ?? (reach > 0 ? fit(0) : undefined) ??
-            (MusicSheetCalculator.wordsQualifyFollowingDynamic(text) ? fit(0, false) : undefined);
+            (qualifying ? fit(0, "measure") ?? fit(0, "anywhere") : undefined);
         if (!placed) {
             return undefined;
         }
@@ -1894,7 +1909,44 @@ export abstract class MusicSheetCalculator {
                                                         dynamicBox.RelativePosition.y + placed.carry);
             dynamic.updateSkyBottomLine();
         }
+        if (placed.dynamicShift !== 0) {
+            for (const wedge of followingWedges) {
+                wedge.squeeze(placed.dynamicShift);
+                wedge.updateSkyBottomLine();
+            }
+        }
         return graphLabel;
+    }
+
+    /** The left and right x of a wedge's lines (relative to its staff line). */
+    private static wedgeXRange(wedge: GraphicalContinuousDynamicExpression): [number, number] {
+        const xs: number[] = wedge.Lines.flatMap(line => [line.Start.x, line.End.x]);
+        return [Math.min(...xs), Math.max(...xs)];
+    }
+
+    /** The wedges of staffLine on the given side that start right after the dynamic: at its time, their start at most a
+     *  staff space right of its box. */
+    private wedgesStartingAfter(staffLine: StaffLine, dynamic: GraphicalInstantaneousDynamicExpression,
+                                placement: PlacementEnum): GraphicalContinuousDynamicExpression[] {
+        const multiExpression: MultiExpression = dynamic.InstantaneousDynamic?.ParentMultiExpression;
+        const dynamicRight: number = dynamic.PositionAndShape.RelativePosition.x + dynamic.PositionAndShape.BorderMarginRight;
+        const wedges: GraphicalContinuousDynamicExpression[] = [];
+        for (const expression of staffLine.AbstractExpressions) {
+            if (!(expression instanceof GraphicalContinuousDynamicExpression) || expression.IsVerbal || expression.Lines.length < 2 ||
+                expression.Placement !== placement || expression.IsSplittedPart) {
+                continue;
+            }
+            const start: MultiExpression = expression.ContinuousDynamic.StartMultiExpression;
+            if (!multiExpression || !start || start.SourceMeasureParent !== multiExpression.SourceMeasureParent ||
+                !start.Timestamp.Equals(multiExpression.Timestamp)) {
+                continue;
+            }
+            const left: number = MusicSheetCalculator.wedgeXRange(expression)[0];
+            if (left >= dynamicRight - 0.5 && left <= dynamicRight + 1) {
+                wedges.push(expression);
+            }
+        }
+        return wedges;
     }
 
     /** The x of the first note of measure's measure on its staffline: of the first staff entry of any staff (the first notes
@@ -1997,10 +2049,11 @@ export abstract class MusicSheetCalculator {
 
     /** Whether rect [left, right, top, bottom] (relative to staffLine) is clear of the dynamics, wedges and words placed on
      *  staffLine, except the given dynamic. */
-    private clearOfExpressions(staffLine: StaffLine, rect: number[], except: AbstractGraphicalExpression): boolean {
+    private clearOfExpressions(staffLine: StaffLine, rect: number[], except: AbstractGraphicalExpression,
+                               alsoExcept: AbstractGraphicalExpression[] = []): boolean {
         const [left, right, top, bottom] = rect;
         for (const expression of staffLine.AbstractExpressions) {
-            if (expression === except) {
+            if (expression === except || alsoExcept.includes(expression)) {
                 continue;
             }
             let other: BoundingBox;
