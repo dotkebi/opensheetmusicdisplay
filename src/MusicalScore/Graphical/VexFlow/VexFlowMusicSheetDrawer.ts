@@ -1,4 +1,6 @@
 import Vex, { IRenderContext } from "vexflow";
+import { VexFlowThumbPositionGlyph } from "./VexFlowThumbPositionGlyph";
+import { TextAlignmentEnum } from "../../../Common/Enums/TextAlignment";
 import { DashedCurve } from "./DashedCurve";
 import VF = Vex.Flow;
 import { MusicSheetDrawer } from "../MusicSheetDrawer";
@@ -1360,9 +1362,22 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         }
     }
 
+    /** The thumb position sign placed as a fingering label (VexFlowThumbPositionGlyph), drawn as its glyph at the label's place. */
+    private drawThumbPosition(label: GraphicalLabel): void {
+        const position: PointF2D = this.applyScreenTransformation(label.PositionAndShape.AbsolutePosition);
+        // the label's anchor: the middle of its bottom above the notes (CenterBottom), of its top below them (CenterTop)
+        const bottom: number = label.Label.textAlignment === TextAlignmentEnum.CenterTop ?
+            position.y + this.calculatePixelDistance(VexFlowThumbPositionGlyph.Height) : position.y;
+        VexFlowThumbPositionGlyph.draw(this.backend.getContext(), position.x, bottom);
+    }
+
     private drawStaffEntry(staffEntry: GraphicalStaffEntry): void {
         if (staffEntry.FingeringEntries.length > 0) {
             for (const fingeringEntry of staffEntry.FingeringEntries) {
+                if (fingeringEntry.Label.text === VexFlowThumbPositionGlyph.LabelText) {
+                    this.drawThumbPosition(fingeringEntry);
+                    continue;
+                }
                 fingeringEntry.SVGNode = this.drawLabel(fingeringEntry, GraphicalLayers.Notes);
             }
         }

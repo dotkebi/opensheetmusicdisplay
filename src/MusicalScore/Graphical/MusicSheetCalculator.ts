@@ -1,4 +1,6 @@
 import { CrossStaffBeam } from "./VexFlow/CrossStaffBeam";
+import { VexFlowThumbPositionGlyph } from "./VexFlow/VexFlowThumbPositionGlyph";
+import { OtherTechnical } from "../VoiceData/OtherTechnical";
 import { CrossStaffExpressionClearance } from "./VexFlow/CrossStaffExpressionClearance";
 import { GraphicalStaffEntry } from "./GraphicalStaffEntry";
 import { StaffLine } from "./StaffLine";
@@ -6781,6 +6783,7 @@ export abstract class MusicSheetCalculator {
                         const staffEntryPositionX: number = gse.PositionAndShape.RelativePosition.x +
                             measure.PositionAndShape.RelativePosition.x;
                         const fingerings: TechnicalInstruction[] = [];
+                        const thumbPositions: TechnicalInstruction[] = [];
                         // the x of each fingering (relative to the staff line, like staffEntryPositionX): the centre of the column of note
                         //   heads its note is drawn in (GraphicalVoiceEntry.noteHeadsCenterX), not the staff entry's x, which is the middle of
                         //   the voice entry reaching the farthest right (e.g. moved aside from another voice's notes, or with a flag). So a
@@ -6799,6 +6802,19 @@ export abstract class MusicSheetCalculator {
                                     fingerings.push(instruction);
                                     fingeringPositionsX.set(instruction, positionX);
                                 }
+                            }
+                            // a thumb position sign of a note of the voice entry: one in its column, outside its fingerings
+                            //   (placed after them), as osmd_dart
+                            const thumbNote: GraphicalNote = voiceEntry.notes.find((note: GraphicalNote): boolean =>
+                                note.sourceNote.OtherTechnicals.some((technical: OtherTechnical): boolean => technical.IsThumbPosition));
+                            if (thumbNote) {
+                                const thumb: TechnicalInstruction = new TechnicalInstruction();
+                                thumb.type = TechnicalInstructionType.Fingering;
+                                thumb.value = VexFlowThumbPositionGlyph.LabelText;
+                                thumb.placement = placement;
+                                thumb.sourceNote = thumbNote.sourceNote;
+                                thumbPositions.push(thumb);
+                                fingeringPositionsX.set(thumb, positionX);
                             }
                             // for (const note of voiceEntry.notes) {
                             //     const sourceNote: Note = note.sourceNote;
@@ -6841,6 +6857,7 @@ export abstract class MusicSheetCalculator {
                                 }
                             }
                         }
+                        fingerings.push(...thumbPositions);
                         // the edges (away from the staff) of the fingerings placed so far, as written into the sky/bottom line
                         const fingeringEdges: number[] = [];
                         for (const fingering of fingerings) {
@@ -6856,6 +6873,17 @@ export abstract class MusicSheetCalculator {
                             }
                             // before reading the skyline in the label's margin box: a new label has no borders (a range of no width)
                             gLabel.setLabelPositionAndShapeBorders();
+                            if (fingering.value === VexFlowThumbPositionGlyph.LabelText) {
+                                // the sign's box, not the text's (it is drawn as a glyph)
+                                const box: BoundingBox = gLabel.PositionAndShape;
+                                const halfWidth: number = VexFlowThumbPositionGlyph.Width / 2;
+                                const height: number = VexFlowThumbPositionGlyph.Height;
+                                const above: boolean = placement === PlacementEnum.Above;
+                                box.BorderLeft = box.BorderMarginLeft = -halfWidth;
+                                box.BorderRight = box.BorderMarginRight = halfWidth;
+                                box.BorderTop = box.BorderMarginTop = above ? -height : 0;
+                                box.BorderBottom = box.BorderMarginBottom = above ? 0 : height;
+                            }
                             const marginLeft: number = positionX + gLabel.PositionAndShape.BorderMarginLeft;
                             const marginRight: number = positionX + gLabel.PositionAndShape.BorderMarginRight;
                             // (the read also takes the sample after the margin box, which reaches the stem at the right of
@@ -7239,7 +7267,11 @@ export abstract class MusicSheetCalculator {
             }
             // hasOnlyRests() is only true if all voices rest, so also check the voice of the syllable,
             //   which could otherwise now be extended over its rests while another voice sings another verse.
-            if (gse.hasOnlyRests() || this.voiceRestsInStaffEntry(gse, voice)) {
+            // ... unless the rest's <lyric> carries the extend on (<extend type="continue"/> or "stop" of the verse, read into
+            //   ExtendOnlyLyricVerses): a melisma held over its rests (Handel, Care selve, soprano m65-71, "tà," over the rests
+            //   in m65, m67 and m69 to the F#4 of m71, as in the print). The line ended at the first rest. As osmd_dart.
+            if ((gse.hasOnlyRests() || this.voiceRestsInStaffEntry(gse, voice)) &&
+                !this.voiceCarriesExtendInStaffEntry(gse, verseNumber, voice)) {
                 break;
             }
             // The verse skips a measure in which its voice sings only other verses, e.g. a first ending sung only in verse 1.

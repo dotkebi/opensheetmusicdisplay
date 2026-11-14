@@ -85,6 +85,15 @@ export class VoiceGenerator {
    *  instead of the beam). createBeam() opens such a beam without a begin; handleOpenBeam() merges it into the beam
    *  it follows in time. Cleared at the end of the measure. Same as osmd-dart (VoiceGenerator._orphanBeams). */
   private orphanBeams: Beam[] = [];
+  /** Whether the voice's last measure ended with a begun beam still open: a beam crossing the barline (Saint-Saëns, Bassoon
+   *  Sonata Op. 168 II m46-47: sixteenths beamed from m46 into m47). Set by checkForOpenBeam(). */
+  private beamOpenAtMeasureEnd: boolean = false;
+  /** Whether a beamed note of this measure was read yet. */
+  private beamNoteReadInMeasure: boolean = false;
+  /** The beam without a begin that the measure starts with after a beam left open at the end of the measure before
+   *  (beamOpenAtMeasureEnd): the crossing beam's part in this measure. It stays a beam of this measure, as a beam is drawn
+   *  per measure (split at the barline), instead of being dropped with the other orphans: its notes had flags. As osmd_dart. */
+  private barlineContinuation: Beam;
   private beamNumberOffset: number = 0;
   private get openTieDict(): { [_: number]: Tie } { return this.staff.openTieDict; }
   private currentOctaveShift: number = 0;
@@ -379,20 +388,28 @@ export class VoiceGenerator {
   }
 
   public checkForOpenBeam(): void {
+    const beamOpen: boolean = this.openBeams.some((beam: Beam): boolean => this.orphanBeams.indexOf(beam) < 0);
     if (this.openBeams.length > 0 && this.currentNote) {
       this.handleOpenBeam();
     }
-    // a beam without a begin that no begun beam took: dropped, as before
+    // a beam without a begin that no begun beam took: dropped, as before, except the part of a beam crossing the barline
+    //   from the measure before (barlineContinuation), with its notes beamed here
     for (const orphan of this.orphanBeams) {
-      for (const note of orphan.Notes) {
-        note.NoteBeam = undefined;
-      }
       const index: number = this.openBeams.indexOf(orphan);
       if (index >= 0) {
         this.openBeams.splice(index, 1);
       }
+      if (orphan === this.barlineContinuation && orphan.Notes.length > 1) {
+        continue;
+      }
+      for (const note of orphan.Notes) {
+        note.NoteBeam = undefined;
+      }
     }
     this.orphanBeams = [];
+    this.barlineContinuation = undefined;
+    this.beamNoteReadInMeasure = false;
+    this.beamOpenAtMeasureEnd = beamOpen;
   }
 
   /** Check/delete open ties that don't exceed measure duration. Currently unused as it's incorrect, see below. */
@@ -696,6 +713,10 @@ export class VoiceGenerator {
     this.addNoteInfo(restNote, noteTypeXml, printObject, isCueNote, normalNotes, displayStep, displayOctave, noteheadColorXml, noteheadColorXml);
     restNote.TypeLength = typeDuration; // needed for tuplet note type information
     //  (e.g. quarter rest - but length different due to tuplet). see MusicSheetCalculator.calculateTupletNumbers()
+    // <rest measure="yes">: a whole measure's rest, drawn as a whole rest in the middle of the measure whatever its length
+    //   (MusicXML), also where the measure's length isn't the time signature's: a cadenza measure in <senza-misura/> drew a
+    //   dotted half rest (with its dot) at its start (Haydn, Cello Concerto Hob. VIIb:2 I, piano m437-460). As osmd_dart.
+    restNote.IsWholeMeasureRest = node.attribute("measure")?.value === "yes";
     this.currentVoiceEntry.Notes.push(restNote);
     if (this.openBeams.length > 0) {
       this.openBeams.last().ExtendedNoteList.push(restNote);
@@ -795,7 +816,11 @@ export class VoiceGenerator {
           const orphan: Beam = new Beam(beamNumber, this.beamNumberOffset);
           this.openBeams.push(orphan);
           this.orphanBeams.push(orphan);
+          if (this.beamOpenAtMeasureEnd && !this.beamNoteReadInMeasure) {
+            this.barlineContinuation = orphan;
+          }
         }
+        this.beamNoteReadInMeasure = true;
         if (!(beamNumber > 0 && beamNumber <= this.openBeams.length) || !this.openBeams[beamNumber - 1]) {
           log.debug("[OSMD] invalid beamnumber"); // this shouldn't happen, probably error in this method
           return;

@@ -9,8 +9,9 @@ export enum KeyboardHand {
 /**
  * A MusicXML `<technical><other-technical>` of a note: a technical indication without its own MusicXML element,
  * named by its SMuFL glyph (`smufl` attribute) and/or given as text.
- * Only the keyboard hand brackets (SMuFL keyboardPlayWithLH, keyboardPlayWithRH) are drawn
- * (GraphicalKeyboardHandBracket). The others are kept in the model, so they aren't lost, but not drawn.
+ * Only the keyboard hand brackets (SMuFL keyboardPlayWithLH, keyboardPlayWithRH, GraphicalKeyboardHandBracket) and the
+ * thumb position (stringsThumbPosition, VexFlowThumbPositionGlyph) are drawn. The others are kept in the model, so they
+ * aren't lost, but not drawn.
  */
 export class OtherTechnical {
     constructor(smufl: string, text: string, placement: PlacementEnum) {
@@ -24,6 +25,14 @@ export class OtherTechnical {
     /** Text content of the element, "" if there is none. */
     public Text: string;
     public Placement: PlacementEnum;
+
+    /** The SMuFL name of the thumb position sign: a <thumb-position/> is read as this other-technical, and drawn. */
+    public static readonly ThumbPosition: string = "stringsThumbPosition";
+
+    /** Whether this is the thumb position sign. */
+    public get IsThumbPosition(): boolean {
+        return this.Smufl === OtherTechnical.ThumbPosition;
+    }
 
     /** The hand of a keyboard hand bracket, undefined for other indications.
      *  The end glyphs (keyboardPlayWithLHEnd, keyboardPlayWithRHEnd) end a bracket spanning several notes, which isn't drawn. */

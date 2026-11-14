@@ -25,7 +25,7 @@ import {PointF2D} from "../../../Common/DataObjects/PointF2D";
 import {Tuplet} from "../../VoiceData/Tuplet";
 import {RepetitionInstructionEnum, RepetitionInstruction, AlignmentType} from "../../VoiceData/Instructions/RepetitionInstruction";
 import {SystemLinePosition} from "../SystemLinePosition";
-import {StemDirectionType} from "../../VoiceData/VoiceEntry";
+import {StemDirectionType, VoiceEntry} from "../../VoiceData/VoiceEntry";
 import {GraphicalVoiceEntry} from "../GraphicalVoiceEntry";
 import {VexFlowVoiceEntry} from "./VexFlowVoiceEntry";
 import {Fraction} from "../../../Common/DataObjects/Fraction";
@@ -1007,6 +1007,45 @@ export class VexFlowMeasure extends GraphicalMeasure {
         }
     }
 
+    /** A note with <stem>double</stem> (two parts in unison on one staff, a due: Weber, Bassoon Concerto Op. 75 I, horns m5-6,
+     *  trumpets III m286) has a second stem on the other side, down from the notehead's left edge under an up stem, up from its
+     *  right edge over a down stem, as long as its own. VexFlow draws one stem (the automatic direction). As osmd_dart. */
+    private drawDoubleStems(ctx: Vex.IRenderContext): void {
+        for (const staffEntry of this.staffEntries) {
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                const voiceEntry: VoiceEntry = gve.parentVoiceEntry;
+                if (voiceEntry.StemDirectionXml !== StemDirectionType.Double || voiceEntry.IsGrace) {
+                    continue;
+                }
+                const note: any = (gve as VexFlowVoiceEntry).vfStaveNote;
+                if (!(note instanceof VF.StaveNote) || note.isRest() || !(note as any).hasStem() || (note as any).beam ||
+                    !note.getYs()?.length) {
+                    continue;
+                }
+                const up: boolean = note.getStemDirection() === VF.Stem.UP;
+                const ys: number[] = note.getYs();
+                const top: number = Math.min(...ys);
+                const bottom: number = Math.max(...ys);
+                const extents: { topY: number, baseY: number } = note.getStemExtents();
+                const length: number = Math.abs(extents.topY - extents.baseY);
+                const width: number = (VF.Stem as any).WIDTH;
+                const left: number = note.getAbsoluteX() + note.x_shift;
+                // the other side's stem: down at the left edge, up at the right edge
+                const x: number = up ? left + width / 2 : left + (note as any).getGlyphWidth() - width / 2;
+                const y0: number = up ? top : bottom;
+                const y1: number = up ? top + length : bottom - length;
+                // (drawn as VexFlow draws a stem)
+                ctx.save();
+                ctx.beginPath();
+                ctx.setLineWidth(width);
+                ctx.moveTo(x, y0);
+                ctx.lineTo(x, y1);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    }
+
     /** Draws this measure's note content. */
     private drawNotes(ctx: Vex.IRenderContext): void {
         this.postFormatBeams();
@@ -1022,6 +1061,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
                 // this.vfVoices[voiceID].tickables.forEach(t => t.getBoundingBox().draw(ctx));
             }
         }
+        this.drawDoubleStems(ctx);
         // Draw beams
         for (const voiceID in this.vfbeams) {
             if (this.vfbeams.hasOwnProperty(voiceID)) {
