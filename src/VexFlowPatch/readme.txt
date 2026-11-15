@@ -132,6 +132,9 @@ allow notehead y_shift without shifting stem (stem_up_y_shift)
 don't stagger the head of a hidden unison note (note.hiddenUnisonBaseHead, set by OSMD) beside the visible head it shares (mergeableUnison)
 getModifierStartXY(): add the note's x_shift for the positions ABOVE and BELOW too (articulations, ornaments), like for RIGHT,
   so that the marks of a note moved aside from another voice's note (or of a whole-measure rest) are drawn at the note
+BEAMED_MIDDLE_VOICE: two voices with their stems the same way, the upper one beamed over the lower one's heads: keep the
+  upper voice's stems (its beam sets them) and move it right of the lower voice, as vexflow 5, instead of shortening its
+  stems to end above the lower heads, which the beam lengthened again through them (Bowen op. 22 m817)
 
 staverepetition.js (fixed vexflow 4):
 add TO_CODA enum to type() and draw()

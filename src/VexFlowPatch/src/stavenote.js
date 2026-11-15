@@ -346,8 +346,12 @@ export class StaveNote extends StemmableNote {
     if (voices === 2) {
       const lineSpacing = noteU.stemDirection === noteL.stemDirection ? 0.0 : 0.5;
       // if top voice is a middle voice, check stem intersection with lower voice
+      // VexFlowPatch: not a beamed note: its beam sets its stem, and from the shortened stem it ran through the lower
+      //   voice's heads (BEAMED_MIDDLE_VOICE below).
+      const beamedMiddleVoice = !noteU.isrest && !noteL.isrest && noteU.note.beam && noteU.note.voice !== noteL.note.voice &&
+        noteU.stemDirection === noteL.stemDirection;
       if (noteU.stemDirection === noteL.stemDirection &&
-        noteU.minLine <= noteL.maxLine) {
+        noteU.minLine <= noteL.maxLine && !beamedMiddleVoice) {
         if (!noteU.isrest) {
           stemDelta = Math.abs(noteU.line - (noteL.maxLine + 0.5));
           stemDelta = Math.max(stemDelta, noteU.stemMin);
@@ -408,7 +412,11 @@ export class StaveNote extends StemmableNote {
               noteU.stemDirection === 1 && noteL.stemDirection === -1;
             (dottedUpper || crossedStemsCollide(noteL, noteU) ? noteU : noteL).note.setXShift(xShift);
           } else if (noteU.note.voice !== noteL.note.voice) {//If we are not in the same voice
-            if (noteU.stemDirection === noteL.stemDirection) {
+            if (beamedMiddleVoice && noteU.line !== noteL.line) {
+              // VexFlowPatch (BEAMED_MIDDLE_VOICE): two voices with their stems the same way, the upper one beamed: as
+              //   VexFlow 5 (osmd-dart), the upper voice moves right, with its own stem and beam.
+              noteU.note.setXShift(voiceXShift + 2);
+            } else if (noteU.stemDirection === noteL.stemDirection) {
               if (noteU.line > noteL.line) {
                 //noteU is above noteL
                 if (noteU.stemDirection === 1) {
