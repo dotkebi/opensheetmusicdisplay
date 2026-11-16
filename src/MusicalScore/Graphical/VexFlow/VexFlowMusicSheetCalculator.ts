@@ -32,7 +32,7 @@ import { VexFlowTextMeasurer } from "./VexFlowTextMeasurer";
 import Vex from "vexflow";
 import VF = Vex.Flow;
 import log from "loglevel";
-import { ITremoloNoteFrame, ITremoloStrokes, unitInPixels, VexFlowMusicSheetDrawer } from "./VexFlowMusicSheetDrawer";
+import { ICrossStaffTremoloBlock, ITremoloNoteFrame, ITremoloStrokes, unitInPixels, VexFlowMusicSheetDrawer } from "./VexFlowMusicSheetDrawer";
 import { VexFlowGraphicalNote } from "./VexFlowGraphicalNote";
 import { CrossStaffCurve, CrossStaffCurveLayoutGeometry } from "./CrossStaffCurve";
 import { TechnicalInstruction } from "../../VoiceData/Instructions/TechnicalInstruction";
@@ -513,10 +513,16 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
                   continue;
                 }
                 try {
-                  const strokes: ITremoloStrokes = VexFlowMusicSheetDrawer.tremoloStrokesBetweenNotes(tremolo,
+                  // between the staves of a system: in the staffline the strokes are anchored to (Sibelius, Violin Concerto III
+                  //   piano m261: under the right hand's staff, where the dynamics and wedges below it then go under them)
+                  const block: ICrossStaffTremoloBlock = VexFlowMusicSheetDrawer.crossStaffTremoloBlock(tremolo, this.rules,
+                    VexFlowMusicSheetCalculator.tremoloNoteFrame);
+                  const strokes: ITremoloStrokes = block ? VexFlowMusicSheetDrawer.crossStaffTremoloStrokes(block) :
+                    VexFlowMusicSheetDrawer.tremoloStrokesBetweenNotes(tremolo,
                     graphicalNote as VexFlowGraphicalNote, staffLine, this.rules, VexFlowMusicSheetCalculator.tremoloNoteFrame);
                   if (strokes) {
-                    VexFlowMusicSheetDrawer.mergeTremoloStrokesIntoSkyBottomLine(staffLine.SkyBottomLineCalculator, strokes, 0, 0);
+                    VexFlowMusicSheetDrawer.mergeTremoloStrokesIntoSkyBottomLine((block?.anchorStaffLine ?? staffLine).SkyBottomLineCalculator,
+                                                                                strokes, 0, 0);
                   }
                 } catch (ex) {
                   log.warn("VexFlowMusicSheetCalculator.reserveTremolosBetweenNotes", ex);
@@ -533,19 +539,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
    *  (as calculateKeyboardHandBracket()). The note's y values are taken again from where its stave is now, as drawing the voices
    *  does (Voice.draw() sets each note's stave): a lazily reused skyline skips that draw. */
   private static tremoloNoteFrame(graphicalNote: VexFlowGraphicalNote): ITremoloNoteFrame {
-    const measure: VexFlowMeasure = graphicalNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure;
-    const stave: VF.Stave = measure.getVFStave();
-    const vfNote: VF.StemmableNote = graphicalNote.vfnote[0];
-    if (vfNote.getStave() === stave) {
-      vfNote.setStave(stave);
-    }
-    const left: number = measure.PositionAndShape.RelativePosition.x;
-    const top: number = stave.getYForLine(0);
-    return {
-      x: (px: number): number => left + (px - stave.getX()) / unitInPixels,
-      y: (px: number): number => (px - top) / unitInPixels
-    };
+    return VexFlowMusicSheetDrawer.staffLineNoteFrame(graphicalNote);
   }
+
 
   /** Text of a hand in a keyboard score: l.h., r.h. (also without dots and spaces), m.s., m.d. (sinistra, destra). */
   private static readonly keyboardHandTextPattern: RegExp = /^\s*(l\.?\s*h|r\.?\s*h|m\.?\s*s|m\.?\s*d)\.?\s*$/i;

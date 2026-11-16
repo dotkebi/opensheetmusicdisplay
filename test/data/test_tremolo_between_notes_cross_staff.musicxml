@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1"><part-name>Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <!-- m1: the stems towards each other (a chord in the lower staff, stem up, to one in the upper staff, stem down), two strokes,
+         a dynamic and a wedge below the upper staff -->
+    <measure number="1">
+      <attributes>
+        <divisions>2</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>3</beats><beat-type>4</beat-type></time>
+        <staves>2</staves>
+        <clef number="1"><sign>F</sign><line>4</line></clef>
+        <clef number="2"><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <direction placement="below"><direction-type><dynamics><mp/></dynamics></direction-type><staff>1</staff></direction>
+      <direction placement="below"><direction-type><wedge type="crescendo" number="1"/></direction-type><staff>1</staff></direction>
+      <note><pitch><step>D</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff><notations><ornaments><tremolo type="start">2</tremolo></ornaments></notations></note>
+      <note><chord/><pitch><step>F</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><chord/><pitch><step>A</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff><notations><ornaments><tremolo type="stop">2</tremolo></ornaments></notations></note>
+      <note><chord/><pitch><step>F</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+      <note><chord/><pitch><step>A</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+      <direction placement="below"><direction-type><wedge type="stop" number="1"/></direction-type><staff>1</staff></direction>
+    </measure>
+    <!-- m2: both stems up (a note in the upper staff to one in the lower staff), three strokes -->
+    <measure number="2">
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>1</staff><notations><ornaments><tremolo type="start">3</tremolo></ornaments></notations></note>
+      <note><pitch><step>F</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff><notations><ornaments><tremolo type="stop">3</tremolo></ornaments></notations></note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>
