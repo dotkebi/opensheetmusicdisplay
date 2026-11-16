@@ -1567,7 +1567,7 @@ export class GraphicalSlur extends GraphicalCurve {
                     startY = Math.max(endY, slurStartVE.parentStaffEntry.getBottomlineMax());
                 }
             }
-            startY = this.getYPastArticulations(slurStartNote, true, startX, startY);
+            startY = this.getYPastArticulations(slurStartNote, true, startX, startY, slurEndNote);
 
             // If the stem points towards the starting point of the slur, shift the slur by a small amount to start (approximately) at the x-position
             // of the notehead. Note: an exact calculation using the position of the note is too complicate for the payoff
@@ -1589,7 +1589,10 @@ export class GraphicalSlur extends GraphicalCurve {
             //     }
             // }
         } else {
-            startX = this.pieceStartX() ?? 0;
+            // A piece continued from the system before starts after the clef and key signature of its first measure,
+            // not at the staff line's start across them (Sibelius, Violin Concerto III m42-43 in the app at 820 and
+            // 1366: the nonuplet's slur over the clef and the two sharps).
+            startX = this.pieceStartX() ?? this.continuedPieceStartX();
         }
 
         if (slurEndNote) {
@@ -1614,7 +1617,7 @@ export class GraphicalSlur extends GraphicalCurve {
                     endY = Math.max(endY, slurEndVE.parentStaffEntry.getBottomlineMax());
                 }
             }
-            endY = this.getYPastArticulations(slurEndNote, false, endX, endY);
+            endY = this.getYPastArticulations(slurEndNote, false, endX, endY, slurStartNote);
 
             // If the stem points towards the endpoint of the slur, shift the slur by a small amount to start (approximately) at the x-position
             // of the notehead. Note: an exact calculation using the position of the note is too complicate for the payoff
@@ -1656,6 +1659,14 @@ export class GraphicalSlur extends GraphicalCurve {
             endX = this.pieceEndX() ?? staffLine.PositionAndShape.Size.width;
         }
 
+        // a piece continued from the system before to a note right after the clef and key signature keeps a visible
+        // length (from after them it was 0.14 long to such a note in Beethoven's Fifth IV in osmd-dart): it starts that
+        // far before the note, over the key signature's end
+        if (!slurStartNote && slurEndNote && this.pieceStartX() === undefined &&
+            endX - startX < GraphicalSlur.continuedPieceMinLength) {
+            startX = Math.max(0, endX - GraphicalSlur.continuedPieceMinLength);
+        }
+
         // if GraphicalSlur breaks over System, then the end/start of the curve is at the corresponding height with the known start/end
         //   (a middle piece, with neither note in this staff line, on the slur's side of the staff: a slur below at -1.5
         //   started in the staff lines at the clef and crossed the staff, Schumann, Myrthen 11 m36)
@@ -1678,6 +1689,22 @@ export class GraphicalSlur extends GraphicalCurve {
             } else {
                 endY = startY + 1;
             }
+        }
+        // A piece with only one of its notes on this staff line ends (starts) at the system edge out of the ink between
+        // its last (first) note and the edge, not inside it: 1 unit out from its note's height only, a slur up from a low
+        // note ended in the rising beam of the last notes of the system (Weber, Clarinet Concerto 2 III m216 at 820, 834
+        // and 1024). Same as osmd-dart.
+        if (!skyBottomLineCalculator || this.staffEntries.length === 0) {
+            // (no staff entries: a slur calculated alone)
+        } else if (slurStartNote && !slurEndNote && this.slur.EndNote) {
+            const last: GraphicalStaffEntry = this.staffEntries[this.staffEntries.length - 1];
+            const lastX: number = last.parentMeasure.PositionAndShape.RelativePosition.x + last.PositionAndShape.RelativePosition.x;
+            endY = this.outOfInkAtEdge(skyBottomLineCalculator, lastX, endX, endY, staffLine.StaffHeight);
+        } else if (!slurStartNote && slurEndNote) {
+            const first: GraphicalStaffEntry = this.staffEntries[0];
+            const firstX: number = first.parentMeasure.PositionAndShape.RelativePosition.x + first.PositionAndShape.RelativePosition.x +
+                first.PositionAndShape.BorderRight;
+            startY = this.outOfInkAtEdge(skyBottomLineCalculator, startX, firstX, startY, staffLine.StaffHeight);
         }
 
         // if two slurs start/end at the same GraphicalNote, then the second gets an offset
@@ -1806,6 +1833,37 @@ export class GraphicalSlur extends GraphicalCurve {
         return measure.PositionAndShape.RelativePosition.x + measure.beginInstructionsWidth;
     }
 
+    /** y at a system edge of a piece continued from (to) another system, out of the sky (bottom) line from left to
+     *  right, the stretch between the edge and the piece's note next to it (see calculateStartAndEnd). Only ink outside
+     *  the staff counts: the lines have the staff's top (0) and bottom line (its height) wherever there is nothing beyond
+     *  them, and a piece at notes inside the staff keeps its height there, as before (1 unit out from its note); taking
+     *  the staff's line for ink pushed it out of the staff, steep (Sibelius III m43 in the app at 1366). */
+    private outOfInkAtEdge(lines: SkyBottomLineCalculator, left: number, right: number, y: number, staffHeight: number): number {
+        if (!(right > left)) {
+            return y;
+        }
+        const above: boolean = this.placement === PlacementEnum.Above;
+        const ink: number = above ? lines.getSkyLineMinInRange(left, right) : lines.getBottomLineMaxInRange(left, right);
+        if (!Number.isFinite(ink) || (above ? ink >= 0 : ink <= staffHeight)) {
+            return y;
+        }
+        return above ? Math.min(y, ink) : Math.max(y, ink);
+    }
+
+    /** The least length (in staff spaces) of a piece continued from the system before to its end note (see
+     *  calculateStartAndEnd). */
+    public static readonly continuedPieceMinLength: number = 1.5;
+
+    /** Start x of a piece continued from the system before (no start note on its staff line, not a cross-staff or
+     *  volta piece): after the begin instructions (clef, key and time signature) of its first measure. */
+    private continuedPieceStartX(): number {
+        const measure: GraphicalMeasure = this.staffEntries[0]?.parentMeasure;
+        if (!measure) {
+            return 0;
+        }
+        return measure.PositionAndShape.RelativePosition.x + measure.beginInstructionsWidth;
+    }
+
     /** End x of a cross-staff piece without its end note: the end of its last measure (see [[pieceStartX]]). */
     private pieceEndX(): number | undefined {
         if (!this.isCrossStaffPiece && !this.isVoltaPiece) {
@@ -1834,8 +1892,9 @@ export class GraphicalSlur extends GraphicalCurve {
      * @param y the border of the note's voice entry on the slur's side, relative to the staff line
      * @returns y, or the outer edge of the outermost of the marks inside the slur
      */
-    private getYPastArticulations(note: GraphicalNote, isStart: boolean, headX: number, y: number): number {
+    private getYPastArticulations(note: GraphicalNote, isStart: boolean, headX: number, y: number, otherNote?: GraphicalNote): number {
         const vfnote: any = (note as VexFlowGraphicalNote).vfnote?.[0];
+        const otherVfnote: any = (otherNote as VexFlowGraphicalNote)?.vfnote?.[0];
         const stave: any = vfnote?.getStave?.();
         if (!stave) {
             return y;
@@ -1892,14 +1951,20 @@ export class GraphicalSlur extends GraphicalCurve {
             this.articulationCorners.push(new PointF2D(mark.left, mark.far * outward), new PointF2D(mark.right, mark.far * outward));
             passed++;
         }
-        // (fork: past the number or bracket of the note's tuplet over the marks it went past as well, as the sky line raise over
-        //   the marks did before 2.2.1: the 3 over the up-bow of Prokofiev Op.19 I violin m58 G3, where the slur from the G3 starts,
-        //   stays inside the slur - a slur through it moved it beyond the slur, see
-        //   VexFlowMusicSheetCalculator.layoutFermatasOverSlurs())
+        // (fork: past the number of the note's tuplet over the marks it went past as well, as the sky line raise over the marks
+        //   did before 2.2.1: the 3 over the up-bow of Prokofiev Op.19 I violin m58 G3, where the slur from the G3 starts, stays
+        //   inside the slur - a slur through it moved it beyond the slur, see VexFlowMusicSheetCalculator.layoutFermatasOverSlurs().
+        //   Not past the bracket of a tuplet the slur is within (its other end's note in the tuplet too): the bracket goes outside
+        //   the slur, as at a note without marks (Gliere, Horn Concerto III m226: the slur from F5 to Db5, staccatos on both, in a
+        //   bracketed triplet from an eighth rest went over the bracket, the print has it under; user decision 11-14). The bracket
+        //   of a tuplet the slur goes on out of stays inside it (Prokofiev, the slur from the G3 to the next measure's E5). As in
+        //   osmd-dart (GraphicalSlur._articulationInkInBracketedTuplet()).)
         if (passed > 0) {
             const measure: VexFlowMeasure = note.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure;
             for (const ink of measure.TupletNumberInk ?? []) {
-                if (ink.above === above && ink.left <= headX && headX <= ink.right && ink.tuplet.getNotes().includes(vfnote)) {
+                if (ink.above === above && !(ink.bracketed && otherVfnote && ink.tuplet.getNotes().includes(otherVfnote)) &&
+                    ink.left <= headX && headX <= ink.right &&
+                    ink.tuplet.getNotes().includes(vfnote)) {
                     distance = Math.max(distance, above ? -ink.top : ink.bottom);
                 }
             }
@@ -2991,9 +3056,29 @@ export class GraphicalSlur extends GraphicalCurve {
             const bottomLineValue: number = staffLine.BottomLine[i];
 
             // ignore default value (= 4) which is lower border of staffline
-            if (bottomLineValue !== 0) {
+            //   (as the sky line's 0 in calculateTopPoints: the check was against 0, so the staff's bottom line was an
+            //   obstacle to every slur below, and one between notes over the staff sagged to it, Schubert, Ganymed piano
+            //   m120-121: the slur under the B-flat 5 and the A5 across the staff. Same as osmd-dart.)
+            if (bottomLineValue !== staffLine.StaffHeight) {
                 const point: PointF2D = new PointF2D((0.5 + i) / skyBottomLineCalculator.SamplingUnit, bottomLineValue);
                 points.push(point);
+            }
+        }
+        // The staff's bottom line hides the ink inside the staff from the bottom line: the notes between the ends, at the
+        // bottoms of their voice entries (noteheads and down stems), are obstacles where inside it. Same as osmd-dart.
+        for (const entry of this.staffEntries) {
+            const entryX: number = entry.parentMeasure.PositionAndShape.RelativePosition.x + entry.PositionAndShape.RelativePosition.x;
+            for (const voiceEntry of entry.graphicalVoiceEntries) {
+                const box: BoundingBox = voiceEntry.PositionAndShape;
+                const bottom: number = box.RelativePosition.y + box.BorderBottom;
+                if (!(bottom < staffLine.StaffHeight)) {
+                    continue;
+                }
+                for (const x of [entryX + box.RelativePosition.x + box.BorderLeft, entryX + box.RelativePosition.x + box.BorderRight]) {
+                    if (x > start.x && x < end.x) {
+                        points.push(new PointF2D(x, bottom));
+                    }
+                }
             }
         }
 

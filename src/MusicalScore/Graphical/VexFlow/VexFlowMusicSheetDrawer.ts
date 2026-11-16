@@ -136,6 +136,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         this.crossStaffClearances.clear();
         this.crossStaffExpressionOffsets.clear();
         this.crossStaffExpressionShifts.clear();
+        this.crossStaffWedgeOffsets.clear();
         super.drawSheet(graphicalMusicSheet);
     }
 
@@ -192,6 +193,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         this.crossStaffClearances.clear();
         this.crossStaffExpressionOffsets.clear();
         this.crossStaffExpressionShifts.clear();
+        this.crossStaffWedgeOffsets.clear();
         await super.drawSheetAsync(graphicalMusicSheet, yielder, onSystemDrawn, maxPageCount);
     }
 
@@ -226,6 +228,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         this.crossStaffClearances.clear();
         this.crossStaffExpressionOffsets.clear();
         this.crossStaffExpressionShifts.clear();
+        this.crossStaffWedgeOffsets.clear();
     }
 
     public setZoom(zoom: number): void {
@@ -511,6 +514,16 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
     private crossStaffExpressionOffsets: Map<GraphicalLabel, number> = new Map<GraphicalLabel, number>();
     /** The sideways move of such a label (none: not in the map). */
     private crossStaffExpressionShifts: Map<GraphicalLabel, number> = new Map<GraphicalLabel, number>();
+
+    /** The vertical move of a wedge beyond the curves between staves as drawn (crossStaffWedgeOffsetOf()), decided once per
+     *  drawing. */
+    private crossStaffWedgeOffsets: Map<VexFlowContinuousDynamicExpression, number> =
+        new Map<VexFlowContinuousDynamicExpression, number>();
+
+    /** The vertical moves of this drawing's wedges (for tests). */
+    public get CrossStaffWedgeOffsets(): Map<VexFlowContinuousDynamicExpression, number> {
+        return this.crossStaffWedgeOffsets;
+    }
 
     /** The vertical moves of this drawing's text expressions (for tests). */
     public get CrossStaffExpressionOffsets(): Map<GraphicalLabel, number> {
@@ -1813,6 +1826,90 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         label.SVGNode = this.drawLabel(label, <number>GraphicalLayers.Notes);
     }
 
+    /**
+     * How far the wedge is drawn beyond the slurs' curves between the staves as drawn that cross it: under a curve below its
+     * staff (over one above), CrossStaffCurve.wedgeClearance from it, short of the next staff's notes
+     * (CrossStaffCurve.wedgeStaffClearance from its sky line; the layout moved the wedge beyond the curve as calculated with
+     * the staves' preliminary distance, VexFlowMusicSheetCalculator.wedgeBeyondCrossStaffCurves(), and the staves moved
+     * apart for it: the curve, from the other staff, moved with them). 0: none (Bowen, Viola Sonata No. 2 m141-142, the
+     * crescendo under the slur from the left hand up to the right hand; user decision 2026-11-16). As in osmd-dart.
+     */
+    private crossStaffWedgeOffsetOf(wedge: VexFlowContinuousDynamicExpression): number {
+        const known: number | undefined = this.crossStaffWedgeOffsets.get(wedge);
+        if (known !== undefined) {
+            return known;
+        }
+        let dy: number = 0;
+        try {
+            dy = this.crossStaffWedgeOffset(wedge);
+        } catch (e) {
+            console.warn("[OSMD] cross-staff wedge clearance failed", e);
+        }
+        this.crossStaffWedgeOffsets.set(wedge, dy);
+        return dy;
+    }
+
+    private crossStaffWedgeOffset(wedge: VexFlowContinuousDynamicExpression): number {
+        if (wedge.IsVerbal || wedge.IsSplittedPart || wedge.Lines.length < 2 || !this.rules.RenderSlursAcrossStaves) {
+            return 0;
+        }
+        const staffLine: StaffLine = wedge.ParentStaffLine;
+        const lines: StaffLine[] = staffLine.ParentMusicSystem.StaffLines;
+        const index: number = lines.indexOf(staffLine);
+        if (index < 0) {
+            return 0;
+        }
+        const below: boolean = wedge.ContinuousDynamic.Placement === PlacementEnum.Below;
+        const neighbour: StaffLine = below ? lines[index + 1] : lines[index - 1];
+        if (!neighbour) {
+            return 0;
+        }
+        const curves: Set<CrossStaffCurve> = new Set<CrossStaffCurve>();
+        for (const line of [staffLine, neighbour]) {
+            for (const measure of line.Measures) {
+                for (const curve of (measure as VexFlowMeasure).crossStaffCurves ?? []) {
+                    if (!curve.isTie) {
+                        curves.add(curve);
+                    }
+                }
+            }
+        }
+        if (curves.size === 0) {
+            return 0;
+        }
+        const origin: PointF2D = staffLine.PositionAndShape.AbsolutePosition;
+        const xs: number[] = wedge.Lines.flatMap(l => [l.Start.x, l.End.x]);
+        const ys: number[] = wedge.Lines.flatMap(l => [l.Start.y, l.End.y]);
+        const left: number = origin.x + Math.min(...xs);
+        const right: number = origin.x + Math.max(...xs);
+        const top: number = origin.y + Math.min(...ys);
+        const bottom: number = origin.y + Math.max(...ys);
+        const samples: PointF2D[][] = [];
+        for (const curve of curves) {
+            if (this.calculateCrossStaffCurve(curve, undefined)) {
+                samples.push(curve.sample());
+            }
+        }
+        const move: number = CrossStaffCurve.wedgeMove(samples, left, right, top, bottom, below, origin.y,
+                                                       this.rules.StaffHeight);
+        if (move === 0) {
+            return 0;
+        }
+        // short of the next staff's notes: a wedge that can't go beyond the curve there stays
+        const neighbourOrigin: PointF2D = neighbour.PositionAndShape.AbsolutePosition;
+        const calculator: any = neighbour.SkyBottomLineCalculator;
+        const relLeft: number = left - neighbourOrigin.x;
+        const relRight: number = right - neighbourOrigin.x;
+        if (below) {
+            const lowest: number = neighbourOrigin.y + Math.min(0, calculator.getSkyLineMinInRange(relLeft, relRight)) -
+                CrossStaffCurve.wedgeStaffClearance;
+            return bottom + move <= lowest + 1e-9 ? move : 0;
+        }
+        const highest: number = neighbourOrigin.y + Math.max(this.rules.StaffHeight, calculator.getBottomLineMaxInRange(relLeft, relRight)) +
+            CrossStaffCurve.wedgeStaffClearance;
+        return top + move >= highest - 1e-9 ? move : 0;
+    }
+
     protected drawContinuousDynamic(graphicalExpression: VexFlowContinuousDynamicExpression): void {
         if (graphicalExpression.IsVerbal) {
             const label: GraphicalLabel = graphicalExpression.Label;
@@ -1821,11 +1918,12 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             if (!this.lazyDrawsSpanToMeasure(graphicalExpression.EndMeasure)) {
                 return; // lazy horizontal: hairpin not yet fully in the frontier
             }
+            const dy: number = this.crossStaffWedgeOffsetOf(graphicalExpression);
             for (const line of graphicalExpression.Lines) {
                 const start: PointF2D = new PointF2D(graphicalExpression.ParentStaffLine.PositionAndShape.AbsolutePosition.x + line.Start.x,
-                                                     graphicalExpression.ParentStaffLine.PositionAndShape.AbsolutePosition.y + line.Start.y);
+                                                     graphicalExpression.ParentStaffLine.PositionAndShape.AbsolutePosition.y + line.Start.y + dy);
                 const end: PointF2D = new PointF2D(graphicalExpression.ParentStaffLine.PositionAndShape.AbsolutePosition.x + line.End.x,
-                                                   graphicalExpression.ParentStaffLine.PositionAndShape.AbsolutePosition.y + line.End.y);
+                                                   graphicalExpression.ParentStaffLine.PositionAndShape.AbsolutePosition.y + line.End.y + dy);
                 line.SVGElement = this.drawLine(start, end, line.colorHex ?? "#000000", line.Width);
                 // the null check for colorHex is not strictly necessary anymore, but the previous default color was red.
                 this.addSVGClass(line.SVGElement, "osmd-wedge");
