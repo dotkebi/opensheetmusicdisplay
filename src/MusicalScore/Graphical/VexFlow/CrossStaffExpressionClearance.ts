@@ -210,9 +210,10 @@ export class CrossStaffExpressionClearance {
      *  the room between staves ([x, top, bottom]). */
     public static build(curves: Iterable<CrossStaffCurve>, beams: Iterable<CrossStaffBeam>, lines: StaffLine[],
                         sampling: number, unitInPixels: number,
-                        barlines: [number, number, number][] = []): CrossStaffExpressionClearance {
-        const ink: Ink[] = [];
-        const stems: number[] = [];
+                        barlines: [number, number, number][] = [],
+                        tremolos: { ink: PointF2D[][], stems: number[] } = { ink: [], stems: [] }): CrossStaffExpressionClearance {
+        const ink: Ink[] = tremolos.ink.map(points => new Ink(points));
+        const stems: number[] = [...tremolos.stems];
         for (const curve of curves) {
             if (curve.segments.length === 0) {
                 continue;

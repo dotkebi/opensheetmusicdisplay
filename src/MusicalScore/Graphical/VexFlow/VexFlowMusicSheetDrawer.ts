@@ -49,7 +49,7 @@ import { VexFlowGlissando } from "./VexFlowGlissando";
 import { VexFlowGraphicalNote } from "./VexFlowGraphicalNote";
 import { VexFlowConverter } from "./VexFlowConverter";
 import { VexFlowVibratoBracket } from "./VexFlowVibratoBracket";
-import { TremoloBetweenNotes } from "../../VoiceData/Note";
+import { Note, TremoloBetweenNotes } from "../../VoiceData/Note";
 import { SkyBottomLineCalculator } from "../SkyBottomLineCalculator";
 import { EngravingRules } from "../EngravingRules";
 
@@ -64,6 +64,18 @@ export const unitInPixels: number = 10;
 export interface ITremoloNoteFrame {
     x: (px: number) => number;
     y: (px: number) => number;
+}
+
+/** The strokes of a tremolo between the staves of a system, like a beam between the two stems (see
+ *  VexFlowMusicSheetDrawer.crossStaffTremoloBlock()): in units of the anchor staffline (x from its left, y from its staff's top
+ *  line), the strokes' top edge at the two stems and their total height. */
+export interface ICrossStaffTremoloBlock {
+    anchorStaffLine: StaffLine;
+    startX: number;
+    stopX: number;
+    startTop: number;
+    stopTop: number;
+    totalStrokesHeight: number;
 }
 
 /** The strokes of a tremolo between two notes: the line on which they are centered and their total height, in units
@@ -555,8 +567,9 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             (measure.crossStaffCurves ?? []).forEach(curve => curves.add(curve));
             (measure.crossStaffBeams ?? []).forEach(beam => beams.add(beam));
         }
+        const tremolos: { ink: PointF2D[][], stems: number[] } = VexFlowMusicSheetDrawer.crossStaffTremoloInk(measures, this.rules);
         let clearance: CrossStaffExpressionClearance | undefined;
-        if (curves.size > 0 || beams.size > 0) {
+        if (curves.size > 0 || beams.size > 0 || tremolos.ink.length > 0) {
             try {
                 const drawable: CrossStaffCurve[] = [];
                 for (const curve of curves) {
@@ -570,7 +583,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                     }
                 }
                 clearance = CrossStaffExpressionClearance.build(drawable, beams, system.StaffLines, this.rules.SamplingUnit, unitInPixels,
-                                                                VexFlowMusicSheetDrawer.barlinesBetweenStavesOf(system));
+                                                                VexFlowMusicSheetDrawer.barlinesBetweenStavesOf(system), tremolos);
                 if (clearance.isEmpty) {
                     clearance = undefined;
                 }
@@ -869,6 +882,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         );
         try {
             this.prepareCrossStaffBeams(measure);
+            this.prepareCrossStaffTremoloStems(measure);
             measure.draw(this.backend.getContext());
             this.drawCrossStaffBeams(measure);
             this.drawCrossStaffCurves(measure);
@@ -979,6 +993,8 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                         continue;
                         // only draw when reaching the stop note (second note): at this point, both notes have been drawn
                         //   and have their final positions, even if the start note is in a previously drawn measure.
+                        //   (Between the staves of a system the strokes go where the layout reserved them, see
+                        //   crossStaffTremoloBlock(), whichever of the two measures is drawn first.)
                     }
                     if (tremolo.startNote?.isVisible() === false || !gNote.sourceNote.isVisible()) {
                         continue; // a note isn't drawn: hidden (print-object="no") or of a hidden voice, see Note.isVisible()
@@ -993,12 +1009,233 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         }
     }
 
+    /** Whether the two notes of a TremoloBetweenNotes are in different stafflines of the same system (a tremolo between the hands
+     *  of a piano score: MusicXML tremolo start and stop in different staves of the part). Same as osmd-dart. */
+    public static tremoloAcrossStaves(tremolo: TremoloBetweenNotes, rules: EngravingRules): boolean {
+        const startStaffLine: StaffLine = rules.GNote(tremolo.startNote)?.parentVoiceEntry?.parentStaffEntry?.parentMeasure?.ParentStaffLine;
+        const stopStaffLine: StaffLine = tremolo.stopNote &&
+            rules.GNote(tremolo.stopNote)?.parentVoiceEntry?.parentStaffEntry?.parentMeasure?.ParentStaffLine;
+        return !!startStaffLine && !!stopStaffLine && startStaffLine !== stopStaffLine &&
+            !!startStaffLine.ParentMusicSystem && startStaffLine.ParentMusicSystem === stopStaffLine.ParentMusicSystem;
+    }
+
+    /** The VexFlow pixels of a note to units in its staffline: x from the staffline's left, y from its staff's top line. The
+     *  note's y values are taken again from where its stave is now (as drawing the voices does, Voice.draw() sets each note's
+     *  stave), so it works before and after the staves are placed on the page. Same as osmd-dart. */
+    public static staffLineNoteFrame(graphicalNote: VexFlowGraphicalNote): ITremoloNoteFrame {
+        const measure: VexFlowMeasure = graphicalNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure;
+        const stave: VF.Stave = measure.getVFStave();
+        const vfNote: VF.StemmableNote = graphicalNote.vfnote[0];
+        if (vfNote.getStave() === stave) {
+            vfNote.setStave(stave);
+        }
+        const left: number = measure.PositionAndShape.RelativePosition.x;
+        const top: number = stave.getYForLine(0);
+        return {
+            x: (px: number): number => left + (px - stave.getX()) / unitInPixels,
+            y: (px: number): number => (px - top) / unitInPixels
+        };
+    }
+
+    /** The room between the upper staff's bottom line and the strokes of a tremolo between the staves, in staff spaces
+     *  (crossStaffTremoloBlock()). */
+    public static readonly CrossStaffTremoloStaffGap: number = 0.75;
+    /** The least length of a stem from its farthest notehead to the strokes of a tremolo between the staves, in staff spaces. */
+    public static readonly CrossStaffTremoloMinStem: number = 2.5;
+
+    /**
+     * Where the strokes of a tremolo between the staves of a system go (tremoloAcrossStaves()): like a beam between the two stems,
+     * from one stem to the other, the stems lengthened to them (Sibelius, Violin Concerto III piano m261-264: a chord in the left
+     * hand's staff, stem up, to one in the right hand's, stem down, two strokes under the right hand's staff; Vieuxtemps, Violin
+     * Concerto No. 4 Op. 31 piano m86: D4 in the right hand's staff to F3 in the left hand's, both stems up, three strokes at the
+     * right hand's stem tip). In units of the anchor staffline (x from its left, y from its staff's top line; frameOf() for each
+     * note): with the stems towards each other (the upper staff's down, the lower staff's up) the strokes go under the upper staff,
+     * leaving its note's stem at least a stem's usual length from its lowest notehead, and rise a slant towards the note in the
+     * upper staff (anchor: the upper staffline); with both stems up they hang from the stem tip of the note in the upper staff
+     * (anchor: its staffline), with both down they stand on the tip of the note in the lower staff. Undefined where the notes
+     * have no stems, or stems turned away from each other. The layout reserves the strokes in the anchor staffline
+     * (VexFlowMusicSheetCalculator.reserveTremolosBetweenNotes()), so that the expressions there make room for them; the drawing
+     * lengthens the stems to them (prepareCrossStaffTremoloStems()) and draws them there. Same as osmd-dart.
+     */
+    public static crossStaffTremoloBlock(tremolo: TremoloBetweenNotes, rules: EngravingRules,
+                                         frameOf: (gNote: VexFlowGraphicalNote) => ITremoloNoteFrame): ICrossStaffTremoloBlock {
+        if (!tremolo?.stopNote || !VexFlowMusicSheetDrawer.tremoloAcrossStaves(tremolo, rules) ||
+            tremolo.startNote.isRest() || tremolo.stopNote.isRest()) {
+            return undefined;
+        }
+        const startGNote: VexFlowGraphicalNote = rules.GNote(tremolo.startNote) as VexFlowGraphicalNote;
+        const stopGNote: VexFlowGraphicalNote = rules.GNote(tremolo.stopNote) as VexFlowGraphicalNote;
+        if (!startGNote?.vfnote || !stopGNote?.vfnote) {
+            return undefined;
+        }
+        const vfStart: any = startGNote.vfnote[0];
+        const vfStop: any = stopGNote.vfnote[0];
+        if (!(vfStart instanceof VF.StaveNote) || !(vfStop instanceof VF.StaveNote) || !vfStart.hasStem() || !vfStop.hasStem() ||
+            !vfStart.getStem() || !vfStop.getStem()) {
+            return undefined;
+        }
+        const startLine: StaffLine = startGNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine;
+        const stopLine: StaffLine = stopGNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine;
+        const lines: StaffLine[] = startLine.ParentMusicSystem.StaffLines;
+        const startIsUpper: boolean = lines.indexOf(startLine) < lines.indexOf(stopLine);
+        const upperGNote: VexFlowGraphicalNote = startIsUpper ? startGNote : stopGNote;
+        const lowerGNote: VexFlowGraphicalNote = startIsUpper ? stopGNote : startGNote;
+        const upper: any = upperGNote.vfnote[0];
+        const lower: any = lowerGNote.vfnote[0];
+        const height: number = tremolo.strokes * rules.TremoloBetweenNotesStrokeThickness +
+            (tremolo.strokes - 1) * rules.TremoloBetweenNotesStrokeGap;
+        const startX: number = frameOf(startGNote).x(vfStart.getStemX());
+        const stopX: number = frameOf(stopGNote).x(vfStop.getStemX());
+        let anchor: StaffLine;
+        let upperEndTop: number;
+        let lowerEndTop: number;
+        if (upper.getStemDirection() === VF.Stem.DOWN && lower.getStemDirection() === VF.Stem.UP) {
+            anchor = upperGNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine;
+            const lowestNotehead: number = frameOf(upperGNote).y(Math.max(...upper.getYs()));
+            upperEndTop = Math.max(anchor.StaffHeight + VexFlowMusicSheetDrawer.CrossStaffTremoloStaffGap,
+                                   lowestNotehead + VexFlowMusicSheetDrawer.CrossStaffTremoloMinStem - height);
+            lowerEndTop = upperEndTop + rules.TremoloBetweenNotesMaxSlant;
+        } else if (upper.getStemDirection() === VF.Stem.UP && lower.getStemDirection() === VF.Stem.UP) {
+            anchor = upperGNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine;
+            upperEndTop = lowerEndTop = frameOf(upperGNote).y(upper.getStemExtents().topY);
+        } else if (upper.getStemDirection() === VF.Stem.DOWN && lower.getStemDirection() === VF.Stem.DOWN) {
+            anchor = lowerGNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine;
+            upperEndTop = lowerEndTop = frameOf(lowerGNote).y(lower.getStemExtents().topY) - height;
+        } else {
+            return undefined; // the stems turned away from each other
+        }
+        return {
+            anchorStaffLine: anchor,
+            startX: startX,
+            stopX: stopX,
+            startTop: startIsUpper ? upperEndTop : lowerEndTop,
+            stopTop: startIsUpper ? lowerEndTop : upperEndTop,
+            totalStrokesHeight: height
+        };
+    }
+
+    /** How far beside the stem of a tremolo between the staves a text expression is kept, in staff spaces
+     *  (crossStaffTremoloInk()): the glyphs of a dynamic reach farther right of its box than CrossStaffExpressionClearance
+     *  measures for them (Sibelius, Violin Concerto III piano m261 "mp": the p's bowl half a space past its box, on the left
+     *  hand's chord's stem lengthened up to the strokes, at 1024 wide). */
+    public static readonly CrossStaffTremoloStemReach: number = 0.5;
+
+    /** The ink of the tremolos between the staves of these measures' system as drawn (crossStaffTremoloBlock()), in units on the
+     *  page: their strokes and their two stems, from the noteheads to the strokes (the stems' x also for the clearance's
+     *  StemReach), so that the text expressions between the staves move off them as off cross-staff beams (Sibelius, Violin
+     *  Concerto III piano m261: "mp" under the right hand's staff on the left hand's chord's stem lengthened up to the strokes;
+     *  the print has it left of the stem). Same as osmd-dart. */
+    public static crossStaffTremoloInk(measures: VexFlowMeasure[], rules: EngravingRules): { ink: PointF2D[][], stems: number[] } {
+        const ink: PointF2D[][] = [];
+        const stems: number[] = [];
+        for (const measure of measures) {
+            for (const staffEntry of measure.staffEntries) {
+                for (const gve of staffEntry.graphicalVoiceEntries) {
+                    for (const gNote of gve.notes) {
+                        const tremolo: TremoloBetweenNotes = gNote.sourceNote.TremoloInfo?.tremoloBetweenNotes;
+                        if (!tremolo || tremolo.stopNote !== gNote.sourceNote || !(tremolo.strokes > 0)) {
+                            continue;
+                        }
+                        const block: ICrossStaffTremoloBlock = VexFlowMusicSheetDrawer.crossStaffTremoloBlock(tremolo, rules,
+                            VexFlowMusicSheetDrawer.staffLineNoteFrame);
+                        if (!block) {
+                            continue;
+                        }
+                        const anchor: PointF2D = block.anchorStaffLine.PositionAndShape.AbsolutePosition;
+                        const height: number = block.totalStrokesHeight;
+                        ink.push([new PointF2D(anchor.x + block.startX, anchor.y + block.startTop),
+                                  new PointF2D(anchor.x + block.stopX, anchor.y + block.stopTop),
+                                  new PointF2D(anchor.x + block.stopX, anchor.y + block.stopTop + height),
+                                  new PointF2D(anchor.x + block.startX, anchor.y + block.startTop + height)]);
+                        for (const [note, x, top] of [[tremolo.startNote, block.startX, block.startTop],
+                                                      [tremolo.stopNote, block.stopX, block.stopTop]] as [Note, number, number][]) {
+                            const vfNote: any = (rules.GNote(note) as VexFlowGraphicalNote).vfnote[0];
+                            const base: number = vfNote.getStemExtents().baseY / unitInPixels;
+                            const edge: number = anchor.y + (vfNote.getStemDirection() === VF.Stem.UP ? top : top + height);
+                            const stemX: number = anchor.x + x;
+                            stems.push(stemX);
+                            const reach: number = VexFlowMusicSheetDrawer.CrossStaffTremoloStemReach;
+                            ink.push([new PointF2D(stemX - reach, Math.min(base, edge)), new PointF2D(stemX + reach, Math.min(base, edge)),
+                                      new PointF2D(stemX + reach, Math.max(base, edge)), new PointF2D(stemX - reach, Math.max(base, edge))]);
+                        }
+                    }
+                }
+            }
+        }
+        return { ink, stems };
+    }
+
+    /** The strokes of a crossStaffTremoloBlock() as ITremoloStrokes (their centre line), in its anchor staffline's units. */
+    public static crossStaffTremoloStrokes(block: ICrossStaffTremoloBlock): ITremoloStrokes {
+        const half: number = block.totalStrokesHeight / 2;
+        return {startX: block.startX, stopX: block.stopX, startY: block.startTop + half, stopY: block.stopTop + half,
+                totalStrokesHeight: block.totalStrokesHeight};
+    }
+
+    /** Lengthens (or shortens) the stems of this measure's notes in tremolos between the staves of their system to the strokes
+     *  (crossStaffTremoloBlock()), before the measure draws its notes. Same as osmd-dart. */
+    private prepareCrossStaffTremoloStems(measure: VexFlowMeasure): void {
+        if (measure.isTabMeasure || measure.NotesAreAbbreviated) {
+            return;
+        }
+        for (const staffEntry of measure.staffEntries) {
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                for (const gNote of gve.notes) {
+                    const tremolo: TremoloBetweenNotes = gNote.sourceNote.TremoloInfo?.tremoloBetweenNotes;
+                    if (!tremolo?.stopNote || !(tremolo.strokes > 0) ||
+                        tremolo.startNote !== gNote.sourceNote && tremolo.stopNote !== gNote.sourceNote) {
+                        continue;
+                    }
+                    try {
+                        const block: ICrossStaffTremoloBlock = VexFlowMusicSheetDrawer.crossStaffTremoloBlock(tremolo, this.rules,
+                            VexFlowMusicSheetDrawer.staffLineNoteFrame);
+                        if (block) {
+                            VexFlowMusicSheetDrawer.stemToCrossStaffTremoloBlock(gNote as VexFlowGraphicalNote, block,
+                                                                                 tremolo.startNote === gNote.sourceNote);
+                        }
+                    } catch (ex) {
+                        log.warn("VexFlowMusicSheetDrawer.prepareCrossStaffTremoloStems", ex);
+                    }
+                }
+            }
+        }
+    }
+
+    /** Sets the stem of a note of a tremolo between the staves to end at the far edge of the strokes (the top edge for a stem up). */
+    private static stemToCrossStaffTremoloBlock(gNote: VexFlowGraphicalNote, block: ICrossStaffTremoloBlock, isStart: boolean): void {
+        const vfNote: any = gNote.vfnote[0];
+        const ownLine: StaffLine = gNote.parentVoiceEntry.parentStaffEntry.parentMeasure.ParentStaffLine;
+        const up: boolean = vfNote.getStemDirection() === VF.Stem.UP;
+        const top: number = isStart ? block.startTop : block.stopTop;
+        // the edge in the note's own staffline: moved by the distance of the two stafflines (units)
+        const edge: number = (up ? top : top + block.totalStrokesHeight) +
+            block.anchorStaffLine.PositionAndShape.AbsolutePosition.y - ownLine.PositionAndShape.AbsolutePosition.y;
+        const tip: number = VexFlowMusicSheetDrawer.staffLineNoteFrame(gNote).y(vfNote.getStemExtents().topY);
+        const lengthen: number = up ? tip - edge : edge - tip;
+        if (Math.abs(lengthen) < 0.01) {
+            return;
+        }
+        vfNote.setStemLength(vfNote.getStemLength() + lengthen * unitInPixels);
+        vfNote.getStem()?.setExtension(vfNote.getStemExtension());
+    }
+
     /** Draws the strokes between the two notes of a TremoloBetweenNotes (see drawTremolosBetweenNotes). */
     private drawTremoloBetweenTwoNotes(tremolo: TremoloBetweenNotes, stopGNote: VexFlowGraphicalNote,
                                        measure: VexFlowMeasure, strokeId: number): number {
         // in units on the page: the notes are drawn at their final positions
-        const strokes: ITremoloStrokes = VexFlowMusicSheetDrawer.tremoloStrokesBetweenNotes(tremolo, stopGNote, measure.ParentStaffLine,
-            this.rules, (): ITremoloNoteFrame => ({x: (px: number): number => px / unitInPixels, y: (px: number): number => px / unitInPixels}));
+        let strokes: ITremoloStrokes;
+        const block: ICrossStaffTremoloBlock = VexFlowMusicSheetDrawer.crossStaffTremoloBlock(tremolo, this.rules,
+            VexFlowMusicSheetDrawer.staffLineNoteFrame);
+        if (block) {
+            // between the staves of a system: where the layout reserved them, in the anchor staffline (to the page)
+            const anchor: PointF2D = block.anchorStaffLine.PositionAndShape.AbsolutePosition;
+            const inLine: ITremoloStrokes = VexFlowMusicSheetDrawer.crossStaffTremoloStrokes(block);
+            strokes = {startX: inLine.startX + anchor.x, stopX: inLine.stopX + anchor.x, startY: inLine.startY + anchor.y,
+                       stopY: inLine.stopY + anchor.y, totalStrokesHeight: inLine.totalStrokesHeight};
+        } else {
+            strokes = VexFlowMusicSheetDrawer.tremoloStrokesBetweenNotes(tremolo, stopGNote, measure.ParentStaffLine,
+                this.rules, (): ITremoloNoteFrame => ({x: (px: number): number => px / unitInPixels, y: (px: number): number => px / unitInPixels}));
+        }
         if (!strokes) {
             return strokeId;
         }
@@ -1027,8 +1264,9 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         // update SkyLine/BottomLine with the outer edges of the strokes
         //   (calculated geometrically, much cheaper than re-doing the pixel-based skyline calculation;
         //   the layout reserved them already, see VexFlowMusicSheetCalculator.reserveTremolosBetweenNotes()):
-        const staffLineAbsolute: PointF2D = measure.ParentStaffLine.PositionAndShape.AbsolutePosition;
-        VexFlowMusicSheetDrawer.mergeTremoloStrokesIntoSkyBottomLine(measure.ParentStaffLine.SkyBottomLineCalculator, strokes,
+        const staffLine: StaffLine = block ? block.anchorStaffLine : measure.ParentStaffLine;
+        const staffLineAbsolute: PointF2D = staffLine.PositionAndShape.AbsolutePosition;
+        VexFlowMusicSheetDrawer.mergeTremoloStrokesIntoSkyBottomLine(staffLine.SkyBottomLineCalculator, strokes,
                                                                     staffLineAbsolute.x, staffLineAbsolute.y);
         return strokeId;
     }
