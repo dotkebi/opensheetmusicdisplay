@@ -99,7 +99,7 @@ describe("VexFlow Measure", () => {
       tabMeasure.finalizeTuplets = (): void => undefined;
       tabMeasure.getVoicesWithinMeasure = (): Array<{ VoiceId: number }> => [{ VoiceId: 1 }];
       tabMeasure.getRestFilledVexFlowStaveNotesPerVoice = (): any[] => [voiceEntry];
-      tabMeasure.parentSourceMeasure = { Duration: { Denominator: 4, Numerator: 4 } };
+      tabMeasure.parentSourceMeasure = { Duration: new Fraction(4, 4) }; // (GetExpandedNumerator(), upstream PR #1969)
       tabMeasure.vfVoices = [];
 
       const originalCreateTabNote: typeof VexFlowConverter.CreateTabNote = VexFlowConverter.CreateTabNote;
@@ -1255,7 +1255,10 @@ describe("VexFlow Measure", () => {
                const stemRight: number = (stemBox.x + stemBox.width) / unitInPixels;
                for (const fingering of staffEntry.FingeringEntries) {
                   const box: BoundingBox = fingering.PositionAndShape;
-                  if (stemRight < box.AbsolutePosition.x + box.BorderMarginLeft || stemLeft > box.AbsolutePosition.x + box.BorderMarginRight) {
+                  // a label is as wide as its note head, so a stem at the head's side is at the label's edge: it counts too
+                  const edgeTolerance: number = 0.01;
+                  if (stemRight < box.AbsolutePosition.x + box.BorderMarginLeft - edgeTolerance ||
+                     stemLeft > box.AbsolutePosition.x + box.BorderMarginRight + edgeTolerance) {
                      continue;
                   }
                   stemsUnderLabels++;
@@ -1273,6 +1276,40 @@ describe("VexFlow Measure", () => {
          }
       }
       expect(stemsUnderLabels, "stems under fingering labels").to.be.at.least(2);
+   });
+
+   // A fingering goes above or below the staff as its MusicXML placement attribute says, per note: here both hands are in the bass
+   // staff, the right hand's fingerings placement="above" (voice 1, stems up), the left hand's placement="below" (voice 2).
+   // Before fix: the fingerings of a staff went all to one side (below for a lower staff), the 1 stacked on the 5 and so on.
+   it("Places each fingering above or below the staff as its placement attribute says", async () => {
+      const score: Document = TestUtils.getScore("test_fingering_placement_above_below_one_staff_hanon.musicxml");
+      if (!score) {
+         throw new Error("Score file not found");
+      }
+      const osmd: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(TestUtils.getDivElement(document));
+
+      await osmd.load(score);
+      osmd.render();
+      const measure: GraphicalMeasure = osmd.GraphicSheet.findGraphicalMeasure(0, 1);
+      const staffHeight: number = measure.ParentStaffLine.StaffHeight;
+      const above: string[] = [];
+      const below: string[] = [];
+      for (const staffEntry of measure.staffEntries) {
+         for (const fingering of staffEntry.FingeringEntries) {
+            const box: BoundingBox = fingering.PositionAndShape; // relative to the staff line
+            const voiceId: number = fingering.sourceNote.ParentVoiceEntry.ParentVoice.VoiceId;
+            const description: string = `fingering ${fingering.Label.text} of voice ${voiceId}`;
+            if (voiceId === 1) {
+               expect(box.RelativePosition.y + box.BorderBottom, `${description} must be above the staff`).to.be.below(0);
+               above.push(fingering.Label.text);
+            } else {
+               expect(box.RelativePosition.y + box.BorderTop, `${description} must be below the staff`).to.be.above(staffHeight);
+               below.push(fingering.Label.text);
+            }
+         }
+      }
+      expect(above, "right hand fingerings above").to.deep.equal(["1", "2", "3", "4", "5"]);
+      expect(below, "left hand fingerings below").to.deep.equal(["5", "4", "3", "2", "1"]);
    });
 
    // A fingering above or below the staff is centred on its note's head, also where Vexflow moves a voice's notes aside from

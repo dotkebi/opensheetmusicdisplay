@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Words before and after a dynamic at the same time ("sempre ff dolce", m. 2) over notes inside the staff: the bottom line is
+     the same under both words (measure 17 of upstream OSMD's test_words_dynamic_same_time_one_line.musicxml, PR #1985), with room after it on the staff line (m. 3, 4). -->
+<score-partwise version="4.0">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+<measure number="1"><attributes><divisions>4</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><note><rest measure="yes"/><duration>16</duration><voice>1</voice></note></measure>
+<measure number="2"><direction placement="below"><direction-type><words>sempre</words></direction-type></direction><direction placement="below"><direction-type><dynamics><ff/></dynamics></direction-type></direction><direction placement="below"><direction-type><words>dolce</words></direction-type></direction><note><pitch><step>A</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type></note><note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type></note><note><pitch><step>F</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type></note><note><pitch><step>G</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice><type>quarter</type></note></measure>
+<measure number="3"><note><rest measure="yes"/><duration>16</duration><voice>1</voice></note></measure>
+<measure number="4"><note><rest measure="yes"/><duration>16</duration><voice>1</voice></note></measure>
+  </part>
+</score-partwise>

@@ -200,6 +200,25 @@ describe("Words and a dynamic at the same time on one line", () => {
         expect(dolce.words.besideDynamic).to.equal(false);
     });
 
+    // Upstream PR #1985: with the notes inside the staff, the bottom line is the same under "sempre" and "dolce" (the staff's
+    //   bottom line, onto which "sempre" moved the ff), and "dolce" has the top of "sempre" up to a rounding error
+    //   (3.9999999999999996 at a bottom line of 4), which is not a move off the ff's line.
+    it("keeps the second words beside the dynamic where the bottom line is the same under both words", async () => {
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        div.style.width = "1600px";
+        const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div, { autoResize: false, backend: "svg" });
+        await osmd.load(TestUtils.getScore("test_words_dynamic_second_words_same_bottom_line.musicxml"));
+        osmd.render();
+        const [sempre] = pair(osmd, 2, "sempre");
+        expect(sempre.words.besideDynamic, "\"sempre\" beside the ff").to.equal(true);
+        expect(sempre.wordsBaseline).to.be.closeTo(sempre.dynamicBaseline, 0.01);
+        expect(sempre.wordsRight).to.be.at.most(sempre.dynamicLeft + 0.01);
+        const [dolce] = pair(osmd, 2, "dolce");
+        expect(dolce.words.besideDynamic, "\"dolce\" beside the ff").to.equal(true);
+        expect(dolce.wordsBaseline).to.be.closeTo(dolce.dynamicBaseline, 0.01);
+        expect(dolce.wordsLeft).to.be.at.least(dolce.dynamicRight - 0.01);
+    });
+
     it("places words of several lines as before", async () => {
         const osmd: OpenSheetMusicDisplay = await render();
         const before: OpenSheetMusicDisplay = await render(false);

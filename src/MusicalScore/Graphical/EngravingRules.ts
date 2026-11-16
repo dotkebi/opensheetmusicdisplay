@@ -299,6 +299,9 @@ export class EngravingRules {
      */
     public TabRhythmRendered: boolean;
     public TabBeamsRendered: boolean;
+    /** The highest fret of the fretboard, for the tablature of a transposed sheet: a note whose transposed fret would be above it
+     *  (or below 0) is moved to another string, see TabFretTransposer. Default 24. */
+    public TabTransposeMaxFret: number;
     public TabKeySignatureRendered: boolean;
     /** Whether space should be reserved as if there was a key signature.
      * False basically only works for tab-only scores, as it prevents vertical x-alignment with other staves.
@@ -497,6 +500,11 @@ export class EngravingRules {
     public KeyboardHandBracketNoteGap: number;
     /** Length of the vertical line of a keyboard hand bracket from its hook, if no text of its hand is at its note's time on its side. */
     public KeyboardHandBracketLength: number;
+    /** The lengths of the dash and the gap of a dashed slide or glissando in a TAB staff,
+     * in VexFlow's units (10 = the distance of two staff lines). */
+    public TabSlideLineDashDashed: number[];
+    /** The lengths of the dot and the gap of a dotted slide or glissando in a TAB staff, in VexFlow's units. */
+    public TabSlideLineDashDotted: number[];
     public TempoYSpacing: number;
     public InstantaneousTempoTextHeight: number;
     public ContinuousDynamicTextHeight: number;
@@ -633,6 +641,8 @@ export class EngravingRules {
     public AlignRests: AlignRestOption; // 0 = false, 1 = true, 2 = auto
     public RestCollisionYPadding: number;
     public FillEmptyMeasuresWithWholeRest: FillEmptyMeasuresWithWholeRests | number;
+    /** Draw a staff's measure that only has rests of one voice, filling the measure, as one whole-measure rest. See OSMDOptions. */
+    public DrawRestOnlyMeasuresAsWholeMeasureRest: boolean;
     public ArpeggiosGoAcrossVoices: boolean;
     public RenderArpeggios: boolean;
     public RenderSlurs: boolean;
@@ -853,6 +863,9 @@ export class EngravingRules {
     public SVGMergeSingleChildGroups: boolean;
     /** Whether dark mode is enabled. This is read-only, to set this, please use osmd.setOptions({darkMode: true}). */
     public DarkModeEnabled: boolean;
+    /** Whether the box behind each fret number of a TAB staff, which interrupts the string line, gets PageBackgroundColor,
+     *  e.g. black in dark mode. Default true. The color is applied in each render(). Without a PageBackgroundColor (transparent page),
+     *  the box is white (SVG) or cleared (canvas). */
     public UsePageBackgroundColorForTabNotes: boolean;
     /** Render the sheet on one horizontal staffline, without line breaks where the width is used up.
      *  Explicit system breaks still begin a new system below, if their rules are set: NewSystemAtXMLNewSystemAttribute,
@@ -1140,6 +1153,7 @@ export class EngravingRules {
         this.TabTupletsBracketed = true;
         this.TabRhythmRendered = false;
         this.TabBeamsRendered = true;
+        this.TabTransposeMaxFret = 24;
         this.TabKeySignatureRendered = false; // standard not to render for tab scores
         this.TabKeySignatureSpacingAdded = true; // false only works for tab-only scores, as it will prevent vertical x-alignment.
         this.TabTimeSignatureRendered = false; // standard not to render for tab scores
@@ -1194,6 +1208,8 @@ export class EngravingRules {
         this.GlissandoStafflineStartYDistanceToNote = 0.8; // just crossing the line above/below end note. should be similar to tab slide angle.
         this.GlissandoStafflineEndOffset = 1;
         this.GlissandoDefaultWidth = 0.1;
+        this.TabSlideLineDashDashed = [4, 3];
+        this.TabSlideLineDashDotted = [1, 2];
 
         // Voice leading guides
         this.VoiceLeadingGuideLineWidth = 0.2;
@@ -1348,6 +1364,7 @@ export class EngravingRules {
         this.AlignRests = AlignRestOption.Never; // 0 = false, 1 = true, 2 = auto
         this.RestCollisionYPadding = 0.0; // 1.0 = half distance between staff lines (e.g. E to F). will be rounded to whole numbers.
         this.FillEmptyMeasuresWithWholeRest = FillEmptyMeasuresWithWholeRests.No;
+        this.DrawRestOnlyMeasuresAsWholeMeasureRest = false;
         this.ArpeggiosGoAcrossVoices = false; // safe option, as otherwise arpeggios will always go across all voices in Vexflow, which is often unwanted
         this.RenderArpeggios = true;
         this.RenderSlurs = true;

@@ -19,6 +19,8 @@ import {EngravingRules} from "../../../src/MusicalScore/Graphical/EngravingRules
 
 describe("Music Sheet Reader", () => {
     const path: string = "test/data/MuzioClementi_SonatinaOpus36No1_Part1.xml";
+    // reads the sonatina only: the tests of other scores read with a reader of their own, as a reader keeps what it read
+    //   of the last score, e.g. CompleteNumberOfStaves, which "reads instruments" checks (also with shuffled tests)
     const reader: MusicSheetReader = new MusicSheetReader();
     let score: IXmlElement;
     let sheet: MusicSheet;
@@ -305,7 +307,7 @@ describe("Music Sheet Reader", () => {
             const doc: Document = getSheet(noneNoteheadPath);
             expect(doc).to.not.be.undefined;
             const noneScore: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
-            noneNoteheadSheet = reader.createMusicSheet(noneScore, noneNoteheadPath);
+            noneNoteheadSheet = new MusicSheetReader().createMusicSheet(noneScore, noneNoteheadPath);
         });
 
         it("loads file with notehead='none' without errors", () => {
@@ -377,6 +379,39 @@ describe("Music Sheet Reader", () => {
         });
     });
 
+    describe("Notehead fill", () => {
+        /** Reads a score of one note in the given note head element and returns whether that head is filled. */
+        function isFilled(type: string, duration: number, extras: string, notehead: string): boolean {
+            const xml: string = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\"><part-list><score-part id=\"P1\">" +
+                "<part-name>P1</part-name></score-part></part-list><part id=\"P1\"><measure number=\"1\"><attributes><divisions>12</divisions>" +
+                "<time><beats>8</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>" +
+                `<note><pitch><step>C</step><octave>5</octave></pitch><duration>${duration}</duration><voice>1</voice><type>${type}</type>` +
+                `${extras}${notehead}</note></measure></part></score-partwise>`;
+            const doc: Document = new DOMParser().parseFromString(xml, "text/xml");
+            const root: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
+            const noteSheet: MusicSheet = new MusicSheetReader().createMusicSheet(root, "notehead.musicxml");
+            return noteSheet.SourceMeasures[0].VerticalSourceStaffEntryContainers[0].StaffEntries[0].VoiceEntries[0].Notes[0].Notehead.Filled;
+        }
+        const dot: string = "<dot/>";
+        const triplet: string = "<time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification>";
+        const diamond: string = "<notehead>diamond</notehead>";
+
+        it("follows the note's type without a filled attribute", () => {
+            const cases: [string, number, string, boolean][] = [
+                ["whole", 48, "", false], ["half", 24, "", false], ["half", 36, dot, false], ["half", 16, triplet, false], ["whole", 72, dot, false],
+                ["quarter", 12, "", true], ["quarter", 18, dot, true], ["quarter", 8, triplet, true], ["eighth", 6, "", true],
+            ];
+            for (const [type, duration, extras, filled] of cases) {
+                expect(isFilled(type, duration, extras, diamond), `${type} of duration ${duration} ${extras}`).to.equal(filled);
+            }
+        });
+
+        it("keeps a given filled attribute", () => {
+            expect(isFilled("half", 36, dot, "<notehead filled=\"yes\">diamond</notehead>"), "filled dotted half").to.equal(true);
+            expect(isFilled("quarter", 12, "", "<notehead filled=\"no\">diamond</notehead>"), "hollow quarter").to.equal(false);
+        });
+    });
+
     describe("Tremolo between two notes", () => {
         const tremoloBetweenNotesPath: string = "test/data/test_tremolo_between_notes_short.musicxml";
         let tremoloSheet: MusicSheet;
@@ -385,7 +420,7 @@ describe("Music Sheet Reader", () => {
             const doc: Document = getSheet(tremoloBetweenNotesPath);
             expect(doc).to.not.be.undefined;
             const tremoloScore: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
-            tremoloSheet = reader.createMusicSheet(tremoloScore, tremoloBetweenNotesPath);
+            tremoloSheet = new MusicSheetReader().createMusicSheet(tremoloScore, tremoloBetweenNotesPath);
         });
 
         it("links start and stop notes of tremolos between two notes", () => {
@@ -441,7 +476,7 @@ describe("Music Sheet Reader", () => {
             const doc: Document = getSheet(noTypePath);
             expect(doc).to.not.be.undefined;
             const noTypeScore: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
-            const noTypeSheet: MusicSheet = reader.createMusicSheet(noTypeScore, noTypePath);
+            const noTypeSheet: MusicSheet = new MusicSheetReader().createMusicSheet(noTypeScore, noTypePath);
 
             const voiceEntries: VoiceEntry[] = noTypeSheet.Instruments[0].Voices[0].VoiceEntries;
             const noTypeNote: Note = voiceEntries[0].Notes[0]; // <tremolo>3</tremolo> (no type attribute)
@@ -463,7 +498,7 @@ describe("Music Sheet Reader", () => {
             const doc: Document = getSheet(enharmonicTiePath);
             expect(doc).to.not.be.undefined;
             const enharmonicTieScore: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
-            enharmonicTieSheet = reader.createMusicSheet(enharmonicTieScore, enharmonicTiePath);
+            enharmonicTieSheet = new MusicSheetReader().createMusicSheet(enharmonicTieScore, enharmonicTiePath);
             tiedNotes = enharmonicTieSheet.Instruments[0].Voices[0].VoiceEntries
                 .flatMap((voiceEntry: VoiceEntry): Note[] => voiceEntry.Notes)
                 .filter((note: Note): boolean => !note.isRest());
@@ -515,7 +550,7 @@ describe("Music Sheet Reader", () => {
             const doc: Document = getSheet("test/data/" + filename);
             expect(doc, filename + " should be in test/data").to.not.be.undefined;
             const fileScore: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
-            return reader.createMusicSheet(fileScore, "test/data/" + filename);
+            return new MusicSheetReader().createMusicSheet(fileScore, "test/data/" + filename);
         }
 
         function expectTripletThenTwoEighths(notes: Note[], label: string): void {
@@ -683,6 +718,29 @@ describe("Music Sheet Reader", () => {
             expect(withFeature.length, "sample should carry lyrics").to.be.greaterThan(0);
             expect(withFeature).to.deep.equal(wordShapes(disabled));
         });
+    });
+
+    describe("Parts with different durations in a measure", () => {
+        /** Reads a measure of two parts, one note each, of the given durations in quarters, and returns the error flags of their staves. */
+        function measureErrors(beats: number, beatType: number, quarters1: number, quarters2: number): boolean[] {
+            const part: (id: string, quarters: number) => string = (id, quarters) => `<part id="${id}"><measure number="1">` +
+                "<attributes><divisions>4</divisions>" +
+                `<time><beats>${beats}</beats><beat-type>${beatType}</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>` +
+                `<note><pitch><step>C</step><octave>5</octave></pitch><duration>${quarters * 4}</duration><voice>1</voice></note></measure></part>`;
+            const xml: string = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><score-partwise version=\"4.0\"><part-list>" +
+                "<score-part id=\"P1\"><part-name>P1</part-name></score-part><score-part id=\"P2\"><part-name>P2</part-name></score-part></part-list>" +
+                part("P1", quarters1) + part("P2", quarters2) + "</score-partwise>";
+            const doc: Document = new DOMParser().parseFromString(xml, "text/xml");
+            const root: IXmlElement = new IXmlElement(doc.getElementsByTagName("score-partwise")[0]);
+            const measure: SourceMeasure = new MusicSheetReader().createMusicSheet(root, "durations.musicxml").SourceMeasures[0];
+            return [measure.getErrorInMeasure(0), measure.getErrorInMeasure(1)];
+        }
+
+        for (const [beats, beatType, quarters] of [[3, 4, 3], [4, 4, 4], [6, 8, 3], [2, 2, 4], [5, 4, 5], [12, 8, 6]]) {
+            it(`flags only the incomplete part in ${beats}/${beatType}`, () => {
+                expect(measureErrors(beats, beatType, quarters, 1).join()).to.equal("false,true");
+            });
+        }
     });
 
     describe("transpose octave-change", () => {

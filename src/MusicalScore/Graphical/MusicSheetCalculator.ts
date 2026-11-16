@@ -84,6 +84,7 @@ import { LyricsEntry } from "../VoiceData/Lyrics/LyricsEntry";
 import { Voice } from "../VoiceData/Voice";
 import { TabNote } from "../VoiceData/TabNote";
 import { CooperativeYielder } from "../../Util/CooperativeYielder";
+import { TabFretTransposer } from "./TabFretTransposer";
 
 /**
  * Class used to do all the calculations in a MusicSheet, which in the end populates a GraphicalMusicSheet.
@@ -204,6 +205,9 @@ export abstract class MusicSheetCalculator {
         // this.staffLinesWithGraphicalExpressions = [];
 
         this.graphicalMusicSheet.Initialize();
+        // the notes' pitches are transposed when their graphical notes are created (checkNoteForAccidental()), the tablature frets here
+        TabFretTransposer.transposeFrets(musicSheet, MusicSheetCalculator.transposeCalculator !== undefined,
+            this.rules.TabTransposeMaxFret);
         const measureList: GraphicalMeasure[][] = this.graphicalMusicSheet.MeasureList;
 
         // one AccidentalCalculator for each Staff (regardless of Instrument)
@@ -1954,6 +1958,11 @@ export abstract class MusicSheetCalculator {
             for (const rect of rects) {
                 const outside: number = this.distanceIntoNotes(staffLine, placement, rect);
                 carry = placement === PlacementEnum.Below ? Math.max(carry, outside) : Math.min(carry, outside);
+            }
+            // a rounding error, not a move: e.g. words after a dynamic that the words before it moved onto the bottom line, where
+            //   the bottom line is the same under both (the second words' top 3.9999999999999996 at a bottom line of 4)
+            if (Math.abs(carry) < 0.001) {
+                carry = 0;
             }
             for (const rect of [wordsRect, dynamicRect]) {
                 rect[2] += carry;
@@ -5930,8 +5939,8 @@ export abstract class MusicSheetCalculator {
                 for (const staffEntry of container.StaffEntries) {
                     for (const voiceEntry of staffEntry?.VoiceEntries ?? []) {
                         for (const note of voiceEntry.Notes) {
-                            if (note.NoteTie) {
-                                note.NoteTie.TieDirection = note.NoteTie.TieDirectionXml;
+                            for (const tie of note.NoteTies) {
+                                tie.TieDirection = tie.TieDirectionXml;
                             }
                         }
                     }
@@ -5956,9 +5965,8 @@ export abstract class MusicSheetCalculator {
                             const voiceEntry: VoiceEntry = sourceStaffEntry.VoiceEntries[idx];
                             for (let idx2: number = 0, len2: number = voiceEntry.Notes.length; idx2 < len2; ++idx2) {
                                 const note: Note = voiceEntry.Notes[idx2];
-                                if (note.NoteTie) {
-                                    const tie: Tie = note.NoteTie;
-                                    if (note === note.NoteTie.Notes.last() &&
+                                for (const tie of note.NoteTies) {
+                                    if (note === tie.Notes.last() &&
                                         !(tie.Notes.length === 1 && MusicSheetCalculator.tieContinuesAfterRepeat(tie))) {
                                         continue; // nothing to do on last note. don't create last tie twice.
                                     }
@@ -6013,10 +6021,11 @@ export abstract class MusicSheetCalculator {
                 if (!startNote.sourceNote.isVisible() || !endNote.sourceNote.isVisible()) {
                     continue;
                 }
-                const tieOfFoundNotes: Tie = startNote.sourceNote.NoteTie;
-                if (tieOfFoundNotes && tieOfFoundNotes !== tie && tieOfFoundNotes === endNote.sourceNote.NoteTie) {
-                    // not the tie's own notes (see findTieGraphicalNoteFromNote), and they are tied to each other themselves,
-                    // e.g. visible notes that a hidden voice doubles in unison: don't draw a second tie between them
+                const substitutedNote: boolean = startNote.sourceNote !== tie.Notes[i - 1] || endNote.sourceNote !== tie.Notes[i];
+                if (substitutedNote && startNote.sourceNote.NoteTies.some(otherTie =>
+                    otherTie !== tie && otherTie.Type === tie.Type && endNote.sourceNote.NoteTies.includes(otherTie))) {
+                    // A hidden voice shares these visible noteheads, whose own tie already connects them.
+                    // Check all memberships: a technique endpoint can also start a sustain.
                     continue;
                 }
                 const graphicalTie: GraphicalTie = this.createGraphicalTie(tie, startGse, endGse, startNote, endNote);
@@ -6293,10 +6302,18 @@ export abstract class MusicSheetCalculator {
         const graceEntriesAfterMainNote: {
             voiceEntry: VoiceEntry; graphicalStaffEntry: GraphicalStaffEntry; sourceStaffEntry: SourceStaffEntry; linkedNotes: Note[];
         }[] = [];
+        const drawAsWholeMeasureRest: boolean = this.rules.DrawRestOnlyMeasuresAsWholeMeasureRest &&
+            this.isRestOnlyMeasureFilledByRests(sourceMeasure, staffIndex);
+        let wholeMeasureRestCreated: boolean = false;
+        let wholeMeasureRestNote: GraphicalNote;
         // create GraphicalStaffEntries - always check for possible null Entry
         for (let entryIndex: number = 0; entryIndex < sourceMeasure.VerticalSourceStaffEntryContainers.length; entryIndex++) {
             const sourceStaffEntry: SourceStaffEntry = sourceMeasure.VerticalSourceStaffEntryContainers[entryIndex].StaffEntries[staffIndex];
             // is there a SourceStaffEntry at this Index
+            if (drawAsWholeMeasureRest && wholeMeasureRestCreated && sourceStaffEntry &&
+                sourceStaffEntry.ChordContainers.length === 0 && sourceStaffEntry.Instructions.length === 0) {
+                continue; // the replaced rest has no chord symbols or instructions to draw here
+            }
             if (sourceStaffEntry) {
                 // a SourceStaffEntry exists
                 const laidOutVoiceEntries: VoiceEntry[] = this.voiceEntriesToLayOut(sourceStaffEntry);
@@ -6360,6 +6377,9 @@ export abstract class MusicSheetCalculator {
                         octaveShiftValue = OctaveEnum.NONE;
                         activeOctaveShift = undefined;
                     }
+                    if (drawAsWholeMeasureRest && wholeMeasureRestCreated) {
+                        continue; // the first rest is drawn as the whole-measure rest. The staff entry stays for its chord symbols.
+                    }
                     // Grace notes written before the octave shift start share its timestamp (no duration) but come
                     //   before it: not covered (startVoiceEntryIndex set by the ExpressionReader).
                     const graceBeforeStart: boolean = octaveShiftValue !== OctaveEnum.NONE && activeOctaveShift &&
@@ -6375,6 +6395,15 @@ export abstract class MusicSheetCalculator {
                     );
                     if (!graceBeforeStart) {
                         octaveShiftValue = entryOctaveShiftValue;
+                    }
+                    if (drawAsWholeMeasureRest && graphicalStaffEntry.graphicalVoiceEntries.length > 0) {
+                        // only the drawn length changes: the source rests keep their length and time
+                        for (const graphicalNote of graphicalStaffEntry.graphicalVoiceEntries.last().notes) {
+                            graphicalNote.graphicalNoteLength = sourceMeasure.ActiveTimeSignature.clone();
+                            graphicalNote.numberOfDots = 0;
+                            wholeMeasureRestNote = graphicalNote;
+                        }
+                        wholeMeasureRestCreated = true;
                     }
                 }
                 this.handleLyricsOfLeftOutVoices(sourceStaffEntry, laidOutVoiceEntries, graphicalStaffEntry, openLyricWords);
@@ -6394,6 +6423,19 @@ export abstract class MusicSheetCalculator {
                         graphicalStaffEntry,
                         accidentalCalculator.ActiveKeyInstruction,
                         this.graphicalMusicSheet.ParentMusicSheet.Transpose);
+                }
+            }
+        }
+
+        if (wholeMeasureRestNote) {
+            // The drawn rest represents the replaced rests in the public note-to-graphical-note mapping too.
+            for (const container of sourceMeasure.VerticalSourceStaffEntryContainers) {
+                for (const voiceEntry of container.StaffEntries[staffIndex]?.VoiceEntries ?? []) {
+                    for (const note of voiceEntry.Notes) {
+                        if (note !== wholeMeasureRestNote.sourceNote) {
+                            this.rules.addGraphicalNoteToNoteMap(note, wholeMeasureRestNote);
+                        }
+                    }
                 }
             }
         }
@@ -6500,6 +6542,47 @@ export abstract class MusicSheetCalculator {
         }
 
         return measure;
+    }
+
+    /** Whether the staff's measure only has visible rests of one voice that fill the whole measure (e.g. four quarter rests in 4/4),
+     * see OSMDOptions.drawRestOnlyMeasuresAsWholeMeasureRest. Not for pickup measures, tuplets, grace notes, rests with a fermata
+     * or other marks or a given position, or an in-measure clef or key change, which are drawn as written.
+     */
+    private isRestOnlyMeasureFilledByRests(sourceMeasure: SourceMeasure, staffIndex: number): boolean {
+        if (sourceMeasure.Duration.RealValue !== sourceMeasure.ActiveTimeSignature.RealValue) {
+            return false;
+        }
+        let voice: Voice;
+        let restLength: Fraction = new Fraction(0, 1);
+        for (const container of sourceMeasure.VerticalSourceStaffEntryContainers) {
+            const staffEntry: SourceStaffEntry = container.StaffEntries[staffIndex];
+            if (!staffEntry) {
+                continue;
+            }
+            if (staffEntry.Link ||
+                staffEntry.Instructions.some(instruction => instruction instanceof ClefInstruction || instruction instanceof KeyInstruction)) {
+                return false;
+            }
+            for (const voiceEntry of staffEntry.VoiceEntries) {
+                if (voiceEntry.IsGrace || (voice && voice !== voiceEntry.ParentVoice)) {
+                    return false;
+                }
+                // what a rest carries (e.g. a fermata) would be lost with the rest
+                if (voiceEntry.Articulations.length > 0 || voiceEntry.TechnicalInstructions.length > 0 || voiceEntry.OrnamentContainer ||
+                    voiceEntry.Arpeggio) {
+                    return false;
+                }
+                voice = voiceEntry.ParentVoice;
+                for (const note of voiceEntry.Notes) {
+                    // a rest with a given vertical position (display-step) is not a measure rest
+                    if (!note.isRest() || !note.PrintObject || note.Pitch || note.NoteTuplet || note.NoteBeam) {
+                        return false;
+                    }
+                    restLength = Fraction.plus(restLength, note.Length);
+                }
+            }
+        }
+        return restLength.RealValue === sourceMeasure.ActiveTimeSignature.RealValue;
     }
 
     /** Makes a clef change at the end of the measure (for the next measure) the staff's active clef. */
@@ -6754,7 +6837,15 @@ export abstract class MusicSheetCalculator {
         }
     }
 
-    private getFingeringPlacement(measure: GraphicalMeasure): PlacementEnum {
+    /**
+     * Where a fingering goes: above or below its note as the MusicXML's placement attribute says (if FingeringPositionFromXML),
+     * else as FingeringPosition says, which for AboveOrBelow is above in the upper staff of an instrument, below in the others.
+     * So e.g. in a piano's lower staff, the right hand's fingerings can go above, the left hand's below.
+     */
+    private getFingeringPlacement(measure: GraphicalMeasure, fingering: TechnicalInstruction): PlacementEnum {
+        if (fingering.placement === PlacementEnum.Above || fingering.placement === PlacementEnum.Below) {
+            return fingering.placement; // (only set if FingeringPositionFromXML, see ArticulationReader.createTechnicalInstruction())
+        }
         let placement: PlacementEnum = this.rules.FingeringPosition;
         if (placement === PlacementEnum.NotYetDefined || placement === PlacementEnum.AboveOrBelow) {
             placement = measure.isUpperStaffOfInstrument() ? PlacementEnum.Above : PlacementEnum.Below;
@@ -6773,13 +6864,11 @@ export abstract class MusicSheetCalculator {
                     if (measure.isTabMeasure && !this.rules.TabFingeringsRendered) {
                         continue; // don't duplicate fingerings into tab measures. tab notes are already
                     }
-                    const placement: PlacementEnum = this.getFingeringPlacement(measure);
                     for (const gse of measure.staffEntries) {
                         gse.FingeringEntries = [];
                         if (measure.NotesAreAbbreviated) {
                             continue; // Fingerings belong to notes replaced by the repeat sign.
                         }
-                        const skybottomcalculator: SkyBottomLineCalculator = line.SkyBottomLineCalculator;
                         const staffEntryPositionX: number = gse.PositionAndShape.RelativePosition.x +
                             measure.PositionAndShape.RelativePosition.x;
                         const fingerings: TechnicalInstruction[] = [];
@@ -6811,7 +6900,7 @@ export abstract class MusicSheetCalculator {
                                 const thumb: TechnicalInstruction = new TechnicalInstruction();
                                 thumb.type = TechnicalInstructionType.Fingering;
                                 thumb.value = VexFlowThumbPositionGlyph.LabelText;
-                                thumb.placement = placement;
+                                thumb.placement = this.getFingeringPlacement(measure, thumb); // the side the rules give (no XML placement)
                                 thumb.sourceNote = thumbNote.sourceNote;
                                 thumbPositions.push(thumb);
                                 fingeringPositionsX.set(thumb, positionX);
@@ -6823,112 +6912,138 @@ export abstract class MusicSheetCalculator {
                             //     }
                             // }
                         }
-                        if (fingerings.length > 1) {
-                            // const isBulkFingering: boolean = fingerings.last().sourceNote === fingerings[0].sourceNote;
-                            //   // bulk fingering = more than one fingering per note given in MusicXML. (some programs export like this sometimes)
-                            // console.log("isBulkFingering: " + isBulkFingering);
-                            const distinctPitchedNotes: boolean = fingerings.every(
-                                (fingering: TechnicalInstruction, index: number) => fingering.sourceNote?.Pitch !== undefined &&
-                                    fingerings.findIndex((other: TechnicalInstruction) => other.sourceNote === fingering.sourceNote) === index);
-                            if (distinctPitchedNotes) {
-                                // stack fingerings in the pitch order of their notes, mirroring the chord (lowest note's fingering at the bottom).
-                                //   sorting handles notes collected from multiple voices, which are not necessarily in pitch order.
-                                fingerings.sort((a: TechnicalInstruction, b: TechnicalInstruction) =>
-                                    a.sourceNote.Pitch.getHalfTone() - b.sourceNote.Pitch.getHalfTone());
-                                if (placement === PlacementEnum.Below) {
-                                    fingerings.reverse();
-                                }
-                            } else {
-                                // fallback for bulk fingerings (multiple per note) or unpitched notes: keep XML order, with heuristics
-                                if (placement === PlacementEnum.Below) {
-                                    fingerings.reverse();
-                                }
-                                let topNote: Note;
-                                for (const gve of gse.graphicalVoiceEntries) {
-                                    for (const note of gve.notes) {
-                                        if (!topNote || note.sourceNote.Pitch?.getHalfTone() > topNote.Pitch?.getHalfTone()) {
-                                            topNote = note.sourceNote;
-                                        }
-                                    }
-                                }
-                                if (fingerings[0].sourceNote === topNote && placement === PlacementEnum.Above) {
-                                    // || fingerings[0].sourceNote === topNote && placement === PlacementEnum.Below && isBulkFingering // doesn't seem necessary
-                                    fingerings.reverse();
-                                }
-                            }
+                        // the fingerings above and those below are stacked separately, each group from the staff outward
+                        const placements: PlacementEnum[] = fingerings.map((fingering: TechnicalInstruction) =>
+                            this.getFingeringPlacement(measure, fingering));
+                        const sides: Set<PlacementEnum> = new Set(placements);
+                        const thumbPlacement: PlacementEnum = thumbPositions[0]?.placement;
+                        if (thumbPositions.length > 0) {
+                            sides.add(thumbPlacement); // also without fingerings on that side
                         }
-                        fingerings.push(...thumbPositions);
-                        // the edges (away from the staff) of the fingerings placed so far, as written into the sky/bottom line
-                        const fingeringEdges: number[] = [];
-                        for (const fingering of fingerings) {
-                            const positionX: number = fingeringPositionsX.get(fingering);
-                            const alignment: TextAlignmentEnum =
-                                placement === PlacementEnum.Above ? TextAlignmentEnum.CenterBottom : TextAlignmentEnum.CenterTop;
-                            const label: Label = new Label(fingering.value, alignment);
-                            const gLabel: GraphicalLabel = new GraphicalLabel(
-                                label, this.rules.FingeringTextSize, label.textAlignment, this.rules, line.PositionAndShape);
-                            gLabel.SVGClass = "osmd-fingering";
-                            if (fingering.fontFamily) {
-                                label.fontFamily = fingering.fontFamily;
-                            }
-                            // before reading the skyline in the label's margin box: a new label has no borders (a range of no width)
-                            gLabel.setLabelPositionAndShapeBorders();
-                            if (fingering.value === VexFlowThumbPositionGlyph.LabelText) {
-                                // the sign's box, not the text's (it is drawn as a glyph)
-                                const box: BoundingBox = gLabel.PositionAndShape;
-                                const halfWidth: number = VexFlowThumbPositionGlyph.Width / 2;
-                                const height: number = VexFlowThumbPositionGlyph.Height;
-                                const above: boolean = placement === PlacementEnum.Above;
-                                box.BorderLeft = box.BorderMarginLeft = -halfWidth;
-                                box.BorderRight = box.BorderMarginRight = halfWidth;
-                                box.BorderTop = box.BorderMarginTop = above ? -height : 0;
-                                box.BorderBottom = box.BorderMarginBottom = above ? 0 : height;
-                            }
-                            const marginLeft: number = positionX + gLabel.PositionAndShape.BorderMarginLeft;
-                            const marginRight: number = positionX + gLabel.PositionAndShape.BorderMarginRight;
-                            // (the read also takes the sample after the margin box, which reaches the stem at the right of
-                            //   a note head with its stem up, see getSkyLineMinInRange())
-                            let skybottomFurthest: number = undefined;
-                            if (placement === PlacementEnum.Above) {
-                                skybottomFurthest = skybottomcalculator.getSkyLineMinInRange(marginLeft, marginRight);
-                            } else {
-                                skybottomFurthest = skybottomcalculator.getBottomLineMaxInRange(marginLeft, marginRight);
-                            }
-                            // stacked on a fingering placed before (the sky/bottom line under the label is its edge), e.g. in the column of a
-                            //   chord: at the stacking distance, else at the distance to the notes, like the first fingering of each column
-                            const stacked: boolean = fingeringEdges.includes(skybottomFurthest);
-                            let yShift: number = 0;
-                            if (!stacked) {
-                                yShift += this.rules.FingeringOffsetY;
-                                if (placement === PlacementEnum.Above) {
-                                    yShift += 0.1; // above fingerings are a bit closer to the notes than below ones for some reason
-                                }
-                            } else {
-                                yShift += this.rules.FingeringPaddingY;
-                            }
-                            if (placement === PlacementEnum.Above) {
-                                yShift *= -1;
-                            }
-                            gLabel.PositionAndShape.RelativePosition.y += skybottomFurthest + yShift;
-                            gLabel.PositionAndShape.RelativePosition.x = positionX;
-                            gLabel.PositionAndShape.calculateBoundingBox();
-                            gLabel.sourceNote = fingering.sourceNote;
-                            gse.FingeringEntries.push(gLabel);
-                            const start: number = gLabel.PositionAndShape.RelativePosition.x + gLabel.PositionAndShape.BorderLeft;
-                            //start -= line.PositionAndShape.RelativePosition.x;
-                            const end: number = start - gLabel.PositionAndShape.BorderLeft + gLabel.PositionAndShape.BorderRight;
-                            if (placement === PlacementEnum.Above) {
-                                const top: number = gLabel.PositionAndShape.RelativePosition.y + gLabel.PositionAndShape.BorderTop; // BorderMarginTop too much
-                                skybottomcalculator.updateSkyLineInRange(start, end, top);
-                                fingeringEdges.push(top);
-                            } else if (placement === PlacementEnum.Below) {
-                                const bottom: number = gLabel.PositionAndShape.RelativePosition.y + gLabel.PositionAndShape.BorderBottom;
-                                skybottomcalculator.updateBottomLineInRange(start, end, bottom);
-                                fingeringEdges.push(bottom);
-                            }
+                        for (const placement of sides) {
+                            const placed: TechnicalInstruction[] = fingerings.filter((fingering: TechnicalInstruction, index: number) =>
+                                placements[index] === placement);
+                            this.placeFingerings(placed, placement, fingeringPositionsX, gse, line,
+                                                 placement === thumbPlacement ? thumbPositions : []);
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * Places the fingerings of a staff entry that go on one side of the staff (see getFingeringPlacement()) as labels, stacked from
+     * the notes outward on the sky or bottom line, and adds them to the staff entry's FingeringEntries.
+     * @param fingerings the fingerings on that side, in XML order
+     * @param positionsX the x of each fingering, relative to the staff line (see calculateFingerings())
+     * @param thumbPositions the thumb position signs on that side, placed after (outside) the fingerings
+     */
+    private placeFingerings(fingerings: TechnicalInstruction[], placement: PlacementEnum, positionsX: Map<TechnicalInstruction, number>,
+                            gse: GraphicalStaffEntry, line: StaffLine, thumbPositions: TechnicalInstruction[] = []): void {
+        const skybottomcalculator: SkyBottomLineCalculator = line.SkyBottomLineCalculator;
+        if (fingerings.length > 1) {
+            // const isBulkFingering: boolean = fingerings.last().sourceNote === fingerings[0].sourceNote;
+            //   // bulk fingering = more than one fingering per note given in MusicXML. (some programs export like this sometimes)
+            // console.log("isBulkFingering: " + isBulkFingering);
+            const distinctPitchedNotes: boolean = fingerings.every(
+                (fingering: TechnicalInstruction, index: number) => fingering.sourceNote?.Pitch !== undefined &&
+                    fingerings.findIndex((other: TechnicalInstruction) => other.sourceNote === fingering.sourceNote) === index);
+            if (distinctPitchedNotes) {
+                // stack fingerings in the pitch order of their notes, mirroring the chord (lowest note's fingering at the bottom).
+                //   sorting handles notes collected from multiple voices, which are not necessarily in pitch order.
+                fingerings.sort((a: TechnicalInstruction, b: TechnicalInstruction) =>
+                    a.sourceNote.Pitch.getHalfTone() - b.sourceNote.Pitch.getHalfTone());
+                if (placement === PlacementEnum.Below) {
+                    fingerings.reverse();
+                }
+            } else {
+                // fallback for bulk fingerings (multiple per note) or unpitched notes: keep XML order, with heuristics
+                if (placement === PlacementEnum.Below) {
+                    fingerings.reverse();
+                }
+                let topNote: Note;
+                for (const gve of gse.graphicalVoiceEntries) {
+                    for (const note of gve.notes) {
+                        if (!topNote || note.sourceNote.Pitch?.getHalfTone() > topNote.Pitch?.getHalfTone()) {
+                            topNote = note.sourceNote;
+                        }
+                    }
+                }
+                if (fingerings[0].sourceNote === topNote && placement === PlacementEnum.Above) {
+                    // || fingerings[0].sourceNote === topNote && placement === PlacementEnum.Below && isBulkFingering // doesn't seem necessary
+                    fingerings.reverse();
+                }
+            }
+        }
+        fingerings.push(...thumbPositions);
+        // the edges (away from the staff) of the fingerings placed so far, as written into the sky/bottom line
+        const fingeringEdges: number[] = [];
+        for (const fingering of fingerings) {
+            const positionX: number = positionsX.get(fingering);
+            const alignment: TextAlignmentEnum =
+                placement === PlacementEnum.Above ? TextAlignmentEnum.CenterBottom : TextAlignmentEnum.CenterTop;
+            const label: Label = new Label(fingering.value, alignment);
+            const gLabel: GraphicalLabel = new GraphicalLabel(
+                label, this.rules.FingeringTextSize, label.textAlignment, this.rules, line.PositionAndShape);
+            gLabel.SVGClass = "osmd-fingering";
+            if (fingering.fontFamily) {
+                label.fontFamily = fingering.fontFamily;
+            }
+            // before reading the skyline in the label's margin box: a new label has no borders (a range of no width)
+            gLabel.setLabelPositionAndShapeBorders();
+            if (fingering.value === VexFlowThumbPositionGlyph.LabelText) {
+                // the sign's box, not the text's (it is drawn as a glyph)
+                const box: BoundingBox = gLabel.PositionAndShape;
+                const halfWidth: number = VexFlowThumbPositionGlyph.Width / 2;
+                const height: number = VexFlowThumbPositionGlyph.Height;
+                const above: boolean = placement === PlacementEnum.Above;
+                box.BorderLeft = box.BorderMarginLeft = -halfWidth;
+                box.BorderRight = box.BorderMarginRight = halfWidth;
+                box.BorderTop = box.BorderMarginTop = above ? -height : 0;
+                box.BorderBottom = box.BorderMarginBottom = above ? 0 : height;
+            }
+            const marginLeft: number = positionX + gLabel.PositionAndShape.BorderMarginLeft;
+            const marginRight: number = positionX + gLabel.PositionAndShape.BorderMarginRight;
+            // (the read also takes the sample after the margin box, which reaches the stem at the right of
+            //   a note head with its stem up, see getSkyLineMinInRange())
+            let skybottomFurthest: number = undefined;
+            if (placement === PlacementEnum.Above) {
+                skybottomFurthest = skybottomcalculator.getSkyLineMinInRange(marginLeft, marginRight);
+            } else {
+                skybottomFurthest = skybottomcalculator.getBottomLineMaxInRange(marginLeft, marginRight);
+            }
+            // stacked on a fingering placed before (the sky/bottom line under the label is its edge), e.g. in the column of a
+            //   chord: at the stacking distance, else at the distance to the notes, like the first fingering of each column
+            const stacked: boolean = fingeringEdges.includes(skybottomFurthest);
+            let yShift: number = 0;
+            if (!stacked) {
+                yShift += this.rules.FingeringOffsetY;
+                if (placement === PlacementEnum.Above) {
+                    yShift += 0.1; // above fingerings are a bit closer to the notes than below ones for some reason
+                }
+            } else {
+                yShift += this.rules.FingeringPaddingY;
+            }
+            if (placement === PlacementEnum.Above) {
+                yShift *= -1;
+            }
+            gLabel.PositionAndShape.RelativePosition.y += skybottomFurthest + yShift;
+            gLabel.PositionAndShape.RelativePosition.x = positionX;
+            gLabel.PositionAndShape.calculateBoundingBox();
+            gLabel.sourceNote = fingering.sourceNote;
+            gse.FingeringEntries.push(gLabel);
+            const start: number = gLabel.PositionAndShape.RelativePosition.x + gLabel.PositionAndShape.BorderLeft;
+            //start -= line.PositionAndShape.RelativePosition.x;
+            const end: number = start - gLabel.PositionAndShape.BorderLeft + gLabel.PositionAndShape.BorderRight;
+            if (placement === PlacementEnum.Above) {
+                const top: number = gLabel.PositionAndShape.RelativePosition.y + gLabel.PositionAndShape.BorderTop; // BorderMarginTop too much
+                skybottomcalculator.updateSkyLineInRange(start, end, top);
+                fingeringEdges.push(top);
+            } else if (placement === PlacementEnum.Below) {
+                const bottom: number = gLabel.PositionAndShape.RelativePosition.y + gLabel.PositionAndShape.BorderBottom;
+                skybottomcalculator.updateBottomLineInRange(start, end, bottom);
+                fingeringEdges.push(bottom);
             }
         }
     }

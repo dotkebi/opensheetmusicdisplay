@@ -71,8 +71,10 @@ describe("Tuplet level", () => {
         const top: number = accent.accent.raisedInkTop(accent.accent.slurClearanceYShift);
         const number: any = measure.TupletNumberInk[0];
         expect(accent.right > number.left && accent.left < number.right, "the accent under the bracket").to.equal(true);
-        // the accent over the slur drawn at -2.66 (snapped to the staff, 0.58 over the raise); the 3's hooks were at -2.38
-        expect(top, "the accent's top").to.be.closeTo(-2.66, 0.05);
+        // the accent over the slur drawn at -2.78 (snapped to the staff, 0.58 over the raise); the 3's hooks were at -2.38.
+        //   (-2.66 before upstream PR #1968, OSMD 2.3.1: each measure is formatted once, to its stave's real width, so the
+        //   notes are drawn up to a pixel from where they were, and the slur follows them)
+        expect(top, "the accent's top").to.be.closeTo(-2.78, 0.05);
         expect(top - number.bottom, "the bracket over the accent").to.be.greaterThan(0.29);
     });
 

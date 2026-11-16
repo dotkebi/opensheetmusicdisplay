@@ -1607,7 +1607,7 @@ export class VexFlowConverter {
     public static CreateTabNote(gve: GraphicalVoiceEntry): VF.TabNote {
         const tabPositions: {str: number, fret: number}[] = [];
         const notes: GraphicalNote[] = gve.notes.reverse();
-        const tabPhrases: { type: number, text: string }[] = [];
+        const tabBends: { type: number, text: string }[][] = [];
         const frac: Fraction = gve.notes[0].graphicalNoteLength;
         const isTuplet: boolean = gve.notes[0].sourceNote.NoteTuplet !== undefined;
         let duration: string = VexFlowConverter.durations(frac, isTuplet)[0];
@@ -1616,7 +1616,9 @@ export class VexFlowConverter {
         let isXNotehead: boolean = false;
         for (const note of gve.notes) {
             const tabNote: TabNote = note.sourceNote as TabNote;
-            let tabPosition: {str: number, fret: number} = {str: tabNote.StringNumberTab, fret: tabNote.FretNumber};
+            const tabPhrases: { type: number, text: string }[] = [];
+            tabBends.push(tabPhrases);
+            let tabPosition: {str: number, fret: number} = {str: tabNote.DisplayedStringNumberTab, fret: tabNote.DisplayedFretNumber};
             if (!(note.sourceNote instanceof TabNote)) {
                 log.info(`invalid tab note: ${note.sourceNote.Pitch.ToString()} in measure ${gve.parentStaffEntry.parentMeasure.MeasureNumber}` +
                     ", likely missing XML string+fret number.");
@@ -1632,7 +1634,7 @@ export class VexFlowConverter {
                 (tabPosition as any).fret = `(${tabPosition.fret})`;
             }
             tabPositions.push(tabPosition);
-            if (tabNote.BendArray) {
+            if (tabNote.BendArray && tabNote.isVisible()) {
                 // Like Guitar Pro and MuseScore, a bend is labeled with how far the string is bent after it, from the unbent note:
                 //   a half step and another half step are "1/2" and "Full", a release that leaves a half step is "1/2".
                 let bentSemitones: number = 0;
@@ -1700,14 +1702,21 @@ export class VexFlowConverter {
             (notes[i] as VexFlowGraphicalNote).setIndex(vfnote, i);
         }
 
-        if (tabPhrases.length > 0) {
+        // VexFlow's Bend.format() moves each bend further right than the preceding bend of the same note.
+        // Add the top string's bend first so that the curves stay nested instead of crossing.
+        const bendIndices: number[] = tabBends.map((_, index) => index).sort((a, b) => tabPositions[a].str - tabPositions[b].str);
+        for (const index of bendIndices) {
+            const tabPhrases: {type: number, text: string}[] = tabBends[index];
+            if (tabPhrases.length === 0) {
+                continue;
+            }
             // One Bend for all segments, so that a release continues from the preceding bend
             //   (the legacy constructor's release flag adds an up segment of its own).
             //   Without a width, VexFlow sizes each segment by its text (Bend.updateWidth()) like the legacy constructor;
             //   the typings require one.
             const bend: VF.Bend = new VF.Bend("", false, tabPhrases as { type: number, text: string, width: number }[]);
             VexFlowConverter.setVexFlowTextFontOfBend(bend, rules);
-            vfnote.addModifier(bend);
+            vfnote.addModifier(bend, index);
         }
 
         // The duration already contains the dots in its ticks. Add only the glyphs, once per chord.
@@ -1899,12 +1908,13 @@ export class VexFlowConverter {
             case SystemLinesEnum.None:
                 return VF.StaveConnector.type.NONE;
             case SystemLinesEnum.DoubleBold:
-                // VexFlowPatch added StaveConnector.type.DOUBLE_HEAVY_RIGHT: two heavy lines joining the staves, as the staves'
-                //   Barline.type.DOUBLE_HEAVY (8) set by VexFlowMeasure.addMeasureLine(). Without a case the connector kept
-                //   VexFlow's default type DOUBLE and drew a heavy line 5px left of the measure's start instead (the start of a
-                //   piano's last measure got a heavy double line in the web, with the staves' heavy-heavy end barlines unjoined).
-                return 9;
+                // two heavy lines at the right of the staves, over their Barline.type.DOUBLE_HEAVY end barlines (VexFlowPatch).
+                //   Without a type, the connector kept VexFlow's default DOUBLE, a heavy line left of the measure's start.
+                return (VF.StaveConnector.type as any).DOUBLE_HEAVY_RIGHT;
             default:
+                // the other styles (dashed, heavy, dotted, ...) are drawn as a regular barline in the staves
+                //   (see VexFlowMeasure.addMeasureLine()). Without a type, the connector kept VexFlow's default DOUBLE.
+                return VexFlowConverter.line(SystemLinesEnum.SingleThin, linePosition);
         }
     }
 
