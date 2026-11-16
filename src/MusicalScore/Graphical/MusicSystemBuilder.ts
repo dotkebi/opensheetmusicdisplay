@@ -121,13 +121,12 @@ export class MusicSystemBuilder {
                 // forceShowRhythm could be a fourth parameter instead in addBeginInstructions, but only affects RhythmInstruction for now.
                 currentMeasureEndInstructionsWidth += this.addEndInstructions(graphicalMeasures);
             }
-            // room before the first notes of a system for the ties continued into them
-            //   (VexFlowMeasure.reserveSystemStartTieRoom(); generally don't want to reference Vexflow classes here)
-            let currentMeasureFirstNoteRoom: number = 0;
-            if (isSystemStartMeasure) {
-                currentMeasureFirstNoteRoom =
-                    (graphicalMeasures.find(measure => measure)?.constructor as any)?.reserveSystemStartTieRoom?.(graphicalMeasures) ?? 0;
-            }
+            // room before the first notes: of a system for the ties continued into them, of any measure for the dynamics
+            //   before the stems of tremolos between the staves
+            //   (VexFlowMeasure.reserveFirstNoteRoom(); generally don't want to reference Vexflow classes here)
+            const currentMeasureFirstNoteRoom: number =
+                (graphicalMeasures.find(measure => measure)?.constructor as any)?.reserveFirstNoteRoom?.(graphicalMeasures,
+                                                                                                         isSystemStartMeasure) ?? 0;
             let currentMeasureVarWidth: number = 0;
             for (let i: number = 0; i < this.numberOfVisibleStaffLines; i++) {
                 currentMeasureVarWidth = Math.max(currentMeasureVarWidth, graphicalMeasures[i].minimumStaffEntriesWidth);

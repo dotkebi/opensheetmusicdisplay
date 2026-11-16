@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1"><part-name>Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <!-- two-note tremolos from a chord in the lower staff, stem up, to one in the upper staff, stem down, at the start of each
+         measure, a dynamic and a wedge below the upper staff at the first chord (m2, m4: flats before the lower chord) -->
+    <measure number="1">
+      <attributes>
+        <divisions>2</divisions>
+        <key><fifths>2</fifths></key>
+        <time><beats>3</beats><beat-type>4</beat-type></time>
+        <staves>2</staves>
+        <clef number="1"><sign>F</sign><line>4</line></clef>
+        <clef number="2"><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <direction placement="below"><direction-type><dynamics><mp/></dynamics></direction-type><staff>1</staff></direction>
+      <direction placement="below"><direction-type><wedge type="crescendo" number="1"/></direction-type><staff>1</staff></direction>
+      <note><pitch><step>D</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff><notations><ornaments><tremolo type="start">2</tremolo></ornaments></notations></note>
+      <note><chord/><pitch><step>F</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><chord/><pitch><step>A</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><chord/><pitch><step>D</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff><notations><ornaments><tremolo type="stop">2</tremolo></ornaments></notations></note>
+      <note><chord/><pitch><step>F</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+      <note><chord/><pitch><step>A</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+      <note><chord/><pitch><step>D</step><octave>4</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+    </measure>
+    <measure number="2">
+      <direction placement="below"><direction-type><wedge type="stop" number="1"/></direction-type><staff>1</staff></direction>
+      <direction placement="below"><direction-type><dynamics><mf/></dynamics></direction-type><staff>1</staff></direction>
+      <direction placement="below"><direction-type><wedge type="diminuendo" number="1"/></direction-type><staff>1</staff></direction>
+      <note><pitch><step>B</step><alter>-1</alter><octave>1</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/><accidental>flat</accidental>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff><notations><ornaments><tremolo type="start">2</tremolo></ornaments></notations></note>
+      <note><chord/><pitch><step>D</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><chord/><pitch><step>G</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><chord/><pitch><step>B</step><alter>-1</alter><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/><accidental>flat</accidental>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><pitch><step>B</step><alter>-1</alter><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/><accidental>flat</accidental>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff><notations><ornaments><tremolo type="stop">2</tremolo></ornaments></notations></note>
+      <note><chord/><pitch><step>D</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+      <note><chord/><pitch><step>G</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+      <note><chord/><pitch><step>B</step><alter>-1</alter><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/><accidental>flat</accidental>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+    </measure>
+    <measure number="3">
+      <direction placement="below"><direction-type><wedge type="stop" number="1"/></direction-type><staff>1</staff></direction>
+      <direction placement="below"><direction-type><dynamics><mp/></dynamics></direction-type><staff>1</staff></direction>
+      <direction placement="below"><direction-type><wedge type="crescendo" number="1"/></direction-type><staff>1</staff></direction>
+      <note><pitch><step>D</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff><notations><ornaments><tremolo type="start">2</tremolo></ornaments></notations></note>
+      <note><chord/><pitch><step>F</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><chord/><pitch><step>A</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><chord/><pitch><step>D</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff><notations><ornaments><tremolo type="stop">2</tremolo></ornaments></notations></note>
+      <note><chord/><pitch><step>F</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+      <note><chord/><pitch><step>A</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+      <note><chord/><pitch><step>D</step><octave>4</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+    </measure>
+    <measure number="4">
+      <direction placement="below"><direction-type><wedge type="stop" number="1"/></direction-type><staff>1</staff></direction>
+      <direction placement="below"><direction-type><dynamics><mf/></dynamics></direction-type><staff>1</staff></direction>
+      <direction placement="below"><direction-type><wedge type="diminuendo" number="1"/></direction-type><staff>1</staff></direction>
+      <note><pitch><step>B</step><alter>-1</alter><octave>1</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/><accidental>flat</accidental>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff><notations><ornaments><tremolo type="start">2</tremolo></ornaments></notations></note>
+      <note><chord/><pitch><step>D</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><chord/><pitch><step>G</step><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><chord/><pitch><step>B</step><alter>-1</alter><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/><accidental>flat</accidental>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>up</stem><staff>2</staff></note>
+      <note><pitch><step>B</step><alter>-1</alter><octave>2</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/><accidental>flat</accidental>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff><notations><ornaments><tremolo type="stop">2</tremolo></ornaments></notations></note>
+      <note><chord/><pitch><step>D</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+      <note><chord/><pitch><step>G</step><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+      <note><chord/><pitch><step>B</step><alter>-1</alter><octave>3</octave></pitch><duration>3</duration><voice>1</voice><type>half</type><dot/><accidental>flat</accidental>
+        <time-modification><actual-notes>2</actual-notes><normal-notes>1</normal-notes></time-modification>
+        <stem>down</stem><staff>1</staff></note>
+      <direction placement="below"><direction-type><wedge type="stop" number="1"/></direction-type><staff>1</staff></direction>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>

@@ -11,7 +11,7 @@ import { VexFlowMeasure } from "../../../src/MusicalScore/Graphical/VexFlow/VexF
  * stem is on the tie's side (a stem-down note under a tie below) or the chord has a displaced (second-interval) head it
  * ends at the head's edge: in the gap Vexflow leaves at the start of a system that was 1 staff space, a small curl behind
  * the key signature. The first measure of the system makes room for 1.5 staff spaces, on all its staves; a part that
- * is 1.5 spaces long then keeps Vexflow's end. A measure that no tie continues into stays as it was. Same rule as osmd-dart (reserveSystemStartTieRoom).
+ * is 1.5 spaces long then keeps Vexflow's end. A measure that no tie continues into stays as it was. Same rule as osmd-dart (reserveFirstNoteRoom).
  *
  * Fixture test_tie_system_start_room.musicxml (piano, 3 flats, a new system at m2, m4, m6; the left hand without ties):
  * m1-m2 chord C5/E-flat5 (stem down, ties below and above), m3-m4 chord F4/G4 (stem up, a second: the G4 is displaced,

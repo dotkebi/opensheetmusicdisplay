@@ -4186,6 +4186,17 @@ export abstract class MusicSheetCalculator {
                 startPosInStaffline.x += startCollideBox.BorderMarginRight;
             }
         }
+        // A wedge between the staves starts right of the stem of a tremolo between them crossing its row at its start
+        //   (VexFlowMeasure.crossStaffTremoloStemXAt(); generally don't want to reference Vexflow classes here)
+        if (!startIsClipped && !isSoftAccent) {
+            const startMultiExpression: MultiExpression = graphicalContinuousDynamic.ContinuousDynamic.StartMultiExpression;
+            const tremoloStemX: number = (staffLine.Measures.find(measure => measure)?.constructor as any)?.crossStaffTremoloStemXAt?.(
+                staffLine, startMultiExpression.SourceMeasureParent, startMultiExpression.Timestamp,
+                graphicalContinuousDynamic.ContinuousDynamic.Placement === PlacementEnum.Below, this.rules);
+            if (tremoloStemX !== undefined) {
+                startPosInStaffline.x = Math.max(startPosInStaffline.x, tremoloStemX + this.rules.WedgeHorizontalMargin);
+            }
+        }
         //currentMusicSystem and currentStaffLine
         const musicSystem: MusicSystem = staffLine.ParentMusicSystem;
         const currentStaffLineIndex: number = musicSystem.StaffLines.indexOf(staffLine);
