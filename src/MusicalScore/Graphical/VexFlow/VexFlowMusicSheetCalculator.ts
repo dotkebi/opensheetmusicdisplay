@@ -28,6 +28,7 @@ import { OrnamentContainer, OrnamentEnum } from "../../VoiceData/OrnamentContain
 import { Articulation } from "../../VoiceData/Articulation";
 import { Tuplet } from "../../VoiceData/Tuplet";
 import { IVerticalMeasureFormat, VexFlowMeasure } from "./VexFlowMeasure";
+import { ClearanceBox, CrossStaffExpressionClearance } from "./CrossStaffExpressionClearance";
 import { VexFlowTextMeasurer } from "./VexFlowTextMeasurer";
 import Vex from "vexflow";
 import VF = Vex.Flow;
@@ -2181,6 +2182,22 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           graphicalInstantaneousDynamic.PositionAndShape.BorderMarginLeft;
         if (dynamicStartPosition.x < minX) {
           dynamicPosition = new PointF2D(minX, dynamicStartPosition.y);
+        }
+      }
+      // A dynamic between the staves at the stem of a tremolo between them crossing its row goes before the stem, in the room
+      //   the measure made for it (VexFlowMeasure.reserveFirstNoteRoom()): centred on its note it lay on the stem, and moved off
+      //   it sideways (CrossStaffExpressionClearance) it could go after it, onto the wedge from it (81sabo Sibelius, Violin
+      //   Concerto III piano m261-264; the print has the dynamics before the stems). Same as osmd-dart.
+      const tremoloStemX: number = VexFlowMeasure.crossStaffTremoloStemXAt(staffLine, multiExpression.SourceMeasureParent,
+        multiExpression.Timestamp, multiExpression.InstantaneousDynamic.Placement === PlacementEnum.Below, this.rules);
+      if (tremoloStemX !== undefined) {
+        const box: BoundingBox = graphicalInstantaneousDynamic.Label.PositionAndShape;
+        const glyphs: ClearanceBox = CrossStaffExpressionClearance.dynamicBox(
+          new ClearanceBox(dynamicPosition.x + box.BorderLeft, 0, dynamicPosition.x + box.BorderRight, 1),
+          multiExpression.InstantaneousDynamic.DynamicExpression);
+        const over: number = glyphs.right - (tremoloStemX - VexFlowMeasure.CrossStaffTremoloDynamicRightRoom);
+        if (over > 0) {
+          dynamicPosition = new PointF2D(dynamicPosition.x - over, dynamicPosition.y);
         }
       }
       // compare with multiExpression.InstantaneousDynamic.InMeasureTimestamp or add a relative timestamp? if we ever need a separate timestamp

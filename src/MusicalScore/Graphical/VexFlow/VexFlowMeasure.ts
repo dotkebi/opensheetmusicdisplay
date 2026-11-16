@@ -20,7 +20,7 @@ import StaveNote = VF.StaveNote;
 import StemmableNote = VF.StemmableNote;
 import NoteSubGroup = VF.NoteSubGroup;
 import log from "loglevel";
-import {unitInPixels} from "./VexFlowMusicSheetDrawer";
+import {unitInPixels, VexFlowMusicSheetDrawer} from "./VexFlowMusicSheetDrawer";
 import {PointF2D} from "../../../Common/DataObjects/PointF2D";
 import {Tuplet} from "../../VoiceData/Tuplet";
 import {RepetitionInstructionEnum, RepetitionInstruction, AlignmentType} from "../../VoiceData/Instructions/RepetitionInstruction";
@@ -45,6 +45,10 @@ import { Tie } from "../../VoiceData/Tie";
 import { TabNote } from "../../VoiceData/TabNote";
 import { CrossStaffBeam } from "./CrossStaffBeam";
 import { CrossStaffCurve } from "./CrossStaffCurve";
+import { ClearanceBox, CrossStaffExpressionClearance } from "./CrossStaffExpressionClearance";
+import { VexFlowInstantaneousDynamicExpression } from "./VexFlowInstantaneousDynamicExpression";
+import { InstantaneousDynamicExpression } from "../../VoiceData/Expressions/InstantaneousDynamicExpression";
+import { BoundingBox } from "../BoundingBox";
 
 // type StemmableNote = VF.StemmableNote;
 
@@ -180,7 +184,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
             (this.stave as any).clef = VexFlowConverter.Clef(this.InitiallyActiveClef).type;
             // Vexflow sets stave.clef to treble by default. It needs this info e.g. for key signature accidentals on new key sig
         }
-        this.firstNoteRoom = 0; // the music system builder reserves it again (reserveSystemStartTieRoom())
+        this.firstNoteRoom = 0; // the music system builder reserves it again (reserveFirstNoteRoom())
         (this.stave as any).MeasureNumber = this.MeasureNumber; // for debug info. vexflow automatically uses stave.measure for rendering measure numbers
         // also see VexFlowMusicSheetDrawer.drawSheet() for some other vexflow default value settings (like default font scale)
         this.hasMetronomeMark = false;
@@ -1235,7 +1239,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
             start = glyphsEnd + 0.3 * space;
         }
         let end: number = lastX;
-        // (1.5 spaces long where the measure made room for it, reserveSystemStartTieRoom(): not shorter, whatever the rounding)
+        // (1.5 spaces long where the measure made room for it, reserveFirstNoteRoom(): not shorter, whatever the rounding)
         if (lastX - start < 1.5 * space - 1e-6 && last.getExtraLeftPx() === 0 && last.getExtraRightPx() === 0) {
             const direction: number = anyTie.direction ? anyTie.direction : last.getStemDirection(); // as StaveTie.draw()
             if (!(direction > 0 && last.hasStem() && last.getStemDirection() === VF.Stem.DOWN)) {
@@ -1249,7 +1253,9 @@ export class VexFlowMeasure extends GraphicalMeasure {
         anyTie.render_options.last_x_shift = end - lastX;
     }
 
-    /** Makes room before the first notes of a measure at the start of a system for the parts of ties continued into them.
+    /** Makes room before the first notes of a measure: at the start of a system for the parts of ties continued into them,
+     * and in any measure for the dynamics between the staves before the stems of tremolos between the staves
+     * (crossStaffTremoloDynamicShortfall()).
      * The part of a tie continued at the start of a system starts 0.3 staff spaces after the clef, key and time signature
      * (fitTieContinuationToSystemStart()), and Vexflow leaves about 1 staff space from there to the note. Where the part
      * can't run to the middle of the note head, i.e. where the note's stem is on the tie's side (a stem-down note under
@@ -1260,15 +1266,19 @@ export class VexFlowMeasure extends GraphicalMeasure {
      * Called by MusicSystemBuilder for the first measure of a system, after its begin instructions were added, so before
      * its notes are formatted at the system's widths: the first tick of a measure is at the same x at every width
      * (Formatter.preFormat() distributes the space after it), so the notes as formatted for the measure's minimum width
-     * (calculateMeasureXLayout()) tell where they will be. Same rule as osmd-dart's reserveSystemStartTieRoom().
+     * (calculateMeasureXLayout()) tell where they will be. Same rule as osmd-dart's reserveFirstNoteRoom().
      * @param measures the measures of the source measure, one per visible staff.
+     * @param isSystemStart whether the measure starts a system (the room for the ties).
      * @returns the room in units, also set as each measure's firstNoteRoom.
      */
-    public static reserveSystemStartTieRoom(measures: GraphicalMeasure[]): number {
+    public static reserveFirstNoteRoom(measures: GraphicalMeasure[], isSystemStart: boolean): number {
         let shortfall: number = 0;
         for (const measure of measures) {
             if (measure instanceof VexFlowMeasure && !measure.isTabMeasure) {
-                shortfall = Math.max(shortfall, measure.systemStartTieShortfall());
+                if (isSystemStart) {
+                    shortfall = Math.max(shortfall, measure.systemStartTieShortfall());
+                }
+                shortfall = Math.max(shortfall, measure.crossStaffTremoloDynamicShortfall());
             }
         }
         const room: number = shortfall / unitInPixels;
@@ -1284,6 +1294,170 @@ export class VexFlowMeasure extends GraphicalMeasure {
             }
         }
         return room;
+    }
+
+    /** The room left of a dynamic between the staves before the stem of a tremolo between the staves, in staff spaces:
+     *  from the measure's start (its barline, and the wedge or text ending there, CrossStaffExpressionClearance.TextGap) or
+     *  its clef, key and time signature (beginGlyphsEnd()). */
+    public static readonly CrossStaffTremoloDynamicLeftRoom: number = 0.5;
+    /** The room right of it, to the stem, in staff spaces: the stem's ink (VexFlowMusicSheetDrawer.CrossStaffTremoloStemReach),
+     *  the clearance's distance from it (CrossStaffExpressionClearance.Clearance) and a tenth more, so that the clearance
+     *  leaves it there. */
+    public static readonly CrossStaffTremoloDynamicRightRoom: number = 0.7;
+
+    /** The x (Vexflow pixels) where the room before this measure's first notes starts: after the glyphs of its clef, key and
+     *  time signature, else its start. A dynamic between the staves does not go over them (81sabo Sibelius, Violin Concerto
+     *  III piano m261 at the start of a system on the web, 1024 wide: "mp" stayed on the stem, its way left blocked by the
+     *  key signature of the lower staff). Same as osmd-dart. */
+    private beginGlyphsEnd(): number {
+        const stave: any = this.stave;
+        let end: number = stave.getX();
+        stave.getNoteStartX(); // formats the begin modifiers
+        for (const modifier of stave.getModifiers(VF.StaveModifier.Position.BEGIN)) {
+            if (modifier instanceof VF.Barline) {
+                continue;
+            }
+            end = Math.max(end, modifier.getX() + modifier.getWidth());
+        }
+        return end;
+    }
+
+    /** The two staves of its instrument between which the stem of a note of a tremolo between the staves in one measure
+     * crosses the room between them to the strokes (VexFlowMusicSheetDrawer.crossStaffTremoloBlock()): the lower staff's
+     * note's stem up, or the upper staff's note's stem down when the lower staff's is down too (the strokes stand on its
+     * tip). Undefined for another note, and for a stem down from the upper staff to the strokes under it (the stems towards
+     * each other: the dynamics and wedges between the staves go under the strokes). See crossStaffTremoloDynamicShortfall();
+     * same as osmd-dart.
+     */
+    public static crossStaffTremoloStemStaves(note: GraphicalNote, rules: EngravingRules): { upper: Staff, lower: Staff } {
+        const sourceNote: Note = note.sourceNote;
+        const tremolo: TremoloBetweenNotes = sourceNote.TremoloInfo?.tremoloBetweenNotes;
+        const stopNote: Note = tremolo?.stopNote;
+        if (!tremolo || !stopNote || !(tremolo.strokes > 0)) {
+            return undefined;
+        }
+        const other: Note = tremolo.startNote === sourceNote ? stopNote : stopNote === sourceNote ? tremolo.startNote : undefined;
+        if (!other || other.SourceMeasure !== sourceNote.SourceMeasure) {
+            return undefined;
+        }
+        const ownStaff: Staff = sourceNote.ParentStaffEntry?.ParentStaff;
+        const otherStaff: Staff = other.ParentStaffEntry?.ParentStaff;
+        if (!ownStaff || !otherStaff || ownStaff === otherStaff || ownStaff.ParentInstrument !== otherStaff.ParentInstrument) {
+            return undefined;
+        }
+        const vfOwn: any = (note as VexFlowGraphicalNote).vfnote?.[0];
+        const vfOther: any = (rules.GNote(other) as VexFlowGraphicalNote)?.vfnote?.[0];
+        if (!(vfOwn instanceof VF.StaveNote) || !(vfOther instanceof VF.StaveNote) || !vfOwn.hasStem() || !vfOther.hasStem()) {
+            return undefined;
+        }
+        const isLower: boolean = ownStaff.idInMusicSheet > otherStaff.idInMusicSheet;
+        const crosses: boolean = isLower ? vfOwn.getStemDirection() === VF.Stem.UP :
+            vfOwn.getStemDirection() === VF.Stem.DOWN && vfOther.getStemDirection() === VF.Stem.DOWN;
+        if (!crosses) {
+            return undefined;
+        }
+        return isLower ? { upper: otherStaff, lower: ownStaff } : { upper: ownStaff, lower: otherStaff };
+    }
+
+    /** The x (units from the staffline's left) of the rightmost stem of a tremolo between the staves that crosses the room
+     * between the staves of the staffline's instrument at the timestamp in the source measure (crossStaffTremoloStemStaves()),
+     * on the side of the staffline towards the other staff (below its staff for the upper one, above it for the lower);
+     * undefined if none does. A wedge between the staves there starts right of it (MusicSheetCalculator): the dynamic it
+     * started after went left of the stem (reserveFirstNoteRoom()), and the wedge started on the stem (81sabo Sibelius,
+     * Violin Concerto III piano m261-264; the print starts the hairpins right of the stems, under the strokes). Same as
+     * osmd-dart.
+     */
+    public static crossStaffTremoloStemXAt(staffLine: StaffLine, source: SourceMeasure, timestamp: Fraction, below: boolean,
+                                           rules: EngravingRules): number {
+        const staff: Staff = staffLine.ParentStaff;
+        let found: number = undefined;
+        for (const line of staffLine.ParentMusicSystem?.StaffLines ?? []) {
+            if (line.ParentStaff?.ParentInstrument !== staff?.ParentInstrument) {
+                continue;
+            }
+            for (const measure of line.Measures) {
+                if (measure?.parentSourceMeasure !== source) {
+                    continue;
+                }
+                for (const staffEntry of measure.staffEntries) {
+                    if (Math.abs(staffEntry.relInMeasureTimestamp.RealValue - timestamp.RealValue) > 1e-6) {
+                        continue;
+                    }
+                    for (const gve of staffEntry.graphicalVoiceEntries) {
+                        for (const note of gve.notes) {
+                            const staves: { upper: Staff, lower: Staff } = VexFlowMeasure.crossStaffTremoloStemStaves(note, rules);
+                            if (!staves || (below ? staves.upper : staves.lower) !== staff) {
+                                continue;
+                            }
+                            const vfNote: any = (note as VexFlowGraphicalNote).vfnote[0];
+                            const x: number = VexFlowMusicSheetDrawer.staffLineNoteFrame(note as VexFlowGraphicalNote).x(vfNote.getStemX()) +
+                                line.PositionAndShape.AbsolutePosition.x - staffLine.PositionAndShape.AbsolutePosition.x;
+                            found = found === undefined ? x : Math.max(found, x);
+                        }
+                    }
+                }
+            }
+        }
+        return found;
+    }
+
+    /** By how many pixels the stem of a note of this measure in a tremolo between the staves of its instrument
+     * (VexFlowMusicSheetDrawer.crossStaffTremoloBlock()), where it crosses the room between the staves, is too near the
+     * measure's start (after its clef, key and time signature, beginGlyphsEnd()) for a dynamic between the staves at the
+     * note's time to go before it (0 if none is).
+     * The drawing lengthens such a stem through the room between the staves to the strokes (crossStaffTremoloStemStaves()),
+     * and a dynamic there at its time, centered on the note, lay on it; CrossStaffExpressionClearance moved it off sideways,
+     * but not left of its measure's start (minLeft), and at the start of a measure the stem left it no room (81sabo
+     * Sibelius, Violin Concerto III piano m261-264: "mp" "mf" under the right hand's staff on the stems of the left hand's
+     * chords, stem up to the strokes under the right hand's staff; the print, S.9336, has them before the stems, the chords
+     * moved right). The notes of the measure, on all its staves, start further right by as much as the dynamic's glyphs
+     * (CrossStaffExpressionClearance.dynamicBox()) and CrossStaffTremoloDynamicLeftRoom and
+     * CrossStaffTremoloDynamicRightRoom need, and VexFlowMusicSheetCalculator places the dynamic there, its glyphs
+     * CrossStaffTremoloDynamicRightRoom before the stem. The dynamics between the staves: below the upper staff or above the
+     * lower one, at the note's timestamp. Same rule as osmd-dart.
+     */
+    private crossStaffTremoloDynamicShortfall(): number {
+        const source: SourceMeasure = this.parentSourceMeasure;
+        if (!source) {
+            return 0;
+        }
+        const stave: any = this.stave;
+        let shortfall: number = 0;
+        for (const staffEntry of this.staffEntries) {
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                for (const note of gve.notes) {
+                    const staves: { upper: Staff, lower: Staff } = VexFlowMeasure.crossStaffTremoloStemStaves(note, this.rules);
+                    const timestamp: Fraction = note.sourceNote.ParentStaffEntry?.Timestamp;
+                    if (!staves || !timestamp) {
+                        continue;
+                    }
+                    let width: number = 0;
+                    for (const [staff, below] of [[staves.upper, true], [staves.lower, false]] as [Staff, boolean][]) {
+                        for (const multi of source.StaffLinkedExpressions[staff.idInMusicSheet] ?? []) {
+                            const dynamic: InstantaneousDynamicExpression = multi.InstantaneousDynamic;
+                            if (!dynamic || (dynamic.Placement === PlacementEnum.Below) !== below ||
+                                Math.abs(multi.Timestamp.RealValue - timestamp.RealValue) > 1e-6) {
+                                continue;
+                            }
+                            const box: BoundingBox = VexFlowInstantaneousDynamicExpression.createLabel(dynamic, this.rules).PositionAndShape;
+                            const glyphs: ClearanceBox = CrossStaffExpressionClearance.dynamicBox(
+                                new ClearanceBox(box.BorderLeft, 0, box.BorderRight, 1), dynamic.DynamicExpression);
+                            width = Math.max(width, glyphs.right - glyphs.left);
+                        }
+                    }
+                    const vfOwn: any = (note as VexFlowGraphicalNote).vfnote[0];
+                    // the note as formatted on a previous stave of this measure (it has a new stave since resetLayout())
+                    if (width <= 0 || !vfOwn.getStave() || !vfOwn.getTickContext()) {
+                        continue;
+                    }
+                    const stemX: number = vfOwn.getStemX() - vfOwn.getStave().getNoteStartX() + stave.getNoteStartX() - this.beginGlyphsEnd();
+                    const need: number = (VexFlowMeasure.CrossStaffTremoloDynamicLeftRoom + width +
+                        VexFlowMeasure.CrossStaffTremoloDynamicRightRoom) * unitInPixels;
+                    shortfall = Math.max(shortfall, need - stemX);
+                }
+            }
+        }
+        return shortfall;
     }
 
     /** By how many pixels the shortest part of a tie continued into a first note of this measure would be shorter than

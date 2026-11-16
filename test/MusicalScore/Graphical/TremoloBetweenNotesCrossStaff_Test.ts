@@ -63,14 +63,19 @@ describe("Tremolo between notes across the staves of a system", () => {
                 }
             }
 
-            // m1: under the upper staff, the dynamic below it under the strokes
+            // m1: under the upper staff, the dynamic below it under the strokes or before them (before the stem from the lower
+            //   staff, TremoloCrossStaffDynamicRoom_Test.ts)
             const upper: StaffLine = osmd.GraphicSheet.MusicPages[0].MusicSystems[0].StaffLines[0];
             const m1Bottom: number = Math.max(...strokes.get(keys[0]).map(s => s.bottom));
+            const m1Left: number = Math.min(...strokes.get(keys[0]).map(s => s.left));
             expect(strokes.get(keys[0])[0].top).to.be.greaterThan(upper.PositionAndShape.AbsolutePosition.y + 4);
             const mp: BoundingBox = upper.AbstractExpressions.find(e => e.Label?.Label?.text === "mp").Label.PositionAndShape;
             const mpTop: number = mp.AbsolutePosition.y + mp.BorderMarginTop;
+            const mpRight: number = mp.AbsolutePosition.x + mp.BorderRight + (osmd.Drawer.CrossStaffExpressionShifts.get(
+                upper.AbstractExpressions.find(e => e.Label?.Label?.text === "mp").Label) ?? 0);
             // (the drawn path is rounded to hundredths of a pixel)
-            expect(mpTop, `mp top ${mpTop}, strokes bottom ${m1Bottom}`).to.be.at.least(m1Bottom - 0.02);
+            expect(mpTop >= m1Bottom - 0.02 || mpRight <= m1Left,
+                   `mp top ${mpTop}, right ${mpRight}, strokes bottom ${m1Bottom}, left ${m1Left}`).to.equal(true);
             osmd.clear();
             container.remove();
         });
