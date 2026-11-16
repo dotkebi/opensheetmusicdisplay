@@ -5860,14 +5860,55 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     for (const musicSystem of this.musicSystems) {
       const geometry: CrossStaffCurveLayoutGeometry = new CrossStaffCurveLayoutGeometry(musicSystem.PositionAndShape);
       for (const staffLine of musicSystem.StaffLines) {
+        this.crossStaffCurveSamples.delete(staffLine);
+      }
+      for (const staffLine of musicSystem.StaffLines) {
         for (const gSlur of staffLine.GraphicalSlurs) {
           const curve: CrossStaffCurve = gSlur.crossStaffCurve;
           if (curve && curve.calculate(this.rules, geometry)) {
             curve.reserveOuterSides(this.rules, geometry);
+            if (curve.isTie) {
+              continue;
+            }
+            const samples: PointF2D[] = curve.sample();
+            for (const line of musicSystem.StaffLines) {
+              const origin: PointF2D = geometry.origin(line);
+              if (!this.crossStaffCurveSamples.has(line)) {
+                this.crossStaffCurveSamples.set(line, []);
+              }
+              this.crossStaffCurveSamples.get(line).push(samples.map(point => new PointF2D(point.x - origin.x,
+                                                                                         point.y - origin.y)));
+            }
           }
         }
       }
     }
+  }
+
+  /** Each staff line's curves between staves as reserveCrossStaffCurves() calculated them, relative to the staff line
+   *  (sampled): the wedges of the staff line they run through go beyond them (wedgeBeyondCrossStaffCurves()). */
+  private crossStaffCurveSamples: Map<StaffLine, PointF2D[][]> = new Map();
+
+  /**
+   * The y of a wedge's centre line from left to right on its staff line (idealY, below it or above it, opening high)
+   * moved beyond the slurs' curves between the staves that would cross it (CrossStaffCurve.wedgeMove()): a slur from the
+   * left hand up to the right hand running through a crescendo under the right hand passes over it, the crescendo under
+   * the curve (Bowen, Viola Sonata No. 2 m141-142: the slur from the left hand's A2 to the right hand's A5 went through
+   * both lines of the crescendo under the right hand's beam; the print has the crescendo under the slur; user decision
+   * 2026-11-16). A wedge clear of the curves (beside them, or between a curve and its staff) stays. The curve is the one
+   * calculated with the staves' preliminary distance (reserveCrossStaffCurves()): the wedge's new place enters the
+   * bottom (sky) line, and the staves move apart for it; the drawer moves the wedge on beyond the curve as drawn between
+   * the placed staves (the curve's end on the other staff moved with it), short of that staff's notes
+   * (VexFlowMusicSheetDrawer.crossStaffWedgeOffsetOf()). As in osmd-dart.
+   */
+  protected wedgeBeyondCrossStaffCurves(staffLine: StaffLine, left: number, right: number, idealY: number,
+                                        opening: number, below: boolean): number {
+    const curves: PointF2D[][] = this.crossStaffCurveSamples.get(staffLine);
+    if (!curves) {
+      return idealY;
+    }
+    return idealY + CrossStaffCurve.wedgeLayoutMove(curves, left, right, idealY - opening / 2, idealY + opening / 2, below,
+                                                    this.rules.StaffHeight);
   }
 
   /**

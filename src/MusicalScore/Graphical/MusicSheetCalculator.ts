@@ -2257,6 +2257,13 @@ export abstract class MusicSheetCalculator {
 
     /** Reserves the outer sides of the curves between staves in the sky and bottom lines, after the notes' lines are
      *  saved (see VexFlowMusicSheetCalculator). */
+    /** The y of a wedge's centre line from left to right on its staff line moved beyond the slurs' curves between the
+     *  staves that would cross it (see VexFlowMusicSheetCalculator); here: unmoved. */
+    protected wedgeBeyondCrossStaffCurves(staffLine: StaffLine, left: number, right: number, idealY: number,
+                                          opening: number, below: boolean): number {
+        return idealY;
+    }
+
     protected reserveCrossStaffCurves(): void {
         // implemented by VexFlowMusicSheetCalculator
     }
@@ -4368,6 +4375,10 @@ export abstract class MusicSheetCalculator {
                 idealY += this.rules.WedgeOpeningLength / 2;
                 idealY += this.rules.WedgeVerticalMargin;
             }
+            if (sameStaffLine) {
+                idealY = this.wedgeBeyondCrossStaffCurves(staffLine, upperStartX, upperEndX, idealY,
+                                                          this.rules.WedgeOpeningLength, true);
+            }
 
         } else if (placement === PlacementEnum.Above) {
             // single Staff Instrument (eg Voice)
@@ -4455,6 +4466,9 @@ export abstract class MusicSheetCalculator {
             }
             if (!sameStaffLine) {
                 endIdealY -= this.rules.WedgeVerticalMargin;
+            } else {
+                idealY = this.wedgeBeyondCrossStaffCurves(staffLine, upperStartX, upperEndX, idealY,
+                                                          this.rules.WedgeOpeningLength, false);
             }
         }
 

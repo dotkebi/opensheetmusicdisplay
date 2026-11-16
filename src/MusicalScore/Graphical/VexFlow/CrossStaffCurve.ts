@@ -474,12 +474,17 @@ export class CrossStaffCurve {
             const archReach: number = CrossStaffCurve.reach(arch, p0, p3, below);
             // (the hull reaches as far as its highest corner: an obstacle, or the least bow)
             const hullReach: number = CrossStaffCurve.hullHeight(rules, p0, p3, points, below, bowCap, upright);
-            const useArch: boolean = archReach <= hullReach * 1.25 + 0.5 &&
-                CrossStaffCurve.uncleared(arch, points, below, upright) === 0;
+            const cleanArch: boolean = CrossStaffCurve.uncleared(arch, points, below, upright) === 0;
+            const useArch: boolean = archReach <= hullReach * 1.25 + 0.5 && cleanArch;
             const hull: Segment[] = useArch ? arch : this.hullCurve(rules, p0, p3, points, below, bowCap, upright);
             // one clean arch first, then the usual ends, then the lower curve (a blocked one between the staves after the
-            //   others)
-            const cost: number = (useArch ? 0 : 1000) + (blocked ? 500 : 0) + (usual ? 0 : 100) + (useArch ? archReach : hullReach);
+            //   others). The hull at ends where a clean arch was found too, taller than the hull, counts as a clean arch:
+            //   at the usual ends it went after an arch at the other ends (Bowen, Viola Sonata No. 2 m141-142 in the app,
+            //   the slur from the left hand's A2 ended under the right hand's A5 notehead, around its stem from the right,
+            //   where the print ends it at the stem's end on the beam; the arch there 4.15 high, the hull 2.8). As in
+            //   osmd-dart.
+            const cost: number = (useArch || cleanArch ? 0 : 1000) + (blocked ? 500 : 0) + (usual ? 0 : 100) +
+                (useArch ? archReach : hullReach);
             if (cost < best) {
                 best = cost;
                 bestFit = {
@@ -1073,10 +1078,16 @@ export class CrossStaffCurve {
             const a: PointF2D = corners[i];
             const b: PointF2D = corners[i + 1];
             const after: PointF2D = corners[Math.min(corners.length - 1, i + 2)];
+            // (the control points kept within the segment's x: a corner close to an end after a long chord turned the curve
+            //   back past the end - Bowen, Viola Sonata No. 2 m142 in the app, the slur from the left hand curled back to the
+            //   right hand's A5 stem end from 3.5 right of it. As in osmd-dart.)
+            const lo: number = Math.min(a.x, b.x);
+            const hi: number = Math.max(a.x, b.x);
+            const clampX: (x: number) => number = x => Math.min(hi, Math.max(lo, x));
             result.push([
                 a,
-                new PointF2D(a.x + (b.x - before.x) / 6, a.y + (b.y - before.y) / 6),
-                new PointF2D(b.x - (after.x - a.x) / 6, b.y - (after.y - a.y) / 6),
+                new PointF2D(clampX(a.x + (b.x - before.x) / 6), a.y + (b.y - before.y) / 6),
+                new PointF2D(clampX(b.x - (after.x - a.x) / 6), b.y - (after.y - a.y) / 6),
                 b,
             ]);
         }
@@ -1261,6 +1272,96 @@ export class CrossStaffCurve {
             outer.push(new PointF2D(centre[i].x + nx * w, centre[i].y + ny * w));
         }
         return [...centre, ...outer.reverse()];
+    }
+
+    /** Clearance of a wedge moved beyond a slur's curve between staves, in staff spaces (see wedgeMove()). */
+    public static readonly wedgeClearance: number = 0.5;
+    /** The least room between such a wedge and the notes of the staff it is moved towards, in staff spaces. */
+    public static readonly wedgeStaffClearance: number = 0.3;
+
+    /** The vertical move of a wedge (its lines' box left to right, top to bottom) beyond the curves (sampled, in its
+     *  frame) that pass through it or within wedgeClearance of it: under them for a wedge below its staff, over them
+     *  else; 0 when none does. A wedge between a curve and its staff, or beside the curves, stays. As in osmd-dart. */
+    public static wedgeMove(curves: PointF2D[][], left: number, right: number, top: number, bottom: number,
+                            below: boolean): number {
+        let move: number = 0;
+        for (const curve of curves) {
+            const inRange: number[] = CrossStaffCurve.heightsWithin(curve, left, right);
+            if (inRange.length === 0) {
+                continue;
+            }
+            const clearance: number = CrossStaffCurve.wedgeClearance;
+            if (!inRange.some(y => y > top + move - clearance && y < bottom + move + clearance)) {
+                continue;
+            }
+            move = below
+                ? Math.max(move, Math.max(...inRange) + clearance - top)
+                : Math.min(move, Math.min(...inRange) - clearance - bottom);
+        }
+        return move;
+    }
+
+    /** The heights (y) of the sampled curve from left to right: its samples there and, interpolated, where it crosses
+     *  left and right (a wedge's tip between two samples: Bowen m142 on the web at 1400, the curve 0.5 lower there than
+     *  at the next sample). */
+    private static heightsWithin(curve: PointF2D[], left: number, right: number): number[] {
+        const heights: number[] = [];
+        for (let i: number = 0; i < curve.length; i++) {
+            const point: PointF2D = curve[i];
+            if (point.x >= left && point.x <= right) {
+                heights.push(point.y);
+            }
+            const next: PointF2D = curve[i + 1];
+            if (!next || next.x === point.x) {
+                continue;
+            }
+            for (const x of [left, right]) {
+                if ((point.x - x) * (next.x - x) < 0) {
+                    heights.push(point.y + (next.y - point.y) * (x - point.x) / (next.x - point.x));
+                }
+            }
+        }
+        return heights;
+    }
+
+    /** The most of the other staff's move a curve point follows in wedgeLayoutMove(). */
+    public static readonly wedgeFollowMax: number = 0.7;
+
+    /**
+     * wedgeMove() for the layout, with the curves calculated with the staves' preliminary distance and relative to the
+     * wedge's staff line (staffHeight high): the staves move apart by about the wedge's move, and the curve's end on the
+     * other staff moves with it, its points by their fraction of the way from the end on the wedge's staff (the one
+     * nearer it) to the other end (up to wedgeFollowMax): the move is each point's need over the fraction it doesn't follow
+     * (Bowen, Viola Sonata No. 2 m142 on the web: the crescendo moved 2.3 under the curve as calculated, the curve as drawn
+     * 1.1 lower, on the crescendo, with no room under it). As in osmd-dart.
+     */
+    public static wedgeLayoutMove(curves: PointF2D[][], left: number, right: number, top: number, bottom: number,
+                                  below: boolean, staffHeight: number): number {
+        let move: number = 0;
+        const clearance: number = CrossStaffCurve.wedgeClearance;
+        for (const curve of curves) {
+            if (curve.length < 2 || CrossStaffCurve.wedgeMove([curve], left, right, top, bottom, below) === 0) {
+                continue;
+            }
+            const first: PointF2D = curve[0];
+            const last: PointF2D = curve[curve.length - 1];
+            const off: (y: number) => number = y => y < 0 ? -y : y > staffHeight ? y - staffHeight : 0;
+            const anchored: PointF2D = off(first.y) <= off(last.y) ? first : last;
+            const other: PointF2D = anchored === first ? last : first;
+            const span: number = Math.max(1e-9, Math.abs(other.x - anchored.x));
+            for (const point of curve) {
+                if (point.x < left || point.x > right) {
+                    continue;
+                }
+                const follow: number = Math.min(CrossStaffCurve.wedgeFollowMax, Math.abs(point.x - anchored.x) / span);
+                const need: number = below ? point.y + clearance - top : point.y - clearance - bottom;
+                if (below ? need > 0 : need < 0) {
+                    const total: number = need / (1 - follow);
+                    move = below ? Math.max(move, total) : Math.min(move, total);
+                }
+            }
+        }
+        return move;
     }
 
     /** Reserves the curve, calculated in the layout frame, in the sky line of its upper staff where it runs over that
