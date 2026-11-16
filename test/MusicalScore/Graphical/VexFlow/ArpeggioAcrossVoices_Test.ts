@@ -19,9 +19,12 @@ import { Arpeggio } from "../../../../src/MusicalScore/VoiceData/Arpeggio";
  *  m4 staff 1: v1 chord C4 E4 G4 (arpeggiate), one voice
  *  m5 staff 1 v1 chord G4 B4 (arpeggiate) + staff 2 v5 chord C3 E3 (arpeggiate), no number
  *  m6 staff 1 v1 chord G4 B4 (arpeggiate 2) + staff 2 v5 chord C3 E3 (arpeggiate 2)
+ *  m7 staff 1 v1 chord G4 B4 (arpeggiate 1) + staff 2 v5 chord C3 E3 (arpeggiate 2)
  *
- * Across the staves, the same number links the arpeggios only when one staff holds a single note (m3; it is no
- * arpeggio by itself). Two chords with the same number (m6; Schumann, Jemand m10/20/21) stay two wavy lines, as engraved.
+ * Across the staves, the same number is one arpeggio, as MusicXML defines it: a single note over a chord (m3) as two
+ * chords (m6; Bruch, Scottish Fantasy m364, Schumann, Liederkreis Op. 24 1 m45) are one wavy line over both hands.
+ * Different numbers (m7; Schumann, Jemand m10/20/21) and no number (m5, as MuseScore writes it) stay one wavy line per
+ * staff. Before, two chords with the same number were drawn one per staff as well.
  */
 describe("Arpeggio across voices and staves", () => {
     let container: HTMLElement;
@@ -60,6 +63,23 @@ describe("Arpeggio across voices and staves", () => {
             }
         }
         return found;
+    }
+
+    /** The Arpeggios of the notes of source measure measureIndex. */
+    function arpeggiosIn(measureIndex: number): Set<Arpeggio> {
+        const arpeggios: Set<Arpeggio> = new Set<Arpeggio>();
+        for (const verticalContainer of osmd.Sheet.SourceMeasures[measureIndex].VerticalSourceStaffEntryContainers) {
+            for (const staffEntry of verticalContainer.StaffEntries) {
+                for (const voiceEntry of staffEntry?.VoiceEntries ?? []) {
+                    for (const note of voiceEntry.Notes) {
+                        if (note.Arpeggio) {
+                            arpeggios.add(note.Arpeggio);
+                        }
+                    }
+                }
+            }
+        }
+        return arpeggios;
     }
 
     /** Sorted VexFlow y values (top first) of the first non-rest voice entry of voiceId in the measure, on staff. */
@@ -139,8 +159,19 @@ describe("Arpeggio across voices and staves", () => {
         }
     });
 
-    it("(g) two chords with the same number on both staves stay two wavy lines", () => {
+    it("(g) two chords with the same number on both staves are one wavy line", () => {
         const strokes: FoundStroke[] = strokesIn(5);
+        expect(strokes.length, "no second stroke on staff 2").to.equal(1);
+        expect(strokes[0].staff).to.equal(0);
+        const stroke: any = strokes[0].stroke;
+        expect(stroke.drawn_top_y, "top: B4 on staff 1").to.equal(ys(5, 0, 1)[0]);
+        const chord: number[] = ys(5, 1, 5);
+        expect(stroke.drawn_bot_y, "bottom: C3 on staff 2").to.equal(chord[chord.length - 1]);
+        expect(stroke.drawn_bot_y - stroke.drawn_top_y, "spans into the lower staff (px)").to.be.greaterThan(60);
+    });
+
+    it("(h) two chords with different numbers on both staves stay two wavy lines", () => {
+        const strokes: FoundStroke[] = strokesIn(6);
         expect(strokes.length).to.equal(2);
         expect(strokes.map(s => s.staff).sort()).to.deep.equal([0, 1]);
         for (const found of strokes) {
@@ -149,19 +180,18 @@ describe("Arpeggio across voices and staves", () => {
         }
     });
 
+    it("(g) the two chords of m6 are one Arpeggio model object", () => {
+        const arpeggios: Set<Arpeggio> = arpeggiosIn(5);
+        expect(arpeggios.size).to.equal(1);
+        expect([...arpeggios][0].notes.length).to.equal(4);
+    });
+
+    it("(h) the two chords of m7 keep their own Arpeggio", () => {
+        expect(arpeggiosIn(6).size).to.equal(2);
+    });
+
     it("all participating notes belong to one Arpeggio model object", () => {
-        const arpeggios: Set<Arpeggio> = new Set<Arpeggio>();
-        for (const verticalContainer of osmd.Sheet.SourceMeasures[2].VerticalSourceStaffEntryContainers) {
-            for (const staffEntry of verticalContainer.StaffEntries) {
-                for (const voiceEntry of staffEntry?.VoiceEntries ?? []) {
-                    for (const note of voiceEntry.Notes) {
-                        if (note.Arpeggio) {
-                            arpeggios.add(note.Arpeggio);
-                        }
-                    }
-                }
-            }
-        }
+        const arpeggios: Set<Arpeggio> = arpeggiosIn(2);
         expect(arpeggios.size).to.equal(1);
         expect([...arpeggios][0].notes.length).to.equal(4);
     });

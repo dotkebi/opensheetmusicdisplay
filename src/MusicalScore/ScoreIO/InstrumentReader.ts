@@ -814,11 +814,13 @@ export class InstrumentReader {
   }
 
   /**
-   * <arpeggiate number="n"> on both staves of the instrument at one timestamp: when one of the staves holds a single
-   * note only, which is no arpeggio by itself (Schumann, Myrthen, Lieder der Braut I m47: right-hand F#4 over the
-   * left-hand chord D3-F#3-C4), the two are one wavy line across both staves and are merged into the first staff's
-   * Arpeggio (its notes then span the staves, see VexFlowMeasure.createArpeggio()). Two chords with the same number
-   * (Jemand m10, m20, m21) stay two wavy lines, one per hand, as engraved. Without a number nothing is linked.
+   * <arpeggiate number="n"> on both staves of the instrument at one timestamp is one arpeggio, as MusicXML defines the
+   * number ("arpeggiate elements with the same number are arpeggiated together"): one wavy line across both staves,
+   * merged into the first staff's Arpeggio (its notes then span the staves, see VexFlowMeasure.createArpeggio()) - a
+   * single note over a chord (Schumann, Myrthen, Lieder der Braut I m47: right-hand F#4 over the left-hand chord
+   * D3-F#3-C4) as two chords (Bruch, Scottish Fantasy m364, Schumann, Liederkreis Op. 24 1 m45). Different numbers stay
+   * one wavy line per hand (Jemand m10, m20, m21: upper 1, lower 2). Without a number nothing is linked: MusicXML leaves
+   * that open, and MuseScore, which writes no number, means one line per staff.
    */
   private linkArpeggiosAcrossStaves(measure: SourceMeasure): void {
     if (!measure || this.instrument.Staves.length < 2) {
@@ -840,7 +842,7 @@ export class InstrumentReader {
         }
       }
       for (const group of byNumber.values()) {
-        if (group.length < 2 || !group.some((arpeggio) => arpeggio.notes.length < 2)) {
+        if (group.length < 2) {
           continue;
         }
         const first: Arpeggio = group[0];
