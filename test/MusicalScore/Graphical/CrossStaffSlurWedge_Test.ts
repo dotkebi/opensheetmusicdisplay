@@ -115,4 +115,22 @@ describe("A crescendo under a slur between the staves", () => {
         const head: any = entries[entries.length - 1].graphicalVoiceEntries[0].notes[0];
         expect(end.y).to.be.greaterThan(head.PositionAndShape.AbsolutePosition.y + 2.5);
     });
+
+    describe("CrossStaffCurve.wedgeMove()", () => {
+        // a curve below the staff (top line 0, 4 high) from its end on the staff at x 20 down to the other staff's note at
+        //   x 0, y 14 (straight)
+        const curve: PointF2D[] = [];
+        for (let i: number = 0; i <= 40; i++) {
+            curve.push(new PointF2D(20 - i / 2, 4 + 10 * i / 40));
+        }
+        it("moves a wedge the curve runs through near its end on the staff", () => {
+            // x 14 to 18: the curve at y 5 to 7, the wedge 5.5 to 6.7
+            expect(CrossStaffCurve.wedgeMove([curve], 14, 18, 5.5, 6.7, true)).to.be.closeTo(
+                7 + CrossStaffCurve.wedgeClearance - 5.5, 1e-9);
+        });
+        it("leaves a wedge near the curve's end on the other staff", () => {
+            // x 2 to 6: nine tenths of the way to the other end
+            expect(CrossStaffCurve.wedgeMove([curve], 2, 6, 10, 11.2, true)).to.equal(0);
+        });
+    });
 });

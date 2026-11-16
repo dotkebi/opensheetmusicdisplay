@@ -1890,11 +1890,12 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                 samples.push(curve.sample());
             }
         }
-        const move: number = CrossStaffCurve.wedgeMove(samples, left, right, top, bottom, below);
+        const move: number = CrossStaffCurve.wedgeMove(samples, left, right, top, bottom, below, origin.y,
+                                                       this.rules.StaffHeight);
         if (move === 0) {
             return 0;
         }
-        // short of the next staff's notes
+        // short of the next staff's notes: a wedge that can't go beyond the curve there stays
         const neighbourOrigin: PointF2D = neighbour.PositionAndShape.AbsolutePosition;
         const calculator: any = neighbour.SkyBottomLineCalculator;
         const relLeft: number = left - neighbourOrigin.x;
@@ -1902,11 +1903,11 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         if (below) {
             const lowest: number = neighbourOrigin.y + Math.min(0, calculator.getSkyLineMinInRange(relLeft, relRight)) -
                 CrossStaffCurve.wedgeStaffClearance;
-            return Math.max(0, Math.min(move, lowest - bottom));
+            return bottom + move <= lowest + 1e-9 ? move : 0;
         }
         const highest: number = neighbourOrigin.y + Math.max(this.rules.StaffHeight, calculator.getBottomLineMaxInRange(relLeft, relRight)) +
             CrossStaffCurve.wedgeStaffClearance;
-        return Math.min(0, Math.max(move, highest - top));
+        return top + move >= highest - 1e-9 ? move : 0;
     }
 
     protected drawContinuousDynamic(graphicalExpression: VexFlowContinuousDynamicExpression): void {

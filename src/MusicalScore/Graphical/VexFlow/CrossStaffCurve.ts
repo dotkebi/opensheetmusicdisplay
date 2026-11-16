@@ -1279,15 +1279,32 @@ export class CrossStaffCurve {
     /** The least room between such a wedge and the notes of the staff it is moved towards, in staff spaces. */
     public static readonly wedgeStaffClearance: number = 0.3;
 
-    /** The vertical move of a wedge (its lines' box left to right, top to bottom) beyond the curves (sampled, in its
-     *  frame) that pass through it or within wedgeClearance of it: under them for a wedge below its staff, over them
-     *  else; 0 when none does. A wedge between a curve and its staff, or beside the curves, stays. As in osmd-dart. */
+    /**
+     * The vertical move of a wedge (its lines' box left to right, top to bottom) beyond the curves (sampled, in its frame,
+     * its staff's top line at staffTop) that pass through it or within wedgeClearance of it: under them for a wedge below
+     * its staff, over them else; 0 when none does. A wedge between a curve and its staff, or beside the curves, stays; so
+     * does a wedge near the curve's end on the other staff (otherEnd()), where the curve follows more than wedgeFollowMax
+     * of that staff's move (follow()): it goes through the wedge into that staff, no place beyond it is between the staves
+     * (Enescu, Konzertstück, piano m151; Schumann, Op. 70, piano m35: a slur from the left hand's note at the wedge's
+     * start up to the right hand; moved, the wedge was still crossed, on the left hand's notes, or the staves went far
+     * apart for it). Bowen m142's crescendo is a third of the way from the curve's end on its staff to its other end at
+     * most. As in osmd-dart.
+     */
     public static wedgeMove(curves: PointF2D[][], left: number, right: number, top: number, bottom: number,
-                            below: boolean): number {
+                            below: boolean, staffTop: number = 0, staffHeight: number = 4): number {
         let move: number = 0;
         for (const curve of curves) {
             const inRange: number[] = CrossStaffCurve.heightsWithin(curve, left, right);
             if (inRange.length === 0) {
+                continue;
+            }
+            const other: PointF2D = CrossStaffCurve.otherEnd(curve, staffTop, staffHeight);
+            if (!other) {
+                continue;
+            }
+            const anchored: PointF2D = other === curve[0] ? curve[curve.length - 1] : curve[0];
+            if (CrossStaffCurve.follow(anchored, other, left) > CrossStaffCurve.wedgeFollowMax ||
+                CrossStaffCurve.follow(anchored, other, right) > CrossStaffCurve.wedgeFollowMax) {
                 continue;
             }
             const clearance: number = CrossStaffCurve.wedgeClearance;
@@ -1299,6 +1316,29 @@ export class CrossStaffCurve {
                 : Math.min(move, Math.min(...inRange) - clearance - bottom);
         }
         return move;
+    }
+
+    /** How much of the other staff's move the curve from anchored (its end on the wedge's staff) to other follows at x:
+     *  the fraction of the way from anchored to other (1 beyond other). */
+    private static follow(anchored: PointF2D, other: PointF2D, x: number): number {
+        const span: number = Math.abs(other.x - anchored.x);
+        if (span < 1e-9) {
+            return 1;
+        }
+        return Math.min(1, Math.abs(x - anchored.x) / span);
+    }
+
+    /** The end of the sampled curve farther from the staff whose top line is at staffTop (staffHeight high): its end on
+     *  the other staff. */
+    private static otherEnd(curve: PointF2D[], staffTop: number, staffHeight: number): PointF2D | undefined {
+        if (curve.length < 2) {
+            return undefined;
+        }
+        const off: (y: number) => number = y => {
+            const rel: number = y - staffTop;
+            return rel < 0 ? -rel : rel > staffHeight ? rel - staffHeight : 0;
+        };
+        return off(curve[0].y) <= off(curve[curve.length - 1].y) ? curve[curve.length - 1] : curve[0];
     }
 
     /** The heights (y) of the sampled curve from left to right: its samples there and, interpolated, where it crosses
@@ -1324,36 +1364,33 @@ export class CrossStaffCurve {
         return heights;
     }
 
-    /** The most of the other staff's move a curve point follows in wedgeLayoutMove(). */
+    /** The most of the other staff's move a curve point over (under) a wedge may follow for the wedge to go beyond the
+     *  curve (wedgeMove(), wedgeLayoutMove()). */
     public static readonly wedgeFollowMax: number = 0.7;
 
     /**
      * wedgeMove() for the layout, with the curves calculated with the staves' preliminary distance and relative to the
      * wedge's staff line (staffHeight high): the staves move apart by about the wedge's move, and the curve's end on the
-     * other staff moves with it, its points by their fraction of the way from the end on the wedge's staff (the one
-     * nearer it) to the other end (up to wedgeFollowMax): the move is each point's need over the fraction it doesn't follow
-     * (Bowen, Viola Sonata No. 2 m142 on the web: the crescendo moved 2.3 under the curve as calculated, the curve as drawn
-     * 1.1 lower, on the crescendo, with no room under it). As in osmd-dart.
+     * other staff moves with it, its points by their fraction of the way from the end on the wedge's staff to the other
+     * end (follow()): the move is each point's need over the fraction it doesn't follow (Bowen, Viola Sonata No. 2 m142 on
+     * the web: the crescendo moved 2.3 under the curve as calculated, the curve as drawn 1.1 lower, on the crescendo, with
+     * no room under it). As in osmd-dart.
      */
     public static wedgeLayoutMove(curves: PointF2D[][], left: number, right: number, top: number, bottom: number,
                                   below: boolean, staffHeight: number): number {
         let move: number = 0;
         const clearance: number = CrossStaffCurve.wedgeClearance;
         for (const curve of curves) {
-            if (curve.length < 2 || CrossStaffCurve.wedgeMove([curve], left, right, top, bottom, below) === 0) {
+            if (CrossStaffCurve.wedgeMove([curve], left, right, top, bottom, below, 0, staffHeight) === 0) {
                 continue;
             }
-            const first: PointF2D = curve[0];
-            const last: PointF2D = curve[curve.length - 1];
-            const off: (y: number) => number = y => y < 0 ? -y : y > staffHeight ? y - staffHeight : 0;
-            const anchored: PointF2D = off(first.y) <= off(last.y) ? first : last;
-            const other: PointF2D = anchored === first ? last : first;
-            const span: number = Math.max(1e-9, Math.abs(other.x - anchored.x));
+            const other: PointF2D = CrossStaffCurve.otherEnd(curve, 0, staffHeight);
+            const anchored: PointF2D = other === curve[0] ? curve[curve.length - 1] : curve[0];
             for (const point of curve) {
                 if (point.x < left || point.x > right) {
                     continue;
                 }
-                const follow: number = Math.min(CrossStaffCurve.wedgeFollowMax, Math.abs(point.x - anchored.x) / span);
+                const follow: number = CrossStaffCurve.follow(anchored, other, point.x);
                 const need: number = below ? point.y + clearance - top : point.y - clearance - bottom;
                 if (below ? need > 0 : need < 0) {
                     const total: number = need / (1 - follow);
