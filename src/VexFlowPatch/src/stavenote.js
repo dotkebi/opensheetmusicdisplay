@@ -114,7 +114,8 @@ const OSMD_REST_LINE_MAX = 7;
 const OSMD_REST_LINE_MIN = -1;
 function osmdPlaceRests(notes, startLines) {
   notes.forEach((rest, index) => {
-    if (!rest.isRest() || rest.osmdExplicitRest || rest.osmdInvisible) return;
+    // (osmdRestOnLine: a half or whole rest OSMD put on a line clear of the notes, VexFlowConverter.lineOfRest())
+    if (!rest.isRest() || rest.osmdExplicitRest || rest.osmdRestOnLine || rest.osmdInvisible) return;
     const others = notes.filter(note => note !== rest && !note.isRest() && !note.osmdInvisible &&
       note.getStave() === rest.getStave());
     if (others.length === 0) return;
@@ -181,11 +182,13 @@ function osmdSeparateRests(notes) {
       // rests of the same duration at the same place read as one rest of both voices, as the app (VexFlow 5) draws
       //   only one of them: they stay (solo vocal review E02 and E12 piano, which this rule would have split)
       if (upper.getDuration() === lower.getDuration() && upper.getDots() === lower.getDots()) continue;
+      // a half or whole rest OSMD put on a line stays there (osmdRestOnLine): only the other rest moves
+      if (upper.osmdRestOnLine && lower.osmdRestOnLine) continue;
       let upperLine = upper.getKeyLine(0);
       let lowerLine = lower.getKeyLine(0);
       for (let step = 0; step < 12 &&
         upperLine - upper.glyph.line_below < lowerLine + lower.glyph.line_above + OSMD_REST_MARGIN; step++) {
-        if (step % 2 === 0) {
+        if (lower.osmdRestOnLine || (step % 2 === 0 && !upper.osmdRestOnLine)) {
           upperLine += 0.5;
         } else {
           lowerLine -= 0.5;
