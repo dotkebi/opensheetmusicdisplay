@@ -29,7 +29,7 @@ import { GraphicalContinuousDynamicExpression } from "./GraphicalContinuousDynam
 // eslint-disable-next-line
 import { VexFlowContinuousDynamicExpression, VexFlowGraphicalNote, VexFlowInstrumentBracket, VexFlowMeasure, VexFlowStaffEntry, VexFlowStaffLine, VexFlowVoiceEntry } from "./VexFlow";
 import { StaffLineActivitySymbol } from "./StaffLineActivitySymbol";
-import log from "loglevel";
+import { log } from "../../Common/Logging";
 // import { FontStyles } from "../../Common/Enums/FontStyles";
 
 /**

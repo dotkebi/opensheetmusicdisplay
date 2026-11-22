@@ -1,13 +1,11 @@
-import { PagePlacementEnum } from "./GraphicalMusicPage";
 //import {MusicSymbol} from "./MusicSymbol";
-import log from "loglevel";
+import { log } from "../../Common/Logging";
 import { TextAlignmentEnum } from "../../Common/Enums/TextAlignment";
 import { PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
 import {
     AutoBeamOptions,
     AlignRestOption,
-    FillEmptyMeasuresWithWholeRests,
-    SkyBottomLineBatchCalculatorBackendType
+    FillEmptyMeasuresWithWholeRests
 } from "../../OpenSheetMusicDisplay/OSMDOptions";
 import { ColoringModes as ColoringMode } from "../../Common/Enums/ColoringModes";
 import { Dictionary } from "typescript-collections";
@@ -18,6 +16,9 @@ import { GeometricSkyBottomLineCaches } from "./GeometricSkyBottomLineContext";
 import { GraphicalNote } from "./GraphicalNote";
 import { Note } from "../VoiceData/Note";
 import { ITextMeasurer } from "../Interfaces/ITextMeasurer";
+import { ITransposeCalculator } from "../Interfaces/ITransposeCalculator";
+import { IGraphicalSymbolFactory } from "../Interfaces/IGraphicalSymbolFactory";
+import { DynamicEnum } from "../VoiceData/Expressions/InstantaneousDynamicExpression";
 
 /** Rendering and Engraving options, more fine-grained than [[IOSMDOptions]].
  *  Not all of these options are meant to be modified by users of the library,
@@ -26,10 +27,10 @@ import { ITextMeasurer } from "../Interfaces/ITextMeasurer";
  *  like Render* to (not) render certain elements (e.g. osmd.rules.RenderRehearsalMarks = false)
  */
 export class EngravingRules {
-    /** A unit of distance. 1.0 is the distance between lines of a stave for OSMD, which is 10 pixels in Vexflow at osmd.Zoom = 1 (default). */
-    public static unit: number = 1.0;
+    /** A unit of distance. 1.0 is the distance between lines of a stave for OSMD, which is 10 pixels in Vexflow at osmd.Zoom = 1 (default).
+     *  A constant (readonly): the layout assumes 1.0 in many places. To change the size of the score, use osmd.Zoom. */
+    public static readonly unit: number = 1.0;
     public SamplingUnit: number;
-    public StaccatoShorteningFactor: number;
     /** Height (size) of the sheet title. */
     public SheetTitleHeight: number;
     public SheetSubtitleHeight: number;
@@ -38,14 +39,7 @@ export class EngravingRules {
     public SheetAuthorHeight: number;
     public SheetCopyrightHeight: number;
     public SheetCopyrightMargin: number;
-    /** Whether to use the (deprecated) OSMD < 1.8.6 way of parsing and displaying subtitles and composer,
-     * which did not read multiple lines from XML credit-words tags.
-     * Option will probably be removed soon.
-     * @deprecated
-     */
-    public SheetComposerSubtitleUseLegacyParsing: boolean;
     public CompactMode: boolean;
-    public PagePlacementEnum: PagePlacementEnum;
     public PageHeight: number;
     public PageTopMargin: number;
     public PageTopMarginNarrow: number;
@@ -75,6 +69,7 @@ export class EngravingRules {
     public StaffHeight: number;
     public TabStaffInterlineHeight: number;
     public TabStaffInterlineHeightForBboxes: number;
+    /** No effect yet: OSMD does not read this rule, so setting it changes nothing. An implementation is in progress. */
     public BetweenStaffLinesDistance: number;
     /** Whether to automatically beam notes that don't already have beams in XML. */
     public AutoBeamNotes: boolean;
@@ -82,16 +77,11 @@ export class EngravingRules {
     public AutoBeamOptions: AutoBeamOptions;
     /** Whether to automatically generate new beams for tabs. Also see TabBeamsRendered for existing XML beams. */
     public AutoBeamTabs: boolean;
-    public BeamWidth: number;
-    public BeamSpaceWidth: number;
-    public BeamForwardLength: number;
     public FlatBeams: boolean;
     public FlatBeamOffset: number;
     public FlatBeamOffsetPerBeam: number;
     /** Whether to pull extreme high/low ledger line beams closer to the staff. */
     public OptimizeExtremeLedgerBeams: boolean;
-    public ClefLeftMargin: number;
-    public ClefRightMargin: number;
     /** How many unique note positions a percussion score needs to have to not be rendered on one line.
      * Set this to 0 to disable one-line reduction and percussion note positioning, or -1 to keep the note positioning.
      * A staff whose XML gives the number of lines (<staff-lines>) keeps it, unless PercussionKeepXMLStafflineCount is false.
@@ -101,6 +91,20 @@ export class EngravingRules {
      * If false, PercussionOneLineCutoff also draws such a staff on one line, e.g. a snare drum with <staff-lines>5.
      */
     public PercussionKeepXMLStafflineCount: boolean;
+    /** The most staves that a part can have in the MusicXML (`<staves>`). Default 100. A part with more fails to load, with
+     * an error that names it: every staff is created for every measure, so a small file with a huge value used up all memory.
+     * Real parts have 1 to 3 staves (organ), rarely a few more.
+     */
+    public MaxStavesPerPart: number;
+    /** The most lines that a staff can have in the MusicXML (`<staff-lines>`). Default 100. A larger value is ignored with a
+     * warning, to not run out of memory: every line is created and drawn for every measure.
+     * Staves have 1 to 5 lines, tablature one line per string or course (6, up to 14 for a baroque lute or pedal steel guitar).
+     */
+    public MaxStaffLines: number;
+    /** The most strokes that a tremolo can have in the MusicXML (`<tremolo>`). Default 8, the largest value that MusicXML
+     * allows (tremolo-marks: 0 to 8). A larger value is reduced to this with a warning, to not run out of memory.
+     */
+    public MaxTremoloStrokes: number;
     public PercussionForceVoicesOneLineCutoff: number;
     public PercussionUseXMLDisplayStep: boolean;
     public PercussionXMLDisplayStepNoteValueShift: number;
@@ -109,29 +113,16 @@ export class EngravingRules {
      * Should only be set for cajon scores, as this will disable the PercussionOneLineCutoff.
      */
     public PercussionUseCajon2NoteSystem: boolean;
-    public BetweenKeySymbolsDistance: number;
-    public KeyRightMargin: number;
     public RhythmRightMargin: number;
     public ShowRhythmAgainAfterPartEndOrFinalBarline: boolean;
     /** Begin a new part after a final barline (light-heavy, without a repeat or ending) in the middle of the piece: a new system, also with
      *  RenderSingleHorizontalStaffline, and measure numbers counted from 1 again (read in load()).
      */
     public NewPartAndSystemAfterFinalBarline: boolean;
-    public InStaffClefScalingFactor: number;
-    public DistanceBetweenNaturalAndSymbolWhenCancelling: number;
-    public NoteHelperLinesOffset: number;
     public MeasureLeftMargin: number;
     public MeasureRightMargin: number;
     public DistanceBetweenLastInstructionAndRepetitionBarline: number;
-    public ArpeggioDistance: number;
-    public IdealStemLength: number;
-    public StemNoteHeadBorderYOffset: number;
     public StemWidth: number;
-    public StemMargin: number;
-    public StemMinLength: number;
-    public StemMaxLength: number;
-    public BeamSlopeMaxAngle: number;
-    public StemMinAllowedDistanceBetweenNoteHeadAndBeamLine: number;
     /** A beam over two staves of a part (CrossStaffBeam) whose notes all have the same XML <stem> (all down, or all up)
      *  is centred anyway — notes of the upper staff down, of the lower staff up, the beam between the staves — as when
      *  the XML gives no stems. A beam whose XML stems differ keeps them. Default true: the Myrthen engraving (Breitkopf
@@ -159,8 +150,8 @@ export class EngravingRules {
      *  mark a secondary voice. Only affects notes without a <stem> in the MusicXML (see SetWantedStemDirectionByXml).
      *  Default false: stems down are the usual signal for a secondary voice (MuseScore renders it that way too), #1719. */
     public AutoStemSecondaryVoicesWhenAloneInMeasure: boolean;
+    /** No effect yet: OSMD does not read this rule, so setting it changes nothing. It might be implemented in the future. */
     public GraceNoteScalingFactor: number;
-    public GraceNoteXOffset: number;
     /** Set this to e.g. -0.5 or -0.8 to put grace notes a lot closer to the main note. */
     public GraceNoteGroupXMargin: number;
     public WedgeOpeningLength: number;
@@ -170,7 +161,6 @@ export class EngravingRules {
     public WedgePlacementBelowY: number;
     public WedgeHorizontalMargin: number;
     public WedgeVerticalMargin: number;
-    public DistanceOffsetBetweenTwoHorizontallyCrossedWedges: number;
     public WedgeMinLength: number;
     /** The length a wedge whose start and stop lie in one measure is given by widening the measure (up to
      *  MaximumDynamicsElongationFactor), from its start (after a dynamic there) to its stop: a wedge over one note in a tight
@@ -185,12 +175,8 @@ export class EngravingRules {
     public ArticulationAboveNoteForStemUp: boolean;
     public SoftAccentWedgePadding: number;
     public SoftAccentSizeFactor: number;
-    public DistanceBetweenAdjacentDynamics: number;
     public TempoChangeMeasureValidity: number;
     public TempoContinousFactor: number;
-    public StaccatoScalingFactor: number;
-    public BetweenDotsDistance: number;
-    public OrnamentAccidentalScalingFactor: number;
     public ChordSymbolTextHeight: number;
     public ChordSymbolTextAlignmentTop: TextAlignmentEnum;
     public ChordSymbolTextAlignmentBottom: TextAlignmentEnum;
@@ -203,10 +189,6 @@ export class EngravingRules {
     public ChordSymbolXSpacing: number;
     public ChordOverlapAllowedIntoNextMeasure: number;
     public ChordSymbolYOffset: number;
-    /** Meant for the y distance between alternate chord symbols placed above each other on a note (not implemented yet, see #897).
-     * No effect for now: the chord symbols of a note are placed next to each other, each with ChordSymbolYOffset like a single one.
-     */
-    public ChordSymbolYPadding: number;
     /** The minimum distance from the top staff line up to the baseline of a chord symbol above the staff, in units (staff spaces).
      *  Chord symbols are placed above what is under them (ChordSymbolYOffset), and at least this high, e.g. over a whole rest or
      *  over notes inside the staff. Default 0: no minimum (upstream OSMD: 1.5; MuseScore uses 2.5).
@@ -270,8 +252,6 @@ export class EngravingRules {
      * Otherwise, OSMD decides bracket usage.
      * Note that sometimes the XML doesn't have any 'bracket' value. */
     public TupletsBracketedUseXMLValue: boolean;
-    public TupletNumberLabelHeight: number;
-    public TupletNumberYOffset: number;
     public TupletNumberLimitConsecutiveRepetitions: boolean;
     public TupletNumberMaxConsecutiveRepetitions: number;
     public TupletNumberAlwaysDisableAfterFirstMax: boolean;
@@ -281,7 +261,6 @@ export class EngravingRules {
      * TupletNumberLimitConsecutiveRepetitions would hide it. */
     public TupletNumberUseShowActualXMLValue: boolean;
     public LabelMarginBorderFactor: number;
-    public TupletVerticalLineLength: number;
     /** Whether to show tuplet numbers (and brackets) in tabs. Brackets can be disabled via TabTupletsBracketed. */
     public TupletNumbersInTabs: boolean;
     /** Whether to show brackets in tab tuplets. To not render tab tuplets entirely, set TupletNumbersInTabs = false. */
@@ -322,11 +301,6 @@ export class EngravingRules {
 
     /** Whether the first measure is allowed to have a left repeat barline, if explicitly given in the MusicXML. */
     public RepetitionAllowFirstMeasureBeginningRepeatBarline: boolean;
-    public RepetitionEndingLabelHeight: number;
-    public RepetitionEndingLabelXOffset: number;
-    public RepetitionEndingLabelYOffset: number;
-    public RepetitionEndingLineYLowerOffset: number;
-    public RepetitionEndingLineYUpperOffset: number;
     /** Whether the cursor should ignore / skip repetitions (alternative name: SkipRepetitions). False by default */
     public CursorIgnoreRepetitions: boolean;
     public VoltaOffset: number;
@@ -394,9 +368,10 @@ export class EngravingRules {
     public LyricsXPaddingReductionForLastNoteInMeasureCrossMeasureMidWord: number;
     public VerticalBetweenLyricsDistance: number;
     public HorizontalBetweenLyricsDistance: number;
-    public BetweenSyllableMaximumDistance: number;
     public BetweenSyllableMinimumDistance: number;
     public LyricOverlapAllowedIntoNextMeasure: number;
+    /** The minimum distance between the dashes of a lyric word whose syllables are far apart ("glo - - ri - a"), in units.
+     *  Not the dashed line after a text like "cresc. - - - -": see the ExpressionDashes rules, e.g. ExpressionDashesDashGap. */
     public MinimumDistanceBetweenDashes: number;
     public MaximumLyricsElongationFactor: number;
     /** How far a measure may be widened so that dynamics starting at different timestamps (and a wedge between them)
@@ -411,23 +386,10 @@ export class EngravingRules {
     public OneMinusTPower3: number[];
     public FactorOne: number[];
     public FactorTwo: number[];
-    public TieGhostObjectWidth: number;
-    public TieYPositionOffsetFactor: number;
-    public MinimumNeededXspaceForTieGhostObject: number;
-    public TieHeightMinimum: number;
-    public TieHeightMaximum: number;
-    public TieHeightInterpolationK: number;
-    public TieHeightInterpolationD: number;
     public SlurNoteHeadYOffset: number;
-    /** Not used anymore: a slur starts and ends SlurNoteHeadYOffset beyond the articulations of its start and end notes on its
-     *  side, as drawn (see GraphicalSlur), not this fixed distance beyond the end note.
-     * @deprecated
-     */
-    public SlurEndArticulationYOffset: number;
-    /** Not used anymore: an accent at the start or end of a slur goes outside it, beyond its curve, unless that is too far from the
-     *  note (see GraphicalSlur), not this fixed distance further out at the start of a slur placed in the XML.
-     * @deprecated
-     */
+    /** How far an accent moves away from its note at the start of a slur placed on the accent's side in the XML
+     *  (VexFlowConverter). Removed upstream in 3.0.0 as not read anymore; the fork still reads it, as it moves the accents
+     *  beyond the slurs itself (see SlurPlacesArticulationsOutside). */
     public SlurStartArticulationYOffsetOfArticulation: number;
     /** Whether a slur moves the accents, fermatas and ornaments left outside it at its start or end note beyond its curve itself
      *  (GraphicalSlur.placeArticulationsOutside(), upstream 2.2.1). Off in the fork: VexFlowMusicSheetCalculator.layoutFermatasOverSlurs()
@@ -439,8 +401,6 @@ export class EngravingRules {
      *  over the slur instead (MusicSheetCalculator.raiseMeasureNumberOverSlurs(), as osmd-dart), which then doesn't run with
      *  this on. */
     public SlurGoesOverMeasureNumbers: boolean;
-    public SlurStemXOffset: number;
-    public SlurSlopeMaxAngle: number;
     public SlurTangentMinAngle: number;
     public SlurTangentMaxAngle: number;
     public SlurHeightFactor: number;
@@ -506,13 +466,10 @@ export class EngravingRules {
     /** The lengths of the dot and the gap of a dotted slide or glissando in a TAB staff, in VexFlow's units. */
     public TabSlideLineDashDotted: number[];
     public TempoYSpacing: number;
-    public InstantaneousTempoTextHeight: number;
     public ContinuousDynamicTextHeight: number;
     /** Whether to use the XML offset value for expressions, especially wedges (crescendo). See #1477 */
     public UseEndOffsetForExpressions: boolean;
-    public MoodTextHeight: number;
     public UnknownTextHeight: number;
-    public ContinuousTempoTextHeight: number;
     public VexFlowDefaultNotationFontScale: number;
     public VexFlowDefaultTabFontScale: number;
     public TremoloStrokeScale: number;
@@ -553,7 +510,6 @@ export class EngravingRules {
     public LedgerLineStrokeStyle: string;
     public LedgerLineColorDefault: string;
     public WedgeLineWidth: number;
-    public TupletLineWidth: number;
     public LyricUnderscoreLineWidth: number;
     /** Minimum length of a lyric extend line. When the last melisma note sits under the syllable, the line reaches toward the next syllable instead. */
     public LyricExtendMinimumLength: number;
@@ -564,7 +520,6 @@ export class EngravingRules {
     public LyricExtendEndGap: number;
     public SystemThinLineWidth: number;
     public SystemBoldLineWidth: number;
-    public SystemRepetitionEndingLineWidth: number;
     public SystemDotWidth: number;
     public MultipleRestMeasureDefaultWidth: number;
     public MultipleRestMeasureAddKeySignature: boolean;
@@ -583,15 +538,12 @@ export class EngravingRules {
     public DistanceBetweenVerticalSystemLines: number;
     public DistanceBetweenDotAndLine: number;
     public RepeatEndStartPadding: number;
-    public OctaveShiftLineWidth: number;
-    public OctaveShiftVerticalLineLength: number;
     /** The least gap (staff spaces) between the skyline under an octave shift's bracket and the bottom of its text (8va, 15ma).
      *  The skyline has a slur's middle line, its drawn outer edge is up to 0.3 higher (VexFlowMusicSheetDrawer.drawSlur),
      *  so the bracket keeps above the slur's ink only with more than 0.3; the upstream rounding (0.05) put the 8 on the slur
      *  (Prokofiev Op. 19). 0.5 as under a rehearsal mark (user decision 10-22: a slur and an 8va do not overlap). */
     public OctaveShiftClearance: number;
     public OctaveShiftOnWholeMeasureNoteUntilEndOfMeasure: boolean;
-    public GraceLineWidth: number;
     public MinimumStaffLineDistance: number;
     public MinSkyBottomDistBetweenStaves: number;
     /** Whether to snap the y positions of stafflines and music systems to positions where the
@@ -603,7 +555,6 @@ export class EngravingRules {
      *  Exact at zoom 1 (and its integer multiples), within a page.
      */
     public SnapStafflinesToCrispPixels: boolean;
-    public MinimumCrossedBeamDifferenceMargin: number;
 
     /** Maximum width of sheet / HTMLElement containing the score. Canvas is limited to 32767 in current browsers, though SVG isn't.
      *  Setting this to > 32767 will break the canvas backend (no problem if you only use SVG).
@@ -619,10 +570,6 @@ export class EngravingRules {
     public PickupMeasureRepetitionSpacing: number;
     /** Multiplier for PickupMeasureRepetitionSpacing if there is only one note in the pickup measure. This usually needs a lot more space. */
     public PickupMeasureSpacingSingleNoteAddend: number;
-    public DisplacedNoteMargin: number;
-    public MinNoteDistance: number;
-    public SubMeasureXSpacingThreshold: number;
-    public MeasureDynamicsMaxScalingFactor: number;
     public WholeRestXShiftVexflow: number;
     public MetronomeMarksDrawn: boolean;
     public MetronomeMarkXShift: number;
@@ -630,11 +577,6 @@ export class EngravingRules {
     public SoftmaxFactorVexFlow: number;
     /** Stagger (x-shift) whole notes that are the same note, but in different voices (show 2 instead of 1). */
     public StaggerSameWholeNotes: boolean;
-    public MaxInstructionsConstValue: number;
-    public NoteDistances: number[] = [1.0, 1.0, 1.3, 1.6, 2.0, 2.5, 3.0, 4.0];
-    public NoteDistancesScalingFactors: number[] = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0];
-    public DurationDistanceDict: {[_: number]: number } = {};
-    public DurationScalingDistanceDict: {[_: number]: number } = {};
 
     /** Whether to align rests. 0 = Never, 1 = Always, 2 = Auto.
      * Currently not recommended because rests are now positioned to avoid collisions with notes. */
@@ -832,7 +774,6 @@ export class EngravingRules {
     public FingeringPositionFromXML: boolean;
     public FingeringPositionGrace: PlacementEnum;
     public FingeringInsideStafflines: boolean;
-    public FingeringLabelFontHeight: number;
     public FingeringOffsetX: number;
     public FingeringOffsetY: number;
     public FingeringPaddingY: number;
@@ -892,12 +833,29 @@ export class EngravingRules {
     public NoteToGraphicalNoteMap: Dictionary<number, GraphicalNote>;
     // this is basically a WeakMap, except we save the id in the Note instead of using a WeakMap.
     public NoteToGraphicalNoteMapObjectCount: number = 0;
-    /** Measures the width of texts like labels in this instance's fonts (e.g. DefaultFontFamily), set by the
-     *  VexFlowMusicSheetCalculator. Owned here (per OSMD instance) instead of statically (MusicSheetCalculator.TextMeasurer):
+    /** Measures the width of texts like labels in this instance's fonts (e.g. DefaultFontFamily). Set by the OSMD instance that
+     *  creates these rules, or for rules without one by the VexFlowMusicSheetCalculator created with them; one that an app sets is kept.
+     *  Owned here (per OSMD instance) instead of statically (the former MusicSheetCalculator.TextMeasurer):
      *  a static one measured with the rules of the most recently created instance in all instances,
      *  and kept those rules, and through NoteToGraphicalNoteMap that instance's rendering, in memory after it was dropped.
      */
     public TextMeasurer: ITextMeasurer;
+    /** The calculator that transposes this instance's notes, chord symbols and key signatures (osmd.TransposeCalculator).
+     *  Owned here (per OSMD instance) instead of statically (the former MusicSheetCalculator.transposeCalculator):
+     *  a static one transposed all instances on the page. Undefined: no transposition.
+     */
+    public TransposeCalculator: ITransposeCalculator;
+    /** Creates the graphical objects of this instance (systems, staff lines, measures, staff entries, notes, ...), set by the
+     *  VexFlowMusicSheetCalculator if the app didn't set one. Owned here (per OSMD instance) instead of statically (the former
+     *  MusicSheetCalculator.symbolFactory): a static one was replaced for all instances on the page by each new instance.
+     */
+    public SymbolFactory: IGraphicalSymbolFactory;
+    /** The relative volume (0 to 1) of each dynamic marking in this instance's score (InstantaneousDynamicExpression.Volume),
+     *  e.g. DynamicToRelativeVolumeDict.setValue(DynamicEnum.p, 0.3). Owned here (per OSMD instance) instead of statically (the
+     *  former InstantaneousDynamicExpression.dynamicToRelativeVolumeDict): a value changed in a static table changed all
+     *  instances on the page.
+     */
+    public DynamicToRelativeVolumeDict: Dictionary<DynamicEnum, number>;
     /** How many times osmd.render() was already called on the currently loaded score.
      * Resets after osmd.load() (via osmd.reset()).
      * Can be relevant for transposition or generally informative.
@@ -914,35 +872,12 @@ export class EngravingRules {
      *  Owned here (per OSMD instance, like NoteToGraphicalNoteMap) instead of statically,
      *  so that multiple OSMD instances stay independent. */
     public GeometricSkyBottomLineCaches: GeometricSkyBottomLineCaches;
-    /** Not used anymore: the pixel-based batch calculation (UseGeometricSkyBottomLineCalculation false) always reads the pixels
-     *  with getImageData (SkyBottomLineBatchCalculatorBackendType.Plain). Its WebGL backend was removed,
-     *  as the geometric calculation (the default) is faster.
-     * @deprecated
-     */
-    public PreferredSkyBottomLineBatchCalculatorBackend: SkyBottomLineBatchCalculatorBackendType;
-    /** Not used anymore: the WebGL backend was removed, see PreferredSkyBottomLineBatchCalculatorBackend.
-     * @deprecated
-     */
-    public DisableWebGLInFirefox: boolean;
-    /** Not used anymore: the WebGL backend was removed, see PreferredSkyBottomLineBatchCalculatorBackend.
-     * @deprecated
-     */
-    public DisableWebGLInSafariAndIOS: boolean;
 
     /** The minimum number of measures in the sheet where the skyline and bottom-line batch calculation is enabled,
      *  if UseGeometricSkyBottomLineCalculation is false.
      *  Batch is faster for medium to large size scores, but slower for very short scores.
      */
     public SkyBottomLineBatchMinMeasures: number;
-    /** Not used anymore: the WebGL backend was removed, see PreferredSkyBottomLineBatchCalculatorBackend.
-     * @deprecated
-     */
-    public SkyBottomLineWebGLMinMeasures: number;
-    /** Not used anymore: the WebGL backend was removed, so there is no backend to choose,
-     *  see PreferredSkyBottomLineBatchCalculatorBackend.
-     * @deprecated
-     */
-    public AlwaysSetPreferredSkyBottomLineBackendAutomatically: boolean;
 
     // Playback settings
     /** Currently only used in audio player */
@@ -952,9 +887,42 @@ export class EngravingRules {
         this.loadDefaultValues();
     }
 
+    /** A new table of the default relative volume (0 to 1) of each dynamic marking, see DynamicToRelativeVolumeDict. */
+    private createDefaultDynamicVolumes(): Dictionary<DynamicEnum, number> {
+        const volumeDict: Dictionary<DynamicEnum, number> = new Dictionary<DynamicEnum, number>();
+        volumeDict.setValue(DynamicEnum.ffffff, 127.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.fffff,  126.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.ffff,   125.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.fff,    124.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.ff,     122.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.f,      108.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.mf,      76.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.sf,     0.5);
+        volumeDict.setValue(DynamicEnum.sfp,    0.5);
+        volumeDict.setValue(DynamicEnum.sfpp,   0.5);
+        volumeDict.setValue(DynamicEnum.fp,     0.5);
+        volumeDict.setValue(DynamicEnum.rf,     0.5);
+        volumeDict.setValue(DynamicEnum.rfz,    0.5);
+        volumeDict.setValue(DynamicEnum.sfz,    0.5);
+        volumeDict.setValue(DynamicEnum.sffz,   0.5);
+        volumeDict.setValue(DynamicEnum.fz,     0.5);
+        volumeDict.setValue(DynamicEnum.sfzp,   0.5);
+        volumeDict.setValue(DynamicEnum.pf,      92.0 / 127.0); // poco forte: between mf and f
+        volumeDict.setValue(DynamicEnum.mp,      60 / 127.0);
+        volumeDict.setValue(DynamicEnum.p,       28.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.pp,      12.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.ppp,     10.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.pppp,    7.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.ppppp,    5.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.pppppp,   4.0 / 127.0);
+        volumeDict.setValue(DynamicEnum.n,        0.0); // niente
+        return volumeDict;
+    }
+
     public loadDefaultValues(): void {
         // global variables
         this.SamplingUnit = EngravingRules.unit * 3;
+        this.DynamicToRelativeVolumeDict = this.createDefaultDynamicVolumes();
 
         // Page Label Variables
         this.SheetTitleHeight = 4.0;
@@ -964,11 +932,9 @@ export class EngravingRules {
         this.SheetAuthorHeight = 2.0;
         this.SheetCopyrightHeight = 1.5;
         this.SheetCopyrightMargin = 2.0;
-        this.SheetComposerSubtitleUseLegacyParsing = false;
 
         // Staff sizing Variables
         this.CompactMode = false;
-        this.PagePlacementEnum = PagePlacementEnum.Down;
         this.PageHeight = 100001.0;
         this.PageTopMargin = 5.0;
         this.PageTopMarginNarrow = 0.0; // for compact mode
@@ -1010,9 +976,6 @@ export class EngravingRules {
         this.AutoBeamTabs = false;
 
         // Beam Sizing Variables
-        this.BeamWidth = EngravingRules.unit / 2.0;
-        this.BeamSpaceWidth = EngravingRules.unit / 3.0;
-        this.BeamForwardLength = 1.25 * EngravingRules.unit;
 
         this.FlatBeams = false;
         this.FlatBeamOffset = 20;
@@ -1020,39 +983,26 @@ export class EngravingRules {
         this.OptimizeExtremeLedgerBeams = false;
 
         // Beam Sizing Variables
-        this.ClefLeftMargin = 0.5;
-        this.ClefRightMargin = 0.75;
         this.PercussionOneLineCutoff = 3; // percussion parts with <3 unique note positions rendered on one line
         this.PercussionKeepXMLStafflineCount = true;
+        this.MaxStavesPerPart = 100;
+        this.MaxStaffLines = 100;
+        this.MaxTremoloStrokes = 8;
         this.PercussionForceVoicesOneLineCutoff = 1;
         this.PercussionUseXMLDisplayStep = true;
         this.PercussionXMLDisplayStepNoteValueShift = 0;
         this.PercussionOneLineXMLDisplayStepOctaveOffset = 0;
         this.PercussionUseCajon2NoteSystem = false;
-        this.BetweenKeySymbolsDistance = 0.2;
-        this.KeyRightMargin = 0.75;
         this.RhythmRightMargin = 1.25;
         this.ShowRhythmAgainAfterPartEndOrFinalBarline = true;
         this.NewPartAndSystemAfterFinalBarline = false;
-        this.InStaffClefScalingFactor = 0.8;
-        this.DistanceBetweenNaturalAndSymbolWhenCancelling = 0.4;
 
         // Beam Sizing Variables
-        this.NoteHelperLinesOffset = 0.25;
         this.MeasureLeftMargin = 0.7;
         this.MeasureRightMargin = 0.0;
         this.DistanceBetweenLastInstructionAndRepetitionBarline = 1.0;
-        this.ArpeggioDistance = 0.6;
 
         // Stems Variables
-        this.StaccatoShorteningFactor = 2;
-        this.IdealStemLength = 3.0;
-        this.StemNoteHeadBorderYOffset = 0.2;
-        this.StemMargin = 0.2;
-        this.StemMinLength = 2.5;
-        this.StemMaxLength = 4.5;
-        this.BeamSlopeMaxAngle = 10.0;
-        this.StemMinAllowedDistanceBetweenNoteHeadAndBeamLine = 1.0;
         this.SetWantedStemDirectionByXml = true;
         this.CrossStaffBeamsCenterUniformXmlStems = true;
         this.CrossStaffBeamsFollowUniformUpXmlStems = true;
@@ -1062,7 +1012,6 @@ export class EngravingRules {
 
         // GraceNote Variables
         this.GraceNoteScalingFactor = 0.6;
-        this.GraceNoteXOffset = 0.2;
         this.GraceNoteGroupXMargin = 0.0; // More than 0 leads to too much space in most cases.
         //  see test_end_clef_measure. only potential 'tight' case: test_graceslash_simple
 
@@ -1074,23 +1023,18 @@ export class EngravingRules {
         this.WedgePlacementBelowY = 1.5;
         this.WedgeHorizontalMargin = 0.6;
         this.WedgeVerticalMargin = 0.5;
-        this.DistanceOffsetBetweenTwoHorizontallyCrossedWedges = 0.3;
         this.WedgeMinLength = 2.0;
         this.WedgeMinReservedLength = 5.0;
         this.WedgeEndDistanceBetweenTimestampsFactor = 1.75;
         this.ArticulationAboveNoteForStemUp = false;
         this.SoftAccentWedgePadding = 0.4;
         this.SoftAccentSizeFactor = 0.6;
-        this.DistanceBetweenAdjacentDynamics = 0.75;
 
         // Tempo Variables
         this.TempoChangeMeasureValidity = 4;
         this.TempoContinousFactor = 0.7;
 
         // various
-        this.StaccatoScalingFactor = 0.8;
-        this.BetweenDotsDistance = 0.8;
-        this.OrnamentAccidentalScalingFactor = 0.65;
         this.ChordSymbolTextHeight = 2.0;
         this.ChordSymbolTextAlignmentTop = TextAlignmentEnum.LeftBottom;
         this.ChordSymbolTextAlignmentBottom = TextAlignmentEnum.LeftTop;
@@ -1101,7 +1045,6 @@ export class EngravingRules {
         this.ChordSymbolXSpacing = 1.0;
         this.ChordOverlapAllowedIntoNextMeasure = 0;
         this.ChordSymbolYOffset = 0.1;
-        this.ChordSymbolYPadding = 0.0;
         // 0 (no minimum) keeps the placement of before upstream 2.3.0, ChordSymbolYOffset above what is under the symbol; upstream
         //   defaults to 1.5 (8cd17817). Decision pending (2.3.0 sync, 2026-11-08).
         this.ChordSymbolMinimumBaselineAboveStaff = 0;
@@ -1137,15 +1080,12 @@ export class EngravingRules {
         this.TupletsBracketed = false;
         this.TripletsBracketed = false; // special setting for triplets, overrides tuplet setting (for triplets only)
         this.TupletsBracketedUseXMLValue = true;
-        this.TupletNumberLabelHeight = 1.5 * EngravingRules.unit;
-        this.TupletNumberYOffset = 0.5;
         this.TupletNumberLimitConsecutiveRepetitions = true;
         this.TupletNumberMaxConsecutiveRepetitions = 2;
         this.TupletNumberAlwaysDisableAfterFirstMax = true;
         this.TupletNumberUseShowNoneXMLValue = true;
         this.TupletNumberUseShowActualXMLValue = true;
         this.LabelMarginBorderFactor = 0.1;
-        this.TupletVerticalLineLength = 0.5;
         this.TupletNumbersInTabs = true; // disabled by default, nonstandard in tabs, at least how we show them in non-tabs.
         this.TabTupletYOffsetBottom = 1.0; // OSMD units
         this.TabTupletYOffsetTop = -3.5; // -3.5 is fine if you don't have effects like bends on top. Otherwise, e.g. -2 avoids overlaps.
@@ -1169,20 +1109,10 @@ export class EngravingRules {
         this.SlurPlacementUseSkyBottomLine = false;
         this.BezierCurveStepSize = 1000;
         this.calculateCurveParametersArrays();
-        this.TieGhostObjectWidth = 0.75;
-        this.TieYPositionOffsetFactor = 0.3;
-        this.MinimumNeededXspaceForTieGhostObject = 1.0;
-        this.TieHeightMinimum = 0.28;
-        this.TieHeightMaximum = 1.2;
-        this.TieHeightInterpolationK = 0.0288;
-        this.TieHeightInterpolationD = 0.136;
         this.SlurNoteHeadYOffset = 0.5;
-        this.SlurEndArticulationYOffset = 0.8;
         this.SlurStartArticulationYOffsetOfArticulation = 0.5;
         this.SlurPlacesArticulationsOutside = false;
         this.SlurGoesOverMeasureNumbers = false;
-        this.SlurStemXOffset = 0.3;
-        this.SlurSlopeMaxAngle = 15.0;
         this.SlurTangentMinAngle = 30.0;
         this.SlurTangentMaxAngle = 80.0;
         this.SlurHeightFactor = 1; // 1 = 100% (standard height). 2 = 100% flattening of all slurs.
@@ -1232,11 +1162,6 @@ export class EngravingRules {
 
         // Repetitions
         this.RepetitionAllowFirstMeasureBeginningRepeatBarline = true;
-        this.RepetitionEndingLabelHeight = 2.0;
-        this.RepetitionEndingLabelXOffset = 0.5;
-        this.RepetitionEndingLabelYOffset = 0.3;
-        this.RepetitionEndingLineYLowerOffset = 0.5;
-        this.RepetitionEndingLineYUpperOffset = 0.3;
         this.CursorIgnoreRepetitions = false;
         this.VoltaOffset = 2.5;
 
@@ -1267,7 +1192,6 @@ export class EngravingRules {
 
         this.VerticalBetweenLyricsDistance = 0.5;
         this.HorizontalBetweenLyricsDistance = 0.2;
-        this.BetweenSyllableMaximumDistance = 10.0;
         this.BetweenSyllableMinimumDistance = 0.5; // + 1.0 for CenterAlignment added in lyrics spacing
         this.LyricOverlapAllowedIntoNextMeasure = 3.4; // optimal for dashed last lyric, see Land der Berge
         this.MinimumDistanceBetweenDashes = 10;
@@ -1276,12 +1200,9 @@ export class EngravingRules {
 
         // expressions variables
         this.TempoYSpacing = 0.5; // note this is correlated with MetronomeMarkYShift: one-sided change can cause collisions
-        this.InstantaneousTempoTextHeight = 2.3;
         this.ContinuousDynamicTextHeight = 2.3;
         this.UseEndOffsetForExpressions = true;
-        this.MoodTextHeight = 2.3;
         this.UnknownTextHeight = 2.0;
-        this.ContinuousTempoTextHeight = 2.3;
         this.DynamicExpressionMaxDistance = 2;
         this.DynamicExpressionSpacer = 0.5;
         this.PlaceWordsBesideSameTimeDynamic = true;
@@ -1311,22 +1232,17 @@ export class EngravingRules {
         this.LedgerLineStrokeStyle = undefined; // if not undefined, the vexflow default will be overwritten
         this.LedgerLineColorDefault = "#000000"; // black, previously grey by default
         this.WedgeLineWidth = 0.12;
-        this.TupletLineWidth = 0.12;
         this.LyricUnderscoreLineWidth = 0.12;
         this.LyricExtendMinimumLength = 1.5;
         this.LyricExtendEndGap = 1.0;
         this.SystemThinLineWidth = 0.12;
         this.SystemBoldLineWidth = EngravingRules.unit / 2.0;
-        this.SystemRepetitionEndingLineWidth = 0.12;
         this.SystemDotWidth = EngravingRules.unit / 2.0;
         this.DistanceBetweenVerticalSystemLines = 0.35;
         this.DistanceBetweenDotAndLine = 0.7;
         this.RepeatEndStartPadding = 2.0; // set to 0.0 to restore old padding/width with :||: measures
-        this.OctaveShiftLineWidth = 0.12;
-        this.OctaveShiftVerticalLineLength = EngravingRules.unit;
         this.OctaveShiftClearance = 0.5;
         this.OctaveShiftOnWholeMeasureNoteUntilEndOfMeasure = false;
-        this.GraceLineWidth = this.StaffLineWidth * this.GraceNoteScalingFactor;
 
         this.MultipleRestMeasureDefaultWidth = 4;
         this.MultipleRestMeasureAddKeySignature = true;
@@ -1336,7 +1252,6 @@ export class EngravingRules {
         this.FixedMeasureWidthUseForPickupMeasures = false;
 
         // Line Widths
-        this.MinimumCrossedBeamDifferenceMargin = 0.0001;
 
         // Canvas is limited to 32767 in most browsers, though SVG isn't.
         this.SheetMaximumWidth = 32767;
@@ -1347,10 +1262,6 @@ export class EngravingRules {
         this.PickupMeasureWidthMultiplier = 1.0;
         this.PickupMeasureRepetitionSpacing = 0.8;
         this.PickupMeasureSpacingSingleNoteAddend = 1.6;
-        this.DisplacedNoteMargin = 0.1;
-        this.MinNoteDistance = 2.0;
-        this.SubMeasureXSpacingThreshold = 35;
-        this.MeasureDynamicsMaxScalingFactor = 2.5;
         this.WholeRestXShiftVexflow = -1.5; // VexFlow draws rest notes too far to the right
         this.MetronomeMarksDrawn = true;
         this.MetronomeMarkXShift = -6; // our unit, is taken * unitInPixels
@@ -1439,7 +1350,6 @@ export class EngravingRules {
         this.FingeringPositionFromXML = true;
         this.FingeringPositionGrace = PlacementEnum.Left;
         this.FingeringInsideStafflines = false;
-        this.FingeringLabelFontHeight = 1.7;
         this.FingeringOffsetX = 0.0;
         this.FingeringOffsetY = 0.0;
         this.FingeringPaddingY = -0.2;
@@ -1472,20 +1382,13 @@ export class EngravingRules {
         this.UseGeometricSkyBottomLineCalculation = true;
         this.GeometricSkyBottomLineCaches = new GeometricSkyBottomLineCaches();
         this.SkyBottomLineBatchMinMeasures = 5;
-        this.SkyBottomLineWebGLMinMeasures = 80;
-        this.AlwaysSetPreferredSkyBottomLineBackendAutomatically = true;
-        this.DisableWebGLInFirefox = true;
-        this.DisableWebGLInSafariAndIOS = true;
-        this.PreferredSkyBottomLineBatchCalculatorBackend = SkyBottomLineBatchCalculatorBackendType.Plain;
 
         // Playback
         this.UseInterpolatedTempoForAccelerandoEtc = false; // wait for rit support etc. can also make
         //   player features like syncing more difficult to implement.
         //   Also, the end of an accelerando is usually not marked, so this makes it difficult to find an end timestamp.
 
-        // this.populateDictionaries(); // these values aren't used currently
         try {
-            this.MaxInstructionsConstValue = this.ClefLeftMargin + this.ClefRightMargin + this.KeyRightMargin + this.RhythmRightMargin + 11;
             //if (FontInfo.Info) {
             //    this.maxInstructionsConstValue += FontInfo.Info.getBoundingBox(MusicSymbol.G_CLEF).width
             //        + FontInfo.Info.getBoundingBox(MusicSymbol.FOUR).width
@@ -1494,16 +1397,6 @@ export class EngravingRules {
         } catch (ex) {
             log.info("EngravingRules()", ex);
         }
-    }
-
-    /** Not used anymore, without effect: OSMD calculates the skylines geometrically (UseGeometricSkyBottomLineCalculation, default
-     *  true), which is faster than the pixel-based calculation with either of its backends, WebGL or Plain. This only sets
-     *  PreferredSkyBottomLineBatchCalculatorBackend, which isn't read anymore, to Plain, the only backend left.
-     *  It chose WebGL for large scores in Chromium browsers before the WebGL backend was removed.
-     * @deprecated
-     */
-    public setPreferredSkyBottomLineBackendAutomatically(numberOfGraphicalMeasures: number = -1): void {
-        this.PreferredSkyBottomLineBatchCalculatorBackend = SkyBottomLineBatchCalculatorBackendType.Plain;
     }
 
     /** Makes it so that all musical elements (including key/time signature)
@@ -1630,50 +1523,6 @@ export class EngravingRules {
         this.addChordName("69", "majorsixth", ["9"], [], []);
         this.addChordName("mi69", "minorsixth", ["9"], [], []);
     }
-
-    /**
-     * This method maps NoteDurations to Distances and DistancesScalingFactors.
-     */
-    // private populateDictionaries(): void {
-    //     for (let i: number = 0; i < this.NoteDistances.length; i++) {
-    //         switch (i) {
-    //             case 0:
-    //                 this.DurationDistanceDict[0.015625] = this.NoteDistances[i];
-    //                 this.DurationScalingDistanceDict[0.015625] = this.NoteDistancesScalingFactors[i];
-    //                 break;
-    //             case 1:
-    //                 this.DurationDistanceDict[0.03125] = this.NoteDistances[i];
-    //                 this.DurationScalingDistanceDict[0.03125] = this.NoteDistancesScalingFactors[i];
-    //                 break;
-    //             case 2:
-    //                 this.DurationDistanceDict[0.0625] = this.NoteDistances[i];
-    //                 this.DurationScalingDistanceDict[0.0625] = this.NoteDistancesScalingFactors[i];
-    //                 break;
-    //             case 3:
-    //                 this.DurationDistanceDict[0.125] = this.NoteDistances[i];
-    //                 this.DurationScalingDistanceDict[0.125] = this.NoteDistancesScalingFactors[i];
-    //                 break;
-    //             case 4:
-    //                 this.DurationDistanceDict[0.25] = this.NoteDistances[i];
-    //                 this.DurationScalingDistanceDict[0.25] = this.NoteDistancesScalingFactors[i];
-    //                 break;
-    //             case 5:
-    //                 this.DurationDistanceDict[0.5] = this.NoteDistances[i];
-    //                 this.DurationScalingDistanceDict[0.5] = this.NoteDistancesScalingFactors[i];
-    //                 break;
-    //             case 6:
-    //                 this.DurationDistanceDict[1.0] = this.NoteDistances[i];
-    //                 this.DurationScalingDistanceDict[1.0] = this.NoteDistancesScalingFactors[i];
-    //                 break;
-    //             case 7:
-    //                 this.DurationDistanceDict[2.0] = this.NoteDistances[i];
-    //                 this.DurationScalingDistanceDict[2.0] = this.NoteDistancesScalingFactors[i];
-    //                 break;
-    //             default:
-    //                 // FIXME
-    //         }
-    //     }
-    // }
 
     /**
      * Calculate Curve-independend factors, to be used later in the Slur- and TieCurvePoints calculation

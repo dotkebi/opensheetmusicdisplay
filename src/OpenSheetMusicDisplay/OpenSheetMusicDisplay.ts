@@ -1,6 +1,7 @@
-import { IXmlElement } from "./../Common/FileIO/Xml";
+import { IXmlElement, removeWhitespaceBetweenElements } from "./../Common/FileIO/Xml";
 import { VexFlowMusicSheetCalculator } from "./../MusicalScore/Graphical/VexFlow/VexFlowMusicSheetCalculator";
 import { VexFlowBackend } from "./../MusicalScore/Graphical/VexFlow/VexFlowBackend";
+import { VexFlowTextMeasurer } from "./../MusicalScore/Graphical/VexFlow/VexFlowTextMeasurer";
 import { MusicSheetReader } from "./../MusicalScore/ScoreIO/MusicSheetReader";
 import { GraphicalMusicSheet } from "./../MusicalScore/Graphical/GraphicalMusicSheet";
 import { MusicSheetCalculator } from "./../MusicalScore/Graphical/MusicSheetCalculator";
@@ -11,11 +12,11 @@ import { MusicSheet } from "./../MusicalScore/MusicSheet";
 import { Cursor } from "./Cursor";
 import { MXLFile, MXLHelper } from "../Common/FileIO/Mxl";
 import { AJAX } from "./AJAX";
-import log from "loglevel";
+import { log } from "../Common/Logging";
 import { DrawingParameters } from "../MusicalScore/Graphical/DrawingParameters";
 import { DrawingParametersEnum } from "../Common/Enums/DrawingParametersEnum";
 import { ColoringModes } from "../Common/Enums/ColoringModes";
-import { IOSMDOptions, OSMDOptions, AutoBeamOptions, BackendType, CursorOptions, CursorType } from "./OSMDOptions";
+import { IOSMDOptions, OSMDOptions, AutoBeamOptions, BackendType, CursorOptions, CursorType, IRenderInfo } from "./OSMDOptions";
 import { EngravingRules, PageFormat } from "../MusicalScore/Graphical/EngravingRules";
 import { AbstractExpression } from "../MusicalScore/VoiceData/Expressions/AbstractExpression";
 import { MultiExpression } from "../MusicalScore/VoiceData/Expressions/MultiExpression";
@@ -50,6 +51,7 @@ export interface RenderPageAsyncDiagnostics {
     yieldCount: number;
 }
 import { WarmKeeperScoreMxlBase64 } from "./WarmKeeperScore";
+import { CollectionUtil } from "../Util/CollectionUtil";
 
 /** WeakRef (ES2021) isn't in the TypeScript lib of OSMD's target, es2020. Older browsers don't have it: Chrome before 84,
  *  Firefox before 79, Safari before 14.1. */
@@ -61,7 +63,7 @@ declare const WeakRef: new <T extends object>(target: T) => { deref(): T | undef
  * After the constructor, use load() and render() to load and render a MusicXML file.
  */
 export class OpenSheetMusicDisplay {
-    protected version: string = "2.3.1-release"; // getter: this.Version
+    protected version: string = "3.0.0-release"; // getter: this.Version
     // at release, bump version and change to -release, afterwards to -dev again
 
     /**
@@ -87,11 +89,13 @@ export class OpenSheetMusicDisplay {
             throw new Error("Please pass a valid div container to OpenSheetMusicDisplay");
         }
 
-        if (options.autoResize === undefined) {
-            options.autoResize = true;
+        // a copy: the object given isn't changed (it can be frozen, or used for another instance). Also for null as options.
+        const optionsWithDefaults: IOSMDOptions = { ...options };
+        if (optionsWithDefaults.autoResize === undefined) {
+            optionsWithDefaults.autoResize = true;
         }
         this.backendType = BackendType.SVG; // default, can be changed by options
-        this.setOptions(options);
+        this.setOptions(optionsWithDefaults);
     }
 
     /** Options from which OSMD creates cursors in enableOrDisableCursors(). */
@@ -103,6 +107,7 @@ export class OpenSheetMusicDisplay {
     public get Cursor(): Cursor {
         return this.cursor;
     }
+    /** The scale of the drawing, 1.0 by default: see Zoom, which sets it. */
     public zoom: number = 1.0;
     protected zoomUpdated: boolean = false;
     /** Timeout in milliseconds used in osmd.load(string) when string is a URL. */
@@ -130,8 +135,20 @@ export class OpenSheetMusicDisplay {
     /** The container's content width (getContainerContentWidth()) the last layout was made for: by render(), or at the start
      *  of incremental rendering. Turning autoResize on re-renders a rendered sheet only if the width differs from it. */
     protected layoutContainerWidth: number;
-    /** Removes the window's resize listener added for autoResize (see handleResize()), e.g. in dispose(). */
+    /** Removes the container's ResizeObserver or the window's resize listener added for autoResize (see handleResize()),
+     *  e.g. in dispose(). */
     private disposeResizeListener: () => void;
+    /** The container's content width with the pages of the last render() in it, if they changed it: a sheet taller than
+     *  the window makes the page's scrollbar appear (where scrollbars take space), which narrows a container as wide as the
+     *  page. The container's observer (autoResize) doesn't render again for this width, which the render itself caused:
+     *  the sheet stays laid out for the width without the scrollbar, as without autoResize, until the width changes for
+     *  another reason or the app renders again. Another layout for it would cost about a third of a render (measured for
+     *  PR 1992), and could change the width back, without end. */
+    private containerWidthWithPages: number;
+    /** Whether this instance has removed the pages that other instances left in the container (see removeLeftoverPages()). */
+    private leftoverPagesRemoved: boolean = false;
+    /** Whether destroy() was called: the instance can't load or render anymore. */
+    private destroyed: boolean = false;
     /** The callbacks of the window's resize listener (see handleResize()), which reaches them only through this instance. */
     private resizeStartCallback: () => void;
     private resizeEndCallback: () => void;
@@ -161,33 +178,128 @@ export class OpenSheetMusicDisplay {
      * By default it returns the XML unchanged. It can also be set by the onXMLRead option,
      * and osmd.setOptions() keeps it when the option is left out. */
     public OnXMLRead: (xml: string) => string = (xml: string): string => xml;
+    /** A function that is called after each render: at the end of render() and of each batch of renderNext(), also of
+     *  the renders OSMD starts itself (autoResize, enableIncrementalRenderingOnScroll()). A render replaces the SVG
+     *  elements, so this is the place to color them or add listeners to them again. Also the option onRender. */
+    public OnRender: (info: IRenderInfo) => void = undefined;
+    /** Counts the calls of load(), clear() and dispose(). A load() whose number isn't the current one anymore was superseded:
+     *  it doesn't set the sheet, and its promise is rejected (see load()). */
+    private loadGeneration: number = 0;
+    /** Aborts the URL request of the load() in progress, if any (see cancelPendingLoad()). */
+    private loadAbortController: AbortController;
 
     /**
      * Load a MusicXML file
      * @param content is either the url of a file, or the root node of a MusicXML document,
      *   or the string content of a .xml/.mxl file, or a file blob.
      *   A string that starts with "<" (after whitespace) is read as XML, also without the XML declaration (<?xml ...?>).
+     *   Any other string given here is taken as a URL and requested. That is only done for the string the app passes:
+     *   what a Blob, an MXL file or the requested URL contains is never requested, it has to be MusicXML (or MXL).
      * @param tempTitle is used as the title for the piece if there is no title in the XML.
      *   The name or path of a MusicXML file (e.g. "scores/Sonata No. 1.musicxml") is used without its folder and extension.
+     *   (The options, the EngravingRules and the zoom, osmd.Zoom, stay as they are set when a score is loaded.)
+     * @returns a promise that is rejected with an Error when the score can't be loaded, for every kind of content:
+     *   e.g. for malformed XML (the message has the XML parser's line and column), for a file that isn't MusicXML or MXL,
+     *   or when reading the score fails (the Error's `cause` is then the reader's error). load() itself doesn't throw.
+     *   A URL, a Blob and an MXL string are read asynchronously. When load(), clear() or dispose() is called before that
+     *   has finished, the earlier load() doesn't set the sheet anymore, whichever file arrives first: its request is aborted,
+     *   and its promise is rejected with an Error whose `name` is "AbortError" (like an aborted fetch()), so that a
+     *   `.then(() => osmd.render())` of it doesn't run.
+     * @example
+     * osmd.load(url).then(() => osmd.render()).catch((error) => {
+     *     if (error.name !== "AbortError") { // not an error: another score was loaded meanwhile
+     *         showError(error.message);
+     *     }
+     * });
      */
     public load(content: string | Document | Blob, tempTitle: string = "Untitled Score"): Promise<{}> {
-        // Warning! This function is asynchronous! No error handling is done here.
+        if (this.destroyed) {
+            return Promise.reject(this.createDestroyedError("load"));
+        }
+        this.cancelPendingLoad();
         this.renderGeneration++;
+        const generation: number = this.loadGeneration;
+        if (typeof AbortController === "function") {
+            this.loadAbortController = new AbortController();
+        }
+        // the app's own string, so it can be a URL
+        return this.continueLoad(content, { tempTitle, generation, isFileContent: false }).catch((error: Error) => {
+            // e.g. the aborted request's error
+            throw generation === this.loadGeneration ? error : this.createSupersededLoadError();
+        });
+    }
+
+    /**
+     * Supersedes a load() that hasn't finished: aborts its URL request, and makes its remaining steps reject instead of
+     * setting the sheet (see load()).
+     */
+    private cancelPendingLoad(): void {
+        this.loadGeneration++;
+        this.loadAbortController?.abort();
+        this.loadAbortController = undefined;
+    }
+
+    /** The Error for a call of the given method (e.g. "render") after destroy(). */
+    private createDestroyedError(method: string): Error {
+        return new Error(`OpenSheetMusicDisplay: ${method}() was called after destroy(). Create a new instance to show a score again.`);
+    }
+
+    /** The Error a superseded load() is rejected with (see load()). */
+    private createSupersededLoadError(): Error {
+        const error: Error = new Error(
+            "OpenSheetMusicDisplay: load() was aborted, because load(), clear() or dispose() was called before it finished");
+        error.name = "AbortError";
+        return error;
+    }
+
+    /**
+     * A step of load(): the first one, and each one that follows an asynchronous one (a request, unzipping, reading a Blob).
+     * @param loadState what the steps of one load() pass along, with `isFileContent` set for the given content
+     * @returns a promise that is rejected when the load() was superseded meanwhile, or when loadContent() throws or rejects
+     */
+    private continueLoad(content: string | Document | Blob, loadState: ILoadState): Promise<{}> {
+        if (loadState.generation !== this.loadGeneration) {
+            return Promise.reject(this.createSupersededLoadError());
+        }
+        try {
+            return this.loadContent(content, loadState);
+        } catch (error) {
+            // string and Document content is read synchronously: without this, its errors would be thrown instead of rejected
+            return Promise.reject(error);
+        }
+    }
+
+    /** Does the work of a step of load() (see continueLoad()). Can throw as well as reject: continueLoad() turns both into
+     *  a rejected promise.
+     *  Only the string the app gave to load() can be a URL. A string that was read from a file (`loadState.isFileContent`: the text
+     *  of a Blob, of an MXL archive's score file or of a URL's response) has to be XML or MXL and is rejected otherwise:
+     *  if it were requested as a URL too, a file that a user picks could make the page send a request of the file's
+     *  choice to the app's own server (with the user's cookies), and a URL whose response is a URL would be followed. */
+    private loadContent(content: string | Document | Blob, loadState: ILoadState): Promise<{}> {
         this.reset();
         const self: OpenSheetMusicDisplay = this;
+        /** For the steps that continue with what a file contains (a Blob, an MXL archive, a URL's response). */
+        const fileContentState: ILoadState = { ...loadState, isFileContent: true };
+        /** The XML string that `content` was parsed from, if it was given as a string. */
+        let parsedXml: string;
         if (content instanceof Blob) {
             const mxlFile: MXLFile = new MXLFile(content);
             // check if this is a zip / mxl file
             return mxlFile.tryUnzip().then(() => {
                 if (mxlFile.unzipSuccessful) {
-                    return mxlFile.getXmlString().then((xmlString) => {
-                        return self.load(xmlString, tempTitle);
-                    });
+                    return mxlFile.getXmlString().then(
+                        (xmlString) => {
+                            return self.continueLoad(xmlString, fileContentState);
+                        },
+                        (err: Error) => {
+                            throw this.createError("OpenSheetMusicDisplay: Invalid MXL file", err);
+                        }
+                    );
                 } else {
                     // not a zip
                     if (content instanceof Blob) { // always true. unfortunately need to check again for linter
                         return content.text().then((blobString) => {
-                            return self.load(blobString, tempTitle);
+                            return self.continueLoad(blobString, fileContentState);
                         });
                     }
                 }
@@ -200,11 +312,11 @@ export class OpenSheetMusicDisplay {
                 // This is a zip file, unpack it first
                 return MXLHelper.MXLtoXMLstring(str).then(
                     (x: string) => {
-                        return self.load(x, tempTitle);
+                        return self.continueLoad(x, fileContentState);
                     },
-                    (err: any) => {
+                    (err: Error) => {
                         log.debug(err);
-                        throw new Error("OpenSheetMusicDisplay: Invalid MXL file");
+                        throw this.createError("OpenSheetMusicDisplay: Invalid MXL file", err);
                     }
                 );
             }
@@ -212,7 +324,7 @@ export class OpenSheetMusicDisplay {
             if (str.startsWith("\uf7ef\uf7bb\uf7bf")) {
                 log.debug("[OSMD] UTF with BOM detected, truncate first 3 bytes and pass along: " + str);
                 // UTF with BOM detected, truncate first three bytes and pass along
-                return self.load(str.substring(3), tempTitle);
+                return self.continueLoad(str.substring(3), loadState); // (the same content)
             }
             let trimmedStr: string = str;
             if (/^\s/.test(trimmedStr)) { // only trim if we need to. (end of string is irrelevant)
@@ -225,17 +337,24 @@ export class OpenSheetMusicDisplay {
                 log.debug("[OSMD] Finally parsing XML content, length: " + modifiedXml.length);
                 // Parse the string representing an xml file
                 const parser: DOMParser = new DOMParser();
-                content = parser.parseFromString(modifiedXml, "application/xml");
-            } else if (trimmedStr.length < 2083) { // TODO do proper URL format check
+                // (without the white space between the elements: fewer nodes to parse, see removeWhitespaceBetweenElements())
+                content = parser.parseFromString(removeWhitespaceBetweenElements(modifiedXml), "application/xml");
+                parsedXml = modifiedXml;
+            } else if (loadState.isFileContent) {
+                return Promise.reject(new Error("OpenSheetMusicDisplay: The file is not MusicXML: " + (trimmedStr.length === 0 ?
+                    "it is empty" : `it starts with ${JSON.stringify(trimmedStr.substring(0, 20))} instead of "<"`)));
+            } else if (trimmedStr.length < 2083) {
+                // The app's string, and not XML: a URL. There is no format to check: a relative URL can be nearly any
+                //   text ("score.musicxml", "scores/My Song (2).mxl", "?id=5"). Only the length tells content from a URL:
+                //   2083 characters were the limit of Internet Explorer's URLs.
                 log.debug("[OSMD] Retrieve the file at the given URL: " + trimmedStr);
-                // Assume now "str" is a URL
-                // Retrieve the file at the given URL
-                return AJAX.ajax(trimmedStr, this.loadUrlTimeout).then(
-                    (s: string) => { return self.load(s, tempTitle); },
+                return AJAX.ajax(trimmedStr, this.loadUrlTimeout, this.loadAbortController?.signal).then(
+                    (s: string) => { return self.continueLoad(s, fileContentState); },
                     (exc: Error) => { throw exc; }
                 );
             } else {
-                console.error("[OSMD] osmd.load(string): Could not process string. It doesn't start with \"<\" (XML) and is too long for a URL.");
+                return Promise.reject(new Error("OpenSheetMusicDisplay: The string is neither XML nor a URL: it doesn't start with \"<\", " +
+                    `and is too long for a URL (${trimmedStr.length} characters)`));
             }
         }
 
@@ -243,6 +362,16 @@ export class OpenSheetMusicDisplay {
             return Promise.reject(new Error("OpenSheetMusicDisplay: The document which was provided is invalid"));
         }
         const xmlDocument: Document = (<Document>content);
+        if (typeof xmlDocument.getElementsByTagName === "function") { // (not for a node given instead of a document)
+            let parserError: string = this.getXmlParserError(xmlDocument);
+            if (parserError) {
+                if (parsedXml) {
+                    // parse the string as it was given (with its line breaks), so that the error's line and column are the file's
+                    parserError = this.getXmlParserError(new DOMParser().parseFromString(parsedXml, "application/xml")) ?? parserError;
+                }
+                return Promise.reject(new Error("OpenSheetMusicDisplay: The XML is malformed: " + parserError));
+            }
+        }
         const xmlDocumentNodes: NodeList = xmlDocument.childNodes;
         log.debug("[OSMD] load(), Document url: " + xmlDocument.URL);
 
@@ -261,10 +390,11 @@ export class OpenSheetMusicDisplay {
         const score: IXmlElement = new IXmlElement(scorePartwiseElement);
         const temposCalculator: TemposCalculator = new TemposCalculator();
         const reader: MusicSheetReader = new MusicSheetReader([temposCalculator], this.rules);
-        this.sheet = reader.createMusicSheet(score, tempTitle);
+        this.sheet = reader.createMusicSheet(score, loadState.tempTitle);
         if (this.sheet === undefined) {
-            // error loading sheet, probably already logged, do nothing
-            return Promise.reject(new Error("given music sheet was incomplete or could not be loaded."));
+            // error loading sheet, already logged by the reader
+            return Promise.reject(this.createError(
+                "OpenSheetMusicDisplay: The given music sheet was incomplete or could not be loaded", reader.ReadingError));
         }
         // if (this.sheet.TitleString === "osmd.Version") {
         //     this.sheet.TitleString = "OSMD version: " + this.Version; // useful for debug e.g. when console not available
@@ -272,9 +402,48 @@ export class OpenSheetMusicDisplay {
         log.info(`[OSMD] Loaded sheet ${this.sheet.TitleString} successfully.`);
 
         this.needBackendUpdate = true;
-        this.updateGraphic();
+        try {
+            this.updateGraphic();
+        } catch (error) {
+            this.reset(); // no sheet without a graphic: after a failed load(), the instance has neither, as before its first load()
+            throw error;
+        }
 
         return Promise.resolve({});
+    }
+
+    /** Creates an Error with the given message, followed by the message of the error that caused it, which is kept as `cause`. */
+    private createError(message: string, cause: Error): Error {
+        const causeMessage: string = cause?.message ?? (cause ? String(cause) : undefined);
+        const error: Error & { cause?: unknown } = new Error(causeMessage ? `${message}: ${causeMessage}` : message);
+        if (cause) {
+            error.cause = cause; // (the constructor's cause option is ES2022)
+        }
+        return error;
+    }
+
+    /**
+     * Returns the XML parser's message if the document isn't well-formed XML, e.g. "error on line 3 at column 28:
+     * Unexpected token inside entity" (Chrome) or "XML Parsing Error: not well-formed Line Number 3, Column 28" (Firefox),
+     * and undefined for a well-formed document.
+     * DOMParser doesn't throw for malformed XML, it returns a document with a <parsererror> element: Firefox as the root
+     * element, Chrome and Safari inside of the document as far as it was read (so the root can still be <score-partwise>,
+     * with the rest of the score missing).
+     */
+    private getXmlParserError(xmlDocument: Document): string {
+        const errorElement: Element = xmlDocument.getElementsByTagName("parsererror")[0];
+        if (!errorElement) {
+            return undefined;
+        }
+        // Chrome, Safari: <h3>This page contains the following errors:</h3><div>the message</div><h3>Below is a rendering ...</h3>
+        // Firefox: the message as text ("XML Parsing Error: ...", "Location: <the page's URL>", "Line Number ..., Column ...:"),
+        //   then <sourcetext> with the line of the error, which can be the whole file
+        const messageNode: Node = errorElement.getElementsByTagName("div")[0] ?? errorElement.firstChild ?? errorElement;
+        const lines: string[] = (messageNode.textContent ?? "").split("\n")
+            .map((line: string): string => line.trim())
+            .filter((line: string): boolean => line.length > 0 && !line.startsWith("Location:"));
+        const message: string = lines.join(" ").replace(/:$/, "");
+        return message.length > 0 ? message.substring(0, 300) : "unknown error";
     }
 
     /**
@@ -371,6 +540,29 @@ export class OpenSheetMusicDisplay {
      *  parked at a yield, exits quietly instead of drawing into backends that no longer exist. */
     private renderGeneration: number = 0;
 
+    /** Whether the container is observed for autoResize (see handleResize()), instead of the window. */
+    private observesContainer(): boolean {
+        return this.resizeHandlerAttached && typeof ResizeObserver === "function";
+    }
+
+    /**
+     * Whether a render is skipped because the container has no width, e.g. a hidden one (display: none, a tab that isn't
+     * shown) or one that isn't in the document: a layout for width 0 puts one measure into each system. Logs a warning then.
+     * With autoResize, the container's observer renders the sheet (render()) once the container has a width.
+     * A single horizontal staffline doesn't depend on the width: it's rendered.
+     * @param method the method that renders, for the warning: "render" or "renderNext"
+     */
+    private skipsRenderWithoutWidth(method: string): boolean {
+        if (this.getContainerContentWidth() !== 0 || this.rules.RenderSingleHorizontalStaffline) {
+            return false;
+        }
+        this.layoutContainerWidth = 0; // the width of the layout that is due: the observer renders at another one
+        log.warn(`[OSMD] ${method}(): the container's width is 0 (e.g. it's hidden, or not in the document), so the sheet wasn't rendered. ` +
+            (this.observesContainer() ? "It will be rendered when the container gets a width (autoResize)."
+                : "Call render() again when the container has a width."));
+        return true;
+    }
+
     /** Render the loaded music sheet to the container.
      *  A changed transposition (osmd.Sheet.Transpose, Instrument.Transpose, osmd.TransposeCalculator) or a voice shown or hidden
      *  (Voice.Visible, Instrument.Visible) is applied without updateGraphic(): render() creates the graphic again then,
@@ -379,8 +571,14 @@ export class OpenSheetMusicDisplay {
      *  or one was divided for the previous draw range (see MusicSheetCalculator.multiRestsFitDrawRange()).
      */
     public render(): void {
+        if (this.destroyed) {
+            throw this.createDestroyedError("render");
+        }
         if (!this.graphic) {
             throw new Error("OSMD: load() needs to be called before render()");
+        }
+        if (this.skipsRenderWithoutWidth("render")) {
+            return;
         }
         this.renderGeneration++;
         this.renderedPageNumbers.clear();
@@ -406,8 +604,8 @@ export class OpenSheetMusicDisplay {
 
         [this.rules.MinMeasureToDrawIndex, this.rules.MaxMeasureToDrawIndex] = drawRange;
 
-        // Set page width
-        let width: number = this.getContainerContentWidth();
+        // Set page width: the one the pages get as well (see createOrRefreshRenderBackend() below)
+        let width: number = this.getContainerContentWidthWithoutPages();
         this.layoutContainerWidth = width;
         if (this.rules.RenderSingleHorizontalStaffline) {
             width = this.rules.SheetMaximumWidth; // set safe maximum (browser limit), will be reduced later
@@ -443,8 +641,17 @@ export class OpenSheetMusicDisplay {
         //   backends also need an update when this.zoom was set from outside, which unfortunately doesn't have a setter method to set this in.
         //   so just for compatibility, we need to assume users set osmd.zoom, so we'd need to check whether it was changed compared to last time.
         if (true || this.needBackendUpdate) {
-            this.createOrRefreshRenderBackend();
+            this.createOrRefreshRenderBackend(this.layoutContainerWidth); // pages as wide as the layout
             this.needBackendUpdate = false;
+        }
+        // The pages, sized for the layout, can change the container's width, e.g. when the page's scrollbar appears:
+        //   the container's observer doesn't render again for that (see containerWidthWithPages).
+        this.containerWidthWithPages = undefined;
+        if (this.observesContainer()) {
+            const widthWithPages: number = this.getContainerContentWidth();
+            if (widthWithPages !== this.layoutContainerWidth) {
+                this.containerWidthWithPages = widthWithPages;
+            }
         }
 
         this.drawer.setZoom(this.zoom);
@@ -471,6 +678,9 @@ export class OpenSheetMusicDisplay {
         }
         //console.log("[OSMD] render finished");
         this.useWarmKeeper();
+        if (this.OnRender) {
+            this.OnRender({ incremental: false, done: true });
+        }
     }
 
     /**
@@ -848,12 +1058,25 @@ export class OpenSheetMusicDisplay {
      * to finish synchronously (e.g. before PDF/image export). Works for the endless vertical-scroll page
      * format and for RenderSingleHorizontalStaffline (one staffline scrolling right).
      *
+     * In a container without a width (e.g. a hidden one), no session starts: like render(), the call is skipped with a
+     * warning, and returns `done: true` with 0 measures, so that a loop over the batches ends. With autoResize, render()
+     * draws the whole sheet once the container has a width.
+     *
      * @param options batch options; defaults to 8 visual measures (a multi-rest counts as one). Pass
      *   `systems` instead to advance by whole music systems (vertical only); see {@link IRenderNextOptions}.
      */
     public renderNext(options?: IRenderNextOptions): IRenderNextResult {
+        if (this.destroyed) {
+            throw this.createDestroyedError("renderNext");
+        }
         if (!this.graphic) {
             throw new Error("OSMD: load() needs to be called before renderNext()");
+        }
+        // A session can't start in a container without a width (see skipsRenderWithoutWidth()). There is no batch to ask
+        //   for then (done), so that a loop over the batches ends; with autoResize, render() draws the sheet when the
+        //   container gets a width, as it does after a resize during a session.
+        if (!this.lazyIncrementalActive && this.skipsRenderWithoutWidth("renderNext")) {
+            return { done: true, renderedMeasures: 0, totalMeasures: 0, lastRenderedMeasure: [], nextUnrenderedMeasure: [] };
         }
         const batchMeasures: number = Math.max(1, options?.measures ?? 8);
         // `systems` (vertical only) advances the frontier by whole music systems instead of measures. A single
@@ -904,6 +1127,9 @@ export class OpenSheetMusicDisplay {
         const totalMeasures: number = this.visualMeasureCount(this.lazyFirstMeasureIndex, this.lazyLayoutLastMeasureIndex + 1);
         const renderedMeasures: number = done ? totalMeasures : this.visualMeasureCount(this.lazyFirstMeasureIndex, lastDrawnMeasureIndex + 1);
         this.useWarmKeeper();
+        if (this.OnRender) {
+            this.OnRender({ incremental: true, done });
+        }
         return {
             done, renderedMeasures, totalMeasures,
             lastRenderedMeasure: this.graphicalMeasuresAtOrBefore(lastDrawnMeasureIndex),
@@ -1020,6 +1246,9 @@ export class OpenSheetMusicDisplay {
         const batchOptions: IRenderNextOptions = { measures: options?.measures };
         if (!this.IncrementalRenderingActive) {
             this.renderNext(batchOptions); // paint the first batch so there is something to scroll
+            if (!this.IncrementalRenderingActive) {
+                return; // skipped: the container has no width (see renderNext())
+            }
         }
         if (this.IncrementalRenderingComplete) {
             return; // all measures fit in the first batch; nothing to load on scroll
@@ -1574,6 +1803,37 @@ export class OpenSheetMusicDisplay {
     }
 
     /**
+     * Removes this instance's pages from the container: the element of each backend (SVG or canvas), with the cursors in it.
+     * Not the container's other children, e.g. an overlay or a loading indicator of the app. The backends are known by
+     * reference, so none is missed (before, all children of the container were removed instead, see #678).
+     */
+    private removeOwnPages(): void {
+        if (!this.drawer?.Backends) {
+            return;
+        }
+        for (const backend of this.drawer.Backends) {
+            backend.removeFromContainer(this.container);
+            backend.free();
+        }
+        this.drawer.Backends.length = 0;
+    }
+
+    /**
+     * Removes the pages that other OpenSheetMusicDisplay instances left in the container: its children with the id
+     * "osmdCanvasPage" + page number, which every instance gives its page elements. E.g. the drawing of an instance that
+     * was disposed (dispose() keeps the drawing) before this one was made for the same container, as a component does
+     * that is mounted, unmounted and mounted again (React's StrictMode): the container would show two scores.
+     * Called at this instance's first render, after removeOwnPages(); later renders only remove its own pages.
+     */
+    private removeLeftoverPages(): void {
+        for (const child of Array.from(this.container.children)) {
+            if (/^osmdCanvasPage\d+$/.test(child.id)) {
+                child.remove();
+            }
+        }
+    }
+
+    /**
      * Removes the backends (SVG or canvas) from the container and creates a new one for each page drawn.
      * @param pageWidth the width of the pages in pixels. By default the container's content width, read after removing the
      *  backends. An incremental render passes the width all its batches lay the sheet out at (see lazyLayoutWidth).
@@ -1582,18 +1842,10 @@ export class OpenSheetMusicDisplay {
         // console.log("[OSMD] createOrRefreshRenderBackend()");
 
         // Remove old backends
-        if (this.drawer && this.drawer.Backends) {
-            // removing single children to remove all is error-prone, because sometimes a random SVG-child remains.
-            // for (const backend of this.drawer.Backends) {
-            //     backend.removeFromContainer(this.container);
-            // }
-            if (this.drawer.Backends[0]) {
-                this.drawer.Backends[0].removeAllChildrenFromContainer(this.container);
-            }
-            for (const backend of this.drawer.Backends) {
-                backend.free();
-            }
-            this.drawer.Backends.clear();
+        this.removeOwnPages();
+        if (!this.leftoverPagesRemoved) {
+            this.removeLeftoverPages();
+            this.leftoverPagesRemoved = true;
         }
 
         // Create the drawer
@@ -1689,6 +1941,44 @@ export class OpenSheetMusicDisplay {
         return Math.max(0, contentWidth); // e.g. a hidden container: offsetWidth 0
     }
 
+    /**
+     * Returns the container's content width (see getContainerContentWidth()) that doesn't depend on the pages this instance
+     * drew into it before: the width render() lays the sheet out for, and makes its pages as wide as.
+     * A container can be as wide as its content needs, e.g. a flex item with `flex-basis: auto`, a float or an inline-block:
+     * with the previous render's pages in it, its width follows theirs, not the space it has now. So the pages are taken
+     * out of the layout for the measurement (display: none). Meanwhile the container keeps its height, and with it a
+     * scrollbar that the pages cause, e.g. the web page's for a sheet taller than the window: the new pages will cause
+     * it again.
+     * Before, render() read the width with the previous pages for the layout, and createOrRefreshRenderBackend() read it
+     * again without them (and without their scrollbar) for the pages: the two differed for such containers, and
+     * by the scrollbar's width from the second render on.
+     */
+    private getContainerContentWidthWithoutPages(): number {
+        const pageElements: HTMLElement[] = [];
+        for (const backend of this.drawer?.Backends ?? []) {
+            const element: HTMLElement = backend.getRenderElement();
+            if (element?.parentElement === this.container) {
+                pageElements.push(element);
+            }
+        }
+        if (pageElements.length === 0 || this.fixedLayoutWidth !== undefined) {
+            return this.getContainerContentWidth();
+        }
+        const containerStyle: CSSStyleDeclaration = this.container.style;
+        const minHeight: string = containerStyle.minHeight;
+        containerStyle.minHeight = this.container.offsetHeight + "px";
+        const displays: string[] = pageElements.map((element: HTMLElement) => element.style.display);
+        for (const element of pageElements) {
+            element.style.display = "none";
+        }
+        const width: number = this.getContainerContentWidth();
+        pageElements.forEach((element: HTMLElement, index: number) => {
+            element.style.display = displays[index];
+        });
+        containerStyle.minHeight = minHeight;
+        return width;
+    }
+
     // for now SVG only, see generateImages_browserless (PNG/SVG)
     public exportSVG(): void {
         if (!this.drawer) {
@@ -1715,6 +2005,7 @@ export class OpenSheetMusicDisplay {
      */
     public clear(): void {
         this.renderGeneration++;
+        this.cancelPendingLoad(); // otherwise a file that is still being fetched or unzipped would be set as the sheet later
         const sheet: MusicSheet = this.sheet;
         this.drawer?.clear(); // also releases the drawn sheet
         this.reset(); // without this, resize will draw loaded sheet again
@@ -1740,12 +2031,17 @@ export class OpenSheetMusicDisplay {
      * your code references neither. Except while incremental rendering on scroll (enableIncrementalRenderingOnScroll()) hasn't
      * drawn the whole sheet: its scroll listener keeps the instance. And in browsers without WeakRef (Chrome before 84,
      * Firefox before 79, Safari before 14.1), the window's resize listener keeps it.
-     * The drawing stays in the container. To remove it and free the sheet's memory while you keep the instance, call clear().
+     * A load() that hasn't finished is aborted (see load()).
+     * The drawing stays in the container, and the instance stays usable: load() and render() work, and
+     * setOptions({autoResize: true}) adds the listeners again. To free the sheet's memory while you keep the instance,
+     * call clear(). To remove the instance's elements from the container as well and end its use, call destroy() instead:
+     * that is the call for a component's cleanup (e.g. React's useEffect cleanup, Vue's onUnmounted).
      * @example
      * osmd.dispose();
      * container.innerHTML = ""; // the instance can be garbage collected now, once your code doesn't reference it anymore
      */
     public dispose(): void {
+        this.cancelPendingLoad();
         if (this.disposeResizeListener) {
             this.disposeResizeListener();
         }
@@ -1754,18 +2050,55 @@ export class OpenSheetMusicDisplay {
         this.stopUsingWarmKeeper();
     }
 
+    /**
+     * Ends the use of this instance and leaves the container as OSMD found it: does what clear() and dispose() do (releases
+     * the sheet, aborts a load() in progress, removes OSMD's listeners and observers), and removes the instance's page
+     * elements and cursors from the container. The container's other children stay, e.g. elements of your app.
+     * Afterwards load() is rejected and render() throws, with an Error that names destroy(): create a new instance to
+     * show a score again, in the same container or another one. Calling destroy() again does nothing.
+     * @example
+     * // React
+     * useEffect(() => {
+     *     const osmd = new OpenSheetMusicDisplay(containerRef.current);
+     *     osmd.load(url).then(() => osmd.render()).catch((error) => {
+     *         if (error.name !== "AbortError") { // not an error: destroy() aborted the load
+     *             console.error(error);
+     *         }
+     *     });
+     *     return () => osmd.destroy();
+     * }, [url]);
+     */
+    public destroy(): void {
+        if (this.destroyed) {
+            return;
+        }
+        this.clear();
+        this.dispose();
+        for (const cursor of this.cursors) {
+            cursor?.Dispose(); // also removes its image
+        }
+        this.cursors.length = 0;
+        this.removeOwnPages();
+        this.destroyed = true;
+    }
+
     /** Set OSMD rendering options using an IOSMDOptions object.
      *  Can be called during runtime. Also called by constructor.
      *  For example, setOptions({autoResize: false}) will disable autoResize even during runtime.
+     *  An option that is given is applied, also when it turns something back on (e.g. drawFingerings: true after false);
+     *  an option that is left out (or undefined) keeps its value. The options object isn't changed.
+     *  Without an options object (undefined or null), this does nothing but warn.
      */
     public setOptions(options: IOSMDOptions): void {
         if (!this.rules) {
             this.rules = new EngravingRules();
+            // from the start, not only from load() on, so that an app can e.g. create a GraphicalLabel before it loads a score
+            this.rules.TextMeasurer = new VexFlowTextMeasurer(this.rules);
         }
-        if (!this.drawingParameters && !options.drawingParameters) {
+        if (!this.drawingParameters && !options?.drawingParameters) {
             this.drawingParameters = new DrawingParameters(DrawingParametersEnum.default, this.rules);
             // if "default", will be created below
-        } else if (options.drawingParameters) {
+        } else if (options?.drawingParameters) {
             if (!this.drawingParameters) {
                 this.drawingParameters = new DrawingParameters(DrawingParametersEnum[options.drawingParameters], this.rules);
             } else {
@@ -1782,6 +2115,9 @@ export class OpenSheetMusicDisplay {
         if (options.onXMLRead) {
             this.OnXMLRead = options.onXMLRead;
         }
+        if (options.onRender) {
+            this.OnRender = options.onRender;
+        }
 
         const backendNotInitialized: boolean = !this.drawer || !this.drawer.Backends || this.drawer.Backends.length < 1;
         let needBackendUpdate: boolean = backendNotInitialized;
@@ -1797,8 +2133,8 @@ export class OpenSheetMusicDisplay {
         if (options.autoBeam !== undefined) { // only change an option if it was given in options, otherwise it will be undefined
             this.rules.AutoBeamNotes = options.autoBeam;
         }
-        const autoBeamOptions: AutoBeamOptions = options.autoBeamOptions;
-        if (autoBeamOptions) {
+        if (options.autoBeamOptions) {
+            const autoBeamOptions: AutoBeamOptions = { ...options.autoBeamOptions }; // a copy: the object given isn't changed
             if (autoBeamOptions.maintain_stem_directions === undefined) {
                 autoBeamOptions.maintain_stem_directions = false;
             }
@@ -1830,8 +2166,8 @@ export class OpenSheetMusicDisplay {
         if (options.colorStemsLikeNoteheads !== undefined) {
             this.rules.ColorStemsLikeNoteheads = options.colorStemsLikeNoteheads;
         }
-        if (options.disableCursor) {
-            this.drawingParameters.drawCursors = false;
+        if (options.disableCursor !== undefined) {
+            this.drawingParameters.drawCursors = !options.disableCursor; // false draws the cursors again, from the next render()
         }
 
         // alternative to if block: this.drawingsParameters.drawCursors = options.drawCursors !== false. No if, but always sets drawingParameters.
@@ -1871,8 +2207,8 @@ export class OpenSheetMusicDisplay {
         if (options.drawPartAbbreviations !== undefined) {
             this.rules.RenderPartAbbreviations = options.drawPartAbbreviations;
         }
-        if (options.drawFingerings === false) {
-            this.rules.RenderFingerings = false;
+        if (options.drawFingerings !== undefined) {
+            this.rules.RenderFingerings = options.drawFingerings;
         }
         if (options.drawMeasureNumbers !== undefined) {
             this.rules.RenderMeasureNumbers = options.drawMeasureNumbers;
@@ -1952,7 +2288,7 @@ export class OpenSheetMusicDisplay {
         if (options.defaultFontFamily) {
             this.rules.DefaultFontFamily = options.defaultFontFamily; // default "Times New Roman", also used if font family not found
         }
-        if (options.defaultFontStyle) {
+        if (options.defaultFontStyle !== undefined) { // FontStyles.Regular is 0
             this.rules.DefaultFontStyle = options.defaultFontStyle; // e.g. FontStyles.Bold
         }
         if (options.drawUpToMeasureNumber >= 0) {
@@ -1966,11 +2302,11 @@ export class OpenSheetMusicDisplay {
             //   depending on which measure you start rendering from (measure 2 for example, instead of 0),
             //   so it is currently useful to store this option value separately from the index, to readjust the index.
         }
-        if (options.drawUpToPageNumber) {
-            this.rules.MaxPageToDrawNumber = options.drawUpToPageNumber;
+        if (options.drawUpToPageNumber >= 0) { // not if undefined
+            this.rules.MaxPageToDrawNumber = options.drawUpToPageNumber || Number.MAX_VALUE; // 0: no limit
         }
-        if (options.drawUpToSystemNumber) {
-            this.rules.MaxSystemToDrawNumber = options.drawUpToSystemNumber;
+        if (options.drawUpToSystemNumber >= 0) {
+            this.rules.MaxSystemToDrawNumber = options.drawUpToSystemNumber || Number.MAX_VALUE; // 0: no limit
         }
         if (options.tupletsRatioed !== undefined) {
             this.rules.TupletsRatioed = options.tupletsRatioed;
@@ -2024,9 +2360,6 @@ export class OpenSheetMusicDisplay {
         if (options.useGeometricSkyBottomLineCalculation !== undefined) {
             this.rules.UseGeometricSkyBottomLineCalculation = options.useGeometricSkyBottomLineCalculation;
         }
-        if (options.preferredSkyBottomLineBatchCalculatorBackend !== undefined) {
-            this.rules.PreferredSkyBottomLineBatchCalculatorBackend = options.preferredSkyBottomLineBatchCalculatorBackend;
-        }
         if (options.skyBottomLineBatchMinMeasures !== undefined) {
             this.rules.SkyBottomLineBatchMinMeasures = options.skyBottomLineBatchMinMeasures;
         }
@@ -2064,50 +2397,59 @@ export class OpenSheetMusicDisplay {
         for (let i: number = 0; i < noteIndices.length; i++) {
             coloringSetCurrent.setValue(noteIndices[i], colorSetString[i]);
         }
-        coloringSetCurrent.setValue(-1, colorSetString.last()); // index 7. Unfortunately -1 is not a NoteEnum value, so we can't put it into noteIndices
+        // index 7. Unfortunately -1 is not a NoteEnum value, so we can't put it into noteIndices
+        coloringSetCurrent.setValue(-1, CollectionUtil.getLastElement(colorSetString));
         this.rules.ColoringSetCurrent = coloringSetCurrent;
         this.rules.ColoringMode = options.coloringMode;
     }
 
     /**
-     * Sets the logging level for this OSMD instance. By default, this is set to `warn`.
+     * Sets the logging level of OSMD: for all OSMD instances on the page, not just this one.
+     * It sets the level of OSMD's own loglevel logger (named "OSMD"), not of loglevel's root logger, so the level of the
+     * page's other loglevel users stays as it is, and it isn't saved in localStorage (it lasts until the page reloads).
      *
-     * @param: content can be `trace`, `debug`, `info`, `warn` or `error`.
+     * Until it's called, OSMD logs with the level the root logger has when OSMD loads: `warn` by default.
+     *
+     * @param level `trace`, `debug`, `info`, `warn`, `error` or `silent`. Any other value logs a warning and sets `warn`.
      */
     public setLogLevel(level: string): void {
         switch (level) {
             case "trace":
-                log.setLevel(log.levels.TRACE);
+                log.setLevel(log.levels.TRACE, false);
                 break;
             case "debug":
-                log.setLevel(log.levels.DEBUG);
+                log.setLevel(log.levels.DEBUG, false);
                 break;
             case "info":
-                log.setLevel(log.levels.INFO);
+                log.setLevel(log.levels.INFO, false);
                 break;
             case "warn":
-                log.setLevel(log.levels.WARN);
+                log.setLevel(log.levels.WARN, false);
                 break;
             case "error":
-                log.setLevel(log.levels.ERROR);
+                log.setLevel(log.levels.ERROR, false);
                 break;
             case "silent":
-                log.setLevel(log.levels.SILENT);
+                log.setLevel(log.levels.SILENT, false);
                 break;
             default:
                 log.warn(`Could not set log level to ${level}. Using warn instead.`);
-                log.setLevel(log.levels.WARN);
+                log.setLevel(log.levels.WARN, false);
                 break;
         }
     }
 
+    /**
+     * Returns OSMD's logging level (for all OSMD instances on the page), as a number of loglevel's `levels`:
+     * 0 = trace, 1 = debug, 2 = info, 3 = warn, 4 = error, 5 = silent. See {@link setLogLevel}.
+     */
     public getLogLevel(): number {
         return log.getLevel();
     }
 
     /**
-     * Initialize this object to default values
-     * FIXME: Probably unnecessary
+     * Releases the loaded sheet and its graphic, and ends incremental rendering: for load(), before it reads the new sheet,
+     * and for clear(). The settings stay: the options, the EngravingRules and the zoom.
      */
     protected reset(): void {
         this.resetIncrementalRendering(); // abandon any incremental session
@@ -2118,15 +2460,18 @@ export class OpenSheetMusicDisplay {
         }
         this.sheet = undefined;
         this.graphic = undefined;
-        this.zoom = 1.0;
         this.rules.RenderCount = 0;
+        this.layoutContainerWidth = undefined; // no layout: the container's observer doesn't render a sheet before the app does
     }
 
     /**
-     * Attach the appropriate handler to the window.onResize event
+     * Attach the appropriate handler for autoResize: an observer of the container's size, or a listener to the window.onResize
+     * event (see handleResize())
      */
     protected autoResize(): void {
-
+        if (this.destroyed) {
+            return;
+        }
         const self: OpenSheetMusicDisplay = this;
         this.handleResize(
             () => {
@@ -2175,7 +2520,23 @@ export class OpenSheetMusicDisplay {
     }
 
     /**
-     * Helper function for managing window's onResize events.
+     * Whether the sheet needs a new layout because the container's content width isn't the one of the last layout anymore
+     * (see layoutContainerWidth): what the container's observer of autoResize renders again for.
+     * Not before the first render() (or the start of incremental rendering): the app renders a loaded sheet when it
+     * chooses to. And not while the container has no width, e.g. while it's hidden: render() would skip that; when it's
+     * shown again at the width of the layout, nothing is to do.
+     */
+    private containerWidthNeedsLayout(): boolean {
+        if (this.layoutContainerWidth === undefined || !this.graphic) {
+            return false;
+        }
+        const width: number = this.getContainerContentWidth();
+        return width > 0 && width !== this.layoutContainerWidth && width !== this.containerWidthWithPages;
+    }
+
+    /**
+     * Helper function for managing the resize events of autoResize: those of a ResizeObserver on the container, or the
+     * window's onResize events in browsers without ResizeObserver (see addResizeListener()).
      * The window keeps its listeners as long as the page is open, so the listener reaches this instance only through a WeakRef:
      * it doesn't keep an instance in memory, with its sheet and drawing, that the app has dropped. Instead, the container keeps
      * the instance until the listener is removed (e.g. by dispose()), so that the drawing adapts to the window's size as long as
@@ -2190,8 +2551,8 @@ export class OpenSheetMusicDisplay {
         this.resizeEndCallback = endCallback;
         const instanceRef: { deref(): OpenSheetMusicDisplay } = typeof WeakRef === "function" ?
             new WeakRef(this) : { deref: (): OpenSheetMusicDisplay => this };
-        const removeListener: () => void = OpenSheetMusicDisplay.addWindowResizeListener(instanceRef);
         const container: HTMLElement = this.container;
+        const removeListener: () => void = OpenSheetMusicDisplay.addResizeListener(instanceRef, container);
         const key: symbol = OpenSheetMusicDisplay.containerInstanceKey;
         // not enumerable. Replaces the reference to an older instance made for the same container.
         Object.defineProperty(container, key, { value: this, configurable: true });
@@ -2219,19 +2580,35 @@ export class OpenSheetMusicDisplay {
     }
 
     /**
-     * Adds a listener to the window's resize events that calls the instance's resize callbacks (see handleResize()):
-     * the start callback when a resize starts, the end callback once no resize event came for 200 ms.
+     * Adds a listener that calls the instance's resize callbacks (see handleResize()): the start callback when a resize
+     * starts, the end callback once no resize event came for 200 ms.
+     * With ResizeObserver in the browser, the resize events are the changes of the container's width
+     * that need a new layout (see containerWidthNeedsLayout()), whatever their cause: the window, a sidebar, a split pane,
+     * a hidden container that is shown. Changes of its height don't count: each render changes it. If the width is back at
+     * the layout's after the 200 ms, the end callback isn't called.
+     * Otherwise they are the window's resize events, each of which ends in the end callback.
      * The listener and its timers reach the instance only through `instanceRef`. When it's a WeakRef and the instance has been
      * freed, the listener removes itself at the next resize event.
      * It's made here, not in handleResize(), because all closures made in one function call share the variables that any of
      * them uses: next to the closures there that reference `this`, the listener would keep the instance in memory too.
      * @param instanceRef a WeakRef to the instance, or (without WeakRef) an object that keeps it
+     * @param container the instance's container, which is observed
      * @returns a function that removes the listener
      */
-    private static addWindowResizeListener(instanceRef: { deref(): OpenSheetMusicDisplay }): () => void {
+    private static addResizeListener(instanceRef: { deref(): OpenSheetMusicDisplay }, container: HTMLElement): () => void {
         let rtime: number;
         let timeout: number = undefined;
         const delta: number = 200;
+        let observer: ResizeObserver;
+
+        function containerResized(): void {
+            const osmd: OpenSheetMusicDisplay = instanceRef.deref();
+            if (!osmd) {
+                removeListener(); // the instance was freed
+            } else if (osmd.containerWidthNeedsLayout()) {
+                resizeStart();
+            }
+        }
 
         function resizeStart(): void {
             const osmd: OpenSheetMusicDisplay = instanceRef.deref();
@@ -2258,13 +2635,15 @@ export class OpenSheetMusicDisplay {
                 removeListener(); // the instance was freed
             } else if ((new Date()).getTime() - rtime < delta) {
                 timeout = window.setTimeout(resizeEnd, delta);
-            } else {
+            } else if (!observer || osmd.containerWidthNeedsLayout()) {
                 osmd.resizeEndCallback();
             }
         }
 
         function removeListener(): void {
-            if ((<any>window).detachEvent) {
+            if (observer) {
+                observer.disconnect();
+            } else if ((<any>window).detachEvent) {
                 // Support IE<9
                 (<any>window).detachEvent("onresize", resizeStart);
             } else {
@@ -2272,7 +2651,10 @@ export class OpenSheetMusicDisplay {
             }
         }
 
-        if ((<any>window).attachEvent) {
+        if (typeof ResizeObserver === "function") {
+            observer = new ResizeObserver(containerResized);
+            observer.observe(container);
+        } else if ((<any>window).attachEvent) {
             // Support IE<9
             (<any>window).attachEvent("onresize", resizeStart);
         } else {
@@ -2304,7 +2686,11 @@ export class OpenSheetMusicDisplay {
                 }
                 // create new cursor
                 if (backendToDrawOn && backendToDrawOn.getRenderElement()) {
+                    const previousCursor: Cursor = this.cursors[i];
                     this.cursors[i] = new Cursor(backendToDrawOn.getRenderElement(), this, this.cursorsOptions[i]);
+                    if (previousCursor) {
+                        this.cursors[i].useImageOf(previousCursor); // usually the same image: no need to draw it again
+                    }
                 }
                 if (this.sheet && this.graphic && this.cursors[i]) { // else init is called in load()
                     this.cursors[i].init(this.sheet.MusicPartManager, this.graphic);
@@ -2349,8 +2735,10 @@ export class OpenSheetMusicDisplay {
         return backend;
     }
 
-    /** Standard page format options like A4 or Letter, in portrait and landscape. E.g. PageFormatStandards["A4_P"] or PageFormatStandards["Letter_L"]. */
-    public static PageFormatStandards: { [type: string]: PageFormat } = {
+    /** Standard page format options like A4 or Letter, in portrait and landscape. E.g. PageFormatStandards["A4_P"] or PageFormatStandards["Letter_L"].
+     *  One table for all OSMD instances on the page: a format added here, e.g. PageFormatStandards["B5_P"] = new PageFormat(176, 250, "B5_P"),
+     *  can be used by all of them (setOptions({pageFormat: "B5_P"})). The table itself can't be replaced (readonly). */
+    public static readonly PageFormatStandards: { [type: string]: PageFormat } = {
         "A3_L": new PageFormat(420, 297, "A3_L"), // id strings should use underscores instead of white spaces to facilitate use as URL parameters.
         "A3_P": new PageFormat(297, 420, "A3_P"),
         "A4_L": new PageFormat(297, 210, "A4_L"),
@@ -2447,8 +2835,8 @@ export class OpenSheetMusicDisplay {
         return this.autoResizeEnabled;
     }
     /** Turns autoResize on or off, also during runtime, like setOptions({autoResize}).
-     *  Off removes the window's resize listener and the container's reference to this instance (see handleResize());
-     *  on adds them again.
+     *  Off removes the container's observer (or the window's resize listener) and the container's reference to this
+     *  instance (see handleResize()); on adds them again.
      */
     public set AutoResizeEnabled(value: boolean) {
         if (value && !this.resizeHandlerAttached) {
@@ -2459,6 +2847,10 @@ export class OpenSheetMusicDisplay {
         this.autoResizeEnabled = value;
     }
 
+    /** The scale of the drawing: 1.0 by default, e.g. 0.5 draws the sheet at half the size, with more measures per system.
+     *  Call render() after setting it. Like the options, it stays set when another score is loaded (load()) and over
+     *  clear(), so it can also be set before the first load(). (Up to OSMD 2.3.1, load() and clear() set it back to 1.0.)
+     */
     public get Zoom(): number {
         return this.zoom;
     }
@@ -2478,12 +2870,17 @@ export class OpenSheetMusicDisplay {
         return this.followCursor;
     }
 
+    /** Sets this instance's calculator for transposing (osmd.Sheet.Transpose, Instrument.Transpose),
+     *  e.g. new TransposeCalculator() or new IntervalTransposeCalculator(). Other OSMD instances on the page keep their own.
+     *  Undefined (the default): no transposition. Stored in EngravingRules.TransposeCalculator.
+     */
     public set TransposeCalculator(calculator: ITransposeCalculator) {
-        MusicSheetCalculator.transposeCalculator = calculator;
+        this.rules.TransposeCalculator = calculator;
     }
 
+    /** This instance's calculator for transposing, see the setter. */
     public get TransposeCalculator(): ITransposeCalculator {
-        return MusicSheetCalculator.transposeCalculator;
+        return this.rules.TransposeCalculator;
     }
 
     public get Sheet(): MusicSheet {
@@ -2506,6 +2903,18 @@ export class OpenSheetMusicDisplay {
         return this.version;
     }
     //#endregion
+}
+
+/** What the steps of one load() pass along (see OpenSheetMusicDisplay.continueLoad()). Every field is required, so that
+ *  no step can leave out isFileContent, whose missing value would allow a request. */
+interface ILoadState {
+    /** load()'s tempTitle: the title for a score without one. */
+    tempTitle: string;
+    /** The number of the load() the steps belong to (see OpenSheetMusicDisplay.loadGeneration). */
+    generation: number;
+    /** Whether a string content was read from a file (a Blob, an MXL archive, a URL's response) instead of given by the
+     *  app: then it is never taken as a URL (see OpenSheetMusicDisplay.loadContent()). */
+    isFileContent: boolean;
 }
 
 /** Options for {@link OpenSheetMusicDisplay.renderNext} (incremental, "system by system" rendering). */

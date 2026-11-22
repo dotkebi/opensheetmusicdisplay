@@ -41,7 +41,7 @@ describe("Tremolo between notes across the staves of a system", () => {
             expect(strokes.get(keys[0]).length).to.equal(2);
             expect(strokes.get(keys[1]).length).to.equal(3);
 
-            const noteOf = (measure: number, staff: number): any =>
+            const noteOf: (measure: number, staff: number) => any = (measure: number, staff: number): any =>
                 (osmd.GraphicSheet.MeasureList[measure][staff].staffEntries[0].graphicalVoiceEntries[0].notes[0] as VexFlowGraphicalNote)
                     .vfnote[0];
             for (const [index, startStaff, stopStaff] of [[0, 1, 0], [1, 0, 1]]) {

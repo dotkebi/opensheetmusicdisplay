@@ -1,6 +1,6 @@
 import { IXmlElement } from "./Xml";
 import JSZip from "jszip";
-import log from "loglevel";
+import { log } from "../Logging";
 
 export class MXLFile {
     private blob: Blob;
@@ -56,8 +56,10 @@ export class MXLHelper {
             return utf8Text;
         }
 
-        // Legacy MXL files can contain UTF-16 XML without a byte-order mark.
-        return new TextDecoder("utf-16").decode(bytes);
+        // Legacy MXL files can contain UTF-16 XML without a byte-order mark. If that doesn't give XML either, the text stays
+        //   as it is: not XML, which load() then names in its error as it is written in the file
+        const utf16Text: string = new TextDecoder("utf-16").decode(bytes);
+        return utf16Text.trimStart().startsWith("<") ? utf16Text : utf8Text;
     }
 
     /** Returns the documentElement of MXL data. */
@@ -76,13 +78,39 @@ export class MXLHelper {
         );
     }
 
+    /**
+     * Returns the text of the score file of an MXL file (a zip archive): the file that META-INF/container.xml names as
+     * the rootfile. If the container file is missing or names no file of the archive (e.g. a MusicXML file that was
+     * zipped by hand), the first .musicxml file of the archive is read instead, or else its first .xml file, with a warning.
+     * Rejects with an Error that says what is missing if the archive has no such file either.
+     */
     public static async jszipToXMLstring(zip: JSZip): Promise<string> {
         // asynchronously load zip file and process it - with Promises
-        const containerBytes: Uint8Array = await zip.file("META-INF/container.xml").async("uint8array");
-        const container: string = this.decodeXml(containerBytes);
-        const parser: DOMParser = new DOMParser();
-        const doc: Document = parser.parseFromString(container, "text/xml");
-        const rootFile: string = doc.getElementsByTagName("rootfile")[0].getAttribute("full-path");
+        let rootFile: string;
+        let problem: string = "META-INF/container.xml is missing";
+        if (zip.file("META-INF/container.xml")) {
+            const containerBytes: Uint8Array = await zip.file("META-INF/container.xml").async("uint8array");
+            const container: string = this.decodeXml(containerBytes);
+            const parser: DOMParser = new DOMParser();
+            const doc: Document = parser.parseFromString(container, "text/xml");
+            rootFile = doc.getElementsByTagName("rootfile")[0]?.getAttribute("full-path");
+            if (!rootFile) {
+                problem = "META-INF/container.xml names no rootfile";
+            } else if (!zip.file(rootFile)) {
+                problem = `the rootfile "${rootFile}" of META-INF/container.xml is not in the archive`;
+                rootFile = undefined;
+            }
+        }
+        if (!rootFile) {
+            const scoreFiles: string[] = Object.keys(zip.files).filter((name: string): boolean =>
+                !zip.files[name].dir && !name.startsWith("META-INF/") && !name.startsWith("__MACOSX/"));
+            rootFile = scoreFiles.find((name: string): boolean => name.toLowerCase().endsWith(".musicxml"))
+                ?? scoreFiles.find((name: string): boolean => name.toLowerCase().endsWith(".xml"));
+            if (!rootFile) {
+                throw new Error(`${problem}, and the archive has no other .musicxml or .xml file`);
+            }
+            log.warn(`[OSMD] MXL file: ${problem}, reading "${rootFile}" instead.`);
+        }
         const xmlBytes: Uint8Array = await zip.file(rootFile).async("uint8array");
         return this.decodeXml(xmlBytes);
     }

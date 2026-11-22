@@ -16,6 +16,7 @@ import { VexFlowMeasure } from "../MusicalScore/Graphical/VexFlow/VexFlowMeasure
 import { CursorOptions, CursorType } from "./OSMDOptions";
 import { BoundingBox } from "../MusicalScore/Graphical/BoundingBox";
 import { GraphicalNote } from "../MusicalScore/Graphical/GraphicalNote";
+import { CollectionUtil } from "../Util/CollectionUtil";
 
 /** A cursor which can iterate through the music sheet. */
 export class Cursor {
@@ -298,9 +299,10 @@ export class Cursor {
     this.cursorElement.style.display = "";
   }
 
+  /** Returns the graphical measure of the first visible staff at the given (zero-based source) measure index. */
   private findVisibleGraphicalMeasure(measureIndex: number): GraphicalMeasure {
     for (let i: number = 0; i < this.graphic.NumberOfStaves; i++) {
-      const measure: GraphicalMeasure = this.graphic.findGraphicalMeasure(this.iterator.CurrentMeasureIndex, i);
+      const measure: GraphicalMeasure = this.graphic.findGraphicalMeasure(measureIndex, i);
       if (measure?.ParentStaff.isVisible()) {
         return measure;
       }
@@ -357,6 +359,20 @@ export class Cursor {
       // only draw a new cursor image if it would look different. A solid color image is stretched to a new width,
       //   the standard cursor's gradient is redrawn, which keeps it exact (see osmd#1519).
     }
+  }
+
+  /**
+   * Takes over the image that another cursor has drawn, e.g. the cursor that this one replaces after a re-render.
+   * This cursor then only draws an image of its own if it would look different (see cursorImageOutdated()):
+   * drawing and encoding the image takes about as long as rendering a few measures.
+   */
+  public useImageOf(otherCursor: Cursor): void {
+    if (!otherCursor.cursorOptionsRendered) {
+      return; // it hasn't drawn one
+    }
+    this.cursorElement.src = otherCursor.cursorElement.src;
+    this.cursorOptionsRendered = otherCursor.cursorOptionsRendered;
+    this.cursorWidthRendered = otherCursor.cursorWidthRendered;
   }
 
   /** Whether updateStyle() would draw a different image than the current one.
@@ -506,7 +522,7 @@ export class Cursor {
       timestamp = new Fraction(0, 0);
     }
     for (const page of this.graphic.MusicPages) {
-      const lastSystemTimestamp: Fraction = page.MusicSystems.last().GetSystemsLastTimeStamp();
+      const lastSystemTimestamp: Fraction = CollectionUtil.getLastElement(page.MusicSystems).GetSystemsLastTimeStamp();
       if (lastSystemTimestamp.gt(timestamp)) {
         // gt: the last timestamp of the last system is equal to the first of the next page,
         //   so we do need to use gt, not gte here.

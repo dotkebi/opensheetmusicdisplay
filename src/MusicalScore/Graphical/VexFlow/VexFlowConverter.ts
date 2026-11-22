@@ -18,7 +18,7 @@ import {SystemLinesEnum} from "../SystemLinesEnum";
 import {FontStyles} from "../../../Common/Enums/FontStyles";
 import {Fonts} from "../../../Common/Enums/Fonts";
 import {OutlineAndFillStyleEnum, OUTLINE_AND_FILL_STYLE_DICT} from "../DrawingEnums";
-import log from "loglevel";
+import { log } from "../../../Common/Logging";
 import { ArticulationEnum, StemDirectionType, VoiceEntry } from "../../VoiceData/VoiceEntry";
 import { SourceStaffEntry } from "../../VoiceData/SourceStaffEntry";
 import { BreathMarkValue } from "../../VoiceData/Articulation";
@@ -45,12 +45,44 @@ import { GraphicalMeasure } from "../GraphicalMeasure";
 import { Staff } from "../../VoiceData/Staff";
 import { VexFlowStaffEntry } from "./VexFlowStaffEntry";
 import { VexFlowVoiceEntry } from "./VexFlowVoiceEntry";
+import { CollectionUtil } from "../../../Util/CollectionUtil";
 
 /**
  * Helper class, which contains static methods which actually convert
  * from OSMD objects to VexFlow objects.
  */
 export class VexFlowConverter {
+    /** Sets VexFlow's page-wide settings to the given rules: the scale of the note glyphs (VexFlowDefaultNotationFontScale), the
+     *  widths of the staff lines and the stems, and the font of the glyphs (DefaultVexFlowNoteFont, from VexFlow 3 on).
+     *  VexFlow has them once per page (Vex.Flow.*), shared by all OSMD instances, and reads them when notes and staves are created,
+     *  formatted and drawn. So every OSMD instance sets them before it creates its graphical sheet, before each layout and before
+     *  it draws: otherwise an instance would use the values of the instance rendered before it (or VexFlow's defaults).
+     */
+    public static applyRulesToVexFlow(rules: EngravingRules): void {
+        const flow: any = Vex.Flow;
+        // the font of the glyphs: every value sets its stack (also Bravura, after another instance set Gonville).
+        //   VexFlow 1.x has one font and no font stacks (no Vex.Flow.Fonts).
+        const fonts: any = flow.Fonts;
+        if (fonts) {
+            switch (rules.DefaultVexFlowNoteFont?.toLowerCase()) {
+                case "gonville":
+                    flow.DEFAULT_FONT_STACK = [fonts.Gonville, fonts.Bravura, fonts.Custom];
+                    break;
+                case "petaluma":
+                    flow.DEFAULT_FONT_STACK = [fonts.Petaluma, fonts.Gonville, fonts.Bravura];
+                    break;
+                default: // Bravura, VexFlow's default from 3.0 on (more cursive, bold)
+                    flow.DEFAULT_FONT_STACK = [fonts.Bravura, fonts.Gonville, fonts.Custom];
+            }
+        }
+        // sizing defaults in VexFlow
+        flow.STAVE_LINE_THICKNESS = rules.StaffLineWidth * unitInPixels;
+        flow.STEM_WIDTH = rules.StemWidth * unitInPixels;
+        // sets scale/size of notes/rest notes:
+        flow.DEFAULT_NOTATION_FONT_SCALE = rules.VexFlowDefaultNotationFontScale; // default 39
+        flow.DEFAULT_TAB_FONT_SCALE = rules.VexFlowDefaultTabFontScale; // default 39 // TODO doesn't seem to do anything
+    }
+
     /** XML accidental parentheses/brackets are handled before formatting, at normal accidental scale. */
     public static readonly HasXmlAccidentalParentheses: boolean = true;
     /**
@@ -499,7 +531,7 @@ export class VexFlowConverter {
                                 const previousNote: Note = previousVoiceEntry.Notes[0];
                                 const followingNote: Note = followingVoiceEntry.Notes[0];
                                 if (previousNote.NoteBeam?.Notes.includes(followingNote)) {
-                                    const previousNotePitch: Pitch = previousVoiceEntry.Notes.last().Pitch;
+                                    const previousNotePitch: Pitch = CollectionUtil.getLastElement(previousVoiceEntry.Notes).Pitch;
                                     const clef: ClefInstruction = (note as VexFlowGraphicalNote).Clef();
                                     const vfpitch: [string, string, ClefInstruction] = VexFlowConverter.pitch(
                                         VexFlowConverter.restToNotePitch(previousNotePitch.getTransposedPitch(-2), clef.ClefType),

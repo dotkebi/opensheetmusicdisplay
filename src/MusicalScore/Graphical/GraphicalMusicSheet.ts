@@ -17,7 +17,7 @@ import {GraphicalNote} from "./GraphicalNote";
 import {Instrument} from "../Instrument";
 import {BoundingBox} from "./BoundingBox";
 import {MusicSheetCalculator} from "./MusicSheetCalculator";
-import log from "loglevel";
+import { log } from "../../Common/Logging";
 //import { Dictionary } from "typescript-collections"; // unused for now
 import {CollectionUtil} from "../../Util/CollectionUtil";
 import {SelectionStartSymbol} from "./SelectionStartSymbol";
@@ -214,7 +214,7 @@ export class GraphicalMusicSheet {
         this.musicPages = [];
         this.measureList = [];
         this.preparedTransposition = this.currentTransposition();
-        this.preparedTransposeCalculator = MusicSheetCalculator.transposeCalculator;
+        this.preparedTransposeCalculator = this.musicSheet.Rules.TransposeCalculator;
         this.preparedVoiceVisibility = this.currentVoiceVisibility();
     }
 
@@ -231,7 +231,7 @@ export class GraphicalMusicSheet {
             return true;
         }
         return transposition.some((halftones: number): boolean => halftones !== 0) &&
-            MusicSheetCalculator.transposeCalculator !== this.preparedTransposeCalculator;
+            this.musicSheet.Rules.TransposeCalculator !== this.preparedTransposeCalculator;
     }
 
     /** The halftones the sheet is transposed by: MusicSheet.Transpose, followed by each instrument's Transpose. */

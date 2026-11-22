@@ -32,7 +32,7 @@ import { ClearanceBox, CrossStaffExpressionClearance } from "./CrossStaffExpress
 import { VexFlowTextMeasurer } from "./VexFlowTextMeasurer";
 import Vex from "vexflow";
 import VF = Vex.Flow;
-import log from "loglevel";
+import { log } from "../../../Common/Logging";
 import { ICrossStaffTremoloBlock, ITremoloNoteFrame, ITremoloStrokes, unitInPixels, VexFlowMusicSheetDrawer } from "./VexFlowMusicSheetDrawer";
 import { VexFlowGraphicalNote } from "./VexFlowGraphicalNote";
 import { CrossStaffCurve, CrossStaffCurveLayoutGeometry } from "./CrossStaffCurve";
@@ -173,19 +173,32 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   constructor(rules: EngravingRules) {
     super();
     this.rules = rules;
-    MusicSheetCalculator.symbolFactory = new VexFlowGraphicalSymbolFactory();
-    // per instance, not static: see EngravingRules.TextMeasurer
-    this.rules.TextMeasurer = new VexFlowTextMeasurer(this.rules);
-    this.stafflineNoteCalculator = new VexflowStafflineNoteCalculator(this.rules);
-
-    // prepare Vexflow font (doesn't affect Vexflow 1.x). It seems like this has to be done here for now, otherwise it's too slow for the generateImages script.
-    //   (first image will have the non-updated font, in this case the Vexflow default Bravura, while we want Gonville here)
-    if (this.rules.DefaultVexFlowNoteFont?.toLowerCase() === "gonville") {
-      (Vex.Flow as any).DEFAULT_FONT_STACK = [(Vex.Flow as any).Fonts?.Gonville, (Vex.Flow as any).Fonts?.Bravura, (Vex.Flow as any).Fonts?.Custom];
-    } else if (this.rules.DefaultVexFlowNoteFont?.toLowerCase() === "petaluma") {
-      (Vex.Flow as any).DEFAULT_FONT_STACK = [(Vex.Flow as any).Fonts?.Petaluma, (Vex.Flow as any).Fonts?.Gonville, (Vex.Flow as any).Fonts?.Bravura];
+    // per instance, not static: see EngravingRules.SymbolFactory. A factory set by the app is kept.
+    if (!this.rules.SymbolFactory) {
+      this.rules.SymbolFactory = new VexFlowGraphicalSymbolFactory();
     }
-    // else keep new vexflow default Bravura (more cursive, bold)
+    if (!this.rules.TextMeasurer) {
+      // rules that weren't created by an OSMD instance, which sets its rules' measurer (per instance, not static:
+      //   see EngravingRules.TextMeasurer)
+      this.rules.TextMeasurer = new VexFlowTextMeasurer(this.rules);
+    }
+    this.stafflineNoteCalculator = new VexflowStafflineNoteCalculator(this.rules);
+  }
+
+  /** Creates the graphical measures, staff entries and notes, with this instance's VexFlow settings (see
+   *  VexFlowConverter.applyRulesToVexFlow()): the VexFlow notes get their glyph scale when they are created.
+   */
+  public prepareGraphicalMusicSheet(): void {
+    VexFlowConverter.applyRulesToVexFlow(this.rules);
+    super.prepareGraphicalMusicSheet();
+  }
+
+  /** Calculates the layout, with this instance's VexFlow settings (see VexFlowConverter.applyRulesToVexFlow()):
+   *  another OSMD instance on the page may have set its own since this one's last layout.
+   */
+  public calculate(): void {
+    VexFlowConverter.applyRulesToVexFlow(this.rules);
+    super.calculate();
   }
 
   protected clearRecreatedObjects(): void {
@@ -1924,6 +1937,16 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
 
   protected updateStaffLineBorders(staffLine: StaffLine): void {
     staffLine.SkyBottomLineCalculator.updateStaffLineBorders();
+    // Repetition instructions in their default position reserve no skyline space (see placeWordRepetitionInSkyline()),
+    //   so that they don't increase the distance between systems. The top border includes them though:
+    //   the first system of a page is placed below the title by its top border (VexFlowMusicSystem.calculateBorders()),
+    //   and the composer and lyricist above it (calculatePageLabels()), so the composer was drawn over e.g. a "Fine"
+    //   at the end of the first system.
+    const shape: BoundingBox = staffLine.PositionAndShape;
+    for (const box of this.placedWordRepetitionBoxes.get(staffLine) ?? []) {
+      shape.BorderTop = Math.min(shape.BorderTop, box.top);
+      shape.BorderMarginTop = Math.min(shape.BorderMarginTop, box.top);
+    }
   }
 
   protected graphicalMeasureCreatedCalculations(measure: GraphicalMeasure): void {
@@ -2128,6 +2151,26 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     (vfTie as any).render_options.line_type = lineType;
     this.setVexFlowTieDirection(vfTie, direction);
     return vfTie;
+  }
+
+  /**
+   * Lays out a tie into a note that ends a tie without a start note: from the start of the measure,
+   * like the part of a tie continued in the next system (see layoutGraphicalTie()).
+   * @param endNote The note the tie ends at.
+   */
+  protected layoutTieWithoutStartNote(endNote: GraphicalNote): void {
+    const vfEndNote: VF.StemmableNote = (endNote as VexFlowGraphicalNote).vfnote?.[0];
+    if (!vfEndNote) {
+      return;
+    }
+    const vfTie: VF.StaveTie = this.createStaveTie(
+      {
+        last_indices: [(endNote as VexFlowGraphicalNote).vfnote[1]],
+        last_note: vfEndNote
+      },
+      endNote.sourceNote.TieStopWithoutStartDirection
+    );
+    (endNote.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure).vfTies.push(vfTie);
   }
 
   protected calculateDynamicExpressionsForMultiExpression(multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void {
@@ -2659,9 +2702,9 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
 
       // fontSize and minBottomY are extra arguments from VexFlowPatch (stave.js / stavesection.js)
       (vfStave as any).setSection(rehearsalExpression.label, yOffset, xOffset, fontSize, minBottomY);
+      const section: VF.StaveModifier = CollectionUtil.getLastElement(vfStave.getModifiers());
       // <rehearsal enclosure="none">: the mark without its box (VexFlowPatch stavesection.js), as osmd_dart
-      (vfStave.getModifiers().last() as any).drawRect = rehearsalExpression.enclosure !== "none";
-      const section: VF.StaveModifier = vfStave.getModifiers().last();
+      (section as any).drawRect = rehearsalExpression.enclosure !== "none";
       VexFlowConverter.setVexFlowTextFontFamily((section as any).font, this.rules);
     }
   }
@@ -3401,7 +3444,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
               const pedalInBetween: VexFlowPedal = new VexFlowPedal(pedal, staffline.Measures[0].PositionAndShape);
               pedalInBetween.setStartNote(firstNoteInBetween);
               pedalInBetween.setEndNote(this.findBoundaryNoteEntry(staffline.Measures, true));
-              pedalInBetween.setEndMeasure(staffline.Measures.last());
+              pedalInBetween.setEndMeasure(CollectionUtil.getLastElement(staffline.Measures));
               pedalInBetween.DepressText = " ";
               pedalInBetween.ReleaseText = " ";
               pedalInBetween.ContinuesFromSystemBefore = true;
@@ -5055,9 +5098,6 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         }
       }
     }
-    if (this.rules.AlwaysSetPreferredSkyBottomLineBackendAutomatically) {
-      this.rules.setPreferredSkyBottomLineBackendAutomatically(numMeasures);
-    }
     if (numMeasures >= this.rules.SkyBottomLineBatchMinMeasures) {
       if (yielder.needsYield) { await yielder.yieldNow(); }
       const calculator: SkyBottomLineBatchCalculator = new SkyBottomLineBatchCalculator(staffLines);
@@ -6534,7 +6574,8 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
             const startNote: TabNote = <TabNote> gGliss.Glissando.StartNote;
             const endNote: TabNote = <TabNote> gGliss.Glissando.EndNote;
             const vfStartNote: VexFlowGraphicalNote = gGliss.staffEntries[0].findGraphicalNoteFromNote(startNote) as VexFlowGraphicalNote;
-            const vfEndNote: VexFlowGraphicalNote = gGliss.staffEntries.last().findGraphicalNoteFromNote(endNote) as VexFlowGraphicalNote;
+            const vfEndNote: VexFlowGraphicalNote =
+                CollectionUtil.getLastElement(gGliss.staffEntries).findGraphicalNoteFromNote(endNote) as VexFlowGraphicalNote;
             if (!vfStartNote && !vfEndNote) {
               continue; // otherwise causes Vexflow error. continue, not return: that would skip all following slides
             }

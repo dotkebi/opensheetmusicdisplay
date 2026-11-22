@@ -7,7 +7,7 @@ import { GraphicalStaffEntry } from "../GraphicalStaffEntry";
 import { GraphicalVoiceEntry } from "../GraphicalVoiceEntry";
 import { VexFlowVoiceEntry } from "./VexFlowVoiceEntry";
 import { VoiceEntry } from "../../VoiceData/VoiceEntry";
-import log from "loglevel";
+import { log } from "../../../Common/Logging";
 
 /**
  * The vexflow adaptation of a graphical shift.

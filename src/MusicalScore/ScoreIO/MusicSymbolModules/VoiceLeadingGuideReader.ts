@@ -1,4 +1,4 @@
-import log from "loglevel";
+import { log } from "../../../Common/Logging";
 import { musicXmlColorToCss } from "../../../Common/DataObjects/XmlColor";
 import { IXmlElement } from "../../../Common/FileIO/Xml";
 import { MusicSheet } from "../../MusicSheet";

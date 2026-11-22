@@ -33,7 +33,7 @@ import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { PlacementEnum } from "../../VoiceData/Expressions/AbstractExpression";
 import { GraphicalInstantaneousTempoExpression } from "../GraphicalInstantaneousTempoExpression";
 import { GraphicalInstantaneousDynamicExpression } from "../GraphicalInstantaneousDynamicExpression";
-import log from "loglevel";
+import { log } from "../../../Common/Logging";
 import { GraphicalContinuousDynamicExpression } from "../GraphicalContinuousDynamicExpression";
 import { VexFlowContinuousDynamicExpression } from "./VexFlowContinuousDynamicExpression";
 import { DrawingParameters } from "../DrawingParameters";
@@ -52,6 +52,7 @@ import { VexFlowVibratoBracket } from "./VexFlowVibratoBracket";
 import { Note, TremoloBetweenNotes } from "../../VoiceData/Note";
 import { SkyBottomLineCalculator } from "../SkyBottomLineCalculator";
 import { EngravingRules } from "../EngravingRules";
+import { CollectionUtil } from "../../../Util/CollectionUtil";
 
 /**
  * This is a global constant which denotes the height in pixels of the space between two lines of the stave
@@ -103,17 +104,8 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
     }
 
     public drawSheet(graphicalMusicSheet: GraphicalMusicSheet): void {
-        // vexflow 3.x: change default font
-        if (this.rules.DefaultVexFlowNoteFont === "gonville") {
-            (Vex.Flow as any).DEFAULT_FONT_STACK = [(Vex.Flow as any).Fonts?.Gonville, (Vex.Flow as any).Fonts?.Bravura, (Vex.Flow as any).Fonts?.Custom];
-        } // else keep new vexflow default Bravura (more cursive, bold).
-
-        // sizing defaults in Vexflow
-        (Vex.Flow as any).STAVE_LINE_THICKNESS = this.rules.StaffLineWidth * unitInPixels;
-        (Vex.Flow as any).STEM_WIDTH = this.rules.StemWidth * unitInPixels;
-        // sets scale/size of notes/rest notes:
-        (Vex.Flow as any).DEFAULT_NOTATION_FONT_SCALE = this.rules.VexFlowDefaultNotationFontScale; // default 39
-        (Vex.Flow as any).DEFAULT_TAB_FONT_SCALE = this.rules.VexFlowDefaultTabFontScale; // default 39 // TODO doesn't seem to do anything
+        // this instance's sizes and font, which VexFlow has once per page: another instance may have rendered since the layout
+        VexFlowConverter.applyRulesToVexFlow(this.rules);
 
         this.pageIdx = 0;
         for (const graphicalMusicPage of graphicalMusicSheet.MusicPages) {
@@ -973,7 +965,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                     let currentPoint: PointF2D = new PointF2D(buzzStartX, buzzStartY);
                     pathPoints.push(currentPoint);
                     for (const movement of movements) {
-                        currentPoint = pathPoints.last();
+                        currentPoint = CollectionUtil.getLastElement(pathPoints);
                         pathPoints.push(new PointF2D(currentPoint.x + movement.x, currentPoint.y - movement.y));
                     }
                     const node: Node = this.DrawPath(pathPoints, vfNote.ParentMusicPage, true);
@@ -1728,7 +1720,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                 //   in a later system (the end measure of a part before is the pedal's own, in that system)
                 const endMeasure: GraphicalMeasure = vexFlowPedal.endMeasure;
                 const endMeasureOnStaffLine: GraphicalMeasure = !endMeasure || endMeasure.ParentStaffLine === staffLine
-                    ? endMeasure : staffLine.Measures.last();
+                    ? endMeasure : CollectionUtil.getLastElement(staffLine.Measures);
                 if (!this.lazyDrawsSpanToMeasure(endMeasureOnStaffLine)) {
                     continue; // lazy horizontal: span not yet fully in the frontier
                 }

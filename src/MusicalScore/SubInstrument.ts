@@ -1,6 +1,6 @@
 import {Instrument} from "./Instrument";
 import {MidiInstrument} from "./VoiceData/Instructions/ClefInstruction";
-import log from "loglevel";
+import { log } from "../Common/Logging";
 
 /** Broad family suitable for grouping MusicXML score parts in a UI. */
 export enum InstrumentFamily {

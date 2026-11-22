@@ -19,7 +19,7 @@ import { NoteEnum } from "../../Common/DataObjects/Pitch";
 import { Staff } from "../VoiceData/Staff";
 import { StaffEntryLink } from "../VoiceData/StaffEntryLink";
 import { VerticalSourceStaffEntryContainer } from "../VoiceData/VerticalSourceStaffEntryContainer";
-import log from "loglevel";
+import { log } from "../../Common/Logging";
 import { Pitch } from "../../Common/DataObjects/Pitch";
 import { IXmlAttribute } from "../../Common/FileIO/Xml";
 import { CollectionUtil } from "../../Util/CollectionUtil";
@@ -356,7 +356,7 @@ export class VoiceGenerator {
         "ReaderErrorMessages/NoteError", "Ignored erroneous Note."
       );
       this.musicSheet.SheetErrors.pushMeasureError(errorMsg);
-      this.musicSheet.SheetErrors.pushMeasureError(err);
+      this.musicSheet.SheetErrors.pushMeasureError(err?.message ?? String(err));
     }
 
     return this.currentNote;
@@ -486,6 +486,7 @@ export class VoiceGenerator {
     let noteheadShapeXml: string = undefined;
     let noteheadFilledXml: boolean = undefined; // if undefined, the final filled parameter will be calculated from duration
     let noteheadParenthesesXml: boolean = false;
+    let invalidStepElement: IXmlElement = undefined;
 
     const xmlnodeElementsArr: IXmlElement[] = node.elements();
     for (let idx: number = 0, len: number = xmlnodeElementsArr.length; idx < len; ++idx) {
@@ -499,14 +500,11 @@ export class VoiceGenerator {
             noteheadFilledXml = undefined;
             try {
               if (pitchElement.name === "step") {
-                noteStep = NoteEnum[pitchElement.value];
-                if (noteStep === undefined) { // don't replace undefined check
-                  const errorMsg: string = ITextTranslation.translateText(
-                    "ReaderErrorMessages/NotePitchError",
-                    "Invalid pitch while reading note."
-                  );
-                  this.musicSheet.SheetErrors.pushMeasureError(errorMsg);
-                  throw new MusicSheetReadingException(errorMsg, undefined);
+                const step: NoteEnum = this.readStep(pitchElement);
+                if (step === undefined) { // don't replace undefined check
+                  invalidStepElement = pitchElement; // the note is left out, see below
+                } else {
+                  noteStep = step;
                 }
               } else if (pitchElement.name === "alter") {
                 noteAlter = parseFloat(pitchElement.value);
@@ -573,7 +571,12 @@ export class VoiceGenerator {
             }
           }
           if (displayStepElement) {
-            noteStep = NoteEnum[displayStepElement.value.toUpperCase()];
+            const step: NoteEnum = this.readStep(displayStepElement);
+            if (step === undefined) {
+              invalidStepElement = displayStepElement; // the note is left out, see below
+              continue;
+            }
+            noteStep = step;
             let octaveShift: number = 0;
             let noteValueShift: number = this.musicSheet.Rules.PercussionXMLDisplayStepNoteValueShift;
             if (stafflineCount === 1) {
@@ -602,6 +605,11 @@ export class VoiceGenerator {
       }
     }
 
+    if (invalidStepElement) {
+      // No note without a step (a note of any other step would be a guess, and one without can't be drawn):
+      //   read() leaves the note out and adds the message to the measure's errors.
+      throw this.createInvalidStepError(invalidStepElement);
+    }
     noteOctave -= Pitch.OctaveXmlDifference;
     const pitch: Pitch = new Pitch(noteStep, noteOctave, noteAccidental, accidentalValue);
     const noteLength: Fraction = Fraction.createFromFraction(noteDuration);
@@ -705,9 +713,16 @@ export class VoiceGenerator {
     let displayOctave: number;
     let pitch: Pitch = undefined;
     if (displayStepElement && octaveElement) {
-        displayStep = NoteEnum[displayStepElement.value.toUpperCase()];
-        displayOctave = parseInt(octaveElement.value, 10);
-        pitch = new Pitch(displayStep, displayOctave, AccidentalEnum.NONE, undefined, true);
+        displayStep = this.readStep(displayStepElement);
+        if (displayStep === undefined) {
+          // the rest stays, at its default position
+          const error: Error = this.createInvalidStepError(displayStepElement, "The rest is at its default position.");
+          log.warn(error.message);
+          this.musicSheet.SheetErrors.pushMeasureError(error.message);
+        } else {
+          displayOctave = parseInt(octaveElement.value, 10);
+          pitch = new Pitch(displayStep, displayOctave, AccidentalEnum.NONE, undefined, true);
+        }
     }
     const restNote: Note = new Note(this.currentVoiceEntry, this.currentStaffEntry, restFraction, pitch, this.currentMeasure, true);
     this.addNoteInfo(restNote, noteTypeXml, printObject, isCueNote, normalNotes, displayStep, displayOctave, noteheadColorXml, noteheadColorXml);
@@ -719,9 +734,34 @@ export class VoiceGenerator {
     restNote.IsWholeMeasureRest = node.attribute("measure")?.value === "yes";
     this.currentVoiceEntry.Notes.push(restNote);
     if (this.openBeams.length > 0) {
-      this.openBeams.last().ExtendedNoteList.push(restNote);
+      CollectionUtil.getLastElement(this.openBeams).ExtendedNoteList.push(restNote);
     }
     return restNote;
+  }
+
+  /**
+   * Returns the step of a <step> or <display-step> element, or undefined if its value isn't one of A to G (in upper or
+   * lower case). Not NoteEnum[value]: that is also defined for "toString" (an object's method) and for "0" (the name "C").
+   */
+  private readStep(stepElement: IXmlElement): NoteEnum {
+    const step: string = stepElement.value?.trim().toUpperCase();
+    return step?.length === 1 && "CDEFGAB".includes(step) ? NoteEnum[step as keyof typeof NoteEnum] : undefined;
+  }
+
+  /**
+   * Creates the error for a <step> or <display-step> element that readStep() can't read. Its message names the measure, the
+   * part and the value, like InstrumentReader's warnings for a skipped element, e.g.
+   * 'Measure 12 of part "Flute" (P1): invalid step "H", a step is one of A to G. The note is left out.'
+   * @param consequence what the reader does about it, appended to the message
+   */
+  private createInvalidStepError(stepElement: IXmlElement, consequence: string = "The note is left out."): MusicSheetReadingException {
+    const instrument: Instrument = this.voice.Parent;
+    // the measure's number in the file, or its position if that isn't read (the measure is added to the sheet after it's read)
+    const measureNumber: string = this.currentMeasure.MeasureNumberXML?.toString() ?? `at position ${this.musicSheet.SourceMeasures.length + 1}`;
+    return new MusicSheetReadingException(
+      `Measure ${measureNumber} of part "${instrument.Name}" (${instrument.IdString}): ` +
+      `invalid ${stepElement.name} "${stepElement.value}", a step is one of A to G. ${consequence}`
+    );
   }
 
   // common for "normal" notes and rest notes
@@ -798,11 +838,11 @@ export class VoiceGenerator {
         const currentBeamTag: string = mainBeamNode[0].value;
         if (mainBeamNode) {
           if (currentBeamTag === "begin") {
-            if (beamNumber === this.openBeams.last()?.BeamNumber) {
+            if (beamNumber === CollectionUtil.getLastElement(this.openBeams)?.BeamNumber) {
               // beam with same number already existed (error in XML), bump beam number
               this.beamNumberOffset++;
               beamNumber += this.beamNumberOffset;
-            } else if (this.openBeams.last()) {
+            } else if (CollectionUtil.getLastElement(this.openBeams)) {
                 this.handleOpenBeam();
             }
             this.openBeams.push(new Beam(beamNumber, this.beamNumberOffset));
@@ -919,7 +959,7 @@ export class VoiceGenerator {
   }
 
   private handleOpenBeam(): void {
-    const openBeam: Beam = this.openBeams.last();
+    const openBeam: Beam = CollectionUtil.getLastElement(this.openBeams);
     if (openBeam.Notes.length === 0) {
       // TODO why is there such a beam? sample: test_percussion_display_step_from_xml
       this.endBeam(); // otherwise beamLastNote.ParentStaffEntry will throw an undefined error
@@ -950,9 +990,9 @@ export class VoiceGenerator {
           for (let idx: number = 0, len: number = nextStaffEntry.VoiceEntries.length; idx < len; ++idx) {
             const voiceEntry: VoiceEntry = nextStaffEntry.VoiceEntries[idx];
             if (voiceEntry.ParentVoice === this.voice) {
-              const candidateNote: Note = voiceEntry.Notes[0];
-              if (candidateNote.Length.lte(new Fraction(1, 8))) {
-                this.openBeams.last().addNoteToBeam(candidateNote);
+              const candidateNote: Note = voiceEntry.Notes[0]; // undefined if the entry's note was left out as erroneous
+              if (candidateNote?.Length.lte(new Fraction(1, 8))) {
+                CollectionUtil.getLastElement(this.openBeams).addNoteToBeam(candidateNote);
                 this.endBeam();
               } else {
                 this.endBeam();
@@ -1377,7 +1417,10 @@ export class VoiceGenerator {
                 openTie.tie.AddNote(this.currentNote);
                 delete openTie.dict[openTie.key];
               } else {
-                this.deferTieStop(this.currentNote, undefined, measureStartAbsoluteTimestamp);
+                // (no start note in any voice either, e.g. at the start of a second ending, tied from the note before the first
+                //   ending (#713): a simple tie is then drawn into the note, see Note.TieStopWithoutStartDirection)
+                this.deferTieStop(this.currentNote, undefined, measureStartAbsoluteTimestamp,
+                                  tieType === TieTypes.SIMPLE ? tieDirection : undefined);
               }
             }
           } catch (err) {
@@ -1420,12 +1463,12 @@ export class VoiceGenerator {
    * voice must not take the tie of a voice whose own stop comes later in the file (Schumann, Myrthen,
    * Die Hochländer-Wittwe m72-73). Without a queue (a generator outside an InstrumentReader) the stop is matched now.
    */
-  private deferTieStop(note: Note, started: Tie, measureStart: Fraction): void {
+  private deferTieStop(note: Note, started: Tie, measureStart: Fraction, withoutStartDirection?: PlacementEnum): void {
     if (this.pendingTieStops) {
-      this.pendingTieStops.add(note, this.openTieDict, started, measureStart);
+      this.pendingTieStops.add(note, this.openTieDict, started, measureStart, withoutStartDirection);
       return;
     }
-    PendingTieStops.stopTie(this.instrument, this.openTieDict, note, started, measureStart);
+    PendingTieStops.stopTie(this.instrument, this.openTieDict, note, started, measureStart, withoutStartDirection);
   }
 
   private getTieDirection(tieNode: IXmlElement): PlacementEnum {
@@ -1590,6 +1633,8 @@ interface PendingTieStop {
   ownDict: { [_: number]: Tie };
   started: Tie;
   measureStart: Fraction;
+  /** see PendingTieStops.stopTie() */
+  withoutStartDirection?: PlacementEnum;
   order: number;
 }
 
@@ -1600,8 +1645,8 @@ interface PendingTieStop {
 export class PendingTieStops {
   private stops: PendingTieStop[] = [];
 
-  public add(note: Note, ownDict: { [_: number]: Tie }, started: Tie, measureStart: Fraction): void {
-    this.stops.push({ note, ownDict, started, measureStart, order: this.stops.length });
+  public add(note: Note, ownDict: { [_: number]: Tie }, started: Tie, measureStart: Fraction, withoutStartDirection?: PlacementEnum): void {
+    this.stops.push({ note, ownDict, started, measureStart, withoutStartDirection, order: this.stops.length });
   }
 
   public resolve(instrument: Instrument): void {
@@ -1616,16 +1661,21 @@ export class PendingTieStops {
       });
     this.stops = [];
     for (const stop of stops) {
-      PendingTieStops.stopTie(instrument, stop.ownDict, stop.note, stop.started, stop.measureStart);
+      PendingTieStops.stopTie(instrument, stop.ownDict, stop.note, stop.started, stop.measureStart, stop.withoutStartDirection);
     }
   }
 
   /** Ends the open tie the note stops (any voice). started is the tie the note started (a stop+start that found no
-   *  tie of its voice): the tie found continues through it. */
+   *  tie of its voice): the tie found continues through it. withoutStartDirection is the XML direction of a simple
+   *  tie's stop: without an open tie in any voice, the note is marked to get a tie drawn into it
+   *  (Note.TieStopWithoutStartDirection, upstream #713). */
   public static stopTie(instrument: Instrument, ownDict: { [_: number]: Tie }, note: Note, started: Tie,
-                        measureStart: Fraction): void {
+                        measureStart: Fraction, withoutStartDirection?: PlacementEnum): void {
     const openTie: OpenTie = VoiceGenerator.findOpenTie(instrument, ownDict, note, measureStart);
     if (!openTie) {
+      if (!started && withoutStartDirection !== undefined) {
+        note.TieStopWithoutStartDirection = withoutStartDirection;
+      }
       return;
     }
     const tie: Tie = openTie.tie;

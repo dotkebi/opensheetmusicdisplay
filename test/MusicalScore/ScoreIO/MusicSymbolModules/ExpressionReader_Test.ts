@@ -115,7 +115,7 @@ describe("ExpressionReader", () => {
                 .to.deep.equal(["mf", "(p)", "(mf)", "pp", "[f]", "più f"]);
             expect(dynamics.map((dynamic: InstantaneousDynamicExpression): DynamicEnum => dynamic.DynEnum))
                 .to.deep.equal([DynamicEnum.mf, DynamicEnum.p, DynamicEnum.mf, DynamicEnum.pp, DynamicEnum.f, undefined]);
-            expect(dynamics[1].Volume).to.equal(InstantaneousDynamicExpression.dynamicToRelativeVolumeDict.getValue(DynamicEnum.p));
+            expect(dynamics[1].Volume).to.equal(new EngravingRules().DynamicToRelativeVolumeDict.getValue(DynamicEnum.p));
         });
 
         it("joins the pieces of a marking as osmd-dart does: a space between words, none between dynamic letters", () => {
@@ -181,8 +181,8 @@ describe("ExpressionReader", () => {
         });
 
         it("gives them a playback volume", () => {
-            const mp: number = InstantaneousDynamicExpression.dynamicToRelativeVolumeDict.getValue(DynamicEnum.mp);
-            const f: number = InstantaneousDynamicExpression.dynamicToRelativeVolumeDict.getValue(DynamicEnum.f);
+            const mp: number = new EngravingRules().DynamicToRelativeVolumeDict.getValue(DynamicEnum.mp);
+            const f: number = new EngravingRules().DynamicToRelativeVolumeDict.getValue(DynamicEnum.f);
             expect(dynamics[0].Volume, "pf (poco forte) lies between mp and f").to.be.within(mp, f);
             expect(dynamics[1].Volume, "sfzp like the other sforzando marks").to.equal(0.5);
             expect(dynamics[2].Volume, "n (niente) is silence").to.equal(0);

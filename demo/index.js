@@ -138,6 +138,8 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
     var measureToDrawRangeNeedsReset = false;
     var drawingParametersStashed = "default";
     var drawingParametersNeedsReset = false;
+    var portrait = false; // set in init(): mobile portrait mode (small screen), see applyDemoRules()
+    var demoOptions; // the options the demo creates OSMD with (from the URL parameters, see init()), re-applied by resetRulesToDemoOptions()
     var autobeamOptionNeedsReset = false;
     var autobeamOptionStashedValue = false;
     var autoCustomColoringOptionNeedsReset = false;
@@ -329,7 +331,7 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
             }
         }
         // detect mobile portrait mode (small screen -> reduce zoom etc)
-        const portrait = window.matchMedia("(orientation: portrait)").matches;
+        portrait = window.matchMedia("(orientation: portrait)").matches;
         // console.log(`is portrait mode: ${portrait}`);
         // Detect small screens via the layout viewport, NOT window.outerWidth. outerWidth reads 0 for the
         //   first few tens of milliseconds after a page (re)loads, then settles to the real window width.
@@ -669,7 +671,7 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
         }
 
         // Create OSMD object and canvas
-        openSheetMusicDisplay = new OpenSheetMusicDisplay(canvas, {
+        demoOptions = {
             autoResize: true,
             backend: backendType,
             //backend: "canvas",
@@ -711,15 +713,9 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
             // tupletsBracketed: true, // creates brackets for all tuplets except triplets, even when not set by xml
             // tripletsBracketed: true,
             // tupletsRatioed: true, // unconventional; renders ratios for tuplets (3:2 instead of 3 for triplets)
-        });
-        if (portrait) {
-            // reduce title labels/text size etc. as well. E.g. for Mozart string quartet, title wouldn't fit line width otherwise
-            openSheetMusicDisplay.EngravingRules.SheetTitleHeight *= 0.7; // see Mozart String Quartet
-            // reducing size for subtitle/composer/lyricist is probably unnecessary and makes them too small:
-            // openSheetMusicDisplay.EngravingRules.SheetSubtitleHeight *= 0.9;
-            // openSheetMusicDisplay.EngravingRules.SheetComposerHeight *= 0.9;
-            // openSheetMusicDisplay.EngravingRules.SheetAuthorHeight *= 0.9; // affects lyricist label, maybe should be renamed
-        }
+        };
+        openSheetMusicDisplay = new OpenSheetMusicDisplay(canvas, demoOptions);
+        applyDemoRules();
         openSheetMusicDisplay.TransposeCalculator = new TransposeCalculator(); // necessary for using osmd.Sheet.Transpose and osmd.Sheet.Instruments[i].Transpose
         //openSheetMusicDisplay.DrawSkyLine = true;
         //openSheetMusicDisplay.DrawBottomLine = true;
@@ -806,6 +802,36 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
                 console.log("[OSMD] selectSampleOnChange without param");
             }
             selectSampleOnChange();
+        }
+    }
+
+    /** Applies the EngravingRules the demo sets directly instead of through its options (demoOptions). */
+    function applyDemoRules() {
+        if (portrait) {
+            // reduce title labels/text size etc. as well. E.g. for Mozart string quartet, title wouldn't fit line width otherwise
+            openSheetMusicDisplay.EngravingRules.SheetTitleHeight *= 0.7; // see Mozart String Quartet
+            // reducing size for subtitle/composer/lyricist is probably unnecessary and makes them too small:
+            // openSheetMusicDisplay.EngravingRules.SheetSubtitleHeight *= 0.9;
+            // openSheetMusicDisplay.EngravingRules.SheetComposerHeight *= 0.9;
+            // openSheetMusicDisplay.EngravingRules.SheetAuthorHeight *= 0.9; // affects lyricist label, maybe should be renamed
+        }
+    }
+
+    /** Resets all EngravingRules to their default values, then applies the demo's options and rules again
+     *  (demoOptions with the given drawing parameters, applyDemoRules()) and keeps the visitor's dark mode and page format.
+     *  Used when leaving a sample that switched the drawing parameters, e.g. compacttight:
+     *  setOptions() with other drawing parameters doesn't undo all of compacttight's rules (e.g. "compact" keeps its spacing),
+     *  and "default" resets every rule, including the demo's options and the visitor's settings. */
+    function resetRulesToDemoOptions(drawingParameters) {
+        const rules = openSheetMusicDisplay.EngravingRules;
+        const darkMode = rules.DarkModeEnabled; // dark mode button or darkMode URL parameter
+        const pageFormat = rules.PageFormat; // page format select or URL parameters
+        rules.loadDefaultValues();
+        openSheetMusicDisplay.setOptions({ ...demoOptions, drawingParameters: drawingParameters });
+        applyDemoRules();
+        rules.PageFormat = pageFormat;
+        if (darkMode) {
+            openSheetMusicDisplay.setOptions({ darkMode: true }); // after demoOptions, like in init(), so it overrides pageBackgroundColor
         }
     }
 
@@ -912,6 +938,9 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
                 // This gives you access to the osmd object in the console. Do not use in production code
                 window.osmd = openSheetMusicDisplay;
                 openSheetMusicDisplay.zoom = zoom;
+                if (transpose) {
+                    transpose.value = 0; // the new sheet isn't transposed (Sheet.Transpose is 0): don't keep showing the last sample's value
+                }
                 // openSheetMusicDisplay.Sheet.Instruments[0].Staves[1].Visible = false;
                 //openSheetMusicDisplay.Sheet.Transpose = 3; // transpose by 3 halftones up: the next render() applies it
 
@@ -929,20 +958,34 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
                 }
                 renderBraille(); // no-op (clears the output) unless the braille display is enabled
             },
-            function (e) {
-                errorLoadingOrRenderingSheet(e, "rendering");
+            function (e) { // load() was rejected
+                errorLoadingOrRenderingSheet(e, "loading");
             }
         ).then(
             function () {
                 return onLoadingEnd(isCustom);
-            }, function (e) {
-                errorLoadingOrRenderingSheet(e, "loading");
+            }, function (e) { // the handler above threw after a successful load(), e.g. render()
+                errorLoadingOrRenderingSheet(e, "rendering");
                 onLoadingEnd(isCustom);
             }
         );
     }
 
     function setSampleSpecificOptions(str, isCustom) {
+        // first, as leaving this sample resets all rules: the other samples' options below are applied after the reset
+        if (!isCustom && str.includes("Test_Container_height")) {
+            if (!drawingParametersNeedsReset) { // only stash once, when this sample is selected multiple times in a row
+                drawingParametersStashed = openSheetMusicDisplay.DrawingParameters.DrawingParametersEnum;
+            }
+            openSheetMusicDisplay.setOptions({
+                drawingParameters: "compacttight"
+            });
+            drawingParametersNeedsReset = true;
+        } else if (drawingParametersNeedsReset) {
+            resetRulesToDemoOptions(drawingParametersStashed);
+            drawingParametersNeedsReset = false;
+        }
+
         if (!isCustom && str.includes("measuresToDraw")) { // set options for measuresToDraw sample
             // stash previously set range of measures to draw
             if (!measureToDrawRangeNeedsReset) { // only stash once, when measuresToDraw called multiple times in a row
@@ -972,19 +1015,6 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
                 drawUpToMeasureNumber: maxMeasureToDrawStashed
             });
             measureToDrawRangeNeedsReset = false;
-        }
-
-        if (!isCustom && str.includes("Test_Container_height")) {
-            drawingParametersStashed = openSheetMusicDisplay.drawingParameters.drawingParametersEnum;
-            openSheetMusicDisplay.setOptions({
-                drawingParameters: "compacttight"
-            });
-            drawingParametersNeedsReset = true;
-        } else if (drawingParametersNeedsReset) {
-            openSheetMusicDisplay.setOptions({
-                drawingParameters: drawingParametersStashed
-            });
-            drawingParametersNeedsReset = false;
         }
 
         // Enable Boomwhacker-like coloring for OSMD Function Test - Auto-Coloring (Boomwhacker-like, custom color set)
@@ -1070,11 +1100,21 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
         }
     }
 
+    /**
+     * Reports an error of load() or render(): in the error row above the score, and with its stack trace in the console.
+     * An aborted load (another sample was selected before this one had loaded) is not an error and isn't reported.
+     * @param e the error
+     * @param loadingOrRenderingString "loading" or "rendering": the step that failed
+     */
     function errorLoadingOrRenderingSheet(e, loadingOrRenderingString) {
+        if (e && e.name === "AbortError") {
+            return;
+        }
         var errorString = "Error " + loadingOrRenderingString + " sheet: " + e;
+        error(errorString);
         // Always giving a StackTrace might give us more and better error reports.
         // TODO for a release, StackTrace control could be reenabled
-        errorString += "\n" + "StackTrace: \n" + e.stack;
+        errorString += "\n" + "StackTrace: \n" + (e && e.stack);
         // }
         console.warn(errorString);
     }
@@ -1118,6 +1158,10 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
         }, 0);
     }
 
+    /**
+     * Shows a message in the error row above the score, or hides the row.
+     * @param errString the message. Without one, the row is hidden.
+     */
     function error(errString) {
         if (!errString) {
             error_tr.style.display = "none";
@@ -1125,7 +1169,6 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
             console.log("[OSMD demo] error: " + errString)
             err.textContent = errString;
             error_tr.style.display = "";
-            canvas.width = canvas.height = 0;
             enable();
         }
     }
@@ -1239,10 +1282,11 @@ import { IntervalTransposeCalculator } from '../src/Plugins/Transpose/IntervalTr
             exportMode = "image";
         }
         if (openSheetMusicDisplay.backendType !== BackendType.SVG) {
-            console.log("[OSMD] createPdf(): Warning: createPdf is only supported for SVG backend for now, not for Canvas." +
-                " Please use osmd.setOptions({backendType: SVG}).");
+            error("Create PDF needs the SVG backend, the score is drawn with the Canvas backend." +
+                " Open the demo without backendType=canvas in the URL (in your own app: osmd.setOptions({backend: \"svg\"}), then render()).");
             return;
         }
+        error(); // hide a message of an earlier attempt
 
         if (pdfName === undefined) {
             pdfName = openSheetMusicDisplay.sheet.FullNameString + ".pdf";

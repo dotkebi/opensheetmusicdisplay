@@ -4,7 +4,8 @@ import {RepetitionInstructionComparer} from "../../VoiceData/Instructions/Repeti
 import {ArgumentOutOfRangeException} from "../../Exceptions";
 import {MusicSheet} from "../../MusicSheet";
 import { Repetition } from "../../MusicSource";
-import log from "loglevel";
+import { log } from "../../../Common/Logging";
+import { CollectionUtil } from "../../../Util/CollectionUtil";
 
 export class RepetitionCalculator {
   private musicSheet: MusicSheet;
@@ -77,8 +78,8 @@ export class RepetitionCalculator {
           while (this.openRepetitions.length > 0) {
             // a D.C. / D.S. al Coda still waiting for its coda at the end of its movement goes on after its jump bar, as at
             //   the end of the piece below (as osmd-dart): closing it without that left the al Coda jump unset
-            this.setCodaAfterLastBackJump(this.openRepetitions.last());
-            this.finalizeRepetition(this.openRepetitions.last());
+            this.setCodaAfterLastBackJump(CollectionUtil.getLastElement(this.openRepetitions));
+            this.finalizeRepetition(CollectionUtil.getLastElement(this.openRepetitions));
           }
           this.lastRepetitionCommonPartStartIndex = crossedMovementStart;
           this.movementStartIndex = crossedMovementStart;
@@ -100,7 +101,7 @@ export class RepetitionCalculator {
 
     while (this.openRepetitions.length > 0) {
       try {
-          const last: RepetitionBuildingContainer = this.openRepetitions.last();
+          const last: RepetitionBuildingContainer = CollectionUtil.getLastElement(this.openRepetitions);
           if (last.RepetitonUnderConstruction.FromWords) {
               if (last.WaitingForCoda) {
                   this.setCodaAfterLastBackJump(last);
@@ -127,10 +128,10 @@ export class RepetitionCalculator {
                   sourceMeasures[lastMeasureIndex].LastRepetitionInstructions.push(backJumpInstruction);
               }
           }
-          this.finalizeRepetition(this.openRepetitions.last());
+          this.finalizeRepetition(CollectionUtil.getLastElement(this.openRepetitions));
       } catch (err) {
           try {
-              const faultyRep: Repetition = this.openRepetitions.last().RepetitonUnderConstruction;
+              const faultyRep: Repetition = CollectionUtil.getLastElement(this.openRepetitions).RepetitonUnderConstruction;
               for (const instruction of this.repetitionInstructions) {
                   if (instruction.parentRepetition === faultyRep) {
                       instruction.parentRepetition = undefined;
@@ -303,7 +304,7 @@ export class RepetitionCalculator {
             // without a forward repeat, the repetition starts after the previous one (or at the start of the movement)
             currentRepetition = this.getOrCreateCurrentRepetition(this.lastRepetitionCommonPartStartIndex);
             currentRepetitionInstruction.parentRepetition = currentRepetition.RepetitonUnderConstruction;
-            const isFirstEndingStart: boolean = currentRepetitionInstruction.endingIndices.contains(1) &&
+            const isFirstEndingStart: boolean = currentRepetitionInstruction.endingIndices.includes(1) &&
                                                 currentRepetitionInstruction.alignment === AlignmentType.Begin;
             if (isFirstEndingStart) {
                 if (currentRepetition.RepetitonUnderConstruction.BackwardJumpInstructions.length > 0 ||
@@ -314,7 +315,7 @@ export class RepetitionCalculator {
                         if (openRep.RepetitonUnderConstruction.BackwardJumpInstructions.length === 0) {
                             currentRepetition = openRep;
                             while (this.openRepetitions.length - 1 > i) {
-                                const repToFinalize: RepetitionBuildingContainer = this.openRepetitions.last();
+                                const repToFinalize: RepetitionBuildingContainer = CollectionUtil.getLastElement(this.openRepetitions);
                                 this.finalizeRepetition(repToFinalize);
                             }
                         }
@@ -356,7 +357,8 @@ export class RepetitionCalculator {
             if (currentRepetition !== undefined &&
                 currentRepetition.SegnoFound &&
                 currentRepetition.RepetitonUnderConstruction.BackwardJumpInstructions.length > 0 &&
-                Math.abs((currentRepetition.RepetitonUnderConstruction.BackwardJumpInstructions.last().measureIndex - this.currentMeasureIndex)) <= 1) {
+                Math.abs((CollectionUtil.getLastElement(currentRepetition.RepetitonUnderConstruction.BackwardJumpInstructions).measureIndex -
+                    this.currentMeasureIndex)) <= 1) {
                 break;
             }
             currentRepetition = this.createNewRepetition(this.currentMeasureIndex);
@@ -806,7 +808,7 @@ export class RepetitionCalculator {
       if (!repetition.FromWords || !container.WaitingForCoda || container.CodaFound || repetition.BackwardJumpInstructions.length === 0) {
           return;
       }
-      let endIndex: number = repetition.BackwardJumpInstructions.last().measureIndex + 1;
+      let endIndex: number = CollectionUtil.getLastElement(repetition.BackwardJumpInstructions).measureIndex + 1;
       if (endIndex >= this.musicSheet.SourceMeasures.length) {
           endIndex = -1;
       }
@@ -978,8 +980,8 @@ export class RepetitionCalculator {
    * with a D.C. or D.S. there, as before.)
    */
   private isJumpAfterRepeat(currentRep: Repetition, lastRep: Repetition): boolean {
-      const currentJumpIndex: number = currentRep.BackwardJumpInstructions.last().measureIndex;
-      const lastJumpIndex: number = lastRep.BackwardJumpInstructions.last().measureIndex;
+      const currentJumpIndex: number = CollectionUtil.getLastElement(currentRep.BackwardJumpInstructions).measureIndex;
+      const lastJumpIndex: number = CollectionUtil.getLastElement(lastRep.BackwardJumpInstructions).measureIndex;
       if (currentRep.FromWords && currentJumpIndex > lastJumpIndex) {
           return true;
       }
@@ -988,8 +990,9 @@ export class RepetitionCalculator {
       }
       const repeat: Repetition = currentRep.FromWords ? lastRep : currentRep;
       const jump: Repetition = currentRep.FromWords ? currentRep : lastRep;
-      return this.repetitionInstructions.indexOf(repeat.BackwardJumpInstructions.last()) >= 0 &&
-          jump.BackwardJumpInstructions.last().measureIndex >= repeat.BackwardJumpInstructions.last().measureIndex;
+      return this.repetitionInstructions.indexOf(CollectionUtil.getLastElement(repeat.BackwardJumpInstructions)) >= 0 &&
+          CollectionUtil.getLastElement(jump.BackwardJumpInstructions).measureIndex >=
+          CollectionUtil.getLastElement(repeat.BackwardJumpInstructions).measureIndex;
   }
 
   private finalizeRepetition(repContainer: RepetitionBuildingContainer): void {
@@ -1056,8 +1059,8 @@ export class RepetitionCalculator {
           if (this.openRepetitions[i].RepetitonUnderConstruction.FromWords === fromWords) {
               currentRepetition = this.openRepetitions[i];
               while (i < this.openRepetitions.length - 1 &&
-                     this.openRepetitions.last().RepetitonUnderConstruction.BackwardJumpInstructions.length > 0) {
-                  this.finalizeRepetition(this.openRepetitions.last());
+                     CollectionUtil.getLastElement(this.openRepetitions).RepetitonUnderConstruction.BackwardJumpInstructions.length > 0) {
+                  this.finalizeRepetition(CollectionUtil.getLastElement(this.openRepetitions));
               }
               return currentRepetition;
           }
@@ -1069,7 +1072,7 @@ export class RepetitionCalculator {
    */
   private getOrCreateCurrentRepetition(startIndex: number): RepetitionBuildingContainer {
     if (this.openRepetitions.length > 0) {
-        return this.openRepetitions.last();
+        return CollectionUtil.getLastElement(this.openRepetitions);
     }
     const newRep: RepetitionBuildingContainer = this.createNewRepetition(startIndex);
     newRep.RepetitonUnderConstruction.startMarker = new RepetitionInstruction(startIndex, RepetitionInstructionEnum.None,
@@ -1083,7 +1086,7 @@ export class RepetitionCalculator {
           currentRepetition = this.openRepetitions[i];
           if (currentRepetition.RepetitonUnderConstruction.FromWords === fromWords) {
               while (i < this.openRepetitions.length - 1) {
-                  this.finalizeRepetition(this.openRepetitions.last());
+                  this.finalizeRepetition(CollectionUtil.getLastElement(this.openRepetitions));
               }
               return currentRepetition;
           }
@@ -1104,7 +1107,7 @@ export class RepetitionCalculator {
   }
   private createNewRepetition(commonPartStartIndex: number): RepetitionBuildingContainer {
       if (this.openRepetitions.length > 0) {
-          const last: RepetitionBuildingContainer = this.openRepetitions.last();
+          const last: RepetitionBuildingContainer = CollectionUtil.getLastElement(this.openRepetitions);
           const lastRep: Repetition = last.RepetitonUnderConstruction;
           // (a D.C. or D.S. al Coda stays open until its coda sign, e.g. under a repeat sign at the same barline)
           if (lastRep.BackwardJumpInstructions.length > 0 && !last.WaitingForCoda) {
@@ -1123,7 +1126,7 @@ export class RepetitionCalculator {
   }
   private getLastFinalizedRepetition(): Repetition {
       if (this.musicSheet.Repetitions.length > 0) {
-          return this.musicSheet.Repetitions.last();
+          return CollectionUtil.getLastElement(this.musicSheet.Repetitions);
       }
       return undefined;
   }

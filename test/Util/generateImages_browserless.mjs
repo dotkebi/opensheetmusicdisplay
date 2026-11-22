@@ -3,8 +3,8 @@ import ChildProcess from "child_process";
 import FS from "fs";
 import jsdom from "jsdom";
 import Path from "path";
-import { fileURLToPath } from "url";
-import OSMD from "../../build/opensheetmusicdisplay.min.js"; // window needs to be available before we can require OSMD
+import { fileURLToPath, pathToFileURL } from "url";
+// OSMD is imported from osmdBuildDir in init(), once window is simulated (see findBuildFile())
 // for debugging, use opensheetmusicdisplay.min.js, created by npm run build:webpack-dev
 /*
   Render each OSMD sample, grab the generated images, and
@@ -16,6 +16,8 @@ import OSMD from "../../build/opensheetmusicdisplay.min.js"; // window needs to 
   It's also used with the visual regression test system (using PNGs) in
   `tools/visual_regression.sh`
   (see package.json, used with npm run generate:blessed and generate:current, then test:visual).
+  It renders with the build in osmdBuildDir (its opensheetmusicdisplay.min.js), so one checkout can render the builds
+  of several commits, each in its own folder (see findBuildFile()).
   It also writes source_commit.txt into the image directory, with the git branch and commit the images were
   generated from, so that you can tell which state e.g. visual_regression/blessed shows (see writeSourceCommitFile()),
   and warns if the build is older than the files in src/, as the images may then not show that commit (checkBuildAge()).
@@ -36,6 +38,28 @@ import OSMD from "../../build/opensheetmusicdisplay.min.js"; // window needs to 
   see the semi-obsolete generateDiffImagesPuppeteerLocalhost.js
 */
 
+/**
+ * Finds the OSMD build to render with: opensheetmusicdisplay.min.js in the folder osmdBuildDir, relative to the current
+ * folder, e.g. "./build" or "C:/builds/develop". For the older form relative to this script's folder (e.g. "../../build",
+ * which package.json's scripts pass), it falls back to that if the folder relative to the current one has no build.
+ * Exits if neither has one.
+ * @param {string} directory The osmdBuildDir argument.
+ * @returns {string} The absolute path of the build's opensheetmusicdisplay.min.js.
+ */
+function findBuildFile (directory) {
+    const candidates = [
+        Path.resolve(directory, "opensheetmusicdisplay.min.js"),
+        Path.resolve(Path.dirname(fileURLToPath(import.meta.url)), directory, "opensheetmusicdisplay.min.js"),
+    ];
+    const file = candidates.find((candidate) => FS.existsSync(candidate));
+    if (!file) {
+        console.log(`Error: no OSMD build in osmdBuildDir ${directory}: none of ${candidates.join(", ")} exists ` +
+            "(build first, e.g. npm run build). Exiting.");
+        process.exit(1);
+    }
+    return file;
+}
+
 function sleep (ms) {
     return new Promise((resolve) => {
         setTimeout(resolve, ms);
@@ -52,12 +76,15 @@ if (!osmdBuildDir || !sampleDir || !imageDir || (imageFormat !== "png" && imageF
     console.log("  (use pageWidth and pageHeight 0 to not divide the rendering into pages (endless page))");
     console.log('  (use "all" to skip filterRegex parameter. "allSmall" with --osmdtesting additionally skips the two biggest OSMD samples,' +
         ' ActorPreludeSample and CharlesGounod_Meditation (a few seconds each), e.g. for quick runs on slow machines)');
-    console.log("example: node test/Util/generateImages_browserless.mjs ../../build ./test/data/ ./export png");
+    console.log("example: node test/Util/generateImages_browserless.mjs ./build ./test/data/ ./export png");
     console.log("Error: need osmdBuildDir, sampleDir, imageDir and svg|png arguments. Exiting.");
     process.exit(1);
 }
-// the root folder of the OSMD checkout this script is in, whose build it imports (../../build)
-const checkoutDirectory = Path.resolve(Path.dirname(fileURLToPath(import.meta.url)), "../..");
+// the opensheetmusicdisplay.min.js in osmdBuildDir, which renders the images
+const buildFile = findBuildFile(osmdBuildDir);
+// the folder the build folder is in, e.g. the root folder of an OSMD checkout with its build in build/: its src/ is
+//   compared with the build's age (checkBuildAge()), and source_commit.txt names its git state (writeSourceCommitFile())
+const checkoutDirectory = Path.dirname(Path.dirname(buildFile));
 const useWhiteTabNumberBackground = true;
 // use white instead of transparent background for tab numbers for PNG export.
 //   can fix black rectangles displayed, depending on your image viewer / program.
@@ -69,7 +96,7 @@ if (!mode) {
     mode = "";
 }
 
-// let OSMD; // can only be required once window was simulated
+let OSMD; // imported from buildFile in init(), once window is simulated
 
 async function init () {
     debug("init");
@@ -116,6 +143,8 @@ async function init () {
     if (imageFormat === "png") {
         global.Canvas = window.Canvas;
     }
+    debug("OSMD build: " + buildFile, DEBUG);
+    OSMD = (await import(pathToFileURL(buildFile).href)).default;
 
     // unnecessary in Node v18+:
     // fix Blob not found (to support external modules like is-blob)
@@ -272,7 +301,7 @@ async function init () {
                 await generateSampleImage(sampleFilename, sampleDir, osmdInstance, osmdTestMode, {
                     darkMode: true, fileNameAddition: "darkmode_"}, DEBUG);
             } else if (sampleFilename.startsWith("JohannSebastianBach_PraeludiumInCDur") ||
-                sampleFilename.startsWith("test_hidden_staff_clef_key_time")) {
+                sampleFilename.startsWith("test_hidden_staff_")) { // test_hidden_staff_clef_key_time, test_hidden_staff_dynamics
                 // generate two more testing images, left hand only and right hand only
                 await generateSampleImage(sampleFilename, sampleDir, osmdInstance, osmdTestMode, {
                     staffVisibility: { 0: true, 1: false}, fileNameAddition: "right_hand_only_"}, DEBUG);
@@ -316,15 +345,16 @@ function decodeXmlBuffer (buffer) {
 }
 
 /**
- * Checks whether the build the images are rendered with (build/opensheetmusicdisplay.min.js) is older than a file in
- * src/, e.g. after switching branches, pulling or editing files without building, or after a failed build. The images
- * then show the code of the last build, which may not be the commit that source_commit.txt names.
+ * Checks whether the build the images are rendered with (buildFile) is older than a file in the src/ folder next to
+ * its build folder (in checkoutDirectory), e.g. after switching branches, pulling or editing files without building,
+ * or after a failed build. The images then show the code of the last build, which may not be the commit that
+ * source_commit.txt names.
  * @returns {{ built?: Date, warning?: string }} When the build was made, and a warning if it's older than a file in src/.
  */
 function checkBuildAge () {
     const result = {};
     try {
-        const build = FS.statSync(Path.join(checkoutDirectory, "build", "opensheetmusicdisplay.min.js"));
+        const build = FS.statSync(buildFile);
         result.built = build.mtime;
         let newerFiles = 0;
         let newestFile;
@@ -368,10 +398,11 @@ function formatLocalTime (date) {
 }
 
 /**
- * Writes source_commit.txt into the image directory: the git branch and commit of the OSMD checkout this script is in,
- * whose build renders the images, the files with uncommitted changes, and when the build was made, with a warning if
- * it's older than a file in src/. So you can tell which state an image folder shows after generating images on several
- * branches or renaming the folders, and visualRegression.mjs lists the states of blessed/ and current/ it compared.
+ * Writes source_commit.txt into the image directory: the build that renders the images (buildFile), the git branch and
+ * commit of the OSMD checkout it's the build of (checkoutDirectory), the files with uncommitted changes, and when the
+ * build was made, with a warning if it's older than a file in src/. So you can tell which state an image folder shows
+ * after generating images on several branches or renaming the folders, and visualRegression.mjs lists the states of
+ * blessed/ and current/ it compared.
  * @param {string} directory The image directory.
  * @param {{ built?: Date, warning?: string }} buildAge The age of the build, from checkBuildAge().
  */
@@ -384,6 +415,12 @@ function writeSourceCommitFile (directory, buildAge) {
     let lines;
     let summary;
     try {
+        // only a checkout's own build/ describes the checkout: for a build copied to another folder, git would describe
+        //   whichever repository that folder is in, if any
+        const topLevel = git("rev-parse", "--show-toplevel");
+        if (Path.relative(Path.resolve(topLevel), checkoutDirectory) !== "") {
+            throw new Error(`the build folder isn't in the root folder of a git checkout (${checkoutDirectory} isn't)`);
+        }
         let branch = git("rev-parse", "--abbrev-ref", "HEAD");
         if (branch === "HEAD") {
             // detached HEAD, e.g. a checked out tag or commit: described by the latest tag, e.g. "2.2.0-55-g52b16c29"
@@ -406,6 +443,7 @@ function writeSourceCommitFile (directory, buildAge) {
         lines = [`branch: unknown (${reason})`];
         summary = `an unknown branch and commit (${reason})`;
     }
+    lines.push(`build: ${buildFile}`);
     if (buildAge.built) {
         lines.push(`built: ${formatLocalTime(buildAge.built)}`);
     }
@@ -728,6 +766,7 @@ function setOsmdTestOptionsBeforeLoad(sampleFilename, options, osmdInstance) {
     const isTestPartAbbreviationsPartlyMissing = sampleFilename.includes("test_part_abbreviations_partly_missing");
     const isTestPartAbbreviationSingleStaff = sampleFilename.includes("test_part_abbreviation_single_staff");
     const isTestPartGroupNames = sampleFilename.includes("test_group_name");
+    const isTestComposerAboveFine = sampleFilename.startsWith("test_composer_above_fine_end_of_first_system");
     // a courtesy key signature at a system break in the alto and bass clef, see test_key_signature_courtesy_clefs: systems as in the file
     const isTestKeySignatureCourtesyClefs = sampleFilename.startsWith("test_key_signature_courtesy_clefs");
     // courtesy key and time signatures of different widths at system breaks, see test_courtesy_signatures_staff_ends: systems as in the file
@@ -797,7 +836,7 @@ function setOsmdTestOptionsBeforeLoad(sampleFilename, options, osmdInstance) {
             isTestLyricsDashContinuedInNextSystem || isTestTabTiesAcrossSystemBreaks || isTestTabChordSlidesAcrossSystemBreaks ||
             isTestHiddenStaffClefKeyTime ||
             isTestMultipleRestMeasuresXmlBreaks || isTestPedalSignsBelowBeams || isTestPedalLineAndSign || isTestPedalResumeDiscontinue ||
-            isTestPedalAtWholeMeasureRest,
+            isTestPedalAtWholeMeasureRest || isTestComposerAboveFine,
         newSystemFromNewPageInXML: isTestPageBreakImpliesSystemBreak,
         newPageFromXML: isFunctionTestSystemAndPageBreaks || isTestMultipleRestMeasuresXmlBreaks,
         pageBackgroundColor: "#FFFFFF", // reset by drawingparameters default
@@ -919,7 +958,7 @@ function setOsmdTestOptionsAfterLoad(sampleFilename, options, osmdInstance) {
     const isTestTransposingFsharpMajorEsharp = sampleFilename.includes("test_transposing_fsharp_major_e_sharp");
     const isTestTransposingIntervalSpelling = sampleFilename.includes("test_transposing_interval_spelling");
     const isTestTransposingIntervalChordSpelling = sampleFilename.includes("test_transposing_interval_chord_spelling");
-    // osmd.TransposeCalculator is static, shared by all samples: set it for each sample,
+    // one OSMD instance renders all samples: set its TransposeCalculator for each sample,
     //   so that the samples after the interval samples (in directory order) don't use their calculator.
     osmdInstance.TransposeCalculator = isTestTransposingIntervalSpelling || isTestTransposingIntervalChordSpelling ?
         new OSMD.IntervalTransposeCalculator() : new OSMD.TransposeCalculator();
