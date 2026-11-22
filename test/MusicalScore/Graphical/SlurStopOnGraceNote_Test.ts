@@ -14,8 +14,8 @@ import { PlacementEnum } from "../../../src/MusicalScore/VoiceData/Expressions/A
  *
  * Fork: the slurs of grace notes are read like any other slur (see VoiceGenerator, as osmd-dart), so a slur from a grace note
  * to its main note is in the model too and VoiceEntry.DrawsGraceGroupSlur says that the grace note group draws it; and a slur
- * to a grace note keeps the fork's placement and end points (upstream 3.0.0 places it by its start note's stem). The checks
- * below that differ from upstream's test for that are marked "fork".
+ * to a grace note keeps the fork's end points, placed by its start note's stem as upstream 3.0.0 does. The checks below that
+ * differ from upstream's test for that are marked "fork".
  */
 describe("Slur that stops on a grace note", () => {
     let container: HTMLElement;
@@ -67,10 +67,10 @@ describe("Slur that stops on a grace note", () => {
         expect(gSlur.bezierEndPt.x - gSlur.bezierStartPt.x, "from the main note").to.be.greaterThan(2);
     }
 
-    it("draws a slur from a main note to the grace note before the next main note", () => {
+    it("draws a slur from a main note to the grace note before the next main note, above from a note with its stem down", () => {
         const [main, , graceEnd, nextMain] = graphicalNotes(1); // D5, grace C#5, grace D5, E5
-        // fork: below (mixed stems: the side with less in the way); upstream 3.0.0: above, by the start note's stem down
-        expectSlurToGraceNote(main, graceEnd, PlacementEnum.Below);
+        // above, by the start note's stem down (not the side with less in the way, as for other mixed stems)
+        expectSlurToGraceNote(main, graceEnd, PlacementEnum.Above);
         expect(nextMain.sourceNote.NoteSlurs.length, "no slur to the next main note or beyond").to.equal(0);
     });
 

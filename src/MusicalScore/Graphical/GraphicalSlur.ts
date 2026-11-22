@@ -2279,7 +2279,14 @@ export class GraphicalSlur extends GraphicalCurve {
         // single Voice, opposite to StemDirection
         // here should only be one voiceEntry, so we can take graphicalVoiceEntries[0]:
         const startStemDirection: StemDirectionType = startStaffEntry.graphicalVoiceEntries[0].parentVoiceEntry.StemDirection;
-        const endStemDirection: StemDirectionType = endStaffEntry.graphicalVoiceEntries[0].parentVoiceEntry.StemDirection;
+        // A slur that stops on a grace note (whose stem is up whatever its pitch, mostly) is placed by its start note, like
+        //   MuseScore does: e.g. above from a note with its stem down (upstream 3.0.0, PR #2010). The end staff entry's first
+        //   voice entry would be its main note's or another grace note's, and with mixed stems the slur went to the side with
+        //   less in its way: below a stem-down note, from the end of its stem (a trill's termination). As osmd-dart.
+        const endsOnGraceNote: boolean = this.slur.EndNote?.ParentVoiceEntry?.IsGrace === true &&
+            this.slur.StartNote?.ParentVoiceEntry?.IsGrace !== true;
+        const endStemDirection: StemDirectionType = endsOnGraceNote ? startStemDirection :
+            endStaffEntry.graphicalVoiceEntries[0].parentVoiceEntry.StemDirection;
         if (startStemDirection  ===
             endStemDirection) {
             this.placement = (startStemDirection === StemDirectionType.Up) ? PlacementEnum.Below : PlacementEnum.Above;
