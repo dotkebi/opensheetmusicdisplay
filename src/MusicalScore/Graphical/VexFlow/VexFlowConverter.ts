@@ -227,20 +227,21 @@ export class VexFlowConverter {
         return [fund + "n/" + octave + noteheadCode, acc, clef];
     }
 
-    public static restToNotePitch(pitch: Pitch, clefType: ClefEnum): Pitch {
-        let octave: number = pitch.Octave;
-        // offsets see pitch()
-        switch (clefType) {
-            case ClefEnum.C:
-            case ClefEnum.F: {
-                octave += 2;
-                break;
-            }
-            case ClefEnum.G:
-            default:
-        }
-
-        return new Pitch(pitch.FundamentalNote, octave, AccidentalEnum.NONE);
+    /** The pitch whose key puts a rest where `pitch` is on a staff with `clef`:
+     * a rest's StaveNote gets no clef, so VexFlow reads its key on the treble lines.
+     * The pitch moves up by the clef's VexFlow line shift, two note names a line
+     * (alto 6, tenor 8, bass 12, french -2), without accidental.
+     * Upstream added two octaves for every C and F clef, an octave too high for the alto clef:
+     * Wolf, Italian Serenade, viola m16 (3/8, B3 eighth - eighth rest - B3 eighth under one beam, stems up)
+     * had the rest above the staff in the beam, the print has it in the staff;
+     * a third too high for the bass clef (on the note before it, cello m16).
+     */
+    public static restToNotePitch(pitch: Pitch, clef: ClefInstruction): Pitch {
+        const lineShift: number = (VF as any).clefProperties(VexFlowConverter.Clef(clef).type).line_shift;
+        const names: NoteEnum[] = Pitch.pitchEnumValues;
+        const index: number = names.indexOf(pitch.FundamentalNote) + Math.round(lineShift * 2);
+        const length: number = names.length;
+        return new Pitch(names[((index % length) + length) % length], pitch.Octave + Math.floor(index / length), AccidentalEnum.NONE);
     }
 
     /** returns the Vexflow code for a note head. Some are still unsupported, see Vexflow/tables.js */
@@ -687,7 +688,7 @@ export class VexFlowConverter {
                                     const previousNotePitch: Pitch = CollectionUtil.getLastElement(previousVoiceEntry.Notes).Pitch;
                                     const clef: ClefInstruction = (note as VexFlowGraphicalNote).Clef();
                                     const vfpitch: [string, string, ClefInstruction] = VexFlowConverter.pitch(
-                                        VexFlowConverter.restToNotePitch(previousNotePitch.getTransposedPitch(-2), clef.ClefType),
+                                        VexFlowConverter.restToNotePitch(previousNotePitch.getTransposedPitch(-2), clef),
                                         false, clef);
                                     keys = [vfpitch[0]];
                                 }
