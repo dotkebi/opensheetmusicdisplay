@@ -7633,7 +7633,10 @@ export abstract class MusicSheetCalculator {
                     continue;
                 }
                 const rowY: number = this.lyricExtendYInStaffLine(middleStaffLine, verseNumber, voice);
-                const middleY: number = rowY ?? startY;
+                // without syllables there, at the verse's row as calculateSingleStaffLineLyricsPosition() would place it under
+                //   the staff line's lowest ink: the first system's height went through the tuplet brackets under m45
+                const middleY: number = rowY ?? this.lyricExtendYWithoutSyllables(middleStaffLine, middleStartX, middleEndX,
+                    verseNumber, startY - lyricEntry.VerseLineY);
                 this.calculateSingleLyricWordWithUnderscore(middleStaffLine, middleStartX, middleEndX, middleY);
                 // without syllables of the verse in the staff line, its lyric row is reserved in the bottom line (as below)
                 if (rowY === undefined) {
@@ -7670,6 +7673,19 @@ export abstract class MusicSheetCalculator {
                 }
             }
         }
+    }
+
+    /** The y of a lyric extend line of the verse in a staff line without its syllables: the verse's row as
+     *  calculateSingleStaffLineLyricsPosition() places it (under the bottom line between startX and endX, at least
+     *  StaffHeight down), offsetFromVerseLine from it as the extend line is from its syllable's verse line. */
+    private lyricExtendYWithoutSyllables(staffLine: StaffLine, startX: number, endX: number, verseNumber: string,
+                                         offsetFromVerseLine: number): number {
+        const rules: EngravingRules = this.rules;
+        const bottom: number = staffLine.SkyBottomLineCalculator.getBottomLineMaxInRange(startX, endX);
+        const lyricsStartY: number = Math.max(rules.StaffHeight, bottom + rules.LyricsYMarginToBottomLine);
+        const verseIndex: number = Math.max(0, staffLine.ParentStaff.ParentInstrument.LyricVersesNumbers.indexOf(verseNumber));
+        return lyricsStartY + rules.LyricsHeight + rules.VerticalBetweenLyricsDistance + rules.LyricsYOffsetToStaffHeight +
+            (rules.VerticalBetweenLyricsDistance + rules.LyricsHeight) * verseIndex + offsetFromVerseLine;
     }
 
     /** The staff lines of the same staff as startStaffLine in the systems after its system and before endStaffLine's. */

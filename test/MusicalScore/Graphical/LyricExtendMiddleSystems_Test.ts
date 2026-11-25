@@ -8,7 +8,9 @@ import { GraphicalLine } from "../../../src/MusicalScore/Graphical/GraphicalLine
  * A lyric extend line held over more than two systems goes across the systems between its first and its last
  * (Handel, Care selve, soprano m44-49: "tà" held over m45-48, a whole system in the web, which had no line there).
  * The line was drawn only on the system of its syllable and on the system it stops in. Fixture: "tà" (m1) held to
- * the first note of m7 over four systems (new-system at m3, m5, m7), then "la". Same as the osmd-dart
+ * the first note of m7 over four systems (new-system at m3, m5, m7), then "la". Without syllables there, the line is at
+ * the verse's row under the staff line's lowest ink (m5 starts on a low G3), not at the first system's height (it went
+ * through the tuplet brackets under Care selve m45). Same as the osmd-dart
  * test/lyric_extend_middle_systems_test.dart.
  */
 describe("Lyric extend over middle systems", () => {
@@ -37,7 +39,7 @@ describe("Lyric extend over middle systems", () => {
         expect(lines.map(line => line.LyricLines.length)).to.deep.equal([1, 1, 1, 1]);
     });
 
-    it("goes across a middle system, at the height of the first system's line", () => {
+    it("goes across a middle system, at the verse's row under its lowest note", () => {
         const lines: StaffLine[] = staffLines();
         const first: GraphicalLine = lines[0].LyricLines[0];
         for (const line of [lines[1], lines[2]]) {
@@ -48,10 +50,12 @@ describe("Lyric extend over middle systems", () => {
             expect(middle.Start.x).to.be.greaterThan(firstMeasure.RelativePosition.x);
             expect(middle.Start.x).to.be.lessThan(firstMeasure.RelativePosition.x + firstMeasure.Size.width / 2);
             expect(middle.End.x).to.be.closeTo(lastMeasure.RelativePosition.x + lastMeasure.Size.width, 0.01);
-            expect(middle.Start.y).to.be.closeTo(first.Start.y, 0.01);
             // its row is kept clear in the staff line's bottom line
             expect(line.SkyBottomLineCalculator.getBottomLineMaxInRange(middle.Start.x, middle.End.x))
                 .to.be.at.least(middle.Start.y);
         }
+        // under the stems of m3-4, not above the first system's row; m5's G3 two ledger lines below the staff: lower still
+        expect(lines[1].LyricLines[0].Start.y).to.be.at.least(first.Start.y);
+        expect(lines[2].LyricLines[0].Start.y).to.be.greaterThan(lines[1].LyricLines[0].Start.y + 0.5);
     });
 });
