@@ -9,6 +9,12 @@ export class AbstractExpression {
     public DashesEndMeasure: SourceMeasure;
     /** Timestamp within DashesEndMeasure where the dashed line ends. */
     public DashesEndTimestamp: Fraction;
+    /** A <bracket> line after the text instead of <dashes> (e.g. "8" with a dashed bracket in a piano part, Nielsen, Clarinet
+     *  Concerto Op.57 m265-284): its line-type "solid" or "dotted" (undefined: dashed) and the hooks of its line-end at the
+     *  start and at the stop, "up" or "down" (undefined: none). */
+    public DashesLineType: string;
+    public DashesStartHook: string;
+    public DashesEndHook: string;
     /** The xml:lang of the expression's words, see Label.language. */
     public language: string;
     /** The vertical position the file gives the words or dynamic, in tenths of a staff space, up from the top line of the

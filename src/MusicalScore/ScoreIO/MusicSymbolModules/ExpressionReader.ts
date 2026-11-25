@@ -32,6 +32,11 @@ interface OpenDashes {
     /** Whether expression is a word read after the dashes at their timestamp: a later word of that time takes them over,
      *  as for words read before the dashes (the last one wins). */
     expressionReadAfter?: boolean;
+    /** A <bracket> line (not <dashes>): it follows a word of its own time only, and has its line type and the hooks of its ends. */
+    bracket?: boolean;
+    lineType?: string;
+    startHook?: string;
+    endHook?: string;
     endMeasure?: SourceMeasure;
     endTimestamp?: Fraction;
 }
@@ -422,7 +427,11 @@ export class ExpressionReader {
 
             dirContentNode = dirNode.element("bracket");
             if (dirContentNode) {
-                this.interpretWavyBracket(dirContentNode, currentMeasure, timestampFraction);
+                if (dirContentNode.attribute("line-type")?.value === "wavy") {
+                    this.interpretWavyBracket(dirContentNode, currentMeasure, timestampFraction);
+                } else {
+                    this.interpretDashes(dirContentNode, currentMeasure, timestampFraction, true);
+                }
                 continue;
             }
         }
@@ -1723,16 +1732,25 @@ export class ExpressionReader {
      * Exporters write the dashes either in the same <direction> as the <words> or in a separate <direction>,
      * possibly before the words. A start is attached to the word expression of the same staff and placement
      * at the same timestamp, or else to the last such word before it in the same measure.
+     * Also reads a solid, dashed or dotted <bracket> (bracket) as such a line after the words of its start time, with the hooks
+     * of its line-end ("8" with a dashed bracket ending in a hook, Nielsen, Clarinet Concerto Op.57 piano m265-284). A bracket
+     * without a word at its start is not drawn, as before. As osmd-dart.
      */
-    private interpretDashes(dashesNode: IXmlElement, currentMeasure: SourceMeasure, timestamp: Fraction): void {
+    private interpretDashes(dashesNode: IXmlElement, currentMeasure: SourceMeasure, timestamp: Fraction, bracket: boolean = false): void {
         const type: string = dashesNode.attribute("type")?.value;
         const numberXml: number = this.readNumber(dashesNode);
+        const lineEnd: string = dashesNode.attribute("line-end")?.value;
+        const hook: string = lineEnd === "up" || lineEnd === "down" ? lineEnd : undefined;
         if (type === "start") {
+            const lineType: string = dashesNode.attribute("line-type")?.value;
             const dashes: OpenDashes = {
                 numberXml: numberXml,
                 placement: this.placement,
                 startMeasure: currentMeasure,
                 startTimestamp: timestamp.clone(),
+                bracket: bracket,
+                lineType: bracket && (lineType === "solid" || lineType === "dotted") ? lineType : undefined,
+                startHook: bracket ? hook : undefined,
             };
             for (const word of this.wordExpressionsOfMeasure) {
                 if (word.placement === dashes.placement && word.timestamp.Equals(timestamp)) {
@@ -1743,9 +1761,12 @@ export class ExpressionReader {
         } else if (type === "stop") {
             for (let i: number = this.openDashes.length - 1; i >= 0; i--) {
                 const dashes: OpenDashes = this.openDashes[i];
-                if (dashes.numberXml === numberXml && !dashes.endMeasure) {
+                if (dashes.numberXml === numberXml && !dashes.bracket === !bracket && !dashes.endMeasure) {
                     dashes.endMeasure = currentMeasure;
                     dashes.endTimestamp = timestamp.clone();
+                    if (bracket) {
+                        dashes.endHook = hook;
+                    }
                     this.finishDashesIfComplete(dashes);
                     break;
                 }
@@ -1779,7 +1800,7 @@ export class ExpressionReader {
             if (dashes.expression || dashes.startMeasure === measure) {
                 continue;
             }
-            if (dashes.startMeasure === this.dashesMeasure) {
+            if (dashes.startMeasure === this.dashesMeasure && !dashes.bracket) {
                 for (const word of this.wordExpressionsOfMeasure) {
                     if (word.placement === dashes.placement && word.timestamp.lte(dashes.startTimestamp)) {
                         dashes.expression = word.expression;
@@ -1802,6 +1823,9 @@ export class ExpressionReader {
         }
         dashes.expression.DashesEndMeasure = dashes.endMeasure;
         dashes.expression.DashesEndTimestamp = dashes.endTimestamp;
+        dashes.expression.DashesLineType = dashes.lineType;
+        dashes.expression.DashesStartHook = dashes.startHook;
+        dashes.expression.DashesEndHook = dashes.endHook;
         this.openDashes.splice(this.openDashes.indexOf(dashes), 1);
     }
     private closeOpenContinuousDynamic(openContinuousDynamicExpression: ContinuousDynamicExpression, endMeasure: SourceMeasure, timestamp: Fraction): void {

@@ -2352,7 +2352,8 @@ export abstract class MusicSheetCalculator {
                     }
                 }
                 segments.push([segmentStart, endX]);
-                for (const [segmentStartX, segmentEndX] of segments) {
+                for (let segmentIndex: number = 0; segmentIndex < segments.length; segmentIndex++) {
+                    const [segmentStartX, segmentEndX] = segments[segmentIndex];
                     const lineEndX: number =
                         this.firstExpressionDashesObstacleX(line, pending.textBox, below, segmentStartX, segmentEndX, y) - distance;
                     if (lineEndX - segmentStartX < this.rules.ExpressionDashesDashLength) {
@@ -2366,6 +2367,16 @@ export abstract class MusicSheetCalculator {
                     const dashes: GraphicalExpressionDashes = new GraphicalExpressionDashes(
                         expression, new PointF2D(segmentStartX, y), new PointF2D(lineEndX, y), lineWidth);
                     dashes.Color = pending.color;
+                    // a bracket line's hooks at its own start and stop
+                    const hook: (direction: string) => number = (direction: string) =>
+                        direction === "down" ? GraphicalExpressionDashes.HookLength :
+                            direction === "up" ? -GraphicalExpressionDashes.HookLength : undefined;
+                    if (i === 0 && segmentIndex === 0) {
+                        dashes.StartHook = hook(expression.DashesStartHook);
+                    }
+                    if (i === staffLines.length - 1 && segmentIndex === segments.length - 1) {
+                        dashes.EndHook = hook(expression.DashesEndHook);
+                    }
                     line.ExpressionDashes.push(dashes);
                 }
             }

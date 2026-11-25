@@ -9,6 +9,7 @@ import { ContinuousDynamicExpression } from "../../../src/MusicalScore/VoiceData
 import { GraphicalMeasure } from "../../../src/MusicalScore/Graphical/GraphicalMeasure";
 import { GraphicalStaffEntry } from "../../../src/MusicalScore/Graphical/GraphicalStaffEntry";
 import { TestUtils } from "../../Util/TestUtils";
+import { PointF2D } from "../../../src/Common/DataObjects/PointF2D";
 
 /**
  * Dashed lines after words (MusicXML <dashes>, e.g. "rit. - - -" in O cessate di piagarmi, Canto m17):
@@ -246,5 +247,42 @@ describe("Expression dashes", () => {
         expect(unknown.Label.Label.text).to.contain("poco rall.");
         expect(line.ExpressionDashes.length).to.equal(1);
         expect(line.ExpressionDashes[0].Start.x, "starts after the text").to.be.greaterThan(labelRight(unknown));
+    });
+    // Nielsen, Clarinet Concerto Op.57 piano m265-284: "8" over a left-hand note with a dashed bracket ending in a hook down,
+    // written before the word (bracket start, bracket stop with an offset, then the word).
+    function bracketLine(lineType: string): string {
+        const bracket: string = "<direction placement=\"above\"><direction-type><bracket type=\"start\" number=\"1\" line-end=\"none\" " +
+            `line-type="${lineType}"/></direction-type><offset>4</offset></direction>` +
+            "<direction placement=\"above\"><direction-type><bracket type=\"stop\" number=\"1\" line-end=\"down\" " +
+            `line-type="${lineType}"/></direction-type><offset>12</offset></direction>`;
+        const measure2: string = "<note><pitch><step>B</step><octave>4</octave></pitch><duration>4</duration><type>quarter</type></note>" +
+            "<direction placement=\"above\"><direction-type><words font-weight=\"bold\">8</words></direction-type></direction>" +
+            "<note><pitch><step>A</step><octave>4</octave></pitch><duration>8</duration><type>half</type></note>";
+        return singleStaffScore(measure2, bracket, `<measure number="3">${filler}</measure>`);
+    }
+
+    it("draws a dashed bracket after a word from the word to its stop, with the hook of its end", async () => {
+        const osmd: OpenSheetMusicDisplay = await render(bracketLine("dashed"));
+        const line: StaffLine = staffLines(osmd)[0];
+        const unknown: GraphicalUnknownExpression = line.AbstractExpressions.find(
+            (e) => e instanceof GraphicalUnknownExpression) as GraphicalUnknownExpression;
+        expect(unknown.Label.Label.text).to.equal("8");
+        expect(line.ExpressionDashes.length).to.equal(1);
+        const dashes: GraphicalExpressionDashes = line.ExpressionDashes[0];
+        expect(dashes.Start.x).to.be.greaterThan(labelRight(unknown));
+        expect(dashes.StartHook, "line-end none").to.equal(undefined);
+        expect(dashes.EndHook, "line-end down").to.equal(1);
+        const strokes: [PointF2D, PointF2D][] = dashes.calculateStrokes(osmd.EngravingRules);
+        expect(strokes.length, "dashes and the hook").to.be.greaterThan(2);
+        const hook: [PointF2D, PointF2D] = strokes[strokes.length - 1];
+        expect(hook[0].x).to.equal(dashes.End.x);
+        expect(hook[1].y - hook[0].y).to.equal(1);
+    });
+
+    it("draws a solid bracket as one line and its hook", async () => {
+        const osmd: OpenSheetMusicDisplay = await render(bracketLine("solid"));
+        const line: StaffLine = staffLines(osmd)[0];
+        expect(line.ExpressionDashes.length).to.equal(1);
+        expect(line.ExpressionDashes[0].calculateStrokes(osmd.EngravingRules).length).to.equal(2);
     });
 });
