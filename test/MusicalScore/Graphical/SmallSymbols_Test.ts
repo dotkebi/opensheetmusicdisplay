@@ -126,6 +126,34 @@ describe("Small symbols", () => {
         expect(stems(1, 0), "m2 C4: double").to.equal(2);
     });
 
+    // Nielsen, Clarinet Concerto Op.57 m426: <scoop line-shape="straight"> on the clarinet's Gb6
+    it("a scoop is a straight line rising from the lower left to the notehead, across its accidental", async () => {
+        await render("test_scoop_straight.musicxml");
+        const measure: VexFlowMeasure = osmd.GraphicSheet.MeasureList[0][0] as VexFlowMeasure;
+        const space: number = measure.getVFStave().getSpacingBetweenLines();
+        const linesLeftOf: (entryIndex: number) => number = (entryIndex: number) => {
+            const note: any = (measure.staffEntries[entryIndex].graphicalVoiceEntries[0] as VexFlowVoiceEntry).vfStaveNote;
+            const headLeft: number = note.getAbsoluteX();
+            const headY: number = note.getYs()[0];
+            let count: number = 0;
+            for (const path of Array.from(container.querySelectorAll("path"))) {
+                const match: RegExpMatchArray = (path.getAttribute("d") ?? "").trim()
+                    .match(/^M\s*([-\d.]+)[\s,]+([-\d.]+)\s*L\s*([-\d.]+)[\s,]+([-\d.]+)\s*$/);
+                if (!match) {
+                    continue;
+                }
+                const [x1, y1, x2, y2] = match.slice(1).map(Number);
+                if (Math.abs(x2 - x1 - 3 * space) < 0.01 && Math.abs(y1 - y2 - 1.3 * space) < 0.01 &&
+                    Math.abs(x2 - headLeft) < 0.5 * space && y2 < headY && y1 > headY) {
+                    count++;
+                }
+            }
+            return count;
+        };
+        expect(linesLeftOf(0), "the scooped Gb5").to.equal(1);
+        expect(linesLeftOf(1), "the F5 has none").to.equal(0);
+    });
+
     it("a beam carried over the barline is drawn in each measure, its notes beamed, not flagged", async () => {
         await render("test_beam_across_barline.musicxml");
         for (const index of [0, 1]) {

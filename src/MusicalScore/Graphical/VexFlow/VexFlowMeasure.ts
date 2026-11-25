@@ -25,7 +25,7 @@ import {PointF2D} from "../../../Common/DataObjects/PointF2D";
 import {Tuplet} from "../../VoiceData/Tuplet";
 import {RepetitionInstructionEnum, RepetitionInstruction, AlignmentType} from "../../VoiceData/Instructions/RepetitionInstruction";
 import {SystemLinePosition} from "../SystemLinePosition";
-import {StemDirectionType, VoiceEntry} from "../../VoiceData/VoiceEntry";
+import {ArticulationEnum, StemDirectionType, VoiceEntry} from "../../VoiceData/VoiceEntry";
 import {GraphicalVoiceEntry} from "../GraphicalVoiceEntry";
 import {VexFlowVoiceEntry} from "./VexFlowVoiceEntry";
 import {Fraction} from "../../../Common/DataObjects/Fraction";
@@ -1012,6 +1012,34 @@ export class VexFlowMeasure extends GraphicalMeasure {
         }
     }
 
+    /** A <scoop> (a slide into the note from below, from no note) is a straight line rising from the lower left to the
+     *  notehead's upper left edge, across the note's accidental: 3 staff spaces wide, 1.3 high (Nielsen, Clarinet Concerto
+     *  Op.57 m426, the clarinet's Gb6). VexFlow has no such modifier. The line takes no room in the layout. As osmd_dart. */
+    private drawScoops(ctx: Vex.IRenderContext): void {
+        for (const staffEntry of this.staffEntries) {
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                if (!gve.parentVoiceEntry.Articulations.some(a => a.articulationEnum === ArticulationEnum.scoop && a.printObject)) {
+                    continue;
+                }
+                const note: any = (gve as VexFlowVoiceEntry).vfStaveNote;
+                if (!(note instanceof VF.StaveNote) || note.isRest() || !note.getYs()?.length) {
+                    continue;
+                }
+                const space: number = this.stave.getSpacingBetweenLines();
+                // the lowest notehead's upper left edge
+                const x: number = note.getAbsoluteX() + note.x_shift - 0.1 * space;
+                const y: number = Math.max(...note.getYs()) - 0.35 * space;
+                ctx.save();
+                ctx.beginPath();
+                ctx.setLineWidth(0.16 * space);
+                ctx.moveTo(x - 3 * space, y + 1.3 * space);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    }
+
     /** A note with <stem>double</stem> (two parts in unison on one staff, a due: Weber, Bassoon Concerto Op. 75 I, horns m5-6,
      *  trumpets III m286) has a second stem on the other side, down from the notehead's left edge under an up stem, up from its
      *  right edge over a down stem, as long as its own. VexFlow draws one stem (the automatic direction). As osmd_dart. */
@@ -1067,6 +1095,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
             }
         }
         this.drawDoubleStems(ctx);
+        this.drawScoops(ctx);
         // Draw beams
         for (const voiceID in this.vfbeams) {
             if (this.vfbeams.hasOwnProperty(voiceID)) {

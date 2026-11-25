@@ -241,6 +241,7 @@ export class VoiceEntry {
             case ArticulationEnum.upbow:
             case ArticulationEnum.downbow:
             case ArticulationEnum.bend:
+            case ArticulationEnum.scoop: // a straight line into the note, VexFlowMeasure.drawScoops()
                 return true;
             default:
                 return false;

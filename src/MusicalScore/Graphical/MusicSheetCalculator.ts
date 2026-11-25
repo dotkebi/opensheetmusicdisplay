@@ -1787,6 +1787,19 @@ export abstract class MusicSheetCalculator {
                 (entries.map(e => e.expression).find(e => e instanceof UnknownExpression) as UnknownExpression)?.fontSizeXml);
         const fontStyle: FontStyles = drawnAsDynamic ? FontStyles.BoldItalic : MultiExpression.getFontstyleOfEntry(entries[0]);
         const placement: PlacementEnum = MultiExpression.getPlacementOfEntry(entries[0]);
+        const bracketBeforeNote: GraphicalLabel = this.placeOpeningBracketBeforeNote(measures[staffIndex], staffLine,
+                                                                                    multiExpression.Timestamp, combinedExprString,
+                                                                                    fontStyle, fontHeight);
+        if (bracketBeforeNote) {
+            const colorOfBracket: string = entries[0]?.expression.ColorXML;
+            if (this.rules.ExpressionsUseXMLColor && colorOfBracket) {
+                bracketBeforeNote.ColorXML = colorOfBracket;
+            }
+            // registers itself in staffLine.AbstractExpressions; beside its note, it takes no place in the sky (bottom) line
+            new GraphicalUnknownExpression(staffLine, bracketBeforeNote, placement, measures[staffIndex]?.parentSourceMeasure,
+                                           multiExpression);
+            return undefined;
+        }
         relative.x = this.keepWordsBeforeStrongBarline(measures[staffIndex], staffLine, relative.x, multiExpression.Timestamp,
                                                        combinedExprString, fontStyle, placement, fontHeight);
         const lastEntry: MultiExpressionEntry = entries[entries.length - 1];
@@ -1834,6 +1847,46 @@ export abstract class MusicSheetCalculator {
         //                         but MultiExpression is not an AbstractExpression.
         if (lastEntry?.expression) {
             this.addExpressionDashes(lastEntry.expression, graphLabel.PositionAndShape, graphLabel.ColorXML, placement, staffLine, staffIndex, measureIndex);
+        }
+        return undefined;
+    }
+
+    /** Words that are only an opening bracket, "(" or "[", at the time of a note open a bracket around it: the bracket is
+     *  engraved right before the note, left of its accidental, at the height of its noteheads, not above or below the staff
+     *  (Nielsen, Clarinet Concerto Op.57 m561, the tambourine's cue "(" before its eighth: drawn over the note, the words
+     *  went onto its stem and flag). Returns the placed label, or undefined if the words are no such bracket or there is no
+     *  note drawn at their time. As osmd-dart. */
+    protected placeOpeningBracketBeforeNote(measure: GraphicalMeasure, staffLine: StaffLine, timestamp: Fraction, text: string,
+                                            fontStyle: FontStyles, fontHeight: number): GraphicalLabel {
+        if (text.trim() !== "(" && text.trim() !== "[") {
+            return undefined;
+        }
+        const stave: any = (measure as any)?.getVFStave?.();
+        if (!stave) {
+            return undefined;
+        }
+        for (const staffEntry of measure.staffEntries) {
+            if (!staffEntry.relInMeasureTimestamp?.Equals(timestamp)) {
+                continue;
+            }
+            for (const gve of staffEntry.graphicalVoiceEntries) {
+                const note: any = (gve as any).vfStaveNote;
+                if (!note?.getKeyProps || !note.getNoteHeadBeginX || note.isRest?.() ||
+                    gve.notes.every(n => !n.sourceNote.PrintObject)) {
+                    continue;
+                }
+                const lines: number[] = note.getKeyProps().map((keyProps: any) => keyProps.line);
+                const metrics: any = note.getMetrics();
+                const leftPx: number = note.getNoteHeadBeginX() - (metrics.modLeftPx ?? 0) - (metrics.extraLeftPx ?? 0);
+                // (10 px a unit, unitInPixels)
+                const headY: number = (stave.getYForNote((Math.min(...lines) + Math.max(...lines)) / 2) - stave.getYForLine(0)) / 10;
+                const label: GraphicalLabel = this.createExpressionLabel(staffLine, text.trim(), fontStyle, PlacementEnum.Above,
+                                                                         fontHeight, TextAlignmentEnum.RightCenter);
+                label.SVGClass = "osmd-words";
+                label.PositionAndShape.RelativePosition = new PointF2D(
+                    measure.PositionAndShape.RelativePosition.x + (leftPx - stave.getX()) / 10 - 0.3, headY);
+                return label;
+            }
         }
         return undefined;
     }
@@ -2352,7 +2405,8 @@ export abstract class MusicSheetCalculator {
                     }
                 }
                 segments.push([segmentStart, endX]);
-                for (const [segmentStartX, segmentEndX] of segments) {
+                for (let segmentIndex: number = 0; segmentIndex < segments.length; segmentIndex++) {
+                    const [segmentStartX, segmentEndX] = segments[segmentIndex];
                     const lineEndX: number =
                         this.firstExpressionDashesObstacleX(line, pending.textBox, below, segmentStartX, segmentEndX, y) - distance;
                     if (lineEndX - segmentStartX < this.rules.ExpressionDashesDashLength) {
@@ -2366,6 +2420,16 @@ export abstract class MusicSheetCalculator {
                     const dashes: GraphicalExpressionDashes = new GraphicalExpressionDashes(
                         expression, new PointF2D(segmentStartX, y), new PointF2D(lineEndX, y), lineWidth);
                     dashes.Color = pending.color;
+                    // a bracket line's hooks at its own start and stop
+                    const hook: (direction: string) => number = (direction: string) =>
+                        direction === "down" ? GraphicalExpressionDashes.HookLength :
+                            direction === "up" ? -GraphicalExpressionDashes.HookLength : undefined;
+                    if (i === 0 && segmentIndex === 0) {
+                        dashes.StartHook = hook(expression.DashesStartHook);
+                    }
+                    if (i === staffLines.length - 1 && segmentIndex === segments.length - 1) {
+                        dashes.EndHook = hook(expression.DashesEndHook);
+                    }
                     line.ExpressionDashes.push(dashes);
                 }
             }
