@@ -7575,6 +7575,13 @@ export abstract class MusicSheetCalculator {
             endStaffLine = startStaffLine;
             nextLyricStaffEntry = this.nextStaffEntryWithLyricsOfVerse(index, staffIndex, verseNumber);
         }
+        // Likewise an extend whose next syllable is on the very next note (a syllable held on one note: Donizetti, La
+        //   lontananza m2 "te" before "ra", printed "te__"): the scan found no note to reach, and the line was not drawn
+        //   (user decision 11-26). As osmd_dart.
+        if (!endStaffEntry && !endGraceEntry && foundOwnVerseSyllable) {
+            endStaffEntry = startStaffEntry;
+            endStaffLine = startStaffLine;
+        }
         if (!endStaffEntry || !endStaffLine) {
             return;
         }
