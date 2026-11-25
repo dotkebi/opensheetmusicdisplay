@@ -11,7 +11,8 @@ import { TestUtils } from "../../Util/TestUtils";
  * m44, R-03-1: "stern," on the dotted quarter that ends the system, the next system starts with a rest, had no line):
  * - from the label's right, EngravingRules.LyricExtendMinimumLength long, within its staff line;
  * - before a syllable that follows the rest closely, it keeps EngravingRules.LyricExtendEndGap to its label;
- * - an extend whose next note has the next syllable still gets no line.
+ * - so does an extend whose next note has the next syllable (Donizetti, La lontananza m2: "te" before "ra", printed
+ *   "te__"; user decision 11-26, it had no line), before that syllable's label.
  * Same as osmd-dart test/lyric_extend_single_note_test.dart.
  */
 describe("Lyric extend on a single note", () => {
@@ -49,9 +50,9 @@ describe("Lyric extend on a single note", () => {
     const atPieceEnd: string = score([
         note("G", 4, 8, "quarter", "das") + note("D", 5, 8, "quarter", "Licht", true),
     ]);
-    /** the next note has the next syllable: nothing to extend over */
+    /** the next note has the next syllable (La lontananza m2: "te" on a quarter, "ra" on the next note) */
     const nextSyllableNext: string = score([
-        note("D", 5, 4, "eighth", "stern,", true) + note("G", 4, 4, "eighth", "sie") + note("A", 4, 8, "quarter", "flü"),
+        note("G", 4, 8, "quarter", "te", true) + note("F", 4, 8, "quarter", "ra"),
     ]);
 
     async function render(xml: string): Promise<OpenSheetMusicDisplay> {
@@ -129,8 +130,16 @@ describe("Lyric extend on a single note", () => {
                                                    line.PositionAndShape.Size.width), 1e-6);
     });
 
-    it("draws no line when the next note has the next syllable", async () => {
+    it("draws the line of a single note when the next note has the next syllable, before its label", async () => {
         const osmd: OpenSheetMusicDisplay = await render(nextSyllableNext);
-        expect(extendLines(staffLines(osmd)[0]).length).to.equal(0);
+        const line: StaffLine = staffLines(osmd)[0];
+        const [, labelRight] = labelEdges(lastEntryWithLyric(line, "te"), "te");
+        const [nextLeft] = labelEdges(lastEntryWithLyric(line, "ra"), "ra");
+        const drawn: [number, number][] = extendLines(line);
+        expect(drawn.length).to.equal(1);
+        expect(drawn[0][0]).to.be.closeTo(labelRight, 1e-6);
+        const rules: any = osmd.EngravingRules;
+        expect(drawn[0][1]).to.be.closeTo(Math.min(labelRight + rules.LyricExtendMinimumLength, nextLeft - rules.LyricExtendEndGap), 1e-6);
+        expect(drawn[0][1]).to.be.greaterThan(drawn[0][0]);
     });
 });

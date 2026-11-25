@@ -13,6 +13,8 @@ import { AbstractGraphicalExpression } from "../AbstractGraphicalExpression";
 import { PointF2D } from "../../../Common/DataObjects/PointF2D";
 import { GraphicalLabel } from "../GraphicalLabel";
 import { VexFlowTextMeasurer } from "./VexFlowTextMeasurer";
+import { Fonts } from "../../../Common/Enums/Fonts";
+import { FontStyles } from "../../../Common/Enums/FontStyles";
 import { MusicSystem } from "../MusicSystem";
 import { BoundingBox } from "../BoundingBox";
 import { GraphicalObject } from "../GraphicalObject";
@@ -1962,8 +1964,11 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             const currLine: {text: string, xOffset: number, width: number} = graphicalLabel.TextLines[i];
             const xOffsetInPixel: number = this.calculatePixelDistance(currLine.xOffset);
             const linePosition: PointF2D = new PointF2D(screenPosition.x + xOffsetInPixel, screenPosition.y);
-            const newNode: Node = this.backend.renderText(height, fontStyle, font, currLine.text, fontHeightInPixel, linePosition, color,
-                                                          graphicalLabel.Label.fontFamily, graphicalLabel.Label.language);
+            const newNode: Node = VexFlowMusicSheetDrawer.hasNoteSymbol(currLine.text) ?
+                this.renderTextWithNoteSymbols(height, fontStyle, font, currLine.text, fontHeightInPixel, linePosition, color,
+                                               graphicalLabel.Label.fontFamily, graphicalLabel.Label.language) :
+                this.backend.renderText(height, fontStyle, font, currLine.text, fontHeightInPixel, linePosition, color,
+                                        graphicalLabel.Label.fontFamily, graphicalLabel.Label.language);
             if (!node) {
                 node = newNode;
             } else {
@@ -1990,6 +1995,97 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         }
         // font currently unused, replaced by fontFamily
         return node; // alternatively, return Node[] and refactor annotationElementMap to handle node array instead of single node
+    }
+
+    /** The VexFlow durations of the notes of the Unicode Musical Symbols block (U+1D15D-U+1D164) that ExpressionReader gives
+     *  the SMuFL note symbols between words (<symbol>metNoteHalfUp</symbol> etc.). Text fonts rarely have them: they were
+     *  drawn as a missing-glyph box (Vieuxtemps, Op. 31 m562 "Tempo I.mo Metron:" and a dotted half note). */
+    private static readonly noteSymbolDurations: Map<string, string> = new Map([
+        ["\u{1D15D}", "w"], ["\u{1D15E}", "h"], ["\u{1D15F}", "q"], ["\u{1D160}", "8"],
+        ["\u{1D161}", "16"], ["\u{1D162}", "32"], ["\u{1D163}", "64"], ["\u{1D164}", "128"],
+    ]);
+
+    private static hasNoteSymbol(text: string): boolean {
+        return /[\u{1D15D}-\u{1D164}]/u.test(text);
+    }
+
+    /** Renders a line of text with note symbols (noteSymbolDurations) in it: the text around them as text, each note as the
+     *  notation font draws a metronome mark's note (VexFlowPatch StaveTempo), in the room the layout measured for its character,
+     *  so the label keeps its size. */
+    private renderTextWithNoteSymbols(height: number, fontStyle: FontStyles, font: Fonts, text: string, fontHeightInPixel: number,
+                                      position: PointF2D, color: string, fontFamily: string, language: string): Node {
+        const width: (part: string) => number = (part: string) =>
+            this.textMeasurer.computeTextWidthToHeightRatio(part, font, fontStyle, fontFamily) * height;
+        let x: number = position.x;
+        let node: Node;
+        let run: string = "";
+        const flush: () => void = () => {
+            if (!run) {
+                return;
+            }
+            // SVG drops a leading space: move past it instead
+            const lead: string = run.match(/^\s*/)[0];
+            x += lead ? width(lead) : 0;
+            const shown: string = run.substring(lead.length);
+            if (shown) {
+                const newNode: Node = this.backend.renderText(height, fontStyle, font, shown, fontHeightInPixel, new PointF2D(x, position.y),
+                                                              color, fontFamily, language);
+                if (!node) {
+                    node = newNode;
+                } else {
+                    node.appendChild(newNode);
+                }
+                x += width(shown);
+            }
+            run = "";
+        };
+        for (const character of Array.from(text)) {
+            const duration: string = VexFlowMusicSheetDrawer.noteSymbolDurations.get(character);
+            if (!duration) {
+                run += character;
+                continue;
+            }
+            flush();
+            const room: number = width(character);
+            this.renderTextNote(duration, x, room, position.y + fontHeightInPixel, fontHeightInPixel, color);
+            x += room;
+        }
+        flush();
+        return node;
+    }
+
+    /** A note of the notation font in a line of text, centred in the given room, its notehead on the baseline: as VexFlowPatch
+     *  StaveTempo draws a metronome mark's note (notehead, stem, flag), sized for the text's height. */
+    private renderTextNote(duration: string, x: number, room: number, baseline: number, fontHeightInPixel: number, color: string): void {
+        const code: any = (VF as any).getGlyphProps(duration);
+        if (!code) {
+            return;
+        }
+        const ctx: any = this.backend.getContext();
+        // StaveTempo's glyph_font_scale (30) for its 14 pt text
+        const point: number = fontHeightInPixel * 30 / (14 * 4 / 3);
+        const scale: number = point / 38;
+        const headWidth: number = code.getWidth(point);
+        let flagWidth: number = 0;
+        if (code.flag) {
+            flagWidth = 6 * scale;
+        }
+        const left: number = x + Math.max(0, (room - headWidth - flagWidth) / 2);
+        ctx.save();
+        if (color) {
+            ctx.setFillStyle(color);
+            ctx.setStrokeStyle(color);
+        }
+        (VF.Glyph as any).renderGlyph(ctx, left, baseline, point, code.code_head);
+        if (code.stem) {
+            const stemX: number = left + headWidth;
+            const stemHeight: number = (30 + (code.beam_count ? 3 * (code.beam_count - 1) : 0)) * scale;
+            ctx.fillRect(stemX - scale, baseline - stemHeight, scale, stemHeight);
+            if (code.flag) {
+                (VF.Glyph as any).renderGlyph(ctx, stemX, baseline - stemHeight, point, code.code_flag_upstem);
+            }
+        }
+        ctx.restore();
     }
 
     /**

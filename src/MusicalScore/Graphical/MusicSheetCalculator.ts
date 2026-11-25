@@ -7575,6 +7575,13 @@ export abstract class MusicSheetCalculator {
             endStaffLine = startStaffLine;
             nextLyricStaffEntry = this.nextStaffEntryWithLyricsOfVerse(index, staffIndex, verseNumber);
         }
+        // Likewise an extend whose next syllable is on the very next note (a syllable held on one note: Donizetti, La
+        //   lontananza m2 "te" before "ra", printed "te__"): the scan found no note to reach, and the line was not drawn
+        //   (user decision 11-26). As osmd_dart.
+        if (!endStaffEntry && !endGraceEntry && foundOwnVerseSyllable) {
+            endStaffEntry = startStaffEntry;
+            endStaffLine = startStaffLine;
+        }
         if (!endStaffEntry || !endStaffLine) {
             return;
         }
@@ -7617,6 +7624,33 @@ export abstract class MusicSheetCalculator {
             if (!endStaffEntry) {
                 return;
             }
+            // the staff lines of the systems between: the line goes across each of them (Handel, Care selve, soprano m44-49:
+            //   "tà" held over m45-48, a whole system in the web, which had no line there)
+            for (const middleStaffLine of this.staffLinesBetween(startStaffLine, endStaffLine)) {
+                const firstMeasure: GraphicalMeasure = middleStaffLine.Measures[0];
+                const lastMeasureBox: BoundingBox = middleStaffLine.Measures[middleStaffLine.Measures.length - 1]?.PositionAndShape;
+                const firstEntry: GraphicalStaffEntry = firstMeasure?.staffEntries[0];
+                if (!firstEntry || !lastMeasureBox) {
+                    continue;
+                }
+                const middleStartX: number = firstMeasure.PositionAndShape.RelativePosition.x +
+                    firstEntry.PositionAndShape.RelativePosition.x + firstEntry.PositionAndShape.BorderMarginLeft;
+                const middleEndX: number = lastMeasureBox.RelativePosition.x + lastMeasureBox.Size.width;
+                if (middleEndX <= middleStartX) {
+                    continue;
+                }
+                const rowY: number = this.lyricExtendYInStaffLine(middleStaffLine, verseNumber, voice);
+                // without syllables there, at the verse's row as calculateSingleStaffLineLyricsPosition() would place it under
+                //   the staff line's lowest ink: the first system's height went through the tuplet brackets under m45
+                const middleY: number = rowY ?? this.lyricExtendYWithoutSyllables(middleStaffLine, middleStartX, middleEndX,
+                    verseNumber, startY - lyricEntry.VerseLineY);
+                this.calculateSingleLyricWordWithUnderscore(middleStaffLine, middleStartX, middleEndX, middleY);
+                // without syllables of the verse in the staff line, its lyric row is reserved in the bottom line (as below)
+                if (rowY === undefined) {
+                    middleStaffLine.SkyBottomLineCalculator.updateBottomLineInRange(middleStartX, middleEndX,
+                        middleY + this.rules.LyricUnderscoreLineWidth / 2);
+                }
+            }
             // second Underscore in the endStaffLine until endStaffEntry, also when the melisma ends on the first note
             //   of the new system: the line continues under it (Schumann, Myrthen 11 m25-26: "er." over a system break).
             if (endStaffEntry.parentMeasure.ParentStaffLine && endStaffEntry.parentMeasure.staffEntries &&
@@ -7646,6 +7680,37 @@ export abstract class MusicSheetCalculator {
                 }
             }
         }
+    }
+
+    /** The y of a lyric extend line of the verse in a staff line without its syllables: the verse's row as
+     *  calculateSingleStaffLineLyricsPosition() places it (under the bottom line between startX and endX, at least
+     *  StaffHeight down), offsetFromVerseLine from it as the extend line is from its syllable's verse line. */
+    private lyricExtendYWithoutSyllables(staffLine: StaffLine, startX: number, endX: number, verseNumber: string,
+                                         offsetFromVerseLine: number): number {
+        const rules: EngravingRules = this.rules;
+        const bottom: number = staffLine.SkyBottomLineCalculator.getBottomLineMaxInRange(startX, endX);
+        const lyricsStartY: number = Math.max(rules.StaffHeight, bottom + rules.LyricsYMarginToBottomLine);
+        const verseIndex: number = Math.max(0, staffLine.ParentStaff.ParentInstrument.LyricVersesNumbers.indexOf(verseNumber));
+        return lyricsStartY + rules.LyricsHeight + rules.VerticalBetweenLyricsDistance + rules.LyricsYOffsetToStaffHeight +
+            (rules.VerticalBetweenLyricsDistance + rules.LyricsHeight) * verseIndex + offsetFromVerseLine;
+    }
+
+    /** The staff lines of the same staff as startStaffLine in the systems after its system and before endStaffLine's. */
+    private staffLinesBetween(startStaffLine: StaffLine, endStaffLine: StaffLine): StaffLine[] {
+        const systems: MusicSystem[] = this.musicSystems ?? [];
+        const startIndex: number = systems.indexOf(startStaffLine.ParentMusicSystem);
+        const endIndex: number = systems.indexOf(endStaffLine.ParentMusicSystem);
+        const lines: StaffLine[] = [];
+        if (startIndex < 0 || endIndex < 0) {
+            return lines;
+        }
+        for (let index: number = startIndex + 1; index < endIndex; index++) {
+            const line: StaffLine = systems[index].StaffLines.find(l => l.ParentStaff === startStaffLine.ParentStaff);
+            if (line) {
+                lines.push(line);
+            }
+        }
+        return lines;
     }
 
     /** The y of a lyric extend line of the verse in the staff line: the row of the verse's syllables there, as

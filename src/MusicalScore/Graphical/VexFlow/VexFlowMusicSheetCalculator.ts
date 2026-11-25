@@ -2703,8 +2703,10 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       // fontSize and minBottomY are extra arguments from VexFlowPatch (stave.js / stavesection.js)
       (vfStave as any).setSection(rehearsalExpression.label, yOffset, xOffset, fontSize, minBottomY);
       const section: VF.StaveModifier = CollectionUtil.getLastElement(vfStave.getModifiers());
-      // <rehearsal enclosure="none">: the mark without its box (VexFlowPatch stavesection.js), as osmd_dart
+      // <rehearsal enclosure="none">: the mark without its box; "circle": in a circle instead of the box (VexFlowPatch
+      //   stavesection.js), as osmd_dart
       (section as any).drawRect = rehearsalExpression.enclosure !== "none";
+      (section as any).drawCircle = rehearsalExpression.enclosure === "circle";
       VexFlowConverter.setVexFlowTextFontFamily((section as any).font, this.rules);
     }
   }

@@ -16,6 +16,7 @@ export class StaveSection extends StaveModifier {
     this.shift_x = 0;
     this.shift_y = shift_y;
     this.drawRect = true; // VexFlowPatch: false for <rehearsal enclosure="none"> (the text only)
+    this.drawCircle = false; // VexFlowPatch: true for <rehearsal enclosure="circle">: a circle instead of the box
     this.minBottomY = undefined; // VexFlowPatch: if set, shift the box up so its bottom doesn't exceed this y (px), to clear chord symbols
     this.font = {
       family: 'sans-serif',
@@ -59,7 +60,14 @@ export class StaveSection extends StaveModifier {
     let x = this.x + shift_x;
     // VexFlowPatch: the box and the text in a group (class vf-stavesection)
     ctx.openGroup('stavesection');
-    if (this.drawRect) {
+    if (this.drawCircle) {
+      // VexFlowPatch: <rehearsal enclosure="circle"> (Nielsen, Clarinet Concerto Op. 57): a circle around the box, centred
+      //   on it, its diameter the box's longer side, so the text is placed as in the box
+      ctx.beginPath();
+      ctx.lineWidth = 2;
+      ctx.arc(x + width / 2, y + text_height/4 + height / 2, Math.max(width, height) / 2, 0, 2 * Math.PI, false);
+      ctx.stroke();
+    } else if (this.drawRect) {
       ctx.beginPath();
       ctx.lineWidth = 2;
       ctx.rect(x, y + text_height/4, width, height);
