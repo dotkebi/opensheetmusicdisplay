@@ -7617,6 +7617,30 @@ export abstract class MusicSheetCalculator {
             if (!endStaffEntry) {
                 return;
             }
+            // the staff lines of the systems between: the line goes across each of them (Handel, Care selve, soprano m44-49:
+            //   "tà" held over m45-48, a whole system in the web, which had no line there)
+            for (const middleStaffLine of this.staffLinesBetween(startStaffLine, endStaffLine)) {
+                const firstMeasure: GraphicalMeasure = middleStaffLine.Measures[0];
+                const lastMeasureBox: BoundingBox = middleStaffLine.Measures[middleStaffLine.Measures.length - 1]?.PositionAndShape;
+                const firstEntry: GraphicalStaffEntry = firstMeasure?.staffEntries[0];
+                if (!firstEntry || !lastMeasureBox) {
+                    continue;
+                }
+                const middleStartX: number = firstMeasure.PositionAndShape.RelativePosition.x +
+                    firstEntry.PositionAndShape.RelativePosition.x + firstEntry.PositionAndShape.BorderMarginLeft;
+                const middleEndX: number = lastMeasureBox.RelativePosition.x + lastMeasureBox.Size.width;
+                if (middleEndX <= middleStartX) {
+                    continue;
+                }
+                const rowY: number = this.lyricExtendYInStaffLine(middleStaffLine, verseNumber, voice);
+                const middleY: number = rowY ?? startY;
+                this.calculateSingleLyricWordWithUnderscore(middleStaffLine, middleStartX, middleEndX, middleY);
+                // without syllables of the verse in the staff line, its lyric row is reserved in the bottom line (as below)
+                if (rowY === undefined) {
+                    middleStaffLine.SkyBottomLineCalculator.updateBottomLineInRange(middleStartX, middleEndX,
+                        middleY + this.rules.LyricUnderscoreLineWidth / 2);
+                }
+            }
             // second Underscore in the endStaffLine until endStaffEntry, also when the melisma ends on the first note
             //   of the new system: the line continues under it (Schumann, Myrthen 11 m25-26: "er." over a system break).
             if (endStaffEntry.parentMeasure.ParentStaffLine && endStaffEntry.parentMeasure.staffEntries &&
@@ -7646,6 +7670,24 @@ export abstract class MusicSheetCalculator {
                 }
             }
         }
+    }
+
+    /** The staff lines of the same staff as startStaffLine in the systems after its system and before endStaffLine's. */
+    private staffLinesBetween(startStaffLine: StaffLine, endStaffLine: StaffLine): StaffLine[] {
+        const systems: MusicSystem[] = this.musicSystems ?? [];
+        const startIndex: number = systems.indexOf(startStaffLine.ParentMusicSystem);
+        const endIndex: number = systems.indexOf(endStaffLine.ParentMusicSystem);
+        const lines: StaffLine[] = [];
+        if (startIndex < 0 || endIndex < 0) {
+            return lines;
+        }
+        for (let index: number = startIndex + 1; index < endIndex; index++) {
+            const line: StaffLine = systems[index].StaffLines.find(l => l.ParentStaff === startStaffLine.ParentStaff);
+            if (line) {
+                lines.push(line);
+            }
+        }
+        return lines;
     }
 
     /** The y of a lyric extend line of the verse in the staff line: the row of the verse's syllables there, as
