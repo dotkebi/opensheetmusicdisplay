@@ -29,6 +29,9 @@ interface OpenDashes {
     startMeasure: SourceMeasure;
     startTimestamp: Fraction;
     expression?: AbstractExpression;
+    /** Whether expression is a word read after the dashes at their timestamp: a later word of that time takes them over,
+     *  as for words read before the dashes (the last one wins). */
+    expressionReadAfter?: boolean;
     endMeasure?: SourceMeasure;
     endTimestamp?: Fraction;
 }
@@ -1753,10 +1756,14 @@ export class ExpressionReader {
     private addWordExpressionForDashes(expression: AbstractExpression, timestamp: Fraction): void {
         const position: WordExpressionPosition = {expression: expression, timestamp: timestamp.clone(), placement: this.placement};
         this.wordExpressionsOfMeasure.push(position);
+        // A later word of the dashes' time takes them over, as when the words are read before the dashes: the words of
+        // one time are drawn as one text after its last word (Nielsen, Clarinet Concerto Op.57 piano m399: the dashes
+        // written before "dim." and "poco rall." went with "dim.", which is drawn within "dim. poco rall.", and were not drawn).
         for (const dashes of this.openDashes.slice()) {
-            if (!dashes.expression && dashes.startMeasure === this.dashesMeasure &&
+            if ((!dashes.expression || dashes.expressionReadAfter) && dashes.startMeasure === this.dashesMeasure &&
                 dashes.placement === position.placement && dashes.startTimestamp.Equals(position.timestamp)) {
                 dashes.expression = expression;
+                dashes.expressionReadAfter = true;
                 this.finishDashesIfComplete(dashes);
             }
         }

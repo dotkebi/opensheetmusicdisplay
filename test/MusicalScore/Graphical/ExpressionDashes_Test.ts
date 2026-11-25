@@ -230,4 +230,21 @@ describe("Expression dashes", () => {
         expect(staffLines(osmd)[0].ExpressionDashes.length).to.equal(1);
         expect(staffLines(osmd)[0].ExpressionDashes[0].Expression).to.be.instanceOf(ContinuousDynamicExpression);
     });
+    // Nielsen, Clarinet Concerto Op.57 piano m399: dashes written (with an offset) before "dim." and "poco rall." of their
+    // time went with "dim.", which is drawn within the one text "dim. poco rall.", and were lost.
+    it("draws dashes written before two words of their time after the text of both words", async () => {
+        const words: string = "<direction placement=\"below\"><direction-type><words>dim.</words></direction-type></direction>" +
+            "<direction placement=\"below\"><direction-type><words>poco rall.</words></direction-type></direction>";
+        const dashesBefore: string = "<direction placement=\"below\"><direction-type><dashes type=\"start\" number=\"3\"/>" +
+            "</direction-type><offset>4</offset></direction>";
+        const stop: string = "<direction placement=\"below\"><direction-type><dashes type=\"stop\" number=\"3\"/></direction-type></direction>";
+        const measure3: string = `<measure number="3">${filler}${stop}</measure>`;
+        const osmd: OpenSheetMusicDisplay = await render(singleStaffScore(m17Notes.replace("__WORDS__", words), dashesBefore, measure3));
+        const line: StaffLine = staffLines(osmd)[0];
+        const unknown: GraphicalUnknownExpression = line.AbstractExpressions.find(
+            (e) => e instanceof GraphicalUnknownExpression) as GraphicalUnknownExpression;
+        expect(unknown.Label.Label.text).to.contain("poco rall.");
+        expect(line.ExpressionDashes.length).to.equal(1);
+        expect(line.ExpressionDashes[0].Start.x, "starts after the text").to.be.greaterThan(labelRight(unknown));
+    });
 });
